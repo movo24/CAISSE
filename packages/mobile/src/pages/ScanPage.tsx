@@ -60,7 +60,16 @@ export function ScanPage() {
       console.log('[ScanPage] 2. Recherche produit... GET /products/scan/' + code);
       const res = await productsApi.scan(code);
       const data = res.data;
-      console.log('[ScanPage] 3. Produit TROUVE:', data.name, 'stock:', data.stockQuantity);
+
+      // Guard: empty response = product not found (pre-fix backend returned 200 empty)
+      if (!data || !data.id) {
+        console.log('[ScanPage] 3. Reponse vide — produit introuvable');
+        setUnknownEan(code);
+        setStatus({ step: 'not-found', code });
+        return;
+      }
+
+      console.log('[ScanPage] 3. Produit TROUVE:', data.name, 'id:', data.id, 'stock:', data.stockQuantity);
 
       const p: Product = {
         ...data,
@@ -75,11 +84,13 @@ export function ScanPage() {
       if (err.response?.status === 404) {
         console.log('[ScanPage] 3. Produit NON TROUVE (404) pour code:', code);
         setUnknownEan(code);
+        setProduct(null);
         setStatus({ step: 'not-found', code });
       } else {
-        const msg = err.response?.data?.message || err.message || 'Erreur inconnue';
+        const rawMsg = err.response?.data?.message;
+        const msg = Array.isArray(rawMsg) ? rawMsg.join(', ') : (rawMsg || err.message || 'Erreur inconnue');
         console.error('[ScanPage] 3. ERREUR:', err.response?.status, msg);
-        setStatus({ step: 'error', message: msg, code });
+        setStatus({ step: 'error', message: `${err.response?.status || ''} ${msg}`.trim(), code });
       }
     }
   }, []);
