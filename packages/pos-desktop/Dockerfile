@@ -1,0 +1,18 @@
+# ── POS Web Dockerfile ──────────────────────────────────────────
+# Multi-stage: build React app → serve via nginx
+# Note: Electron is for local desktop, web build is for iPad/browser access
+# ─────────────────────────────────────────────────────────────────
+
+FROM node:20-alpine AS builder
+WORKDIR /app
+COPY package.json ./
+RUN npm install --legacy-peer-deps
+COPY . .
+RUN npm run build
+
+FROM nginx:alpine AS runner
+COPY --from=builder /app/dist /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/templates/default.conf.template
+ENV PORT=80
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]

@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https:; connect-src 'self' http://localhost:* ws://localhost:* http://192.168.1.190:* ws://192.168.1.190:* http://172.20.10.2:* ws://172.20.10.2:* https://* wss://*; font-src 'self' https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; form-action 'self';" />
+    <title>CAISSE POS</title>
+
+    <!-- PWA manifest -->
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#ff007a" />
+
+    <!-- iOS: plein ecran sans barre Safari (OBLIGATOIRE) -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="POS" />
+    <meta name="mobile-web-app-capable" content="yes" />
+
+    <!-- Icons -->
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <link rel="icon" type="image/svg+xml" href="/icons/icon.svg" />
+
+    <style>
+      html { touch-action: manipulation; }
+      body { overscroll-behavior: none; }
+      html, body, #root { height: 100%; height: 100dvh; overflow: hidden; }
+    </style>
+  </head>
+  <body class="bg-pos-bg text-pos-text font-sans antialiased">
+    <div id="root"></div>
+    <script type="module" src="/src/renderer/main.tsx"></script>
+  </body>
+</html>

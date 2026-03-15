@@ -1,0 +1,28 @@
+{
+  "name": "caisse",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Modern POS system - SaaS multi-store, multi-currency, AI-powered",
+  "workspaces": [
+    "packages/*",
+    "shared"
+  ],
+  "scripts": {
+    "dev:backend": "cd packages/backend && npm run start:dev",
+    "dev:pos": "cd packages/pos-desktop && npm run dev",
+    "dev:backoffice": "cd packages/backoffice-web && npm run dev",
+    "build:backend": "cd packages/backend && npm run build",
+    "build:pos": "cd packages/pos-desktop && npm run build",
+    "build:backoffice": "cd packages/backoffice-web && npm run build",
+    "test": "npm run test --workspaces",
+    "test:backend": "cd packages/backend && npm test",
+    "lint": "npm run lint --workspaces",
+    "format": "prettier --write \"**/*.{ts,tsx,json,md}\"",
+    "docker:up": "docker compose -f docker/docker-compose.yml up -d",
+    "docker:down": "docker compose -f docker/docker-compose.yml down"
+  },
+  "devDependencies": {
+    "prettier": "^3.2.0",
+    "typescript": "^5.4.0"
+  }
+}

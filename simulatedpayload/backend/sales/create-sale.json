@@ -1,0 +1,19 @@
+{
+  "items": [
+    {
+      "ean": "3760001000001",
+      "quantity": 2
+    },
+    {
+      "ean": "3760001000003",
+      "quantity": 1
+    }
+  ],
+  "customerQrCode": "CLI-AAAA1111",
+  "payments": [
+    {
+      "method": "card",
+      "amountMinorUnits": 6870
+    }
+  ]
+}

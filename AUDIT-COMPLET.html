@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CAISSE - Audit Complet & Schema Architecture</title>
+<style>
+  :root {
+    --bg: #0f0f14;
+    --card: #1a1a24;
+    --border: #2a2a3a;
+    --accent: #ff007a;
+    --accent2: #6366f1;
+    --accent3: #22c55e;
+    --accent4: #f59e0b;
+    --text: #e8e8ed;
+    --muted: #8888a0;
+    --link: #818cf8;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font-family: 'Inter', -apple-system, system-ui, sans-serif; line-height: 1.6; }
+
+  .hero { text-align: center; padding: 60px 20px 40px; background: linear-gradient(180deg, #1a1028 0%, var(--bg) 100%); }
+  .hero h1 { font-size: 42px; font-weight: 800; background: linear-gradient(135deg, var(--accent), var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  .hero p { color: var(--muted); font-size: 18px; margin-top: 8px; }
+  .hero .stats { display: flex; justify-content: center; gap: 40px; margin-top: 30px; flex-wrap: wrap; }
+  .hero .stat { text-align: center; }
+  .hero .stat .num { font-size: 36px; font-weight: 800; color: var(--accent); }
+  .hero .stat .label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+
+  .container { max-width: 1400px; margin: 0 auto; padding: 0 24px; }
+
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); padding: 0 24px; margin-bottom: 30px; overflow-x: auto; }
+  .tab { padding: 12px 20px; color: var(--muted); cursor: pointer; font-weight: 600; font-size: 14px; border-bottom: 2px solid transparent; transition: all 0.2s; white-space: nowrap; }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  .section { margin-bottom: 40px; }
+  .section-title { font-size: 24px; font-weight: 700; margin-bottom: 16px; display: flex; align-items: center; gap: 10px; }
+  .section-title .badge { font-size: 11px; background: var(--accent); color: white; padding: 2px 10px; border-radius: 20px; font-weight: 600; }
+
+  .grid { display: grid; gap: 16px; }
+  .grid-2 { grid-template-columns: repeat(auto-fill, minmax(600px, 1fr)); }
+  .grid-3 { grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); }
+  .grid-4 { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 20px; transition: border-color 0.2s; }
+  .card:hover { border-color: var(--accent); }
+  .card h3 { font-size: 16px; font-weight: 700; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+  .card h3 .icon { width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 14px; }
+  .card p { color: var(--muted); font-size: 13px; }
+  .card .tag { display: inline-block; font-size: 10px; padding: 2px 8px; border-radius: 6px; font-weight: 600; margin-right: 4px; margin-top: 4px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; padding: 10px 12px; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--border); }
+  td { padding: 8px 12px; border-bottom: 1px solid var(--border); }
+  tr:hover td { background: rgba(255, 0, 122, 0.03); }
+
+  .bg-pink { background: rgba(255, 0, 122, 0.15); color: var(--accent); }
+  .bg-indigo { background: rgba(99, 102, 241, 0.15); color: var(--accent2); }
+  .bg-green { background: rgba(34, 197, 94, 0.15); color: var(--accent3); }
+  .bg-amber { background: rgba(245, 158, 11, 0.15); color: var(--accent4); }
+  .bg-blue { background: rgba(59, 130, 246, 0.15); color: #60a5fa; }
+  .bg-red { background: rgba(239, 68, 68, 0.15); color: #f87171; }
+  .bg-purple { background: rgba(168, 85, 247, 0.15); color: #c084fc; }
+  .bg-teal { background: rgba(20, 184, 166, 0.15); color: #2dd4bf; }
+
+  .diagram { background: var(--card); border: 1px solid var(--border); border-radius: 20px; padding: 40px; margin: 30px 0; overflow-x: auto; }
+  .diagram-row { display: flex; justify-content: center; gap: 20px; margin-bottom: 20px; flex-wrap: wrap; }
+  .diagram-box { background: var(--bg); border: 2px solid var(--border); border-radius: 14px; padding: 16px 24px; text-align: center; min-width: 160px; transition: all 0.2s; }
+  .diagram-box:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .diagram-box .box-title { font-weight: 700; font-size: 14px; }
+  .diagram-box .box-sub { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .diagram-box.pink { border-color: var(--accent); }
+  .diagram-box.indigo { border-color: var(--accent2); }
+  .diagram-box.green { border-color: var(--accent3); }
+  .diagram-box.amber { border-color: var(--accent4); }
+  .diagram-arrow { text-align: center; color: var(--muted); font-size: 20px; margin: 8px 0; }
+  .diagram-label { text-align: center; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 2px; margin-bottom: 12px; font-weight: 600; }
+
+  .flow { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 16px 0; }
+  .flow-step { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 8px 16px; font-size: 12px; font-weight: 600; }
+  .flow-arrow { color: var(--accent); font-size: 16px; }
+
+  .entity-card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+  .entity-header { padding: 12px 16px; font-weight: 700; font-size: 14px; border-bottom: 1px solid var(--border); }
+  .entity-cols { padding: 8px 0; }
+  .entity-col { padding: 4px 16px; font-size: 12px; display: flex; justify-content: space-between; }
+  .entity-col .col-name { font-weight: 600; }
+  .entity-col .col-type { color: var(--muted); }
+  .entity-col.pk { color: var(--accent); }
+  .entity-col.fk { color: var(--accent2); }
+
+  #date-display { display: inline; }
+
+  @media (max-width: 768px) {
+    .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+    .hero h1 { font-size: 28px; }
+    .hero .stats { gap: 20px; }
+    .tabs { padding: 0 12px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <h1>CAISSE POS</h1>
+  <p>Audit Complet & Schema Architecture - Systeme de Caisse SaaS</p>
+  <div class="stats">
+    <div class="stat"><div class="num">4</div><div class="label">Packages</div></div>
+    <div class="stat"><div class="num">17</div><div class="label">Modules Backend</div></div>
+    <div class="stat"><div class="num">17</div><div class="label">Tables DB</div></div>
+    <div class="stat"><div class="num">65+</div><div class="label">Endpoints API</div></div>
+    <div class="stat"><div class="num">13</div><div class="label">Pages UI</div></div>
+    <div class="stat"><div class="num">12</div><div class="label">Devises</div></div>
+  </div>
+</div>
+
+<div class="container">
+<div class="tabs">
+  <div class="tab active" onclick="showTab('schema', this)">Schema Architecture</div>
+  <div class="tab" onclick="showTab('backend', this)">Backend (NestJS)</div>
+  <div class="tab" onclick="showTab('entities', this)">Base de Donnees</div>
+  <div class="tab" onclick="showTab('api', this)">Routes API</div>
+  <div class="tab" onclick="showTab('pos', this)">POS Desktop</div>
+  <div class="tab" onclick="showTab('backoffice', this)">Backoffice</div>
+  <div class="tab" onclick="showTab('shared', this)">Shared / Monorepo</div>
+  <div class="tab" onclick="showTab('security', this)">Securite</div>
+</div>
+
+<!-- SCHEMA -->
+<div id="schema" class="tab-content active">
+  <div class="section">
+    <div class="section-title">Vue Globale du Systeme</div>
+    <div class="diagram">
+      <div class="diagram-label">Couche Infrastructure</div>
+      <div class="diagram-row">
+        <div class="diagram-box amber"><div class="box-title">PostgreSQL 16</div><div class="box-sub">17 tables - Port 5432</div></div>
+        <div class="diagram-box amber"><div class="box-title">Docker</div><div class="box-sub">caisse-postgres</div></div>
+      </div>
+      <div class="diagram-arrow">&#8593; TypeORM &#8593;</div>
+      <div class="diagram-label">Couche Backend</div>
+      <div class="diagram-row">
+        <div class="diagram-box green"><div class="box-title">NestJS API</div><div class="box-sub">17 modules - Port 3001</div></div>
+      </div>
+      <div class="diagram-arrow">&#8593; REST API (JWT) &#8593;</div>
+      <div class="diagram-label">Couche Frontend</div>
+      <div class="diagram-row">
+        <div class="diagram-box pink"><div class="box-title">POS Desktop</div><div class="box-sub">Electron + React - Port 5174</div></div>
+        <div class="diagram-box indigo"><div class="box-title">Backoffice Web</div><div class="box-sub">React SPA - Port 5173</div></div>
+      </div>
+      <div class="diagram-arrow">&#8593; Shared Types &#8593;</div>
+      <div class="diagram-label">Package Partage</div>
+      <div class="diagram-row">
+        <div class="diagram-box"><div class="box-title">@caisse/shared</div><div class="box-sub">12 types + 2 utils + constants</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Flux de Donnees - Vente POS</div>
+    <div class="card">
+      <div class="flow">
+        <div class="flow-step bg-pink">Scan Produit</div><div class="flow-arrow">&#8594;</div>
+        <div class="flow-step bg-indigo">Ajout Panier</div><div class="flow-arrow">&#8594;</div>
+        <div class="flow-step bg-green">Promos Auto</div><div class="flow-arrow">&#8594;</div>
+        <div class="flow-step bg-amber">Paiement (CB/Especes)</div><div class="flow-arrow">&#8594;</div>
+        <div class="flow-step bg-blue">Hash Chain SHA256</div><div class="flow-arrow">&#8594;</div>
+        <div class="flow-step bg-purple">Ticket + Impression</div><div class="flow-arrow">&#8594;</div>
+        <div class="flow-step bg-teal">Jackpot Loterie</div>
+      </div>
+      <div class="flow" style="margin-top: 12px">
+        <div class="flow-step bg-red">Stock Decremente</div><div class="flow-arrow">&#8594;</div>
+        <div class="flow-step bg-indigo">Points Fidelite</div><div class="flow-arrow">&#8594;</div>
+        <div class="flow-step bg-green">Audit Log</div><div class="flow-arrow">&#8594;</div>
+        <div class="flow-step bg-amber">Performance Tracking</div><div class="flow-arrow">&#8594;</div>
+        <div class="flow-step bg-blue">Sync Cloud</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Architecture Modules Backend</div>
+    <div class="grid grid-4">
+      <div class="card"><h3><span class="icon bg-pink">&#128274;</span> Auth</h3><p>PIN + QR login, JWT 15min/7j, rate limit 5/60s, lockout 15min</p></div>
+      <div class="card"><h3><span class="icon bg-green">&#128722;</span> Products</h3><p>CRUD, EAN scan, prix, stock, alertes, historique prix</p></div>
+      <div class="card"><h3><span class="icon bg-amber">&#128179;</span> Sales</h3><p>Transaction SERIALIZABLE, hash chain, ticket numbering</p></div>
+      <div class="card"><h3><span class="icon bg-indigo">&#128101;</span> Employees</h3><p>CRUD, QR badge, roles admin/manager/cashier</p></div>
+      <div class="card"><h3><span class="icon bg-purple">&#128100;</span> Customers</h3><p>QR fidelite, points, OTP verification, 1er achat</p></div>
+      <div class="card"><h3><span class="icon bg-blue">&#127978;</span> Stores</h3><p>Multi-magasin, infos legales NF525 (SIRET, RCS, TVA)</p></div>
+      <div class="card"><h3><span class="icon bg-teal">&#128202;</span> Reports</h3><p>Z-Report journalier, CA/TVA/CB/especes/top produits</p></div>
+      <div class="card"><h3><span class="icon bg-red">&#127873;</span> Promotions</h3><p>4 types: buy_x, %, fixe, 1er achat. Regles JSONB</p></div>
+      <div class="card"><h3><span class="icon bg-amber">&#128230;</span> Stock</h3><p>Decrementation atomique, seuils alerte/critique</p></div>
+      <div class="card"><h3><span class="icon bg-green">&#128209;</span> Audit</h3><p>SHA-256 hash chain, append-only, NF525 compliance</p></div>
+      <div class="card"><h3><span class="icon bg-indigo">&#129302;</span> IA</h3><p>Suggestion prix (stock/rotation), prevision CA</p></div>
+      <div class="card"><h3><span class="icon bg-blue">&#128177;</span> Currency</h3><p>12 devises, taux FX, conversion temps reel</p></div>
+      <div class="card"><h3><span class="icon bg-purple">&#128259;</span> Sync</h3><p>Push/pull offline, FIFO, deduplication, conflits</p></div>
+      <div class="card"><h3><span class="icon bg-pink">&#128276;</span> Notifications</h3><p>Rappels QR fidelite, alertes stock</p></div>
+      <div class="card"><h3><span class="icon bg-teal">&#128176;</span> Subscriptions</h3><p>4 plans SaaS (trial/starter/business/enterprise)</p></div>
+      <div class="card"><h3><span class="icon bg-amber">&#127920;</span> Jackpot</h3><p>Loterie Smart-Foule, mega/small win, quotas jour</p></div>
+      <div class="card"><h3><span class="icon bg-red">&#128101;</span> Occupancy</h3><p>Comptage temps reel, meteo OpenWeatherMap</p></div>
+    </div>
+  </div>
+</div>
+
+<!-- BACKEND -->
+<div id="backend" class="tab-content">
+  <div class="section">
+    <div class="section-title">Configuration Principale</div>
+    <div class="grid grid-3">
+      <div class="card"><h3>main.ts</h3><p>Helmet securite, CORS (5173-5175), prefix /api, ValidationPipe (whitelist + forbidNonWhitelisted), TenantInterceptor global, Swagger /api/docs v0.2.0</p></div>
+      <div class="card"><h3>app.module.ts</h3><p>ConfigModule global, TypeORM PostgreSQL (synchronize dev), ThrottlerModule 3 niveaux (10/s, 100/min, 2000/h), 17 feature modules</p></div>
+      <div class="card"><h3>Securite Globale</h3><p>JWT 15min access + 7j refresh, Bcrypt cost 12, Rate limiting IP, RBAC (admin/manager/cashier), Tenant isolation</p></div>
+    </div>
+  </div>
+  <div class="section">
+    <div class="section-title">Modules Detailles <span class="badge">17 modules</span></div>
+    <table>
+      <tr><th>Module</th><th>Routes</th><th>Particularites</th></tr>
+      <tr><td><strong>Auth</strong></td><td>POST login/pin, POST login/qr</td><td>Lockout 5 tentatives/15min, bcrypt cost 12, retourne storeInfo</td></tr>
+      <tr><td><strong>Products</strong></td><td>POST, GET, GET scan/:ean, GET stock-alerts, GET :id, GET :id/price-history, PUT :id</td><td>7 routes, historique prix, seuils stock</td></tr>
+      <tr><td><strong>Sales</strong></td><td>POST, GET, GET :id, POST :id/void</td><td>SERIALIZABLE isolation, hash chain SHA256, jackpot integration</td></tr>
+      <tr><td><strong>Customers</strong></td><td>POST, GET, GET qr/:qrCode, GET :id, POST :id/verify</td><td>QR code generation, points fidelite, premier achat</td></tr>
+      <tr><td><strong>Employees</strong></td><td>POST, GET, GET :id, GET :id/qr, PUT :id, DELETE :id</td><td>Roles guard, QR badge data URL</td></tr>
+      <tr><td><strong>Stores</strong></td><td>GET me, GET me/info, GET :id, PUT :id</td><td>Mapper StoreEntity -&gt; StoreInfo (NF525)</td></tr>
+      <tr><td><strong>Reports</strong></td><td>POST z-report, GET z-report, GET daily-summary</td><td>Top 10 produits, peak hours, void count</td></tr>
+      <tr><td><strong>Promotions</strong></td><td>POST, GET, GET active, GET :id, PUT :id</td><td>4 types promo, evaluation par produit</td></tr>
+      <tr><td><strong>Stock</strong></td><td>GET alerts, POST :productId/adjust</td><td>Audit log sur chaque mouvement</td></tr>
+      <tr><td><strong>Audit</strong></td><td>GET, GET verify</td><td>Hash chain SHA256, verification integrite</td></tr>
+      <tr><td><strong>IA</strong></td><td>GET pricing/:productId, GET forecast</td><td>Regles: stock+rotation, marge min 15%</td></tr>
+      <tr><td><strong>Currency</strong></td><td>POST rates, GET rates, GET rates/pair, GET convert</td><td>12 devises, precision variable</td></tr>
+      <tr><td><strong>Sync</strong></td><td>POST push, GET pull, GET status</td><td>Batch insert, deduplication, conflits</td></tr>
+      <tr><td><strong>Notifications</strong></td><td>GET summary, GET loyalty-reminders, GET stock-alerts, POST send-qr-reminder/:id</td><td>Priorite: high 90j+, medium 60j, low 30j</td></tr>
+      <tr><td><strong>Subscriptions</strong></td><td>GET plans, GET :storeId, GET usage, POST change-plan, POST cancel, POST trial</td><td>Trial=0eur, Starter=49eur, Business=99eur, Enterprise=249eur</td></tr>
+      <tr><td><strong>Jackpot</strong></td><td>GET config, POST config, PUT config, GET status, GET history</td><td>Smart-Foule: densite + probabilite + quotas</td></tr>
+      <tr><td><strong>Occupancy</strong></td><td>POST update, GET :storeId, GET :storeId/weather</td><td>In-memory cache, meteo 10min cache</td></tr>
+    </table>
+  </div>
+</div>
+
+<!-- ENTITIES -->
+<div id="entities" class="tab-content">
+  <div class="section">
+    <div class="section-title">Schema Base de Donnees <span class="badge">17 tables</span></div>
+    <div class="diagram">
+      <div class="diagram-label">Relations Principales</div>
+      <div style="text-align:center; font-family: monospace; font-size: 13px; line-height: 2.2; color: var(--muted);">
+        <span style="color:var(--accent)">stores</span> 1---* <span style="color:var(--accent2)">employees</span> |
+        <span style="color:var(--accent)">stores</span> 1---* <span style="color:var(--accent3)">products</span> |
+        <span style="color:var(--accent)">stores</span> 1---* <span style="color:var(--accent4)">customers</span><br>
+        <span style="color:var(--accent)">stores</span> 1---* <span style="color:#60a5fa">sales</span> |
+        <span style="color:#60a5fa">sales</span> 1---* <span style="color:#c084fc">sale_line_items</span> |
+        <span style="color:#60a5fa">sales</span> 1---* <span style="color:#2dd4bf">sale_payments</span><br>
+        <span style="color:var(--accent)">stores</span> 1---1 <span style="color:#f87171">subscriptions</span> |
+        <span style="color:var(--accent)">stores</span> 1---* <span style="color:var(--accent3)">audit_entries</span> (hash chain)
+      </div>
+    </div>
+    <div class="grid grid-3">
+      <div class="entity-card">
+        <div class="entity-header bg-pink">stores (24 colonnes)</div>
+        <div class="entity-cols">
+          <div class="entity-col pk"><span class="col-name">id</span><span class="col-type">UUID PK</span></div>
+          <div class="entity-col"><span class="col-name">name, address, postal_code, city</span><span class="col-type">varchar</span></div>
+          <div class="entity-col"><span class="col-name">currency_code, timezone</span><span class="col-type">varchar</span></div>
+          <div class="entity-col"><span class="col-name">siret, siren, naf, tva_intracom</span><span class="col-type">varchar? (NF525)</span></div>
+          <div class="entity-col"><span class="col-name">rcs, capital_social, forme_juridique</span><span class="col-type">varchar?</span></div>
+          <div class="entity-col"><span class="col-name">software_name/version, nif_caisse</span><span class="col-type">varchar</span></div>
+        </div>
+      </div>
+      <div class="entity-card">
+        <div class="entity-header bg-indigo">employees (10 colonnes)</div>
+        <div class="entity-cols">
+          <div class="entity-col pk"><span class="col-name">id</span><span class="col-type">UUID PK</span></div>
+          <div class="entity-col fk"><span class="col-name">store_id</span><span class="col-type">FK stores</span></div>
+          <div class="entity-col"><span class="col-name">pin_hash (bcrypt), qr_code (UNIQUE)</span><span class="col-type">varchar</span></div>
+          <div class="entity-col"><span class="col-name">role: admin/manager/cashier</span><span class="col-type">enum</span></div>
+        </div>
+      </div>
+      <div class="entity-card">
+        <div class="entity-header bg-green">products (15 colonnes)</div>
+        <div class="entity-cols">
+          <div class="entity-col pk"><span class="col-name">id</span><span class="col-type">UUID PK</span></div>
+          <div class="entity-col"><span class="col-name">ean (UNIQUE + store_id)</span><span class="col-type">varchar</span></div>
+          <div class="entity-col"><span class="col-name">price_minor_units, cost_minor_units</span><span class="col-type">integer (centimes)</span></div>
+          <div class="entity-col"><span class="col-name">stock_quantity, alert/critical threshold</span><span class="col-type">integer</span></div>
+        </div>
+      </div>
+      <div class="entity-card">
+        <div class="entity-header bg-amber">sales (14 colonnes)</div>
+        <div class="entity-cols">
+          <div class="entity-col pk"><span class="col-name">id</span><span class="col-type">UUID PK</span></div>
+          <div class="entity-col fk"><span class="col-name">store_id, employee_id, customer_id?</span><span class="col-type">UUID FK</span></div>
+          <div class="entity-col"><span class="col-name">ticket_number, status</span><span class="col-type">varchar</span></div>
+          <div class="entity-col"><span class="col-name">hash_chain_prev, hash_chain_current</span><span class="col-type">SHA256</span></div>
+        </div>
+      </div>
+      <div class="entity-card">
+        <div class="entity-header bg-teal">audit_entries (hash chain)</div>
+        <div class="entity-cols">
+          <div class="entity-col"><span class="col-name">store_id + timestamp</span><span class="col-type">INDEX</span></div>
+          <div class="entity-col"><span class="col-name">action, entity_type, details (JSONB)</span><span class="col-type">varchar/jsonb</span></div>
+          <div class="entity-col"><span class="col-name">previous_hash, current_hash</span><span class="col-type">SHA256 chain</span></div>
+        </div>
+      </div>
+      <div class="entity-card">
+        <div class="entity-header bg-blue">subscriptions (SaaS)</div>
+        <div class="entity-cols">
+          <div class="entity-col"><span class="col-name">plan: trial/starter/business/enterprise</span><span class="col-type">varchar</span></div>
+          <div class="entity-col"><span class="col-name">max_terminals/products/employees</span><span class="col-type">integer</span></div>
+          <div class="entity-col"><span class="col-name">features_enabled</span><span class="col-type">JSONB array</span></div>
+          <div class="entity-col"><span class="col-name">stripe_customer/subscription_id</span><span class="col-type">varchar?</span></div>
+        </div>
+      </div>
+      <div class="entity-card">
+        <div class="entity-header bg-purple">Autres: promo_rules, line_items, payments</div>
+        <div class="entity-cols">
+          <div class="entity-col"><span class="col-name">sale_line_items</span><span class="col-type">qty, prix, promo, TVA, total</span></div>
+          <div class="entity-col"><span class="col-name">sale_payments</span><span class="col-type">method, amount, reference</span></div>
+          <div class="entity-col"><span class="col-name">promo_rules</span><span class="col-type">4 types, JSONB product/category IDs</span></div>
+          <div class="entity-col"><span class="col-name">customers, categories, price_history</span><span class="col-type">QR, hierarchie, audit prix</span></div>
+          <div class="entity-col"><span class="col-name">fx_rates, z_reports</span><span class="col-type">12 devises, rapports journaliers</span></div>
+          <div class="entity-col"><span class="col-name">jackpot_configs, jackpot_wins</span><span class="col-type">loterie Smart-Foule</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- API -->
+<div id="api" class="tab-content">
+  <div class="section">
+    <div class="section-title">Routes API <span class="badge">65+ endpoints</span></div>
+    <table>
+      <tr><th>Methode</th><th>Route</th><th>Auth</th><th>Description</th></tr>
+      <tr><td><span class="tag bg-green">POST</span></td><td>/api/auth/login/pin</td><td>-</td><td>Login PIN + storeId</td></tr>
+      <tr><td><span class="tag bg-green">POST</span></td><td>/api/auth/login/qr</td><td>-</td><td>Login QR code + PIN</td></tr>
+      <tr><td><span class="tag bg-green">POST</span></td><td>/api/products</td><td>JWT</td><td>Creer un produit</td></tr>
+      <tr><td><span class="tag bg-blue">GET</span></td><td>/api/products</td><td>JWT</td><td>Lister produits du magasin</td></tr>
+      <tr><td><span class="tag bg-blue">GET</span></td><td>/api/products/scan/:ean</td><td>JWT</td><td>Trouver par code-barres EAN</td></tr>
+      <tr><td><span class="tag bg-blue">GET</span></td><td>/api/products/stock-alerts</td><td>JWT</td><td>Alertes stock</td></tr>
+      <tr><td><span class="tag bg-amber">PUT</span></td><td>/api/products/:id</td><td>JWT</td><td>Modifier produit</td></tr>
+      <tr><td><span class="tag bg-green">POST</span></td><td>/api/sales</td><td>JWT</td><td>Creer vente complete</td></tr>
+      <tr><td><span class="tag bg-blue">GET</span></td><td>/api/sales</td><td>JWT</td><td>Lister ventes</td></tr>
+      <tr><td><span class="tag bg-red">POST</span></td><td>/api/sales/:id/void</td><td>admin/mgr</td><td>Annuler vente</td></tr>
+      <tr><td><span class="tag bg-green">POST</span></td><td>/api/customers</td><td>JWT</td><td>Enregistrer client</td></tr>
+      <tr><td><span class="tag bg-blue">GET</span></td><td>/api/customers/qr/:qrCode</td><td>JWT</td><td>Client par QR fidelite</td></tr>
+      <tr><td><span class="tag bg-green">POST</span></td><td>/api/employees</td><td>admin</td><td>Creer employe</td></tr>
+      <tr><td><span class="tag bg-blue">GET</span></td><td>/api/stores/me/info</td><td>JWT</td><td>Infos magasin NF525</td></tr>
+      <tr><td><span class="tag bg-green">POST</span></td><td>/api/reports/z-report</td><td>admin/mgr</td><td>Generer rapport Z</td></tr>
+      <tr><td><span class="tag bg-blue">GET</span></td><td>/api/audit/verify</td><td>admin</td><td>Verifier hash chain</td></tr>
+      <tr><td><span class="tag bg-blue">GET</span></td><td>/api/ia/pricing/:productId</td><td>admin/mgr</td><td>Suggestion prix IA</td></tr>
+      <tr><td><span class="tag bg-blue">GET</span></td><td>/api/ia/forecast</td><td>admin/mgr</td><td>Prevision CA</td></tr>
+      <tr><td><span class="tag bg-blue">GET</span></td><td>/api/subscriptions/plans</td><td>-</td><td>Plans SaaS (public)</td></tr>
+      <tr><td><span class="tag bg-green">POST</span></td><td>/api/sync/push</td><td>JWT</td><td>Push offline</td></tr>
+      <tr><td><span class="tag bg-blue">GET</span></td><td>/api/sync/pull</td><td>JWT</td><td>Pull serveur</td></tr>
+      <tr><td><span class="tag bg-blue">GET</span></td><td>/api/jackpot/:storeId/status</td><td>JWT</td><td>Statut loterie</td></tr>
+      <tr><td><span class="tag bg-blue">GET</span></td><td>/api/occupancy/:storeId/weather</td><td>JWT</td><td>Meteo magasin</td></tr>
+    </table>
+    <p style="color: var(--muted); margin-top: 12px; font-size: 12px">+ 40 autres endpoints (promotions CRUD, currency, notifications, employees, stores, stock...)</p>
+  </div>
+</div>
+
+<!-- POS -->
+<div id="pos" class="tab-content">
+  <div class="section">
+    <div class="section-title">POS Desktop <span class="badge" style="background:var(--accent)">Electron + React</span></div>
+    <div class="grid grid-3">
+      <div class="card"><h3><span class="icon bg-pink">&#128274;</span> LoginPage</h3><p>Double mode (PIN/QR), detection iPad/Windows, init 6 stores au login</p></div>
+      <div class="card"><h3><span class="icon bg-green">&#128722;</span> POSPage (~31KB)</h3><p>Scan produit, panier, paiements split, mode poids, historique tickets, TPE, camera barcode, offline</p></div>
+      <div class="card"><h3><span class="icon bg-indigo">&#128250;</span> ClientDisplayPage</h3><p>2eme ecran: carousel promos, split-screen actif, jackpot overlay</p></div>
+    </div>
+  </div>
+  <div class="section">
+    <div class="section-title">State Management <span class="badge">6 Zustand stores</span></div>
+    <div class="grid grid-3">
+      <div class="card"><h3>posStore</h3><p>Employee, token, cart, customer, scan mode, payment, jackpot, occupancy, weather, tickets, storeInfo</p></div>
+      <div class="card"><h3>offlineStore (570+ lignes)</h3><p>Queue FIFO, fraud guards (5 voids/jour, 50eur refund max, 500eur ticket max), stock local, conflits</p></div>
+      <div class="card"><h3>rightsStore</h3><p>Permissions employe: remise max, annulation, remboursement, acces rapports. Cache localStorage</p></div>
+      <div class="card"><h3>pointageStore</h3><p>Clock in/out + pauses. Auto-enqueue offline. Persistance localStorage</p></div>
+      <div class="card"><h3>planningStore</h3><p>Planning semaine (14j cache). Shifts: regular/overtime/holiday/training</p></div>
+      <div class="card"><h3>performanceStore</h3><p>Metriques session: CA, tickets, vitesse, items/min, taux annulation. Flush auto</p></div>
+    </div>
+  </div>
+  <div class="section">
+    <div class="section-title">Services + Hooks <span class="badge">7 services + 6 hooks</span></div>
+    <div class="grid grid-4">
+      <div class="card"><h3>api.ts</h3><p>Axios JWT, 15 groupes API</p></div>
+      <div class="card"><h3>staffingEngine</h3><p>IA staffing temps reel</p></div>
+      <div class="card"><h3>syncEngine</h3><p>Queue FIFO offline HMAC</p></div>
+      <div class="card"><h3>posEventBus</h3><p>Pub/sub type-safe</p></div>
+      <div class="card"><h3>hmacSecurity</h3><p>SHA256 + anti-replay</p></div>
+      <div class="card"><h3>cloudSyncIdentity</h3><p>Multi-device WebSocket</p></div>
+      <div class="card"><h3>peripheralBridge</h3><p>ESC/POS, AirPrint, USB</p></div>
+    </div>
+  </div>
+</div>
+
+<!-- BACKOFFICE -->
+<div id="backoffice" class="tab-content">
+  <div class="section">
+    <div class="section-title">Backoffice Web <span class="badge" style="background:var(--accent2)">10 pages React</span></div>
+    <div class="grid grid-3">
+      <div class="card"><h3><span class="icon bg-indigo">&#128200;</span> Dashboard</h3><p>KPIs: CA jour/semaine/mois/an, panier moyen, tickets, pics horaires, top 10, flop 5, categories, stock alerts</p></div>
+      <div class="card"><h3><span class="icon bg-green">&#128230;</span> Products</h3><p>Table catalogue, recherche, tri, badges stock (OK/Alerte/Critique/Rupture)</p></div>
+      <div class="card"><h3><span class="icon bg-amber">&#128101;</span> Employees</h3><p>CRUD, roles, statuts (actif/inactif/suspendu), avatar hash</p></div>
+      <div class="card"><h3><span class="icon bg-pink">&#128274;</span> Rights</h3><p>RBAC 9 permissions par role, overrides par employe</p></div>
+      <div class="card"><h3><span class="icon bg-blue">&#128339;</span> Pointage</h3><p>Clock in/out, pauses, anomalies, resume journalier</p></div>
+      <div class="card"><h3><span class="icon bg-purple">&#127942;</span> Performance</h3><p>Ranking caissiers, score composite 0-100, medailles</p></div>
+      <div class="card"><h3><span class="icon bg-teal">&#128197;</span> Planning</h3><p>Grille semaine, shifts par employe, copier semaine</p></div>
+      <div class="card"><h3><span class="icon bg-red">&#128176;</span> Paie</h3><p>Salaires, heures sup 25%/50%, charges sociales, export CSV</p></div>
+      <div class="card"><h3><span class="icon bg-amber">&#128202;</span> Reports</h3><p>Z-Report, CA/TVA/CB/especes, comparaison N-1</p></div>
+      <div class="card"><h3><span class="icon bg-indigo">&#9881;</span> Settings</h3><p>Promos, seuils stock, droits, peripheriques</p></div>
+    </div>
+  </div>
+</div>
+
+<!-- SHARED -->
+<div id="shared" class="tab-content">
+  <div class="section">
+    <div class="section-title">Monorepo Structure</div>
+    <div class="card" style="font-family: monospace; font-size: 13px; line-height: 2;">
+      <span style="color:var(--accent)">CAISSE/</span> (npm workspaces, ES2022, @caisse/shared alias)<br>
+      &nbsp;&nbsp;<span style="color:var(--accent2)">shared/</span> types/ (12 modules) + utils/ (money, hash) + constants/<br>
+      &nbsp;&nbsp;<span style="color:var(--accent3)">packages/backend/</span> NestJS :3001 | 17 modules | 17 entities | seeds<br>
+      &nbsp;&nbsp;<span style="color:var(--accent)">packages/pos-desktop/</span> Electron+React :5174 | 3 pages | 6 stores | 7 services<br>
+      &nbsp;&nbsp;<span style="color:var(--accent2)">packages/backoffice-web/</span> React SPA :5173 | 10 pages | 65+ API endpoints<br>
+      &nbsp;&nbsp;<span style="color:var(--muted)">docker/</span> PostgreSQL 16 | <span style="color:var(--muted)">docs/</span> 5 markdown files
+    </div>
+  </div>
+  <div class="section">
+    <div class="section-title">Shared Types <span class="badge">12 modules</span></div>
+    <div class="grid grid-4">
+      <div class="card"><h3>currency</h3><p>12 devises, CurrencyConfig, MoneyAmount, FxRate, CURRENCY_CONFIGS</p></div>
+      <div class="card"><h3>product</h3><p>Product, ProductCategory, UnitType (unit/pair/kg/m/L)</p></div>
+      <div class="card"><h3>sale</h3><p>Sale, SaleLineItem, SalePayment, PaymentMethod, SaleStatus</p></div>
+      <div class="card"><h3>employee</h3><p>Employee, EmployeeRole (admin/manager/cashier)</p></div>
+      <div class="card"><h3>customer</h3><p>Customer (QR, loyalty points, isFirstPurchase)</p></div>
+      <div class="card"><h3>store</h3><p>Store (timezone, currency, tax ID)</p></div>
+      <div class="card"><h3>promo</h3><p>PromoRule (4 types), PromoType</p></div>
+      <div class="card"><h3>audit</h3><p>AuditEntry (13 actions), hash chain</p></div>
+      <div class="card"><h3>report</h3><p>ZReport (CA, TVA, top produits, peaks)</p></div>
+      <div class="card"><h3>auth</h3><p>AuthPayload, AuthTokens, LoginRequest</p></div>
+      <div class="card"><h3>ia</h3><p>PricingSuggestion, RevenueForecast</p></div>
+      <div class="card"><h3>utils</h3><p>money.ts (format, round, convert, extractTax) + hash.ts (sha256, chain)</p></div>
+    </div>
+  </div>
+</div>
+
+<!-- SECURITY -->
+<div id="security" class="tab-content">
+  <div class="section">
+    <div class="section-title">Securite & Compliance</div>
+    <div class="grid grid-2">
+      <div class="card"><h3>&#128274; Authentification</h3><p>JWT 15min + Refresh 7j. PIN bcrypt cost 12. Rate limit 5/60s. Lockout 15min. QR unique.</p></div>
+      <div class="card"><h3>&#128737; Multi-Tenant</h3><p>TenantInterceptor: storeId JWT vs params/query/body. Auto-inject. ForbiddenException mismatch.</p></div>
+      <div class="card"><h3>&#128209; Audit NF525</h3><p>Hash chain SHA256 append-only. Verification GET /audit/verify. SIRET, SIREN, NAF, TVA, RCS.</p></div>
+      <div class="card"><h3>&#128737; RBAC</h3><p>admin (tout), manager (ventes+rapports), cashier (ventes). 9 permissions granulaires.</p></div>
+      <div class="card"><h3>&#128272; Anti-Fraude Offline</h3><p>Max 5 voids/jour, 50eur refund especes, 500eur ticket, 2 annulations consecutives. Flag 80%.</p></div>
+      <div class="card"><h3>&#128274; HMAC Sync</h3><p>HMAC-SHA256 + nonce anti-replay + idempotency keys (500). Constant-time verify.</p></div>
+      <div class="card"><h3>&#128737; Rate Limiting</h3><p>3 niveaux: 10/s, 100/min, 2000/h. Login specifique: 5/60s.</p></div>
+      <div class="card"><h3>&#128209; Validation</h3><p>whitelist + forbidNonWhitelisted + transform. class-validator DTOs.</p></div>
+    </div>
+  </div>
+  <div class="section">
+    <div class="section-title">Plans SaaS</div>
+    <table>
+      <tr><th>Plan</th><th>Prix/mois</th><th>Terminaux</th><th>Produits</th><th>Employes</th><th>Features</th></tr>
+      <tr><td><span class="tag bg-blue">Trial</span></td><td>0 eur</td><td>1</td><td>100</td><td>2</td><td>pos_basic, reports_basic</td></tr>
+      <tr><td><span class="tag bg-green">Starter</span></td><td>49 eur</td><td>1</td><td>500</td><td>5</td><td>+ promotions, loyalty_basic</td></tr>
+      <tr><td><span class="tag bg-indigo">Business</span></td><td>99 eur</td><td>3</td><td>illimite</td><td>15</td><td>+ IA, multi-currency</td></tr>
+      <tr><td><span class="tag bg-amber">Enterprise</span></td><td>249 eur</td><td>illimite</td><td>illimite</td><td>illimite</td><td>+ API, white-label</td></tr>
+    </table>
+  </div>
+</div>
+
+</div>
+
+<div style="text-align: center; padding: 40px; color: var(--muted); font-size: 12px;">
+  CAISSE POS - Audit genere le <span id="date-display"></span> - Proprietary
+</div>
+
+<script>
+function showTab(name, el) {
+  var contents = document.querySelectorAll('.tab-content');
+  for (var i = 0; i < contents.length; i++) contents[i].classList.remove('active');
+  var tabs = document.querySelectorAll('.tab');
+  for (var i = 0; i < tabs.length; i++) tabs[i].classList.remove('active');
+  document.getElementById(name).classList.add('active');
+  el.classList.add('active');
+}
+var d = new Date();
+var dateEl = document.getElementById('date-display');
+if (dateEl) dateEl.textContent = d.toLocaleDateString('fr-FR');
+</script>
+</body>
+</html>

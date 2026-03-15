@@ -1,0 +1,14 @@
+{
+  "megaJackpotQuotaPerDay": 1,
+  "smallWinQuotaPerDay": 3,
+  "densityThresholdForMega": 8,
+  "megaProbabilityPercent": 5,
+  "smallWinProbabilityPercent": 15,
+  "rouletteVideoUrl": "https://cdn.example.com/roulette.mp4",
+  "winVideoUrl": "https://cdn.example.com/win.mp4",
+  "thanksVideoUrl": "https://cdn.example.com/thanks.mp4",
+  "winAudioUrl": "https://cdn.example.com/win.mp3",
+  "thanksAudioUrl": "https://cdn.example.com/thanks.mp3",
+  "openWeatherApiKey": "owm-api-key",
+  "openWeatherCity": "Paris"
+}

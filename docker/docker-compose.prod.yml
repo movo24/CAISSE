@@ -1,0 +1,148 @@
+# ── Docker Compose Production — addxintelligence.com ────────────
+# Services: nginx (reverse proxy) + backend + backoffice + pos + mobile + postgres
+# Usage:
+#   docker compose -f docker/docker-compose.prod.yml up -d
+# ─────────────────────────────────────────────────────────────────
+
+version: '3.8'
+
+services:
+
+  # ═══════════════════════════════════════════════════════════════
+  #  POSTGRES (pgvector)
+  # ═══════════════════════════════════════════════════════════════
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: caisse-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-caisse}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME:-caisse}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-caisse}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - internal
+
+  # ═══════════════════════════════════════════════════════════════
+  #  BACKEND (NestJS API)
+  # ═══════════════════════════════════════════════════════════════
+  backend:
+    build:
+      context: ../packages/backend
+      dockerfile: Dockerfile
+    container_name: caisse-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${DB_USER:-caisse}:${DB_PASSWORD}@postgres:5432/${DB_NAME:-caisse}
+      PORT: 3001
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      CORS_ORIGIN: https://app.addxintelligence.com,https://pos.addxintelligence.com,https://m.addxintelligence.com
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      POS_AI_ENABLED: ${POS_AI_ENABLED:-true}
+      PRIM_API_KEY: ${PRIM_API_KEY}
+      GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY}
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3001/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ═══════════════════════════════════════════════════════════════
+  #  BACKOFFICE WEB (React — app.addxintelligence.com)
+  # ═══════════════════════════════════════════════════════════════
+  backoffice:
+    build:
+      context: ../packages/backoffice-web
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: https://api.addxintelligence.com
+    container_name: caisse-backoffice
+    restart: unless-stopped
+    networks:
+      - internal
+
+  # ═══════════════════════════════════════════════════════════════
+  #  POS DESKTOP (React — pos.addxintelligence.com)
+  # ═══════════════════════════════════════════════════════════════
+  pos:
+    build:
+      context: ../packages/pos-desktop
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: https://api.addxintelligence.com
+    container_name: caisse-pos
+    restart: unless-stopped
+    networks:
+      - internal
+
+  # ═══════════════════════════════════════════════════════════════
+  #  MOBILE PWA (React — m.addxintelligence.com)
+  # ═══════════════════════════════════════════════════════════════
+  mobile:
+    build:
+      context: ../packages/mobile
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: https://api.addxintelligence.com
+    container_name: caisse-mobile
+    restart: unless-stopped
+    networks:
+      - internal
+
+  # ═══════════════════════════════════════════════════════════════
+  #  NGINX (Reverse Proxy + SSL)
+  # ═══════════════════════════════════════════════════════════════
+  nginx:
+    image: nginx:alpine
+    container_name: caisse-nginx
+    restart: unless-stopped
+    depends_on:
+      - backend
+      - backoffice
+      - pos
+      - mobile
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/ssl-params.conf:/etc/nginx/ssl-params.conf:ro
+      - certbot_conf:/etc/letsencrypt:ro
+      - certbot_www:/var/www/certbot:ro
+    networks:
+      - internal
+
+  # ═══════════════════════════════════════════════════════════════
+  #  CERTBOT (Let's Encrypt SSL)
+  # ═══════════════════════════════════════════════════════════════
+  certbot:
+    image: certbot/certbot
+    container_name: caisse-certbot
+    volumes:
+      - certbot_conf:/etc/letsencrypt
+      - certbot_www:/var/www/certbot
+    # Auto-renew every 12h
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+
+volumes:
+  pgdata:
+  certbot_conf:
+  certbot_www:
+
+networks:
+  internal:
+    driver: bridge

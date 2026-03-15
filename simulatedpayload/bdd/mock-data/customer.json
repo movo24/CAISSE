@@ -1,0 +1,10 @@
+{
+  "id": "cust-0001",
+  "storeId": "store-aaa-111",
+  "firstName": "Marie",
+  "lastName": "Martin",
+  "qrCode": "CLI-AAAA1111",
+  "loyaltyPoints": 120,
+  "isFirstPurchase": false,
+  "isVerified": true
+}

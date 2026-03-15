@@ -1,0 +1,8 @@
+{
+  "id": "store-aaa-111",
+  "name": "Boutique Paris",
+  "address": "42 Rue de Rivoli, 75001 Paris",
+  "currencyCode": "EUR",
+  "timezone": "Europe/Paris",
+  "isActive": true
+}
