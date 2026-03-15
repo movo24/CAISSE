@@ -874,7 +874,7 @@ export function DashboardPage() {
               </table>
             </div>
           )}
-          {!showZHistory && (
+          {!showZHistory && zReports.length > 0 && (
             <p className="text-xs text-gray-400">
               Dernier rapport Z : {zReports[0].date} — CA : {fmt(zReports[0].caTotal)} — Ecart : {zReports[0].ecart === 0 ? '0' : `${zReports[0].ecart > 0 ? '+' : ''}${fmt(zReports[0].ecart)}`}
             </p>
