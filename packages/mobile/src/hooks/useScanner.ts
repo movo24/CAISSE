@@ -349,7 +349,22 @@ export function useScanner({
       // Full-screen behind our overlay (z-index 0, our overlay is z-50)
       container.style.cssText = 'position:fixed;inset:0;z-index:1;background:black;';
 
-      const html5Qr = new Html5Qrcode('html5qr-cam', false);
+      // Import the formats enum for explicit barcode format support
+      const { Html5QrcodeSupportedFormats } = await import('html5-qrcode');
+
+      const html5Qr = new Html5Qrcode('html5qr-cam', {
+        formatsToSupport: [
+          Html5QrcodeSupportedFormats.EAN_13,
+          Html5QrcodeSupportedFormats.EAN_8,
+          Html5QrcodeSupportedFormats.UPC_A,
+          Html5QrcodeSupportedFormats.UPC_E,
+          Html5QrcodeSupportedFormats.CODE_128,
+          Html5QrcodeSupportedFormats.CODE_39,
+          Html5QrcodeSupportedFormats.QR_CODE,
+        ],
+        useBarCodeDetectorIfSupported: true,
+        verbose: false,
+      } as any);
       html5QrRef.current = html5Qr;
 
       // No qrbox — we have our own viewfinder overlay.
@@ -358,7 +373,7 @@ export function useScanner({
       await html5Qr.start(
         { facingMode: 'environment' },
         {
-          fps: 10,
+          fps: 15,
           disableFlip: false,
           // No qrbox = scan entire frame, no built-in UI overlay
         } as any,
