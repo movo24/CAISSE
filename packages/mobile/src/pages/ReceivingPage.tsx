@@ -63,8 +63,13 @@ export function ReceivingPage() {
 
       setLastAddedName(product.name);
       setTimeout(() => setLastAddedName(null), 2000);
-    } catch {
-      // Product not found — ignore
+    } catch (err: any) {
+      const status = err?.response?.status;
+      if (status === 404) {
+        console.warn('[Reception] Produit non trouvé:', result.code);
+      } else {
+        console.error('[Reception] Erreur scan:', result.code, status, err?.message);
+      }
     }
   }, [addScan]);
 
@@ -105,10 +110,10 @@ export function ReceivingPage() {
           mode: 'delta',
         });
       } catch (err: any) {
-        const msg = err.response?.data?.message
-          || (Array.isArray(err.response?.data?.message) ? err.response.data.message.join(', ') : null)
-          || err.message
-          || 'Erreur inconnue';
+        const rawMsg = err.response?.data?.message;
+        const msg = Array.isArray(rawMsg)
+          ? rawMsg.join(', ')
+          : (rawMsg || err.message || 'Erreur inconnue');
         console.error(`[Reception] Erreur ${item.product.name}:`, msg);
         errors.push(`${item.product.name}: ${msg}`);
       }

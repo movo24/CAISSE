@@ -59,6 +59,8 @@ export const useScannerStore = create<ScannerState>((set, get) => ({
   startedAt: null,
 
   startSession: (type) => {
+    // Don't wipe data if we're already in the correct session type
+    if (get().sessionType === type) return;
     set({
       sessionType: type,
       items: new Map(),

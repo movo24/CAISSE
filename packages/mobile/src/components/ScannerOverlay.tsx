@@ -36,11 +36,25 @@ export function ScannerOverlay({
   const [manualCode, setManualCode] = useState('');
   const [showFlash, setShowFlash] = useState(false);
   const cameraStarted = useRef(false);
+  const flashTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mountedRef = useRef(true);
+
+  // Track mount state to avoid setState on unmounted component
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   const handleScan = useCallback(
     (result: ScanResult) => {
+      if (!mountedRef.current) return;
+      // Clear any previous flash timeout
+      if (flashTimeoutRef.current) clearTimeout(flashTimeoutRef.current);
       setShowFlash(true);
-      setTimeout(() => setShowFlash(false), 300);
+      flashTimeoutRef.current = setTimeout(() => {
+        if (mountedRef.current) setShowFlash(false);
+        flashTimeoutRef.current = null;
+      }, 300);
       onScan(result);
     },
     [onScan],
@@ -67,7 +81,7 @@ export function ScannerOverlay({
       cameraStarted.current = true;
       startCamera();
     }
-    return () => stopCamera();
+    return () => { stopCamera(); }; // stopCamera is async but cleanup can't await — fire-and-forget is fine here
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -81,7 +95,7 @@ export function ScannerOverlay({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black flex flex-col">
+    <div className={`fixed inset-0 z-50 flex flex-col ${usingFallback ? 'bg-transparent' : 'bg-black'}`}>
       {/*
         Video layer — ONLY shown when using native BarcodeDetector.
         When using html5-qrcode fallback, the camera video is rendered
@@ -97,13 +111,7 @@ export function ScannerOverlay({
         />
       )}
 
-      {/*
-        When using fallback mode, make overlay background transparent
-        so html5-qrcode's camera (rendered behind in #html5qr-cam) shows through.
-      */}
-      {usingFallback && (
-        <div className="absolute inset-0 bg-transparent" />
-      )}
+      {/* In fallback mode, parent is bg-transparent so html5-qrcode camera shows through */}
 
       {/* Dark overlay with viewfinder cutout */}
       <div className="absolute inset-0 pointer-events-none">
@@ -196,8 +204,9 @@ export function ScannerOverlay({
           <div className="flex justify-center gap-4 mt-2">
             <button
               onClick={() => {
-                cameraStarted.current = false;
-                startCamera();
+                if (cameraStarted.current) return; // Prevent concurrent starts
+                cameraStarted.current = true;
+                startCamera().finally(() => { cameraStarted.current = false; });
               }}
               className="text-violet-300 text-xs font-bold"
             >

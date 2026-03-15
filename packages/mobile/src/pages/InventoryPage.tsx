@@ -70,7 +70,19 @@ export function InventoryPage() {
       setLastAddedName(product.name);
       setTimeout(() => setLastAddedName(null), 2000);
     } catch (err: any) {
-      console.warn('[Inventaire] Produit non trouvé:', result.code, err?.response?.status);
+      const status = err?.response?.status;
+      if (status === 404) {
+        console.warn('[Inventaire] Produit non trouvé:', result.code);
+        // 404 is expected — product not in DB, skip silently
+      } else {
+        // Infrastructure error (401, 500, network) — surface to user
+        const msg = status === 401
+          ? 'Session expiree. Reconnectez-vous.'
+          : err?.response?.data?.message || err?.message || 'Erreur serveur';
+        console.error('[Inventaire] Erreur scan:', result.code, status, msg);
+        // We can't use setError here (it's in ScanPage context), so log it
+        // The scan just won't add the product — user sees no green confirmation
+      }
     }
   }, [addScan]);
 
@@ -116,10 +128,10 @@ export function InventoryPage() {
           mode: 'absolute',
         });
       } catch (err: any) {
-        const msg = err.response?.data?.message
-          || (Array.isArray(err.response?.data?.message) ? err.response.data.message.join(', ') : null)
-          || err.message
-          || 'Erreur inconnue';
+        const rawMsg = err.response?.data?.message;
+        const msg = Array.isArray(rawMsg)
+          ? rawMsg.join(', ')
+          : (rawMsg || err.message || 'Erreur inconnue');
         console.error(`[Inventaire] Erreur ${item.product.name}:`, msg, err.response?.data);
         errors.push(`${item.product.name}: ${msg}`);
       }

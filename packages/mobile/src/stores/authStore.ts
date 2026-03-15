@@ -93,6 +93,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       employee: null,
       storeInfo: null,
       accessToken: null,
+      isLoading: false,
+      error: null,
     });
   },
 
@@ -109,7 +111,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         try {
           const employee = JSON.parse(empStr);
           const storeInfo = storeStr ? JSON.parse(storeStr) : null;
-          set({ isAuthenticated: true, employee, storeInfo, accessToken: token });
+          // Mark as authenticated — the API interceptor will refresh the token on first request
+          // Store accessToken as null so it's not used stale; interceptor reads from localStorage
+          set({ isAuthenticated: true, employee, storeInfo, accessToken: null });
         } catch {
           localStorage.removeItem('accessToken');
           localStorage.removeItem('refreshToken');

@@ -37,7 +37,7 @@ interface UseScannerReturn {
   /** True when using html5-qrcode fallback (iOS) — video element is unused */
   usingFallback: boolean;
   startCamera: () => Promise<void>;
-  stopCamera: () => void;
+  stopCamera: () => Promise<void>;
   cameraError: string | null;
   torchAvailable: boolean;
   torchOn: boolean;
@@ -48,11 +48,18 @@ interface UseScannerReturn {
 }
 
 // ── Audio feedback ──
+// On iOS Safari, AudioContext must be resumed inside a user gesture.
+// We create it lazily and try to resume before playing.
 
 let audioCtx: AudioContext | null = null;
 function playBeep() {
   try {
     if (!audioCtx) audioCtx = new AudioContext();
+    // Resume suspended context (iOS requires user gesture first time)
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume().catch(() => {});
+    }
+    if (audioCtx.state !== 'running') return; // Can't play if not running
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
     osc.connect(gain);
@@ -66,6 +73,18 @@ function playBeep() {
   } catch {
     /* audio not available */
   }
+}
+
+// Pre-initialize AudioContext on first user interaction (needed for iOS)
+if (typeof window !== 'undefined') {
+  const initAudio = () => {
+    if (!audioCtx) audioCtx = new AudioContext();
+    if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+    window.removeEventListener('touchstart', initAudio);
+    window.removeEventListener('click', initAudio);
+  };
+  window.addEventListener('touchstart', initAudio, { once: true });
+  window.addEventListener('click', initAudio, { once: true });
 }
 
 // ── Capability detection ──
@@ -95,6 +114,7 @@ export function useScanner({
   const html5QrRef = useRef<any>(null);
   const cooldownRef = useRef(false);
   const lastCodeRef = useRef<string>('');
+  const mountedRef = useRef(true);
 
   // Store callbacks in refs to avoid stale closures
   const onScanRef = useRef(onScan);
@@ -113,6 +133,12 @@ export function useScanner({
   const [lastScan, setLastScan] = useState<ScanResult | null>(null);
   const [scanCount, setScanCount] = useState(0);
 
+  // Track mounted state
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
   // ── Core detection handler (uses refs — never stale) ──
 
   const handleDetection = useCallback((code: string, format: string) => {
@@ -122,8 +148,12 @@ export function useScanner({
       return;
     }
 
-    if (cooldownRef.current && cleanCode === lastCodeRef.current) {
-      return; // Anti-bounce
+    // Anti-bounce: block ALL codes during cooldown period, not just same code.
+    // In continuous mode, allow different codes through but block same code.
+    if (cooldownRef.current) {
+      if (!continuousRef.current || cleanCode === lastCodeRef.current) {
+        return;
+      }
     }
 
     cooldownRef.current = true;
@@ -136,8 +166,10 @@ export function useScanner({
     const result: ScanResult = { code: cleanCode, format, timestamp: Date.now() };
     console.log('[Scanner] ✓ Detection:', cleanCode, 'format:', format);
 
-    setLastScan(result);
-    setScanCount((c) => c + 1);
+    if (mountedRef.current) {
+      setLastScan(result);
+      setScanCount((c) => c + 1);
+    }
 
     playBeep();
     try { if (navigator.vibrate) navigator.vibrate([50]); } catch { /* */ }
@@ -149,17 +181,35 @@ export function useScanner({
     }
   }, []);
 
-  // ── Stop camera ──
+  // ── Camera error helper (extracted for reuse) ──
 
-  const stopCamera = useCallback(() => {
+  function handleCameraError(e: any) {
+    if (!mountedRef.current) return;
+    if (e.name === 'NotAllowedError') {
+      setCameraError("Acces camera refuse. Autorisez dans Reglages > Safari/Chrome.");
+    } else if (e.name === 'NotFoundError') {
+      setCameraError('Aucune camera trouvee.');
+    } else if (e.name === 'NotReadableError') {
+      setCameraError('Camera deja utilisee par une autre app.');
+    } else if (e.name === 'OverconstrainedError') {
+      setCameraError('Camera incompatible.');
+    } else {
+      setCameraError(`Erreur camera: ${e.message || 'inconnue'}`);
+    }
+  }
+
+  // ── Stop camera (ASYNC — waits for html5-qrcode to fully stop) ──
+
+  const stopCamera = useCallback(async () => {
     if (scanIntervalRef.current) {
       clearInterval(scanIntervalRef.current);
       scanIntervalRef.current = null;
     }
 
     if (html5QrRef.current) {
-      try { html5QrRef.current.stop().catch(() => {}); } catch { /* */ }
-      html5QrRef.current = null;
+      const qr = html5QrRef.current;
+      html5QrRef.current = null; // Prevent double-stop
+      try { await qr.stop(); } catch { /* already stopped */ }
       const container = document.getElementById('html5qr-cam');
       if (container) {
         container.style.cssText = 'display:none;';
@@ -176,20 +226,22 @@ export function useScanner({
       videoRef.current.srcObject = null;
     }
 
-    setIsActive(false);
-    setUsingFallback(false);
-    setTorchOn(false);
-    setTorchAvailable(false);
+    if (mountedRef.current) {
+      setIsActive(false);
+      setUsingFallback(false);
+      setTorchOn(false);
+      setTorchAvailable(false);
+    }
   }, []);
 
   // ── Start camera ──
 
   const startCamera = useCallback(async () => {
-    stopCamera();
-    setCameraError(null);
+    await stopCamera(); // AWAIT to ensure previous camera is fully released
+    if (mountedRef.current) setCameraError(null);
 
     if (!hasMediaDevices()) {
-      setCameraError('Camera non disponible. Utilisez la saisie manuelle.');
+      if (mountedRef.current) setCameraError('Camera non disponible. Utilisez la saisie manuelle.');
       return;
     }
 
@@ -212,12 +264,23 @@ export function useScanner({
           audio: false,
         });
 
+        // Guard: component may have unmounted during getUserMedia await
+        if (!mountedRef.current) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+
         streamRef.current = stream;
 
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
-          await videoRef.current.play();
-          console.log('[Scanner] Video playing');
+          try {
+            await videoRef.current.play();
+            console.log('[Scanner] Video playing');
+          } catch (playErr) {
+            console.warn('[Scanner] Video play failed:', playErr);
+            // Not fatal — video may autoplay
+          }
         }
 
         // Check torch
@@ -225,12 +288,14 @@ export function useScanner({
         if (track) {
           try {
             const caps = track.getCapabilities?.() as any;
-            if (caps?.torch) setTorchAvailable(true);
+            if (caps?.torch && mountedRef.current) setTorchAvailable(true);
           } catch { /* */ }
         }
 
-        setIsActive(true);
-        setUsingFallback(false);
+        if (mountedRef.current) {
+          setIsActive(true);
+          setUsingFallback(false);
+        }
 
         const detector = new (window as any).BarcodeDetector({
           formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39'],
@@ -239,14 +304,18 @@ export function useScanner({
         // Let camera stabilize
         await new Promise((r) => setTimeout(r, 500));
 
+        // Guard again after stabilization delay
+        if (!mountedRef.current || !streamRef.current) return;
+
         scanIntervalRef.current = setInterval(async () => {
           if (!videoRef.current || videoRef.current.readyState < 2) return;
+          if (!streamRef.current) return; // Stream was stopped
           try {
             const barcodes = await detector.detect(videoRef.current);
             if (barcodes.length > 0) {
               handleDetection(barcodes[0].rawValue, barcodes[0].format);
             }
-          } catch { /* frame error */ }
+          } catch { /* frame error — ignore */ }
         }, 200);
 
         return;
@@ -267,6 +336,8 @@ export function useScanner({
 
     try {
       const { Html5Qrcode } = await import('html5-qrcode');
+
+      if (!mountedRef.current) return;
 
       // Create or reuse the container for html5-qrcode's own video
       let container = document.getElementById('html5qr-cam');
@@ -296,8 +367,10 @@ export function useScanner({
         () => { /* scan miss */ },
       );
 
-      setIsActive(true);
-      setUsingFallback(true);
+      if (mountedRef.current) {
+        setIsActive(true);
+        setUsingFallback(true);
+      }
       console.log('[Scanner] html5-qrcode started OK');
     } catch (fallbackErr: any) {
       console.error('[Scanner] html5-qrcode failed:', fallbackErr);
@@ -308,30 +381,24 @@ export function useScanner({
           video: { facingMode: 'environment' },
           audio: false,
         });
+
+        if (!mountedRef.current) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+
         streamRef.current = stream;
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
-          await videoRef.current.play();
+          try { await videoRef.current.play(); } catch { /* autoplay fallback */ }
         }
-        setIsActive(true);
-        setUsingFallback(false);
-        setCameraError('Detection auto indisponible. Utilisez la saisie manuelle.');
-      } catch {
-        setCameraError('Camera non disponible. Utilisez la saisie manuelle.');
-      }
-    }
-
-    function handleCameraError(e: any) {
-      if (e.name === 'NotAllowedError') {
-        setCameraError("Acces camera refuse. Autorisez dans Reglages > Safari/Chrome.");
-      } else if (e.name === 'NotFoundError') {
-        setCameraError('Aucune camera trouvee.');
-      } else if (e.name === 'NotReadableError') {
-        setCameraError('Camera deja utilisee par une autre app.');
-      } else if (e.name === 'OverconstrainedError') {
-        setCameraError('Camera incompatible.');
-      } else {
-        setCameraError(`Erreur camera: ${e.message || 'inconnue'}`);
+        if (mountedRef.current) {
+          setIsActive(true);
+          setUsingFallback(false);
+          setCameraError('Detection auto indisponible. Utilisez la saisie manuelle.');
+        }
+      } catch (camErr: any) {
+        handleCameraError(camErr);
       }
     }
   }, [stopCamera, handleDetection]);
@@ -346,7 +413,7 @@ export function useScanner({
     const newState = !torchOn;
     track
       .applyConstraints({ advanced: [{ torch: newState } as any] })
-      .then(() => setTorchOn(newState))
+      .then(() => { if (mountedRef.current) setTorchOn(newState); })
       .catch(() => {});
   }, [torchOn]);
 
@@ -368,7 +435,7 @@ export function useScanner({
 
   // ── Cleanup on unmount ──
 
-  useEffect(() => () => stopCamera(), [stopCamera]);
+  useEffect(() => () => { stopCamera(); }, [stopCamera]);
 
   return {
     videoRef,

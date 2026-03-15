@@ -69,10 +69,10 @@ export function ProductCard({ product, onClose, onStockUpdated }: ProductCardPro
         setAdjustQty(0);
       }, 1500);
     } catch (err: any) {
-      const msg = err.response?.data?.message
-        || (Array.isArray(err.response?.data?.message) ? err.response.data.message.join(', ') : null)
-        || err.message
-        || 'Erreur ajustement stock';
+      const rawMsg = err.response?.data?.message;
+      const msg = Array.isArray(rawMsg)
+        ? rawMsg.join(', ')
+        : (rawMsg || err.message || 'Erreur ajustement stock');
       setError(msg);
     } finally {
       setAdjusting(false);
