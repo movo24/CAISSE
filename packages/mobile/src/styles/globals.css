@@ -117,46 +117,16 @@ button, a, [role="button"] {
   transition: transform 0.08s ease;
 }
 
-/* ── html5-qrcode fallback camera overrides ──
-   html5-qrcode renders its own video + UI inside #html5qr-cam.
-   We position the container full-screen behind our overlay,
-   make the video fill the screen, and hide ONLY visual UI overlays.
-   IMPORTANT: Do NOT hide <canvas> — html5-qrcode uses it internally
-   to capture video frames for barcode detection! */
+/* ── html5-qrcode fallback ──
+   Let html5-qrcode manage its own DOM freely.
+   We ONLY set the container position — NO overrides on video, canvas,
+   or internal divs. html5-qrcode needs full control of its elements
+   for barcode detection to work.
+   Our UI (ScannerOverlay) floats at z-50 on top. */
 
 #html5qr-cam {
   position: fixed !important;
   inset: 0 !important;
-  z-index: 1 !important;
-  background: black !important;
-  overflow: hidden !important;
-}
-
-/* Force html5-qrcode's video element to fill the screen */
-#html5qr-cam video {
-  position: absolute !important;
-  top: 0 !important;
-  left: 0 !important;
-  width: 100vw !important;
-  height: 100vh !important;
-  object-fit: cover !important;
-  z-index: 1 !important;
-}
-
-/* Hide html5-qrcode's internal canvas visually but keep it functional.
-   The canvas MUST remain in the DOM and not display:none,
-   otherwise frame capture stops and detection dies. */
-#html5qr-cam canvas {
-  position: absolute !important;
-  opacity: 0 !important;
-  pointer-events: none !important;
-  /* NOT display:none — that kills detection */
-}
-
-/* Make html5-qrcode's scan-region overlay transparent (it shows
-   shaded areas around the scan zone — we have our own viewfinder) */
-#html5qr-cam div[style*="position: absolute"] {
-  background: transparent !important;
-  border-color: transparent !important;
-  box-shadow: none !important;
+  z-index: 0 !important;
+  background: #000 !important;
 }
