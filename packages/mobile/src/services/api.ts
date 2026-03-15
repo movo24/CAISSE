@@ -171,6 +171,18 @@ export const productsApi = {
   list: () => api.get('/products'),
   scan: (ean: string) => api.get(`/products/scan/${ean}`),
   get: (id: string) => api.get(`/products/${id}`),
+  categories: () => api.get('/products/categories'),
+  create: (data: {
+    ean: string;
+    name: string;
+    priceMinorUnits: number;
+    costMinorUnits?: number;
+    categoryId?: string;
+    taxRate?: number;
+    stockQuantity?: number;
+    stockAlertThreshold?: number;
+    description?: string;
+  }) => api.post('/products', data),
 };
 
 export const stockApi = {
