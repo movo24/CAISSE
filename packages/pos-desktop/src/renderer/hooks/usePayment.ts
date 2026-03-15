@@ -3,6 +3,7 @@ import { usePOSStore } from '../stores/posStore';
 import { salesApi } from '../services/api';
 import { usePerformanceStore } from '../stores/performanceStore';
 import { posEventBus } from '../services/posEventBus';
+import { peripheralBridge, TicketData } from '../services/peripheralBridge';
 
 /* ── Types ── */
 
@@ -181,6 +182,52 @@ export function usePayment() {
     const confirmData: ConfirmationData = { ticketNumber, total: totalAmount, method: primaryMethod, payments, changeAmount: changeMinor, itemCount, cashierName, timestamp };
     confirmationRef.current = confirmData;
     setConfirmation(confirmData);
+
+    // ── Auto-print ticket via Bluetooth/thermal printer ──
+    try {
+      const storeInfo = store.storeInfo;
+      const ticketData: TicketData = {
+        storeName: storeInfo?.storeName || 'CAISSE',
+        storeAddress: storeInfo?.address || '',
+        siret: storeInfo?.siret || '',
+        tvaIntracom: storeInfo?.tvaIntracom || '',
+        ticketNumber,
+        date: timestamp.toLocaleString('fr-FR'),
+        cashierName,
+        items: store.cartItems.map(i => ({
+          name: i.name,
+          quantity: i.quantity,
+          unitPrice: i.unitPriceMinorUnits / 100,
+          total: (i.unitPriceMinorUnits * i.quantity - (i.discountMinorUnits || 0)) / 100,
+          discount: i.discountMinorUnits ? i.discountMinorUnits / 100 : undefined,
+        })),
+        subtotal: store.subtotal() / 100,
+        discount: store.totalDiscount() / 100,
+        total: totalAmount / 100,
+        payments: payments.map(p => ({
+          method: p.method === 'card' ? 'CB' : p.method === 'cash' ? 'Especes' : 'Mixte',
+          amount: p.amountMinorUnits / 100,
+        })),
+        change: changeMinor / 100,
+        footer: 'Merci de votre visite !',
+        nifCaisse: storeInfo?.nifCaisse || '',
+        softwareVersion: '1.0',
+      };
+      // Fire-and-forget: don't block the confirmation overlay
+      peripheralBridge.printTicket(ticketData).catch(() => {});
+
+      // ── Auto-open cash drawer on cash payments ──
+      const hasCash = payments.some(p => p.method === 'cash');
+      if (hasCash) {
+        // Small delay to let print command go first
+        setTimeout(() => {
+          peripheralBridge.openCashDrawer().catch(() => {});
+        }, 500);
+      }
+    } catch (e) {
+      console.warn('[POS] Auto-print/drawer failed:', e);
+    }
+
     store.clearCart();
     setPartialPayments([]);
     setSplitAmountInput('');

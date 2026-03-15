@@ -24,8 +24,10 @@ import { ProductGrid } from './ProductGrid';
 import { FavoritesBar } from './FavoritesBar';
 import { SuspendedTicketsDrawer } from './SuspendedTicketsDrawer';
 import { ScannerTool } from './ScannerTool';
+import { PrinterSettings } from './PrinterSettings';
 import { useTicketHistory } from '../../hooks/useTicketHistory';
 import { TicketHistoryModal } from '../pos/TicketHistoryModal';
+import { useBluetoothPrinter } from '../../hooks/useBluetoothPrinter';
 import { peripheralBridge } from '../../services/peripheralBridge';
 import { usePerformanceStore } from '../../stores/performanceStore';
 import { posEventBus } from '../../services/posEventBus';
@@ -81,7 +83,19 @@ export function IPadPOSLayout() {
   const [profileOpen, setProfileOpen] = useState(false);
   const [suspendedOpen, setSuspendedOpen] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
+  const [printerSettingsOpen, setPrinterSettingsOpen] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
+  const btPrinter = useBluetoothPrinter();
+
+  // Sync BT printer status with peripheralBridge
+  useEffect(() => {
+    if (btPrinter.status === 'connected' && btPrinter.printer) {
+      peripheralBridge.updateBluetoothPrinterStatus(true, btPrinter.printer.name);
+      peripheralBridge.registerBluetoothPrinter(btPrinter.printTicket, btPrinter.openCashDrawer);
+    } else {
+      peripheralBridge.updateBluetoothPrinterStatus(false, null);
+    }
+  }, [btPrinter.status, btPrinter.printer, btPrinter.printTicket, btPrinter.openCashDrawer]);
   const [showInstallBanner, setShowInstallBanner] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -248,6 +262,22 @@ export function IPadPOSLayout() {
               <ScanBarcode size={isLandscape ? 15 : 14} />
             </button>
 
+            {/* Printer & Cash Drawer settings */}
+            <button
+              onClick={() => setPrinterSettingsOpen(true)}
+              className={`relative flex items-center justify-center rounded-full transition-colors border product-card-touch ${
+                btPrinter.status === 'connected'
+                  ? 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border-emerald-200'
+                  : 'bg-gray-50 text-gray-400 hover:bg-gray-100 border-gray-200'
+              } ${isLandscape ? 'w-9 h-9' : 'gap-1 text-[11px] font-semibold px-2.5 py-2'}`}
+              title="Imprimante & Tiroir-caisse"
+            >
+              <Printer size={isLandscape ? 15 : 14} />
+              {btPrinter.status === 'connected' && (
+                <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-white" />
+              )}
+            </button>
+
             {/* History */}
             <button
               onClick={() => ticketHistory.openHistory()}
@@ -366,6 +396,12 @@ export function IPadPOSLayout() {
             onClose={() => setScannerOpen(false)}
             onScan={handleScannerResult}
             isLandscape={isLandscape}
+          />
+
+          {/* Printer & Cash Drawer settings modal */}
+          <PrinterSettings
+            open={printerSettingsOpen}
+            onClose={() => setPrinterSettingsOpen(false)}
           />
 
           {/* Favorites bar */}

@@ -15,7 +15,7 @@ import { DevicePlatform } from '../hooks/useDeviceProfile';
 
 export type PrinterType = 'thermal_usb' | 'thermal_bluetooth' | 'airprint' | 'browser_print' | 'none';
 export type ScannerType = 'usb_hid' | 'bluetooth' | 'camera' | 'keyboard_wedge' | 'none';
-export type CashDrawerType = 'usb' | 'printer_kick' | 'none';
+export type CashDrawerType = 'usb' | 'printer_kick' | 'bluetooth' | 'none';
 
 export interface PeripheralStatus {
   printer: { type: PrinterType; connected: boolean; name: string | null };
@@ -68,6 +68,8 @@ class PeripheralBridge {
     cashDrawer: { type: 'none', connected: false },
   };
   private barcodeCallbacks: Set<BarcodeCallback> = new Set();
+  private _btPrintFn: ((data: TicketData) => Promise<boolean>) | null = null;
+  private _btDrawerFn: (() => Promise<boolean>) | null = null;
   private keyboardBuffer = '';
   private keyboardTimeout: ReturnType<typeof setTimeout> | null = null;
   private cameraStream: MediaStream | null = null;
@@ -96,6 +98,17 @@ class PeripheralBridge {
      ═══════════════════════════════════════════════ */
 
   private async detectPrinter(): Promise<void> {
+    // Check for saved Bluetooth printer first (works on all platforms)
+    try {
+      const saved = localStorage.getItem('caisse_bt_printer');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        this._status.printer = { type: 'thermal_bluetooth', connected: false, name: parsed.name || 'Imprimante BLE' };
+        // Actual connection managed by useBluetoothPrinter hook
+        return;
+      }
+    } catch { /* ignore */ }
+
     if (this.isElectron()) {
       try {
         const electronPrinters = await this.getElectronPrinters();
@@ -116,8 +129,42 @@ class PeripheralBridge {
     this._status.printer = { type: 'browser_print', connected: true, name: 'Navigateur' };
   }
 
+  /** Register Bluetooth printer functions from useBluetoothPrinter hook */
+  registerBluetoothPrinter(
+    printFn: (data: TicketData) => Promise<boolean>,
+    drawerFn: () => Promise<boolean>,
+  ): void {
+    this._btPrintFn = printFn;
+    this._btDrawerFn = drawerFn;
+  }
+
+  /** Update printer status from useBluetoothPrinter hook */
+  updateBluetoothPrinterStatus(connected: boolean, name: string | null): void {
+    if (connected && name) {
+      this._status.printer = { type: 'thermal_bluetooth', connected: true, name };
+      this._status.cashDrawer = { type: 'bluetooth', connected: true };
+    } else {
+      // If disconnected and was BT, reset to fallback
+      if (this._status.printer.type === 'thermal_bluetooth') {
+        this._status.printer = { type: 'browser_print', connected: true, name: 'Navigateur' };
+        this._status.cashDrawer = { type: 'none', connected: false };
+      }
+    }
+  }
+
   async printTicket(data: TicketData): Promise<boolean> {
-    const { type } = this._status.printer;
+    const { type, connected } = this._status.printer;
+
+    // Use registered BT printer function if available and connected
+    if (type === 'thermal_bluetooth' && connected && this._btPrintFn) {
+      try {
+        const result = await this._btPrintFn(data);
+        if (result) return true;
+      } catch (e) {
+        console.warn('[PERIPH] BT print via hook failed, fallback:', e);
+      }
+    }
+
     switch (type) {
       case 'thermal_usb': return this.printThermalUSB(data);
       case 'thermal_bluetooth': return this.printThermalBluetooth(data);
@@ -480,6 +527,11 @@ class PeripheralBridge {
      ═══════════════════════════════════════════════ */
 
   private detectCashDrawer(): void {
+    // Bluetooth printer-connected drawer works on all platforms (including iPad)
+    if (this._status.printer.type === 'thermal_bluetooth') {
+      this._status.cashDrawer = { type: 'bluetooth', connected: this._status.printer.connected };
+      return;
+    }
     if (this.platform === 'ipad' || this.platform === 'android_tablet') {
       this._status.cashDrawer = { type: 'none', connected: false };
       return;
@@ -491,6 +543,19 @@ class PeripheralBridge {
   }
 
   async openCashDrawer(): Promise<boolean> {
+    // Try Bluetooth drawer kick first
+    if (this._status.cashDrawer.type === 'bluetooth' && this._btDrawerFn) {
+      try {
+        const result = await this._btDrawerFn();
+        if (result) {
+          console.log('[PERIPH] Cash drawer opened via Bluetooth');
+          return true;
+        }
+      } catch (e) {
+        console.warn('[PERIPH] BT drawer kick failed:', e);
+      }
+    }
+
     if (!this._status.cashDrawer.connected) {
       console.warn('[PERIPH] No cash drawer connected');
       return false;
