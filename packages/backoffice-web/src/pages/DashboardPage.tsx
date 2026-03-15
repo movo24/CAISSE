@@ -152,8 +152,8 @@ export function DashboardPage() {
   const cashControlAnalysis = useMemo(() => {
     const tauxList = cashierCashControl.map((c) => c.tauxEspeces);
     const n = tauxList.length;
-    const moyenne = tauxList.reduce((s, v) => s + v, 0) / n;
-    const variance = tauxList.reduce((s, v) => s + Math.pow(v - moyenne, 2), 0) / n;
+    const moyenne = n > 0 ? tauxList.reduce((s, v) => s + v, 0) / n : 0;
+    const variance = n > 0 ? tauxList.reduce((s, v) => s + Math.pow(v - moyenne, 2), 0) / n : 0;
     const ecartType = Math.sqrt(variance);
 
     // Seuil anomalie : > 2 écarts-types au-dessus OU > X% au-dessus de la moyenne
@@ -166,7 +166,7 @@ export function DashboardPage() {
       const factors: string[] = [];
 
       // 1. Anomalie taux espèces (0-30 pts)
-      const ecartPct = ((c.tauxEspeces - moyenne) / moyenne) * 100;
+      const ecartPct = moyenne > 0 ? ((c.tauxEspeces - moyenne) / moyenne) * 100 : 0;
       if (c.tauxEspeces > seuilHaut) {
         riskScore += 30;
         factors.push(`Taux especes ${c.tauxEspeces.toFixed(1)}% > seuil 2σ (${seuilHaut.toFixed(1)}%)`);
@@ -243,9 +243,9 @@ export function DashboardPage() {
   }, []);
 
   // Computed values
-  const caParM2 = perfData.caMois / perfData.surfaceM2;
-  const caParEmploye = perfData.caMois / perfData.nbEmployes;
-  const objectifPct = Math.round((perfData.caMois / perfData.objectifMois) * 100);
+  const caParM2 = perfData.surfaceM2 > 0 ? perfData.caMois / perfData.surfaceM2 : 0;
+  const caParEmploye = perfData.nbEmployes > 0 ? perfData.caMois / perfData.nbEmployes : 0;
+  const objectifPct = perfData.objectifMois > 0 ? Math.round((perfData.caMois / perfData.objectifMois) * 100) : 0;
 
   // Find peak hour
   const peakHour = perfData.hourlyCA.length > 0
@@ -255,7 +255,7 @@ export function DashboardPage() {
 
   // Current week progress
   const currentWeekTotal = perfData.weekActual.reduce((s, v) => s + v, 0);
-  const weekProgressPct = Math.round((currentWeekTotal / perfData.weeklyObjective) * 100);
+  const weekProgressPct = perfData.weeklyObjective > 0 ? Math.round((currentWeekTotal / perfData.weeklyObjective) * 100) : 0;
   const avgDailyRealized = currentWeekTotal / (dayIndex + 1);
   const projectedWeekTotal = Math.round(avgDailyRealized * 7);
 
@@ -432,7 +432,7 @@ export function DashboardPage() {
             </div>
             <div className="flex items-end gap-1.5 h-32">
               {perfData.hourlyCA.map((h) => {
-                const pct = (h.ca / maxHourlyCA) * 100;
+                const pct = maxHourlyCA > 0 ? (h.ca / maxHourlyCA) * 100 : 0;
                 const isPeak = h.ca === maxHourlyCA;
                 return (
                   <div key={h.h} className="flex-1 flex flex-col items-center gap-1 group">
@@ -475,7 +475,7 @@ export function DashboardPage() {
                 const actual = perfData.weekActual[i];
                 const isFuture = i > dayIndex;
                 const pct = avg > 0 ? (actual / avg) * 100 : 0;
-                const maxVal = Math.max(...perfData.weekAvg);
+                const maxVal = Math.max(...perfData.weekAvg, 1);
                 return (
                   <div key={day} className="flex-1 flex flex-col items-center gap-1">
                     {!isFuture && actual > 0 && (
@@ -517,7 +517,7 @@ export function DashboardPage() {
             {MONTHS_SHORT.map((month, i) => {
               const current = perfData.monthlyCA[i];
               const prev = perfData.monthlyCAN1[i];
-              const maxVal = Math.max(...perfData.monthlyCA, ...perfData.monthlyCAN1);
+              const maxVal = Math.max(...perfData.monthlyCA, ...perfData.monthlyCAN1, 1);
               const isCurrentMonth = i === new Date().getMonth();
               return (
                 <div key={month} className="flex-1 flex flex-col items-center gap-1 group">
