@@ -8,6 +8,7 @@ import {
   Query,
   UseGuards,
   Request,
+  NotFoundException,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { ProductsService } from './products.service';
@@ -38,8 +39,12 @@ export class ProductsController {
 
   @Get('scan/:ean')
   @ApiOperation({ summary: 'Find product by EAN barcode' })
-  findByEan(@Param('ean') ean: string, @Request() req: any) {
-    return this.productsService.findByEan(ean, req.user.storeId);
+  async findByEan(@Param('ean') ean: string, @Request() req: any) {
+    const product = await this.productsService.findByEan(ean, req.user.storeId);
+    if (!product) {
+      throw new NotFoundException(`Produit introuvable pour le code EAN: ${ean}`);
+    }
+    return product;
   }
 
   @Get('categories')
