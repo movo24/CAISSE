@@ -342,7 +342,7 @@ export function useScanner({
           audio: false,
         },
         videoRef.current, // ZXing renders camera into OUR video element
-        (result, error) => {
+        (result: any, error: any) => {
           if (result) {
             const text = result.getText();
             const format = BarcodeFormat[result.getBarcodeFormat()] || 'unknown';
