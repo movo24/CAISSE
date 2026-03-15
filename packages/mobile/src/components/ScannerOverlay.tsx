@@ -1,20 +1,15 @@
 // ── ScannerOverlay ───────────────────────────────────────────────
 // Fullscreen camera scanner with animated viewfinder
 //
-// Layout:
-//  - Header (semi-transparent): back + title + store name
-//  - Torch toggle (top-right)
-//  - Instruction text + barcode icon
-//  - Viewfinder with violet corner markers + animated scan line
-//  - Dark overlay around viewfinder
-//  - Manual entry button
-//  - Green flash on successful scan
+// IMPORTANT: Camera lifecycle is managed via a single useEffect
+// with an empty dep array. startCamera/stopCamera are called
+// only once on mount/unmount to prevent restart loops.
 // ─────────────────────────────────────────────────────────────────
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   ArrowLeft, Flashlight, FlashlightOff, ScanBarcode,
-  Keyboard, CheckCircle2, X,
+  Keyboard, CheckCircle2, X, Loader2,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useScanner, ScanResult } from '../hooks/useScanner';
@@ -24,7 +19,6 @@ interface ScannerOverlayProps {
   title: string;
   onScan: (result: ScanResult) => void;
   continuous?: boolean;
-  /** Extra content below the scanner (e.g., item count badge) */
   bottomContent?: React.ReactNode;
 }
 
@@ -39,9 +33,11 @@ export function ScannerOverlay({
   const [showManual, setShowManual] = useState(false);
   const [manualCode, setManualCode] = useState('');
   const [showFlash, setShowFlash] = useState(false);
+  const cameraStarted = useRef(false);
 
   const handleScan = useCallback(
     (result: ScanResult) => {
+      // Green flash feedback
       setShowFlash(true);
       setTimeout(() => setShowFlash(false), 300);
       onScan(result);
@@ -63,15 +59,23 @@ export function ScannerOverlay({
     scanCount,
   } = useScanner({ onScan: handleScan, continuous });
 
-  // Start camera on mount
+  // Start camera ONCE on mount, stop on unmount
+  // Do NOT include startCamera/stopCamera in deps — they are stable refs
   useEffect(() => {
-    startCamera();
-    return () => stopCamera();
-  }, [startCamera, stopCamera]);
+    if (!cameraStarted.current) {
+      cameraStarted.current = true;
+      startCamera();
+    }
+    return () => {
+      stopCamera();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleManualSubmit = () => {
-    if (manualCode.trim().length >= 3) {
-      onManualSubmit(manualCode.trim());
+    const code = manualCode.trim();
+    if (code.length >= 3) {
+      onManualSubmit(code);
       setManualCode('');
       if (!continuous) setShowManual(false);
     }
@@ -90,13 +94,9 @@ export function ScannerOverlay({
 
       {/* ── Dark overlay with viewfinder cutout ── */}
       <div className="absolute inset-0 pointer-events-none">
-        {/* Top overlay */}
         <div className="absolute top-0 left-0 right-0 h-[30%] bg-black/55" />
-        {/* Bottom overlay */}
         <div className="absolute bottom-0 left-0 right-0 h-[35%] bg-black/55" />
-        {/* Left overlay */}
         <div className="absolute top-[30%] bottom-[35%] left-0 w-[10%] bg-black/55" />
-        {/* Right overlay */}
         <div className="absolute top-[30%] bottom-[35%] right-0 w-[10%] bg-black/55" />
       </div>
 
@@ -112,7 +112,7 @@ export function ScannerOverlay({
             stopCamera();
             navigate(-1);
           }}
-          className="w-10 h-10 rounded-xl bg-black/30 backdrop-blur flex items-center justify-center text-white"
+          className="w-10 h-10 rounded-xl bg-black/30 backdrop-blur flex items-center justify-center text-white active:scale-95 transition-transform"
         >
           <ArrowLeft size={20} />
         </button>
@@ -138,18 +138,30 @@ export function ScannerOverlay({
         </button>
       </div>
 
+      {/* ── Camera status ── */}
+      {!isActive && !cameraError && (
+        <div className="relative z-10 flex items-center justify-center mt-4">
+          <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-black/40 backdrop-blur text-white/80 text-xs">
+            <Loader2 size={14} className="animate-spin" />
+            Demarrage camera...
+          </div>
+        </div>
+      )}
+
       {/* ── Instruction ── */}
-      <div className="relative z-10 text-center mt-2">
-        <p className="text-white/80 text-sm font-medium">
-          Placez le code-barres dans le cadre
-        </p>
-        <ScanBarcode size={24} className="text-white/50 mx-auto mt-2" />
-      </div>
+      {isActive && (
+        <div className="relative z-10 text-center mt-2">
+          <p className="text-white/80 text-sm font-medium">
+            Placez le code-barres dans le cadre
+          </p>
+          <ScanBarcode size={24} className="text-white/50 mx-auto mt-2" />
+        </div>
+      )}
 
       {/* ── Viewfinder ── */}
       <div className="relative z-10 flex-1 flex items-center justify-center px-[10%]">
         <div className="relative w-full" style={{ aspectRatio: '16/7' }}>
-          {/* Corner markers - violet, animated */}
+          {/* Corner markers — violet, animated */}
           <div className="absolute -top-1 -left-1 w-8 h-8 corner-pulse" style={{ borderTop: '3px solid #7c3aed', borderLeft: '3px solid #7c3aed', borderRadius: '6px 0 0 0' }} />
           <div className="absolute -top-1 -right-1 w-8 h-8 corner-pulse" style={{ borderTop: '3px solid #7c3aed', borderRight: '3px solid #7c3aed', borderRadius: '0 6px 0 0', animationDelay: '0.5s' }} />
           <div className="absolute -bottom-1 -left-1 w-8 h-8 corner-pulse" style={{ borderBottom: '3px solid #7c3aed', borderLeft: '3px solid #7c3aed', borderRadius: '0 0 0 6px', animationDelay: '1s' }} />
@@ -166,7 +178,10 @@ export function ScannerOverlay({
           <p className="text-white text-xs font-medium text-center">{cameraError}</p>
           <div className="flex justify-center gap-4 mt-2">
             <button
-              onClick={startCamera}
+              onClick={() => {
+                cameraStarted.current = false;
+                startCamera();
+              }}
               className="text-violet-300 text-xs font-bold"
             >
               Reessayer
@@ -181,13 +196,16 @@ export function ScannerOverlay({
         </div>
       )}
 
-      {/* ── Last scan badge ── */}
+      {/* ── Last scan badge — shows raw code read by camera ── */}
       {lastScan && (
-        <div className="relative z-10 flex justify-center mb-2">
+        <div className="relative z-10 flex flex-col items-center gap-1 mb-2 animate-slide-up">
           <div className="px-4 py-2 rounded-xl bg-emerald-500/90 backdrop-blur text-white text-sm font-bold flex items-center gap-2 shadow-lg">
             <CheckCircle2 size={16} />
-            {lastScan.code}
+            Code lu : {lastScan.code}
           </div>
+          <span className="text-white/40 text-[9px] font-mono">
+            format: {lastScan.format} | {new Date(lastScan.timestamp).toLocaleTimeString('fr-FR')}
+          </span>
         </div>
       )}
 
@@ -198,7 +216,7 @@ export function ScannerOverlay({
         </div>
       )}
 
-      {/* ── Manual entry button / input ── */}
+      {/* ── Manual entry ── */}
       <div className="relative z-10 px-6 pb-4 safe-bottom">
         {showManual ? (
           <div className="flex gap-2 animate-slide-up">
@@ -229,7 +247,7 @@ export function ScannerOverlay({
         ) : (
           <button
             onClick={() => setShowManual(true)}
-            className="w-full py-3.5 rounded-2xl bg-white/15 backdrop-blur border border-white/20 text-white font-semibold text-sm flex items-center justify-center gap-2"
+            className="w-full py-3.5 rounded-2xl bg-white/15 backdrop-blur border border-white/20 text-white font-semibold text-sm flex items-center justify-center gap-2 active:bg-white/25 transition-colors"
           >
             <Keyboard size={18} />
             Saisie manuelle

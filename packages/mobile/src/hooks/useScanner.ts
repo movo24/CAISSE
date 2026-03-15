@@ -7,6 +7,10 @@
 //  3. Manual entry (always available via onManualSubmit)
 //
 // Features: anti-bounce 1.5s, vibration, beep, torch toggle
+//
+// IMPORTANT: Uses refs for all callbacks to avoid stale closure bugs.
+// The setInterval inside startCamera must always call the LATEST
+// version of onScan, not a stale captured closure.
 // ─────────────────────────────────────────────────────────────────
 
 import { useState, useRef, useCallback, useEffect } from 'react';
@@ -24,22 +28,15 @@ interface UseScannerOptions {
 }
 
 interface UseScannerReturn {
-  // Camera
   videoRef: React.RefObject<HTMLVideoElement>;
   isActive: boolean;
   startCamera: () => Promise<void>;
   stopCamera: () => void;
   cameraError: string | null;
-
-  // Torch
   torchAvailable: boolean;
   torchOn: boolean;
   toggleTorch: () => void;
-
-  // Manual
   onManualSubmit: (code: string) => void;
-
-  // State
   lastScan: ScanResult | null;
   scanCount: number;
 }
@@ -56,10 +53,10 @@ function playBeep() {
     gain.connect(audioCtx.destination);
     osc.type = 'sine';
     osc.frequency.value = 1200;
-    gain.gain.value = 0.12;
+    gain.gain.value = 0.15;
     osc.start();
-    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.12);
-    osc.stop(audioCtx.currentTime + 0.12);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.15);
+    osc.stop(audioCtx.currentTime + 0.15);
   } catch {
     /* audio not available */
   }
@@ -93,6 +90,18 @@ export function useScanner({
   const cooldownRef = useRef(false);
   const lastCodeRef = useRef<string>('');
 
+  // ─── CRITICAL: Store callbacks in refs to avoid stale closures ───
+  // The setInterval inside startCamera runs for the lifetime of the camera.
+  // It must always call the LATEST onScan, not the one captured at startCamera() time.
+  const onScanRef = useRef(onScan);
+  const continuousRef = useRef(continuous);
+  const cooldownMsRef = useRef(cooldownMs);
+
+  // Keep refs in sync with latest props
+  useEffect(() => { onScanRef.current = onScan; }, [onScan]);
+  useEffect(() => { continuousRef.current = continuous; }, [continuous]);
+  useEffect(() => { cooldownMsRef.current = cooldownMs; }, [cooldownMs]);
+
   const [isActive, setIsActive] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [torchAvailable, setTorchAvailable] = useState(false);
@@ -100,42 +109,94 @@ export function useScanner({
   const [lastScan, setLastScan] = useState<ScanResult | null>(null);
   const [scanCount, setScanCount] = useState(0);
 
-  // ── Core detection handler ──
+  // ── Core detection handler (uses refs — never stale) ──
 
-  const handleDetection = useCallback(
-    (code: string, format: string) => {
-      // Anti-bounce: ignore same code within cooldown
-      if (cooldownRef.current && code === lastCodeRef.current) return;
+  const handleDetection = useCallback((code: string, format: string) => {
+    // Normalize: trim whitespace, remove invisible chars
+    const cleanCode = code.trim().replace(/[^\x20-\x7E]/g, '');
+    if (!cleanCode || cleanCode.length < 3) {
+      console.warn('[Scanner] Code trop court ou invalide:', JSON.stringify(code));
+      return;
+    }
 
-      cooldownRef.current = true;
-      lastCodeRef.current = code;
-      setTimeout(() => {
-        cooldownRef.current = false;
-        if (!continuous) lastCodeRef.current = '';
-      }, cooldownMs);
+    // Anti-bounce: ignore same code within cooldown
+    if (cooldownRef.current && cleanCode === lastCodeRef.current) {
+      console.log('[Scanner] Anti-bounce: meme code ignore');
+      return;
+    }
 
-      const result: ScanResult = { code, format, timestamp: Date.now() };
-      setLastScan(result);
-      setScanCount((c) => c + 1);
+    cooldownRef.current = true;
+    lastCodeRef.current = cleanCode;
+    setTimeout(() => {
+      cooldownRef.current = false;
+      if (!continuousRef.current) lastCodeRef.current = '';
+    }, cooldownMsRef.current);
 
-      // Haptic + audio feedback
-      playBeep();
-      if (navigator.vibrate) navigator.vibrate(50);
+    const result: ScanResult = { code: cleanCode, format, timestamp: Date.now() };
 
-      onScan(result);
-    },
-    [onScan, cooldownMs, continuous],
-  );
+    console.log('[Scanner] Detection:', cleanCode, 'format:', format);
+
+    setLastScan(result);
+    setScanCount((c) => c + 1);
+
+    // Haptic + audio feedback — BEFORE calling onScan (instant feedback)
+    playBeep();
+    try { if (navigator.vibrate) navigator.vibrate([50]); } catch { /* no vibration API */ }
+
+    // Call the LATEST onScan via ref (not a stale closure)
+    try {
+      onScanRef.current(result);
+    } catch (err) {
+      console.error('[Scanner] onScan callback error:', err);
+    }
+  }, []); // Empty deps — uses refs, never stale
+
+  // ── Stop camera ──
+
+  const stopCamera = useCallback(() => {
+    if (scanIntervalRef.current) {
+      clearInterval(scanIntervalRef.current);
+      scanIntervalRef.current = null;
+    }
+
+    if (html5QrRef.current) {
+      try { html5QrRef.current.stop().catch(() => {}); } catch { /* ignore */ }
+      html5QrRef.current = null;
+      // Clean up the html5-qrcode container
+      const container = document.getElementById('html5-qrcode-scanner');
+      if (container) {
+        container.style.cssText = 'display:none;';
+        while (container.firstChild) container.removeChild(container.firstChild);
+      }
+    }
+
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+
+    setIsActive(false);
+    setTorchOn(false);
+    setTorchAvailable(false);
+  }, []);
 
   // ── Start camera ──
 
   const startCamera = useCallback(async () => {
+    // Clean up any existing camera first
+    stopCamera();
     setCameraError(null);
 
     if (!hasMediaDevices()) {
       setCameraError('Camera non disponible. Utilisez la saisie manuelle.');
       return;
     }
+
+    console.log('[Scanner] Demande acces camera...');
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -152,116 +213,116 @@ export function useScanner({
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         await videoRef.current.play();
+        console.log('[Scanner] Camera active, video playing');
       }
 
       // Check torch availability
       const track = stream.getVideoTracks()[0];
       if (track) {
-        const caps = track.getCapabilities?.() as any;
-        if (caps?.torch) {
-          setTorchAvailable(true);
-        }
+        try {
+          const caps = track.getCapabilities?.() as any;
+          if (caps?.torch) {
+            setTorchAvailable(true);
+            console.log('[Scanner] Torch disponible');
+          }
+        } catch { /* getCapabilities not supported */ }
       }
 
       setIsActive(true);
 
-      // ── Strategy 1: BarcodeDetector API ──
+      // ── Strategy 1: BarcodeDetector API (native Chrome/Edge/Android) ──
       if (hasBarcodeDetectorAPI()) {
+        console.log('[Scanner] Using BarcodeDetector API (native)');
+
         const detector = new (window as any).BarcodeDetector({
           formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39'],
         });
+
+        // Wait a moment for camera to stabilize before starting detection
+        await new Promise((r) => setTimeout(r, 500));
 
         scanIntervalRef.current = setInterval(async () => {
           if (!videoRef.current || videoRef.current.readyState < 2) return;
           try {
             const barcodes = await detector.detect(videoRef.current);
             if (barcodes.length > 0) {
-              handleDetection(barcodes[0].rawValue, barcodes[0].format);
+              const bc = barcodes[0];
+              console.log('[Scanner] BarcodeDetector result:', bc.rawValue, bc.format);
+              handleDetection(bc.rawValue, bc.format);
             }
           } catch {
-            /* frame decode error, ignore */
+            /* frame decode error — normal, ignore */
           }
-        }, 150);
+        }, 200); // 200ms = 5 scans/sec (stable on mobile)
 
         return;
       }
 
       // ── Strategy 2: html5-qrcode fallback (iOS Safari) ──
+      // IMPORTANT: html5-qrcode manages its OWN camera stream.
+      // We must STOP our stream first to avoid double-camera conflicts on iOS.
+      console.log('[Scanner] BarcodeDetector unavailable, trying html5-qrcode fallback...');
+
+      // Release our camera stream — html5-qrcode will open its own
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
+      }
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
+      }
+
       try {
         const { Html5Qrcode } = await import('html5-qrcode');
 
-        // html5-qrcode needs a container element
+        // html5-qrcode renders into a visible container (its own video feed)
         let container = document.getElementById('html5-qrcode-scanner');
         if (!container) {
           container = document.createElement('div');
           container.id = 'html5-qrcode-scanner';
-          container.style.display = 'none';
           document.body.appendChild(container);
         }
+        // Position it behind our overlay — full-screen camera
+        container.style.cssText = 'position:fixed;inset:0;z-index:0;background:black;';
 
-        const html5Qr = new Html5Qrcode('html5-qrcode-scanner');
+        const html5Qr = new Html5Qrcode('html5-qrcode-scanner', /* verbose */ false);
         html5QrRef.current = html5Qr;
 
         await html5Qr.start(
           { facingMode: 'environment' },
           {
-            fps: 8,
+            fps: 10,
             qrbox: { width: 280, height: 150 },
+            aspectRatio: 1.7778,
           } as any,
           (decodedText: string) => {
+            console.log('[Scanner] html5-qrcode result:', decodedText);
             handleDetection(decodedText, 'html5-qrcode');
           },
-          () => {
-            /* scan error, ignore */
-          },
+          () => { /* scan frame miss — normal */ },
         );
+
+        console.log('[Scanner] html5-qrcode started successfully');
       } catch (fallbackErr: any) {
-        setCameraError(
-          'Scanner indisponible sur ce navigateur. Utilisez la saisie manuelle.',
-        );
+        console.error('[Scanner] html5-qrcode failed:', fallbackErr);
+        setCameraError('Scanner indisponible sur ce navigateur. Utilisez la saisie manuelle.');
       }
     } catch (e: any) {
+      console.error('[Scanner] Camera error:', e.name, e.message);
+
       if (e.name === 'NotAllowedError') {
         setCameraError("Acces camera refuse. Autorisez dans Reglages > Safari/Chrome.");
       } else if (e.name === 'NotFoundError') {
         setCameraError('Aucune camera trouvee.');
       } else if (e.name === 'NotReadableError') {
         setCameraError('Camera deja utilisee par une autre app.');
+      } else if (e.name === 'OverconstrainedError') {
+        setCameraError('Camera incompatible. Essayez avec un autre appareil.');
       } else {
-        setCameraError(e.message || 'Erreur camera');
+        setCameraError(`Erreur camera: ${e.message || 'inconnue'}`);
       }
     }
-  }, [handleDetection]);
-
-  // ── Stop camera ──
-
-  const stopCamera = useCallback(() => {
-    // Stop BarcodeDetector interval
-    if (scanIntervalRef.current) {
-      clearInterval(scanIntervalRef.current);
-      scanIntervalRef.current = null;
-    }
-
-    // Stop html5-qrcode
-    if (html5QrRef.current) {
-      html5QrRef.current.stop().catch(() => {});
-      html5QrRef.current = null;
-    }
-
-    // Stop media stream
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((t) => t.stop());
-      streamRef.current = null;
-    }
-
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
-    }
-
-    setIsActive(false);
-    setTorchOn(false);
-    setTorchAvailable(false);
-  }, []);
+  }, [stopCamera, handleDetection]); // handleDetection is stable (empty deps + refs)
 
   // ── Torch toggle ──
 
@@ -279,20 +340,19 @@ export function useScanner({
 
   // ── Manual submit ──
 
-  const onManualSubmit = useCallback(
-    (code: string) => {
-      const trimmed = code.trim();
-      if (trimmed.length < 3) return;
-      const format =
-        trimmed.length === 13
-          ? 'ean_13'
-          : trimmed.length === 8
-            ? 'ean_8'
-            : 'manual';
-      handleDetection(trimmed, format);
-    },
-    [handleDetection],
-  );
+  const onManualSubmit = useCallback((code: string) => {
+    const trimmed = code.trim().replace(/[^\x20-\x7E]/g, '');
+    if (trimmed.length < 3) return;
+
+    console.log('[Scanner] Saisie manuelle:', trimmed);
+
+    const format =
+      trimmed.length === 13 ? 'ean_13' :
+      trimmed.length === 8 ? 'ean_8' :
+      'manual';
+
+    handleDetection(trimmed, format);
+  }, [handleDetection]);
 
   // ── Cleanup on unmount ──
 
