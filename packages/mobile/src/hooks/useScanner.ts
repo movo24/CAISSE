@@ -3,14 +3,18 @@
 //
 // Detection chain:
 //  1. BarcodeDetector API (native Chrome/Edge, zero bundle cost)
+//     → Uses our <video> element + setInterval detect()
 //  2. html5-qrcode (dynamic import, ~50KB gzip, iOS Safari fallback)
+//     → Manages its OWN camera + video rendering in a container div
 //  3. Manual entry (always available via onManualSubmit)
 //
-// Features: anti-bounce 1.5s, vibration, beep, torch toggle
+// CRITICAL: On iOS Safari, BarcodeDetector does NOT exist.
+// We must detect this BEFORE opening getUserMedia, and go directly
+// to html5-qrcode which manages its own camera stream.
+// Otherwise: we open a stream, close it, html5-qrcode opens a new
+// one in a hidden div → user sees black screen.
 //
-// IMPORTANT: Uses refs for all callbacks to avoid stale closure bugs.
-// The setInterval inside startCamera must always call the LATEST
-// version of onScan, not a stale captured closure.
+// Uses refs for all callbacks to avoid stale closure bugs.
 // ─────────────────────────────────────────────────────────────────
 
 import { useState, useRef, useCallback, useEffect } from 'react';
@@ -30,6 +34,8 @@ interface UseScannerOptions {
 interface UseScannerReturn {
   videoRef: React.RefObject<HTMLVideoElement>;
   isActive: boolean;
+  /** True when using html5-qrcode fallback (iOS) — video element is unused */
+  usingFallback: boolean;
   startCamera: () => Promise<void>;
   stopCamera: () => void;
   cameraError: string | null;
@@ -90,19 +96,17 @@ export function useScanner({
   const cooldownRef = useRef(false);
   const lastCodeRef = useRef<string>('');
 
-  // ─── CRITICAL: Store callbacks in refs to avoid stale closures ───
-  // The setInterval inside startCamera runs for the lifetime of the camera.
-  // It must always call the LATEST onScan, not the one captured at startCamera() time.
+  // Store callbacks in refs to avoid stale closures
   const onScanRef = useRef(onScan);
   const continuousRef = useRef(continuous);
   const cooldownMsRef = useRef(cooldownMs);
 
-  // Keep refs in sync with latest props
   useEffect(() => { onScanRef.current = onScan; }, [onScan]);
   useEffect(() => { continuousRef.current = continuous; }, [continuous]);
   useEffect(() => { cooldownMsRef.current = cooldownMs; }, [cooldownMs]);
 
   const [isActive, setIsActive] = useState(false);
+  const [usingFallback, setUsingFallback] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [torchAvailable, setTorchAvailable] = useState(false);
   const [torchOn, setTorchOn] = useState(false);
@@ -112,17 +116,14 @@ export function useScanner({
   // ── Core detection handler (uses refs — never stale) ──
 
   const handleDetection = useCallback((code: string, format: string) => {
-    // Normalize: trim whitespace, remove invisible chars
     const cleanCode = code.trim().replace(/[^\x20-\x7E]/g, '');
     if (!cleanCode || cleanCode.length < 3) {
       console.warn('[Scanner] Code trop court ou invalide:', JSON.stringify(code));
       return;
     }
 
-    // Anti-bounce: ignore same code within cooldown
     if (cooldownRef.current && cleanCode === lastCodeRef.current) {
-      console.log('[Scanner] Anti-bounce: meme code ignore');
-      return;
+      return; // Anti-bounce
     }
 
     cooldownRef.current = true;
@@ -133,23 +134,20 @@ export function useScanner({
     }, cooldownMsRef.current);
 
     const result: ScanResult = { code: cleanCode, format, timestamp: Date.now() };
-
-    console.log('[Scanner] Detection:', cleanCode, 'format:', format);
+    console.log('[Scanner] ✓ Detection:', cleanCode, 'format:', format);
 
     setLastScan(result);
     setScanCount((c) => c + 1);
 
-    // Haptic + audio feedback — BEFORE calling onScan (instant feedback)
     playBeep();
-    try { if (navigator.vibrate) navigator.vibrate([50]); } catch { /* no vibration API */ }
+    try { if (navigator.vibrate) navigator.vibrate([50]); } catch { /* */ }
 
-    // Call the LATEST onScan via ref (not a stale closure)
     try {
       onScanRef.current(result);
     } catch (err) {
-      console.error('[Scanner] onScan callback error:', err);
+      console.error('[Scanner] onScan error:', err);
     }
-  }, []); // Empty deps — uses refs, never stale
+  }, []);
 
   // ── Stop camera ──
 
@@ -160,10 +158,9 @@ export function useScanner({
     }
 
     if (html5QrRef.current) {
-      try { html5QrRef.current.stop().catch(() => {}); } catch { /* ignore */ }
+      try { html5QrRef.current.stop().catch(() => {}); } catch { /* */ }
       html5QrRef.current = null;
-      // Clean up the html5-qrcode container
-      const container = document.getElementById('html5-qrcode-scanner');
+      const container = document.getElementById('html5qr-cam');
       if (container) {
         container.style.cssText = 'display:none;';
         while (container.firstChild) container.removeChild(container.firstChild);
@@ -180,6 +177,7 @@ export function useScanner({
     }
 
     setIsActive(false);
+    setUsingFallback(false);
     setTorchOn(false);
     setTorchAvailable(false);
   }, []);
@@ -187,7 +185,6 @@ export function useScanner({
   // ── Start camera ──
 
   const startCamera = useCallback(async () => {
-    // Clean up any existing camera first
     stopCamera();
     setCameraError(null);
 
@@ -196,49 +193,50 @@ export function useScanner({
       return;
     }
 
-    console.log('[Scanner] Demande acces camera...');
+    const canUseNativeDetector = hasBarcodeDetectorAPI();
+    console.log('[Scanner] BarcodeDetector disponible:', canUseNativeDetector);
 
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: { ideal: 'environment' },
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-        },
-        audio: false,
-      });
+    // ══════════════════════════════════════════════════════════════
+    // STRATEGY 1: Native BarcodeDetector (Android Chrome, Edge)
+    // We open our own getUserMedia stream + <video> element
+    // ══════════════════════════════════════════════════════════════
+    if (canUseNativeDetector) {
+      console.log('[Scanner] Mode natif — getUserMedia + BarcodeDetector');
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: 'environment' },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
+          audio: false,
+        });
 
-      streamRef.current = stream;
+        streamRef.current = stream;
 
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-        console.log('[Scanner] Camera active, video playing');
-      }
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          await videoRef.current.play();
+          console.log('[Scanner] Video playing');
+        }
 
-      // Check torch availability
-      const track = stream.getVideoTracks()[0];
-      if (track) {
-        try {
-          const caps = track.getCapabilities?.() as any;
-          if (caps?.torch) {
-            setTorchAvailable(true);
-            console.log('[Scanner] Torch disponible');
-          }
-        } catch { /* getCapabilities not supported */ }
-      }
+        // Check torch
+        const track = stream.getVideoTracks()[0];
+        if (track) {
+          try {
+            const caps = track.getCapabilities?.() as any;
+            if (caps?.torch) setTorchAvailable(true);
+          } catch { /* */ }
+        }
 
-      setIsActive(true);
-
-      // ── Strategy 1: BarcodeDetector API (native Chrome/Edge/Android) ──
-      if (hasBarcodeDetectorAPI()) {
-        console.log('[Scanner] Using BarcodeDetector API (native)');
+        setIsActive(true);
+        setUsingFallback(false);
 
         const detector = new (window as any).BarcodeDetector({
           formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39'],
         });
 
-        // Wait a moment for camera to stabilize before starting detection
+        // Let camera stabilize
         await new Promise((r) => setTimeout(r, 500));
 
         scanIntervalRef.current = setInterval(async () => {
@@ -246,70 +244,84 @@ export function useScanner({
           try {
             const barcodes = await detector.detect(videoRef.current);
             if (barcodes.length > 0) {
-              const bc = barcodes[0];
-              console.log('[Scanner] BarcodeDetector result:', bc.rawValue, bc.format);
-              handleDetection(bc.rawValue, bc.format);
+              handleDetection(barcodes[0].rawValue, barcodes[0].format);
             }
-          } catch {
-            /* frame decode error — normal, ignore */
-          }
-        }, 200); // 200ms = 5 scans/sec (stable on mobile)
+          } catch { /* frame error */ }
+        }, 200);
 
         return;
+      } catch (e: any) {
+        console.error('[Scanner] Native camera error:', e.name, e.message);
+        handleCameraError(e);
+        return;
       }
+    }
 
-      // ── Strategy 2: html5-qrcode fallback (iOS Safari) ──
-      // IMPORTANT: html5-qrcode manages its OWN camera stream.
-      // We must STOP our stream first to avoid double-camera conflicts on iOS.
-      console.log('[Scanner] BarcodeDetector unavailable, trying html5-qrcode fallback...');
+    // ══════════════════════════════════════════════════════════════
+    // STRATEGY 2: html5-qrcode fallback (iOS Safari, old browsers)
+    // html5-qrcode manages its OWN camera + video rendering.
+    // We do NOT open getUserMedia — that would conflict.
+    // The camera preview is rendered inside #html5qr-cam container.
+    // ══════════════════════════════════════════════════════════════
+    console.log('[Scanner] Mode fallback — html5-qrcode (iOS)');
 
-      // Release our camera stream — html5-qrcode will open its own
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((t) => t.stop());
-        streamRef.current = null;
+    try {
+      const { Html5Qrcode } = await import('html5-qrcode');
+
+      // Create or reuse the container for html5-qrcode's own video
+      let container = document.getElementById('html5qr-cam');
+      if (!container) {
+        container = document.createElement('div');
+        container.id = 'html5qr-cam';
+        document.body.appendChild(container);
       }
-      if (videoRef.current) {
-        videoRef.current.srcObject = null;
-      }
+      // Full-screen behind our overlay (z-index 0, our overlay is z-50)
+      container.style.cssText = 'position:fixed;inset:0;z-index:1;background:black;';
 
+      const html5Qr = new Html5Qrcode('html5qr-cam', false);
+      html5QrRef.current = html5Qr;
+
+      await html5Qr.start(
+        { facingMode: 'environment' },
+        {
+          fps: 10,
+          qrbox: { width: 250, height: 140 },
+          aspectRatio: 1.7778,
+          disableFlip: false,
+        } as any,
+        (decodedText: string) => {
+          console.log('[Scanner] html5-qrcode result:', decodedText);
+          handleDetection(decodedText, 'html5-qrcode');
+        },
+        () => { /* scan miss */ },
+      );
+
+      setIsActive(true);
+      setUsingFallback(true);
+      console.log('[Scanner] html5-qrcode started OK');
+    } catch (fallbackErr: any) {
+      console.error('[Scanner] html5-qrcode failed:', fallbackErr);
+
+      // If html5-qrcode fails, try opening basic camera for manual entry
       try {
-        const { Html5Qrcode } = await import('html5-qrcode');
-
-        // html5-qrcode renders into a visible container (its own video feed)
-        let container = document.getElementById('html5-qrcode-scanner');
-        if (!container) {
-          container = document.createElement('div');
-          container.id = 'html5-qrcode-scanner';
-          document.body.appendChild(container);
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'environment' },
+          audio: false,
+        });
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          await videoRef.current.play();
         }
-        // Position it behind our overlay — full-screen camera
-        container.style.cssText = 'position:fixed;inset:0;z-index:0;background:black;';
-
-        const html5Qr = new Html5Qrcode('html5-qrcode-scanner', /* verbose */ false);
-        html5QrRef.current = html5Qr;
-
-        await html5Qr.start(
-          { facingMode: 'environment' },
-          {
-            fps: 10,
-            qrbox: { width: 280, height: 150 },
-            aspectRatio: 1.7778,
-          } as any,
-          (decodedText: string) => {
-            console.log('[Scanner] html5-qrcode result:', decodedText);
-            handleDetection(decodedText, 'html5-qrcode');
-          },
-          () => { /* scan frame miss — normal */ },
-        );
-
-        console.log('[Scanner] html5-qrcode started successfully');
-      } catch (fallbackErr: any) {
-        console.error('[Scanner] html5-qrcode failed:', fallbackErr);
-        setCameraError('Scanner indisponible sur ce navigateur. Utilisez la saisie manuelle.');
+        setIsActive(true);
+        setUsingFallback(false);
+        setCameraError('Detection auto indisponible. Utilisez la saisie manuelle.');
+      } catch {
+        setCameraError('Camera non disponible. Utilisez la saisie manuelle.');
       }
-    } catch (e: any) {
-      console.error('[Scanner] Camera error:', e.name, e.message);
+    }
 
+    function handleCameraError(e: any) {
       if (e.name === 'NotAllowedError') {
         setCameraError("Acces camera refuse. Autorisez dans Reglages > Safari/Chrome.");
       } else if (e.name === 'NotFoundError') {
@@ -317,12 +329,12 @@ export function useScanner({
       } else if (e.name === 'NotReadableError') {
         setCameraError('Camera deja utilisee par une autre app.');
       } else if (e.name === 'OverconstrainedError') {
-        setCameraError('Camera incompatible. Essayez avec un autre appareil.');
+        setCameraError('Camera incompatible.');
       } else {
         setCameraError(`Erreur camera: ${e.message || 'inconnue'}`);
       }
     }
-  }, [stopCamera, handleDetection]); // handleDetection is stable (empty deps + refs)
+  }, [stopCamera, handleDetection]);
 
   // ── Torch toggle ──
 
@@ -356,15 +368,12 @@ export function useScanner({
 
   // ── Cleanup on unmount ──
 
-  useEffect(() => {
-    return () => {
-      stopCamera();
-    };
-  }, [stopCamera]);
+  useEffect(() => () => stopCamera(), [stopCamera]);
 
   return {
     videoRef,
     isActive,
+    usingFallback,
     startCamera,
     stopCamera,
     cameraError,

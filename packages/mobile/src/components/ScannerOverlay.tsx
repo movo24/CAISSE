@@ -1,9 +1,11 @@
 // ── ScannerOverlay ───────────────────────────────────────────────
 // Fullscreen camera scanner with animated viewfinder
 //
-// IMPORTANT: Camera lifecycle is managed via a single useEffect
-// with an empty dep array. startCamera/stopCamera are called
-// only once on mount/unmount to prevent restart loops.
+// Two rendering modes:
+// A) Native (Android Chrome): our <video> shows camera + BarcodeDetector
+// B) Fallback (iOS Safari): html5-qrcode renders its own video in
+//    #html5qr-cam div. Our <video> is hidden. The overlay UI sits
+//    on top of html5-qrcode's camera view.
 // ─────────────────────────────────────────────────────────────────
 
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -37,7 +39,6 @@ export function ScannerOverlay({
 
   const handleScan = useCallback(
     (result: ScanResult) => {
-      // Green flash feedback
       setShowFlash(true);
       setTimeout(() => setShowFlash(false), 300);
       onScan(result);
@@ -48,6 +49,7 @@ export function ScannerOverlay({
   const {
     videoRef,
     isActive,
+    usingFallback,
     startCamera,
     stopCamera,
     cameraError,
@@ -59,16 +61,13 @@ export function ScannerOverlay({
     scanCount,
   } = useScanner({ onScan: handleScan, continuous });
 
-  // Start camera ONCE on mount, stop on unmount
-  // Do NOT include startCamera/stopCamera in deps — they are stable refs
+  // Start camera ONCE on mount
   useEffect(() => {
     if (!cameraStarted.current) {
       cameraStarted.current = true;
       startCamera();
     }
-    return () => {
-      stopCamera();
-    };
+    return () => stopCamera();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -83,36 +82,50 @@ export function ScannerOverlay({
 
   return (
     <div className="fixed inset-0 z-50 bg-black flex flex-col">
-      {/* ── Video layer ── */}
-      <video
-        ref={videoRef}
-        autoPlay
-        playsInline
-        muted
-        className="absolute inset-0 w-full h-full object-cover"
-      />
-
-      {/* ── Dark overlay with viewfinder cutout ── */}
-      <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute top-0 left-0 right-0 h-[30%] bg-black/55" />
-        <div className="absolute bottom-0 left-0 right-0 h-[35%] bg-black/55" />
-        <div className="absolute top-[30%] bottom-[35%] left-0 w-[10%] bg-black/55" />
-        <div className="absolute top-[30%] bottom-[35%] right-0 w-[10%] bg-black/55" />
-      </div>
-
-      {/* ── Green flash on scan ── */}
-      {showFlash && (
-        <div className="absolute inset-0 bg-emerald-400/25 pointer-events-none scan-flash" />
+      {/*
+        Video layer — ONLY shown when using native BarcodeDetector.
+        When using html5-qrcode fallback, the camera video is rendered
+        by html5-qrcode in #html5qr-cam (z-index 1, behind this z-50 overlay).
+      */}
+      {!usingFallback && (
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          muted
+          className="absolute inset-0 w-full h-full object-cover"
+        />
       )}
 
-      {/* ── Header ── */}
+      {/*
+        When using fallback mode, make overlay background transparent
+        so html5-qrcode's camera (rendered behind in #html5qr-cam) shows through.
+      */}
+      {usingFallback && (
+        <div className="absolute inset-0 bg-transparent" />
+      )}
+
+      {/* Dark overlay with viewfinder cutout */}
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute top-0 left-0 right-0 h-[28%] bg-black/50" />
+        <div className="absolute bottom-0 left-0 right-0 h-[32%] bg-black/50" />
+        <div className="absolute top-[28%] bottom-[32%] left-0 w-[8%] bg-black/50" />
+        <div className="absolute top-[28%] bottom-[32%] right-0 w-[8%] bg-black/50" />
+      </div>
+
+      {/* Green flash on scan */}
+      {showFlash && (
+        <div className="absolute inset-0 bg-emerald-400/30 pointer-events-none scan-flash" />
+      )}
+
+      {/* Header */}
       <div className="relative z-10 flex items-center justify-between px-4 pt-3 pb-2 safe-top">
         <button
           onClick={() => {
             stopCamera();
             navigate(-1);
           }}
-          className="w-10 h-10 rounded-xl bg-black/30 backdrop-blur flex items-center justify-center text-white active:scale-95 transition-transform"
+          className="w-10 h-10 rounded-xl bg-black/40 backdrop-blur flex items-center justify-center text-white active:scale-95 transition-transform"
         >
           <ArrowLeft size={20} />
         </button>
@@ -124,31 +137,35 @@ export function ScannerOverlay({
           )}
         </div>
 
-        {/* Torch toggle */}
-        <button
-          onClick={toggleTorch}
-          disabled={!torchAvailable}
-          className={`w-10 h-10 rounded-xl backdrop-blur flex items-center justify-center transition-colors ${
-            torchOn
-              ? 'bg-yellow-400/80 text-black'
-              : 'bg-black/30 text-white disabled:opacity-30'
-          }`}
-        >
-          {torchOn ? <FlashlightOff size={18} /> : <Flashlight size={18} />}
-        </button>
+        {/* Torch (only native mode) */}
+        {!usingFallback ? (
+          <button
+            onClick={toggleTorch}
+            disabled={!torchAvailable}
+            className={`w-10 h-10 rounded-xl backdrop-blur flex items-center justify-center transition-colors ${
+              torchOn
+                ? 'bg-yellow-400/80 text-black'
+                : 'bg-black/40 text-white disabled:opacity-30'
+            }`}
+          >
+            {torchOn ? <FlashlightOff size={18} /> : <Flashlight size={18} />}
+          </button>
+        ) : (
+          <div className="w-10" /> // Spacer
+        )}
       </div>
 
-      {/* ── Camera status ── */}
+      {/* Camera loading */}
       {!isActive && !cameraError && (
-        <div className="relative z-10 flex items-center justify-center mt-4">
-          <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-black/40 backdrop-blur text-white/80 text-xs">
-            <Loader2 size={14} className="animate-spin" />
+        <div className="relative z-10 flex items-center justify-center mt-8">
+          <div className="flex items-center gap-2 px-5 py-3 rounded-2xl bg-black/50 backdrop-blur text-white text-sm">
+            <Loader2 size={16} className="animate-spin" />
             Demarrage camera...
           </div>
         </div>
       )}
 
-      {/* ── Instruction ── */}
+      {/* Instruction */}
       {isActive && (
         <div className="relative z-10 text-center mt-2">
           <p className="text-white/80 text-sm font-medium">
@@ -158,21 +175,21 @@ export function ScannerOverlay({
         </div>
       )}
 
-      {/* ── Viewfinder ── */}
-      <div className="relative z-10 flex-1 flex items-center justify-center px-[10%]">
+      {/* Viewfinder */}
+      <div className="relative z-10 flex-1 flex items-center justify-center px-[8%]">
         <div className="relative w-full" style={{ aspectRatio: '16/7' }}>
-          {/* Corner markers — violet, animated */}
+          {/* Corner markers */}
           <div className="absolute -top-1 -left-1 w-8 h-8 corner-pulse" style={{ borderTop: '3px solid #7c3aed', borderLeft: '3px solid #7c3aed', borderRadius: '6px 0 0 0' }} />
           <div className="absolute -top-1 -right-1 w-8 h-8 corner-pulse" style={{ borderTop: '3px solid #7c3aed', borderRight: '3px solid #7c3aed', borderRadius: '0 6px 0 0', animationDelay: '0.5s' }} />
           <div className="absolute -bottom-1 -left-1 w-8 h-8 corner-pulse" style={{ borderBottom: '3px solid #7c3aed', borderLeft: '3px solid #7c3aed', borderRadius: '0 0 0 6px', animationDelay: '1s' }} />
           <div className="absolute -bottom-1 -right-1 w-8 h-8 corner-pulse" style={{ borderBottom: '3px solid #7c3aed', borderRight: '3px solid #7c3aed', borderRadius: '0 0 6px 0', animationDelay: '1.5s' }} />
 
-          {/* Animated scan line */}
+          {/* Scan line */}
           <div className="absolute left-2 right-2 h-[2px] bg-gradient-to-r from-transparent via-violet-500/80 to-transparent scan-line" />
         </div>
       </div>
 
-      {/* ── Camera error ── */}
+      {/* Camera error */}
       {cameraError && (
         <div className="relative z-10 mx-6 mb-3 px-4 py-3 rounded-2xl bg-red-500/20 backdrop-blur border border-red-400/30">
           <p className="text-white text-xs font-medium text-center">{cameraError}</p>
@@ -196,7 +213,7 @@ export function ScannerOverlay({
         </div>
       )}
 
-      {/* ── Last scan badge — shows raw code read by camera ── */}
+      {/* Last scan badge */}
       {lastScan && (
         <div className="relative z-10 flex flex-col items-center gap-1 mb-2 animate-slide-up">
           <div className="px-4 py-2 rounded-xl bg-emerald-500/90 backdrop-blur text-white text-sm font-bold flex items-center gap-2 shadow-lg">
@@ -209,14 +226,14 @@ export function ScannerOverlay({
         </div>
       )}
 
-      {/* ── Bottom content (item count, etc.) ── */}
+      {/* Bottom content */}
       {bottomContent && (
         <div className="relative z-10 px-4 mb-2">
           {bottomContent}
         </div>
       )}
 
-      {/* ── Manual entry ── */}
+      {/* Manual entry */}
       <div className="relative z-10 px-6 pb-4 safe-bottom">
         {showManual ? (
           <div className="flex gap-2 animate-slide-up">
@@ -228,12 +245,12 @@ export function ScannerOverlay({
               onChange={(e) => setManualCode(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleManualSubmit()}
               placeholder="Code EAN..."
-              className="flex-1 px-4 py-3 rounded-2xl bg-white text-mobile-text font-mono font-bold text-center text-sm focus:outline-none focus:ring-2 focus:ring-mobile-accent"
+              className="flex-1 px-4 py-3 rounded-2xl bg-white text-gray-900 font-mono font-bold text-center text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
             />
             <button
               onClick={handleManualSubmit}
               disabled={manualCode.trim().length < 3}
-              className="px-5 py-3 rounded-2xl bg-mobile-accent text-white font-bold disabled:opacity-40"
+              className="px-5 py-3 rounded-2xl bg-violet-600 text-white font-bold disabled:opacity-40"
             >
               OK
             </button>
@@ -255,10 +272,10 @@ export function ScannerOverlay({
         )}
       </div>
 
-      {/* ── Scan count badge ── */}
+      {/* Scan count */}
       {scanCount > 0 && (
         <div className="absolute top-4 right-16 z-20 safe-top">
-          <span className="px-2.5 py-1 rounded-full bg-mobile-accent text-white text-[10px] font-bold">
+          <span className="px-2.5 py-1 rounded-full bg-violet-600 text-white text-[10px] font-bold">
             {scanCount} scan{scanCount > 1 ? 's' : ''}
           </span>
         </div>
