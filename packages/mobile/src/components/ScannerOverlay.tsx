@@ -1,15 +1,10 @@
 // ── ScannerOverlay ───────────────────────────────────────────────
-// Fullscreen camera scanner
+// Fullscreen camera scanner with viewfinder
 //
-// Two rendering modes:
-// A) Native (Android Chrome): our <video> fills screen + BarcodeDetector
-// B) Fallback (iOS Safari): html5-qrcode renders in #html5qr-cam (z-0)
-//    Our UI floats at z-50 on top. We do NOT overlay a custom viewfinder
-//    because it can interfere with html5-qrcode's DOM. Instead, html5-qrcode
-//    renders its own scanning region, and we just add navigation + debug.
+// Both native BarcodeDetector and ZXing render into the same <video>
+// element, so we use a single unified layout for both modes.
 //
-// Debug panel: shows scanner state in real-time on the device so we
-// can diagnose issues without needing desktop Safari console.
+// Debug panel (🐛 icon) shows real-time scanner state on device.
 // ─────────────────────────────────────────────────────────────────
 
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -79,7 +74,6 @@ export function ScannerOverlay({
     debugLog,
   } = useScanner({ onScan: handleScan, continuous });
 
-  // Start camera ONCE on mount
   useEffect(() => {
     if (!cameraStarted.current) {
       cameraStarted.current = true;
@@ -99,35 +93,23 @@ export function ScannerOverlay({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col">
-      {/*
-        NATIVE MODE: show our <video> element.
-        FALLBACK MODE: html5-qrcode renders in #html5qr-cam at z-0,
-        this container is transparent so the camera shows through.
-      */}
-      {!usingFallback ? (
-        <>
-          <div className="absolute inset-0 bg-black" />
-          <video
-            ref={videoRef}
-            autoPlay
-            playsInline
-            muted
-            className="absolute inset-0 w-full h-full object-cover"
-          />
-          {/* Native mode viewfinder */}
-          <div className="absolute inset-0 pointer-events-none">
-            <div className="absolute top-0 left-0 right-0 h-[28%] bg-black/50" />
-            <div className="absolute bottom-0 left-0 right-0 h-[32%] bg-black/50" />
-            <div className="absolute top-[28%] bottom-[32%] left-0 w-[8%] bg-black/50" />
-            <div className="absolute top-[28%] bottom-[32%] right-0 w-[8%] bg-black/50" />
-          </div>
-        </>
-      ) : (
-        // Fallback mode: html5-qrcode is at z-0, we're at z-50
-        // Don't render any background — let html5-qrcode's camera show through
-        <div className="absolute inset-0" style={{ background: 'transparent' }} />
-      )}
+    <div className="fixed inset-0 z-50 flex flex-col bg-black">
+      {/* Video layer — used by BOTH native and ZXing modes */}
+      <video
+        ref={videoRef}
+        autoPlay
+        playsInline
+        muted
+        className="absolute inset-0 w-full h-full object-cover"
+      />
+
+      {/* Dark overlay with viewfinder cutout */}
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute top-0 left-0 right-0 h-[28%] bg-black/50" />
+        <div className="absolute bottom-0 left-0 right-0 h-[32%] bg-black/50" />
+        <div className="absolute top-[28%] bottom-[32%] left-0 w-[8%] bg-black/50" />
+        <div className="absolute top-[28%] bottom-[32%] right-0 w-[8%] bg-black/50" />
+      </div>
 
       {/* Green flash on scan */}
       {showFlash && (
@@ -160,20 +142,18 @@ export function ScannerOverlay({
           >
             <Bug size={16} />
           </button>
-          {/* Torch (native mode only) */}
-          {!usingFallback && (
-            <button
-              onClick={toggleTorch}
-              disabled={!torchAvailable}
-              className={`w-10 h-10 rounded-xl backdrop-blur flex items-center justify-center transition-colors ${
-                torchOn
-                  ? 'bg-yellow-400/80 text-black'
-                  : 'bg-black/60 text-white disabled:opacity-30'
-              }`}
-            >
-              {torchOn ? <FlashlightOff size={18} /> : <Flashlight size={18} />}
-            </button>
-          )}
+          {/* Torch */}
+          <button
+            onClick={toggleTorch}
+            disabled={!torchAvailable}
+            className={`w-10 h-10 rounded-xl backdrop-blur flex items-center justify-center transition-colors ${
+              torchOn
+                ? 'bg-yellow-400/80 text-black'
+                : 'bg-black/60 text-white disabled:opacity-30'
+            }`}
+          >
+            {torchOn ? <FlashlightOff size={18} /> : <Flashlight size={18} />}
+          </button>
         </div>
       </div>
 
@@ -187,45 +167,46 @@ export function ScannerOverlay({
         </div>
       )}
 
-      {/* Instruction (only native mode — html5-qrcode has its own) */}
-      {isActive && !usingFallback && (
+      {/* Mode indicator + instruction */}
+      {isActive && (
         <div className="relative z-10 text-center mt-2">
           <p className="text-white/80 text-sm font-medium drop-shadow">
             Placez le code-barres dans le cadre
           </p>
-          <ScanBarcode size={24} className="text-white/50 mx-auto mt-2" />
-        </div>
-      )}
-
-      {/* Native mode viewfinder corners */}
-      {!usingFallback && (
-        <div className="relative z-10 flex-1 flex items-center justify-center px-[8%]">
-          <div className="relative w-full" style={{ aspectRatio: '16/7' }}>
-            <div className="absolute -top-1 -left-1 w-8 h-8 corner-pulse" style={{ borderTop: '3px solid #7c3aed', borderLeft: '3px solid #7c3aed', borderRadius: '6px 0 0 0' }} />
-            <div className="absolute -top-1 -right-1 w-8 h-8 corner-pulse" style={{ borderTop: '3px solid #7c3aed', borderRight: '3px solid #7c3aed', borderRadius: '0 6px 0 0', animationDelay: '0.5s' }} />
-            <div className="absolute -bottom-1 -left-1 w-8 h-8 corner-pulse" style={{ borderBottom: '3px solid #7c3aed', borderLeft: '3px solid #7c3aed', borderRadius: '0 0 0 6px', animationDelay: '1s' }} />
-            <div className="absolute -bottom-1 -right-1 w-8 h-8 corner-pulse" style={{ borderBottom: '3px solid #7c3aed', borderRight: '3px solid #7c3aed', borderRadius: '0 0 6px 0', animationDelay: '1.5s' }} />
-            <div className="absolute left-2 right-2 h-[2px] bg-gradient-to-r from-transparent via-violet-500/80 to-transparent scan-line" />
+          <div className="flex items-center justify-center gap-2 mt-1">
+            <ScanBarcode size={16} className="text-white/50" />
+            <span className="text-white/40 text-[10px] font-mono">
+              {usingFallback ? 'ZXing' : 'BarcodeDetector'}
+            </span>
           </div>
         </div>
       )}
 
-      {/* Spacer for fallback mode */}
-      {usingFallback && <div className="flex-1" />}
+      {/* Viewfinder corners */}
+      <div className="relative z-10 flex-1 flex items-center justify-center px-[8%]">
+        <div className="relative w-full" style={{ aspectRatio: '16/7' }}>
+          <div className="absolute -top-1 -left-1 w-8 h-8 corner-pulse" style={{ borderTop: '3px solid #7c3aed', borderLeft: '3px solid #7c3aed', borderRadius: '6px 0 0 0' }} />
+          <div className="absolute -top-1 -right-1 w-8 h-8 corner-pulse" style={{ borderTop: '3px solid #7c3aed', borderRight: '3px solid #7c3aed', borderRadius: '0 6px 0 0', animationDelay: '0.5s' }} />
+          <div className="absolute -bottom-1 -left-1 w-8 h-8 corner-pulse" style={{ borderBottom: '3px solid #7c3aed', borderLeft: '3px solid #7c3aed', borderRadius: '0 0 0 6px', animationDelay: '1s' }} />
+          <div className="absolute -bottom-1 -right-1 w-8 h-8 corner-pulse" style={{ borderBottom: '3px solid #7c3aed', borderRight: '3px solid #7c3aed', borderRadius: '0 0 6px 0', animationDelay: '1.5s' }} />
+          <div className="absolute left-2 right-2 h-[2px] bg-gradient-to-r from-transparent via-violet-500/80 to-transparent scan-line" />
+        </div>
+      </div>
 
       {/* ── DEBUG PANEL ── */}
       {showDebug && (
-        <div className="relative z-10 mx-3 mb-2 max-h-40 overflow-y-auto rounded-xl bg-black/80 backdrop-blur border border-amber-500/40 p-2">
+        <div className="relative z-10 mx-3 mb-2 max-h-48 overflow-y-auto rounded-xl bg-black/80 backdrop-blur border border-amber-500/40 p-2">
           <p className="text-amber-400 text-[10px] font-bold mb-1">
-            🔧 DEBUG — Mode: {usingFallback ? 'html5-qrcode (iOS)' : 'BarcodeDetector (natif)'}
+            DEBUG — {usingFallback ? 'ZXing (iOS)' : 'BarcodeDetector (natif)'}
           </p>
           {debugLog.length === 0 ? (
             <p className="text-white/40 text-[9px] font-mono">En attente...</p>
           ) : (
             debugLog.map((line, i) => (
-              <p key={i} className={`text-[9px] font-mono ${
-                line.includes('DETECTE') || line.includes('DECODE') ? 'text-emerald-400 font-bold' :
+              <p key={i} className={`text-[9px] font-mono leading-tight ${
+                line.includes('DETECTE') || line.includes('decode:') ? 'text-emerald-400 font-bold' :
                 line.includes('ERREUR') || line.includes('ECHOUE') ? 'text-red-400' :
+                line.includes('DEMARRE') || line.includes('active') ? 'text-blue-400' :
                 'text-white/70'
               }`}>
                 {line}
@@ -320,7 +301,7 @@ export function ScannerOverlay({
 
       {/* Scan count */}
       {scanCount > 0 && (
-        <div className="absolute top-4 right-20 z-20 safe-top">
+        <div className="absolute top-4 right-24 z-20 safe-top">
           <span className="px-2.5 py-1 rounded-full bg-violet-600 text-white text-[10px] font-bold">
             {scanCount} scan{scanCount > 1 ? 's' : ''}
           </span>

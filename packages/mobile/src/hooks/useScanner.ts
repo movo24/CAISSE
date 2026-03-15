@@ -1,13 +1,13 @@
 // ── useScanner ───────────────────────────────────────────────────
 // Barcode scanner hook
 //
-// Strategy:
-//  1. BarcodeDetector API (native Chrome/Edge/Android)
-//     → Uses our <video> element + setInterval detect()
-//  2. html5-qrcode fallback (iOS Safari, older browsers)
-//     → html5-qrcode manages its own camera + video + canvas
-//     → We do NOT open getUserMedia — html5-qrcode does it
-//     → We do NOT fight its DOM — we let it render freely
+// Detection engines:
+//  1. Native BarcodeDetector API (Chrome/Edge/Android 83+)
+//     → getUserMedia + setInterval detect() on our <video>
+//  2. ZXing (@zxing/browser) — works on ALL browsers including iOS Safari
+//     → BrowserMultiFormatReader.decodeFromConstraints()
+//     → ZXing opens its own camera stream and renders in our <video>
+//     → Much more reliable than html5-qrcode on iOS
 //  3. Manual entry always available
 //
 // Debug: exposes debugLog[] for visible on-screen diagnostics
@@ -99,7 +99,7 @@ export function useScanner({
   const videoRef = useRef<HTMLVideoElement>(null!);
   const streamRef = useRef<MediaStream | null>(null);
   const scanIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const html5QrRef = useRef<any>(null);
+  const zxingControlsRef = useRef<{ stop: () => void } | null>(null);
   const cooldownRef = useRef(false);
   const lastCodeRef = useRef<string>('');
   const mountedRef = useRef(true);
@@ -123,7 +123,7 @@ export function useScanner({
 
   const addDebug = useCallback((msg: string) => {
     console.log('[Scanner]', msg);
-    setDebugLog((prev) => [...prev.slice(-9), `${new Date().toLocaleTimeString('fr-FR')}: ${msg}`]);
+    setDebugLog((prev) => [...prev.slice(-14), `${new Date().toLocaleTimeString('fr-FR')}: ${msg}`]);
   }, []);
 
   useEffect(() => {
@@ -182,29 +182,25 @@ export function useScanner({
   // ── Stop camera ──
 
   const stopCamera = useCallback(async () => {
+    // Stop native BarcodeDetector interval
     if (scanIntervalRef.current) {
       clearInterval(scanIntervalRef.current);
       scanIntervalRef.current = null;
     }
 
-    if (html5QrRef.current) {
-      const qr = html5QrRef.current;
-      html5QrRef.current = null;
-      try { await qr.stop(); } catch { /* */ }
+    // Stop ZXing continuous scanning
+    if (zxingControlsRef.current) {
+      try { zxingControlsRef.current.stop(); } catch { /* */ }
+      zxingControlsRef.current = null;
     }
 
-    // Clean up html5-qrcode container
-    const container = document.getElementById('html5qr-cam');
-    if (container) {
-      container.style.display = 'none';
-      while (container.firstChild) container.removeChild(container.firstChild);
-    }
-
+    // Stop media stream
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
     }
 
+    // Clean video element
     if (videoRef.current) videoRef.current.srcObject = null;
 
     if (mountedRef.current) {
@@ -229,9 +225,11 @@ export function useScanner({
     const canUseNative = hasBarcodeDetectorAPI();
     addDebug(`BarcodeDetector: ${canUseNative ? 'OUI' : 'NON'}`);
 
-    // ═══ STRATEGY 1: Native BarcodeDetector ═══
+    // ═══════════════════════════════════════════════════════
+    // STRATEGY 1: Native BarcodeDetector (Android Chrome)
+    // ═══════════════════════════════════════════════════════
     if (canUseNative) {
-      addDebug('Mode natif (getUserMedia + BarcodeDetector)');
+      addDebug('Mode natif (BarcodeDetector)');
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
@@ -274,7 +272,7 @@ export function useScanner({
         await new Promise((r) => setTimeout(r, 500));
         if (!mountedRef.current || !streamRef.current) return;
 
-        addDebug('Detection native active');
+        addDebug('Detection native active (200ms interval)');
         scanIntervalRef.current = setInterval(async () => {
           if (!videoRef.current || videoRef.current.readyState < 2) return;
           if (!streamRef.current) return;
@@ -294,84 +292,94 @@ export function useScanner({
       }
     }
 
-    // ═══ STRATEGY 2: html5-qrcode (iOS Safari) ═══
-    // Let html5-qrcode handle EVERYTHING — camera, video, canvas, detection.
-    // We only provide a container div and callbacks.
-    addDebug('Mode html5-qrcode (iOS)');
+    // ═══════════════════════════════════════════════════════
+    // STRATEGY 2: ZXing (@zxing/browser) — iOS Safari + all
+    // ZXing opens getUserMedia itself and renders in our
+    // <video> element. It handles its own canvas internally.
+    // Much more reliable than html5-qrcode on iOS.
+    // ═══════════════════════════════════════════════════════
+    addDebug('Mode ZXing (@zxing/browser)');
 
     try {
-      const html5QrcodeModule = await import('html5-qrcode');
-      const { Html5Qrcode, Html5QrcodeSupportedFormats } = html5QrcodeModule;
+      const { BrowserMultiFormatReader } = await import('@zxing/browser');
+      const { BarcodeFormat, DecodeHintType } = await import('@zxing/library');
 
       if (!mountedRef.current) return;
 
-      // Create container — html5-qrcode will fill it with video + canvas
-      let container = document.getElementById('html5qr-cam');
-      if (!container) {
-        container = document.createElement('div');
-        container.id = 'html5qr-cam';
-        document.body.appendChild(container);
-      }
-      // Position full-screen, behind our UI (z-index 50)
-      container.style.cssText = 'position:fixed;inset:0;z-index:0;background:#000;display:block;';
+      // Configure hints for barcode formats
+      const hints = new Map();
+      hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+        BarcodeFormat.EAN_13,
+        BarcodeFormat.EAN_8,
+        BarcodeFormat.UPC_A,
+        BarcodeFormat.UPC_E,
+        BarcodeFormat.CODE_128,
+        BarcodeFormat.CODE_39,
+        BarcodeFormat.QR_CODE,
+      ]);
+      // Try harder to find barcodes
+      hints.set(DecodeHintType.TRY_HARDER, true);
 
-      addDebug('Container cree, init html5Qrcode...');
+      addDebug('Formats: EAN-13/8, UPC-A/E, Code128/39, QR');
 
-      const formatsToSupport = [
-        Html5QrcodeSupportedFormats.EAN_13,
-        Html5QrcodeSupportedFormats.EAN_8,
-        Html5QrcodeSupportedFormats.UPC_A,
-        Html5QrcodeSupportedFormats.UPC_E,
-        Html5QrcodeSupportedFormats.CODE_128,
-        Html5QrcodeSupportedFormats.CODE_39,
-        Html5QrcodeSupportedFormats.QR_CODE,
-      ];
+      const reader = new BrowserMultiFormatReader(hints, {
+        delayBetweenScanAttempts: 150, // Scan every 150ms
+        delayBetweenScanSuccess: 1000,  // Wait 1s between successful scans
+      });
 
-      addDebug(`Formats: ${formatsToSupport.join(',')}`);
+      addDebug('ZXing reader cree, demarrage camera...');
 
-      const html5Qr = new Html5Qrcode('html5qr-cam', {
-        formatsToSupport,
-        experimentalFeatures: {
-          useBarCodeDetectorIfSupported: false, // Force ZXing on iOS — no native BarcodeDetector
-        },
-        verbose: true, // Temporary — helps diagnose on device
-      } as any);
-
-      html5QrRef.current = html5Qr;
-
-      addDebug('html5Qrcode instancie, demarrage camera...');
-
-      // Calculate qrbox based on screen size — html5-qrcode NEEDS this
-      // for proper scanning region setup
-      const screenW = window.innerWidth;
-      const screenH = window.innerHeight;
-      const qrboxW = Math.floor(screenW * 0.8);
-      const qrboxH = Math.floor(qrboxW * 0.4); // Wide rectangle for barcodes
-
-      addDebug(`qrbox: ${qrboxW}x${qrboxH} (ecran: ${screenW}x${screenH})`);
-
-      await html5Qr.start(
-        { facingMode: 'environment' },
+      // decodeFromConstraints: opens camera, renders in videoRef, and
+      // continuously calls our callback with decode results.
+      // It returns IScannerControls with a stop() method.
+      const controls = await reader.decodeFromConstraints(
         {
-          fps: 10,
-          qrbox: { width: qrboxW, height: qrboxH },
-          aspectRatio: screenW / screenH,
-          disableFlip: false,
+          video: {
+            facingMode: 'environment',
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
+          audio: false,
         },
-        (decodedText: string) => {
-          addDebug(`DECODE: "${decodedText}"`);
-          handleDetection(decodedText, 'html5-qrcode');
+        videoRef.current, // ZXing renders camera into OUR video element
+        (result, error) => {
+          if (result) {
+            const text = result.getText();
+            const format = BarcodeFormat[result.getBarcodeFormat()] || 'unknown';
+            addDebug(`ZXing decode: "${text}" (${format})`);
+            handleDetection(text, format);
+          }
+          // error is normal when no barcode is found — don't log unless it's real
+          if (error && error.name !== 'NotFoundException') {
+            addDebug(`ZXing err: ${error.name}`);
+          }
         },
-        undefined, // Don't pass error callback — reduces noise
       );
+
+      zxingControlsRef.current = controls;
+
+      // Grab the stream for torch support
+      if (videoRef.current?.srcObject) {
+        const stream = videoRef.current.srcObject as MediaStream;
+        streamRef.current = stream;
+        const track = stream.getVideoTracks()[0];
+        if (track) {
+          try {
+            const caps = track.getCapabilities?.() as any;
+            if (caps?.torch && mountedRef.current) setTorchAvailable(true);
+          } catch { /* */ }
+          addDebug(`Camera: ${track.label}`);
+        }
+      }
 
       if (mountedRef.current) {
         setIsActive(true);
         setUsingFallback(true);
       }
-      addDebug('html5-qrcode DEMARRE OK — detection active');
+      addDebug('ZXing DEMARRE OK — scan continu actif');
+
     } catch (err: any) {
-      addDebug(`html5-qrcode ECHOUE: ${err.message || err}`);
+      addDebug(`ZXing ECHOUE: ${err.message || err}`);
 
       // Last resort: open camera for manual entry only
       try {

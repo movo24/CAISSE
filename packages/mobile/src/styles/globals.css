@@ -117,16 +117,6 @@ button, a, [role="button"] {
   transition: transform 0.08s ease;
 }
 
-/* ── html5-qrcode fallback ──
-   Let html5-qrcode manage its own DOM freely.
-   We ONLY set the container position — NO overrides on video, canvas,
-   or internal divs. html5-qrcode needs full control of its elements
-   for barcode detection to work.
-   Our UI (ScannerOverlay) floats at z-50 on top. */
-
-#html5qr-cam {
-  position: fixed !important;
-  inset: 0 !important;
-  z-index: 0 !important;
-  background: #000 !important;
-}
+/* ── Scanner ──
+   ZXing renders into our own <video> element — no special CSS needed.
+   This is intentionally empty. */
