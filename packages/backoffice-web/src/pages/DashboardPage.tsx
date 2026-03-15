@@ -248,7 +248,9 @@ export function DashboardPage() {
   const objectifPct = Math.round((perfData.caMois / perfData.objectifMois) * 100);
 
   // Find peak hour
-  const peakHour = perfData.hourlyCA.reduce((max, h) => h.ca > max.ca ? h : max, perfData.hourlyCA[0]);
+  const peakHour = perfData.hourlyCA.length > 0
+    ? perfData.hourlyCA.reduce((max, h) => h.ca > max.ca ? h : max, perfData.hourlyCA[0])
+    : { hour: 0, ca: 0 };
   const maxHourlyCA = peakHour.ca;
 
   // Current week progress
