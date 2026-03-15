@@ -2,15 +2,16 @@ import {
   IsInt,
   IsString,
   IsNotEmpty,
+  IsOptional,
+  IsIn,
   Min,
   MaxLength,
 } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class AdjustStockDto {
-  @ApiProperty({ example: 50, description: 'New stock quantity' })
+  @ApiProperty({ example: 50, description: 'Stock quantity (absolute new value, or delta depending on mode)' })
   @IsInt()
-  @Min(0)
   quantity: number;
 
   @ApiProperty({ example: 'Inventaire physique', description: 'Reason for adjustment' })
@@ -18,6 +19,12 @@ export class AdjustStockDto {
   @IsNotEmpty()
   @MaxLength(500)
   reason: string;
+
+  @ApiProperty({ example: 'absolute', description: 'Mode: absolute = set to this value, delta = add/subtract from current', required: false })
+  @IsOptional()
+  @IsString()
+  @IsIn(['absolute', 'delta'])
+  mode?: 'absolute' | 'delta';
 }
 
 export class UpdateThresholdsDto {

@@ -129,8 +129,13 @@ export const productsApi = {
 
 export const stockApi = {
   alerts: () => api.get('/stock/alerts'),
-  adjust: (productId: string, data: { quantity: number; reason: string }) =>
-    api.post(`/stock/${productId}/adjust`, data),
+  /** Adjust stock — mode: 'absolute' sets to exact value, 'delta' adds/subtracts */
+  adjust: (productId: string, data: { quantity: number; reason: string; mode?: 'absolute' | 'delta' }) =>
+    api.post(`/stock/${productId}/adjust`, {
+      quantity: Math.round(Number(data.quantity) || 0),
+      reason: data.reason || 'ajustement_mobile',
+      mode: data.mode || 'absolute',
+    }),
 };
 
 export default api;

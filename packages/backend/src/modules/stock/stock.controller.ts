@@ -57,6 +57,7 @@ export class StockController {
       req.user.storeId,
       req.user.employeeId,
       dto.reason,
+      dto.mode || 'absolute',
     );
   }
 }

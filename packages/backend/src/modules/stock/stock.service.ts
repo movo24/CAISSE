@@ -109,10 +109,11 @@ export class StockService {
 
   async adjustStock(
     productId: string,
-    newQuantity: number,
+    quantity: number,
     storeId: string,
     employeeId: string,
     reason: string,
+    mode: 'absolute' | 'delta' = 'absolute',
   ): Promise<ProductEntity> {
     // Use transaction with pessimistic lock to prevent race conditions
     return this.dataSource.transaction(async (manager) => {
@@ -127,11 +128,23 @@ export class StockService {
         );
       }
 
-      const oldQty = product.stockQuantity;
-      product.stockQuantity = newQuantity;
+      const oldQty = product.stockQuantity ?? 0;
+
+      if (mode === 'delta') {
+        // Delta mode: add/subtract from current stock
+        product.stockQuantity = Math.max(0, oldQty + quantity);
+      } else {
+        // Absolute mode: set to exact value (must be >= 0)
+        product.stockQuantity = Math.max(0, quantity);
+      }
+
       const saved = await manager.save(product);
 
-      // Audit outside lock (non-critical, append-only)
+      this.logger.log(
+        `Stock adjusted: ${product.name} (${product.ean}) ${oldQty} → ${saved.stockQuantity} (mode=${mode}, value=${quantity}, reason=${reason})`,
+      );
+
+      // Audit
       await this.auditService.log({
         storeId,
         employeeId,
@@ -140,7 +153,9 @@ export class StockService {
         entityId: productId,
         details: {
           oldQuantity: oldQty,
-          newQuantity,
+          newQuantity: saved.stockQuantity,
+          inputValue: quantity,
+          mode,
           reason,
           productName: product.name,
         },

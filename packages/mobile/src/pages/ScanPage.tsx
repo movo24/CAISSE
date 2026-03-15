@@ -9,6 +9,11 @@ import { ProductCard } from '../components/ProductCard';
 import { productsApi } from '../services/api';
 import { ScanResult } from '../hooks/useScanner';
 
+function safeInt(v: unknown): number {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.round(n) : 0;
+}
+
 interface Product {
   id: string;
   name: string;
@@ -29,12 +34,22 @@ export function ScanPage() {
     setError(null);
     setLoading(true);
 
+    console.log('[Scan] Code:', result.code, 'format:', result.format);
+
     try {
       const res = await productsApi.scan(result.code);
-      setProduct(res.data);
+      const data = res.data;
+
+      // Sanitize all numeric fields
+      setProduct({
+        ...data,
+        priceMinorUnits: safeInt(data.priceMinorUnits),
+        stockQuantity: safeInt(data.stockQuantity),
+        stockAlertThreshold: data.stockAlertThreshold != null ? safeInt(data.stockAlertThreshold) : undefined,
+      });
     } catch (err: any) {
       if (err.response?.status === 404) {
-        setError(`Produit non trouve : ${result.code}`);
+        setError(`Produit introuvable : ${result.code}`);
       } else {
         setError('Erreur de connexion au serveur');
       }
