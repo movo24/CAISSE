@@ -116,3 +116,48 @@ button, a, [role="button"] {
   transform: scale(0.92);
   transition: transform 0.08s ease;
 }
+
+/* ── html5-qrcode fallback camera overrides ──
+   html5-qrcode renders its own video + UI inside #html5qr-cam.
+   We force the video to fill the screen and hide its built-in UI
+   (we have our own viewfinder overlay in ScannerOverlay). */
+
+#html5qr-cam {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 1 !important;
+  background: black !important;
+  overflow: hidden !important;
+}
+
+/* Force html5-qrcode's video element to fill the screen */
+#html5qr-cam video {
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  z-index: 1 !important;
+}
+
+/* Hide html5-qrcode's own scanning region overlay (white box + viewfinder) */
+#html5qr-cam > div:not(:has(video)) {
+  display: none !important;
+}
+
+/* Fallback: hide any html5-qrcode UI that isn't the video */
+#html5qr-cam img,
+#html5qr-cam canvas {
+  display: none !important;
+}
+
+/* html5-qrcode internal scan region — make fully transparent */
+#html5qr-cam [style*="border"] {
+  border: none !important;
+  background: transparent !important;
+}
+
+#html5qr-cam div[style*="position: absolute"] {
+  background: transparent !important;
+}

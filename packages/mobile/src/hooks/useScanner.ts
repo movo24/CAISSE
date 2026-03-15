@@ -352,13 +352,15 @@ export function useScanner({
       const html5Qr = new Html5Qrcode('html5qr-cam', false);
       html5QrRef.current = html5Qr;
 
+      // No qrbox — we have our own viewfinder overlay.
+      // Without qrbox, html5-qrcode scans the entire frame and
+      // doesn't render its own white scanning region UI.
       await html5Qr.start(
         { facingMode: 'environment' },
         {
           fps: 10,
-          qrbox: { width: 250, height: 140 },
-          aspectRatio: 1.7778,
           disableFlip: false,
+          // No qrbox = scan entire frame, no built-in UI overlay
         } as any,
         (decodedText: string) => {
           console.log('[Scanner] html5-qrcode result:', decodedText);
