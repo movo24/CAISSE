@@ -80,7 +80,7 @@ export function ProductCard({ product, onClose, onStockUpdated }: ProductCardPro
   };
 
   return (
-    <div className="fixed inset-0 z-40 flex items-end justify-center">
+    <div className="fixed inset-0 z-[60] flex items-end justify-center">
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/40 backdrop-blur-sm"
