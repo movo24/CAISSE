@@ -13,6 +13,7 @@ import {
   X, PackagePlus, Check, Loader2, ChevronDown,
 } from 'lucide-react';
 import { productsApi } from '../services/api';
+import { ProductImagePicker } from './ProductImagePicker';
 
 interface CreateProductFormProps {
   ean: string;
@@ -29,6 +30,7 @@ export function CreateProductForm({ ean, onCreated, onClose }: CreateProductForm
   const [stockInitial, setStockInitial] = useState('0');
   const [alertThreshold, setAlertThreshold] = useState('10');
   const [description, setDescription] = useState('');
+  const [productImage, setProductImage] = useState<string | null>(null);
 
   const [categories, setCategories] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
@@ -79,6 +81,7 @@ export function CreateProductForm({ ean, onCreated, onClose }: CreateProductForm
         stockQuantity: Math.max(0, stock),
         stockAlertThreshold: Math.max(0, threshold),
         ...(description.trim() && { description: description.trim() }),
+        ...(productImage && { imageUrl: productImage }),
       });
 
       onCreated(res.data);
@@ -224,6 +227,16 @@ export function CreateProductForm({ ean, onCreated, onClose }: CreateProductForm
                 onChange={(e) => setAlertThreshold(e.target.value)}
                 placeholder="10"
                 className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm font-mono text-center focus:outline-none focus:ring-2 focus:ring-violet-500"
+              />
+            </div>
+
+            {/* Photo produit */}
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 mb-2">Photo du produit</label>
+              <ProductImagePicker
+                currentImage={productImage}
+                onImageSelected={(dataUrl) => setProductImage(dataUrl)}
+                onImageRemoved={() => setProductImage(null)}
               />
             </div>
 

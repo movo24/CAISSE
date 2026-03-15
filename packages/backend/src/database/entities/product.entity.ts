@@ -44,8 +44,8 @@ export class ProductEntity {
   @Column({ name: 'tax_rate', type: 'decimal', default: 20.0 })
   taxRate: number;
 
-  @Column({ name: 'image_url', nullable: true })
-  imageUrl: string;
+  @Column({ name: 'image_url', nullable: true, type: 'text' })
+  imageUrl: string | null;
 
   @Column({ name: 'stock_quantity', type: 'integer', default: 0 })
   stockQuantity: number;

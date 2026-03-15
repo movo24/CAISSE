@@ -182,7 +182,11 @@ export const productsApi = {
     stockQuantity?: number;
     stockAlertThreshold?: number;
     description?: string;
+    imageUrl?: string;
   }) => api.post('/products', data),
+  /** Update product fields (including imageUrl for photo) */
+  update: (id: string, data: Record<string, unknown>) =>
+    api.put(`/products/${id}`, data),
 };
 
 export const stockApi = {

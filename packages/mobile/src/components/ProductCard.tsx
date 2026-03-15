@@ -12,7 +12,8 @@ import {
   CheckCircle2, AlertTriangle,
 } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
-import { stockApi } from '../services/api';
+import { stockApi, productsApi } from '../services/api';
+import { ProductImagePicker } from './ProductImagePicker';
 
 function safeInt(v: unknown): number {
   const n = Number(v);
@@ -42,6 +43,8 @@ export function ProductCard({ product, onClose, onStockUpdated }: ProductCardPro
   const [adjusting, setAdjusting] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [imageUrl, setImageUrl] = useState(product.imageUrl || null);
+  const [uploadingImage, setUploadingImage] = useState(false);
 
   const stockQty = safeInt(product.stockQuantity);
   const price = safeInt(product.priceMinorUnits);
@@ -79,6 +82,31 @@ export function ProductCard({ product, onClose, onStockUpdated }: ProductCardPro
     }
   };
 
+  const handleImageUpload = async (dataUrl: string) => {
+    setUploadingImage(true);
+    try {
+      await productsApi.update(product.id, { imageUrl: dataUrl });
+      setImageUrl(dataUrl);
+    } catch (err: any) {
+      const msg = err.response?.data?.message || 'Erreur upload image';
+      setError(Array.isArray(msg) ? msg.join(', ') : msg);
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
+  const handleImageRemove = async () => {
+    setUploadingImage(true);
+    try {
+      await productsApi.update(product.id, { imageUrl: null });
+      setImageUrl(null);
+    } catch {
+      setError('Erreur suppression image');
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-[60] flex items-end justify-center">
       {/* Backdrop */}
@@ -88,7 +116,7 @@ export function ProductCard({ product, onClose, onStockUpdated }: ProductCardPro
       />
 
       {/* Sheet */}
-      <div className="relative w-full max-w-lg bg-white rounded-t-3xl shadow-elevated sheet-slide-up safe-bottom">
+      <div className="relative w-full max-w-lg bg-white rounded-t-3xl shadow-elevated sheet-slide-up safe-bottom max-h-[90vh] overflow-y-auto">
         {/* Handle */}
         <div className="flex justify-center pt-3 pb-2">
           <div className="w-10 h-1 rounded-full bg-gray-200" />
@@ -103,11 +131,11 @@ export function ProductCard({ product, onClose, onStockUpdated }: ProductCardPro
         </button>
 
         <div className="px-5 pb-6">
-          {/* Product image + info */}
-          <div className="flex gap-4 mb-5">
+          {/* Product info header */}
+          <div className="flex gap-4 mb-4">
             <div className="w-20 h-20 rounded-2xl bg-gray-100 flex-shrink-0 overflow-hidden">
-              {product.imageUrl ? (
-                <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover" />
+              {imageUrl ? (
+                <img src={imageUrl} alt={product.name} className="w-full h-full object-cover" />
               ) : (
                 <div className="w-full h-full flex items-center justify-center">
                   <Package size={28} className="text-gray-300" />
@@ -125,6 +153,16 @@ export function ProductCard({ product, onClose, onStockUpdated }: ProductCardPro
                 </div>
               )}
             </div>
+          </div>
+
+          {/* Photo section */}
+          <div className="mb-5 pt-4 border-t border-gray-100">
+            <ProductImagePicker
+              currentImage={imageUrl}
+              onImageSelected={handleImageUpload}
+              onImageRemoved={handleImageRemove}
+              uploading={uploadingImage}
+            />
           </div>
 
           {/* Price + Stock row */}

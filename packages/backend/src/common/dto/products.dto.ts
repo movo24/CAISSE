@@ -7,6 +7,7 @@ import {
   IsBoolean,
   Min,
   MaxLength,
+  ValidateIf,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -131,10 +132,11 @@ export class UpdateProductDto {
   @Min(0)
   taxRate?: number;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ description: 'Product image as data URL or URL. Send null to remove.' })
   @IsOptional()
+  @ValidateIf((_o, v) => v !== null)
   @IsString()
-  imageUrl?: string;
+  imageUrl?: string | null;
 
   @ApiPropertyOptional()
   @IsOptional()
