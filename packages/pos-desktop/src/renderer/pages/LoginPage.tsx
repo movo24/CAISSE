@@ -41,6 +41,10 @@ export function LoginPage() {
         res = await authApi.loginQr(qrCode, pin);
       }
       setEmployee(res.data.employee, res.data.accessToken);
+      // Store refresh token for session persistence
+      if (res.data.refreshToken) {
+        localStorage.setItem('refreshToken', res.data.refreshToken);
+      }
       // Store info from backend login response (or fallback fetch)
       if (res.data.storeInfo) {
         setStoreInfo(res.data.storeInfo);

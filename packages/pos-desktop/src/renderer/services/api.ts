@@ -89,6 +89,12 @@ api.interceptors.request.use(async (config) => {
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
+    const url = error.config?.url || '';
+    // Never redirect on auth endpoints — let the caller handle auth errors
+    if (url.includes('/auth/login') || url.includes('/auth/refresh')) {
+      return Promise.reject(error);
+    }
+
     if (error.response?.status === 401) {
       // Try refresh one more time if we haven't already
       const refreshToken = localStorage.getItem('refreshToken');
@@ -106,8 +112,12 @@ api.interceptors.response.use(
       localStorage.removeItem('refreshToken');
       localStorage.removeItem('employee');
       // Only redirect in browser context (not during sync)
+      // Use React-friendly navigation instead of hard redirect
       if (typeof window !== 'undefined' && window.location) {
-        window.location.href = '/login';
+        // Don't redirect if already on login page
+        if (!window.location.pathname.startsWith('/login') && window.location.pathname !== '/') {
+          window.location.href = '/login';
+        }
       }
     }
     return Promise.reject(error);
