@@ -3,15 +3,34 @@ import {
   PrimaryGeneratedColumn,
   Column,
   CreateDateColumn,
+  UpdateDateColumn,
   OneToMany,
+  ManyToOne,
+  JoinColumn,
+  Index,
 } from 'typeorm';
 import { EmployeeEntity } from './employee.entity';
 import { ProductEntity } from './product.entity';
+import { OrganizationEntity } from './organization.entity';
+import { UnitEntity } from './unit.entity';
 
 @Entity('stores')
+@Index(['organizationId', 'isActive'])
+@Index(['unitId', 'isActive'])
 export class StoreEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
+
+  // ── Hierarchy: Organization → Unit → Store ──
+
+  @Column({ name: 'organization_id', nullable: true })
+  organizationId: string | null;
+
+  @Column({ name: 'unit_id', nullable: true })
+  unitId: string | null;
+
+  @Column({ name: 'store_code', nullable: true })
+  storeCode: string;
 
   @Column()
   name: string;
@@ -102,6 +121,19 @@ export class StoreEntity {
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
+
+  @UpdateDateColumn({ name: 'updated_at' })
+  updatedAt: Date;
+
+  // ── Relations ──
+
+  @ManyToOne(() => OrganizationEntity, (o) => o.stores, { nullable: true })
+  @JoinColumn({ name: 'organization_id' })
+  organization: OrganizationEntity;
+
+  @ManyToOne(() => UnitEntity, (u) => u.stores, { nullable: true })
+  @JoinColumn({ name: 'unit_id' })
+  unit: UnitEntity;
 
   @OneToMany(() => EmployeeEntity, (e) => e.store)
   employees: EmployeeEntity[];

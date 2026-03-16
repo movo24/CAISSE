@@ -34,6 +34,9 @@ import { TransportModule } from './modules/transport/transport.module';
 import { FootfallModule } from './modules/footfall/footfall.module';
 import { DecisionEngineModule } from './modules/decision-engine/decision-engine.module';
 import { CacheModule } from './common/cache/cache.module';
+import { OrganizationsModule } from './modules/organizations/organizations.module';
+import { UnitsModule } from './modules/units/units.module';
+import { ConnectedAppsModule } from './modules/connected-apps/connected-apps.module';
 
 const isProd = process.env.NODE_ENV === 'production';
 
@@ -97,6 +100,9 @@ const isProd = process.env.NODE_ENV === 'production';
     TransportModule,
     FootfallModule,
     DecisionEngineModule,
+    OrganizationsModule,
+    UnitsModule,
+    ConnectedAppsModule,
   ],
   providers: [
     // Apply rate limiting globally to ALL endpoints

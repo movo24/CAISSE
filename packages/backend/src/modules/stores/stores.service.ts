@@ -20,6 +20,21 @@ export class StoresService {
     return this.storeRepo.save(store);
   }
 
+  /** List all stores, optionally filtered by organization or unit */
+  async findAll(filters?: {
+    organizationId?: string;
+    unitId?: string;
+  }): Promise<StoreEntity[]> {
+    const where: any = {};
+    if (filters?.organizationId) where.organizationId = filters.organizationId;
+    if (filters?.unitId) where.unitId = filters.unitId;
+    return this.storeRepo.find({
+      where,
+      order: { name: 'ASC' },
+      relations: ['organization', 'unit'],
+    });
+  }
+
   /** Returns only the user's own store (tenant-scoped) */
   async findMyStore(storeId: string): Promise<StoreEntity> {
     const store = await this.storeRepo.findOne({

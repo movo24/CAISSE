@@ -1,9 +1,11 @@
 import {
   Controller,
   Get,
+  Post,
   Put,
   Param,
   Body,
+  Query,
   UseGuards,
   Request,
 } from '@nestjs/common';
@@ -19,6 +21,27 @@ import { UpdateStoreDto } from '../../common/dto';
 @Controller('stores')
 export class StoresController {
   constructor(private storesService: StoresService) {}
+
+  /**
+   * GET /api/stores — list all stores (for backoffice tour de controle)
+   */
+  @Get()
+  @ApiOperation({ summary: 'List all stores (optionally filter by org/unit)' })
+  findAll(
+    @Query('organizationId') organizationId?: string,
+    @Query('unitId') unitId?: string,
+  ) {
+    return this.storesService.findAll({ organizationId, unitId });
+  }
+
+  /**
+   * POST /api/stores — create a new store
+   */
+  @Post()
+  @ApiOperation({ summary: 'Create a new store' })
+  create(@Body() body: Partial<any>) {
+    return this.storesService.create(body);
+  }
 
   /**
    * GET /api/stores/me — returns the authenticated user's own store.
