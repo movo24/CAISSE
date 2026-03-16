@@ -173,6 +173,9 @@ export const storesApi = {
   get: (id: string) => api.get(`/stores/${id}`),
   create: (data: Record<string, unknown>) => api.post('/stores', data),
   update: (id: string, data: any) => api.put(`/stores/${id}`, data),
+  archive: (id: string) => api.patch(`/stores/${id}/archive`),
+  activate: (id: string) => api.post(`/stores/${id}/activate`),
+  deactivate: (id: string) => api.post(`/stores/${id}/deactivate`),
 };
 
 // ---------------------------------------------------------------------------
@@ -246,7 +249,7 @@ export const currencyApi = {
     quoteCurrency: string;
     rate: number;
     source: string;
-  }) => api.post('/currency/rate', data),
+  }) => api.post('/currency/rates', data),
   convert: (from: string, to: string, amountMinor: number) =>
     api.get('/currency/convert', { params: { from, to, amountMinor } }),
 };

@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Put,
+  Patch,
   Param,
   Body,
   Query,
@@ -13,11 +14,11 @@ import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { StoresService } from './stores.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard, Roles } from '../../common/guards/roles.guard';
-import { UpdateStoreDto } from '../../common/dto';
+import { CreateStoreDto, UpdateStoreDto } from '../../common/dto';
 
 @ApiTags('stores')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('stores')
 export class StoresController {
   constructor(private storesService: StoresService) {}
@@ -38,9 +39,10 @@ export class StoresController {
    * POST /api/stores — create a new store
    */
   @Post()
+  @Roles('admin')
   @ApiOperation({ summary: 'Create a new store' })
-  create(@Body() body: Partial<any>) {
-    return this.storesService.create(body);
+  create(@Body() dto: CreateStoreDto) {
+    return this.storesService.create(dto);
   }
 
   /**
@@ -75,9 +77,33 @@ export class StoresController {
 
   @Put(':id')
   @Roles('admin')
-  @UseGuards(RolesGuard)
   @ApiOperation({ summary: 'Update your store' })
-  update(@Param('id') id: string, @Body() dto: UpdateStoreDto, @Request() req: any) {
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateStoreDto,
+    @Request() req: any,
+  ) {
     return this.storesService.update(id, dto, req.user.storeId);
+  }
+
+  @Patch(':id/archive')
+  @Roles('admin')
+  @ApiOperation({ summary: 'Archive a store' })
+  archive(@Param('id') id: string) {
+    return this.storesService.archive(id);
+  }
+
+  @Post(':id/activate')
+  @Roles('admin')
+  @ApiOperation({ summary: 'Activate a store' })
+  activate(@Param('id') id: string) {
+    return this.storesService.activate(id);
+  }
+
+  @Post(':id/deactivate')
+  @Roles('admin')
+  @ApiOperation({ summary: 'Deactivate a store' })
+  deactivate(@Param('id') id: string) {
+    return this.storesService.deactivate(id);
   }
 }

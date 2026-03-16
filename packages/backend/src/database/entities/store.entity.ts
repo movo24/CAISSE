@@ -116,6 +116,9 @@ export class StoreEntity {
 
   // ── System fields ──
 
+  @Column({ name: 'is_archived', default: false })
+  isArchived: boolean;
+
   @Column({ name: 'is_active', default: true })
   isActive: boolean;
 

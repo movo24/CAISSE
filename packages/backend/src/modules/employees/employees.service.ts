@@ -10,6 +10,46 @@ import { v4 as uuidv4 } from 'uuid';
 import { EmployeeEntity } from '../../database/entities/employee.entity';
 import { AuthService } from '../auth/auth.service';
 
+// ── Role-based defaults ──
+const ROLE_RIGHTS: Record<string, any> = {
+  admin: {
+    role: 'admin',
+    maxDiscountPercent: 100,
+    canVoidSale: true,
+    canRefund: true,
+    canAccessReports: true,
+    canManageStock: true,
+    canDeleteTicket: true,
+    canApplyManualDiscount: true,
+    canOpenDrawer: true,
+    canReprintTicket: true,
+  },
+  manager: {
+    role: 'manager',
+    maxDiscountPercent: 20,
+    canVoidSale: true,
+    canRefund: true,
+    canAccessReports: true,
+    canManageStock: true,
+    canDeleteTicket: false,
+    canApplyManualDiscount: true,
+    canOpenDrawer: true,
+    canReprintTicket: true,
+  },
+  cashier: {
+    role: 'cashier',
+    maxDiscountPercent: 5,
+    canVoidSale: false,
+    canRefund: false,
+    canAccessReports: false,
+    canManageStock: false,
+    canDeleteTicket: false,
+    canApplyManualDiscount: false,
+    canOpenDrawer: false,
+    canReprintTicket: true,
+  },
+};
+
 @Injectable()
 export class EmployeesService {
   constructor(
@@ -95,5 +135,31 @@ export class EmployeesService {
   async generateQrImage(id: string, storeId: string): Promise<string> {
     const emp = await this.findOneForStore(id, storeId);
     return QRCode.toDataURL(emp.qrCode);
+  }
+
+  /** Return the default rights map for a given role */
+  getDefaultRights(role: string): Record<string, any> {
+    return ROLE_RIGHTS[role] || ROLE_RIGHTS.cashier;
+  }
+
+  /** Return all role-based default rights */
+  getAllDefaultRights(): Record<string, any> {
+    return ROLE_RIGHTS;
+  }
+
+  /** Get the effective rights for a specific employee (defaults merged with overrides) */
+  async getEmployeeRights(
+    employeeId: string,
+    storeId: string,
+  ): Promise<Record<string, any>> {
+    const emp = await this.findOneForStore(employeeId, storeId);
+    const defaults = this.getDefaultRights(emp.role);
+    return {
+      employeeId: emp.id,
+      ...defaults,
+      maxDiscountPercent: emp.maxDiscountPercent ?? defaults.maxDiscountPercent,
+      isOverride: false,
+      updatedAt: emp.createdAt,
+    };
   }
 }

@@ -15,46 +15,6 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard, Roles } from '../../common/guards/roles.guard';
 import { CreateEmployeeDto, UpdateEmployeeDto } from '../../common/dto';
 
-// ── Role-based defaults ──
-const ROLE_RIGHTS: Record<string, any> = {
-  admin: {
-    role: 'admin',
-    maxDiscountPercent: 100,
-    canVoidSale: true,
-    canRefund: true,
-    canAccessReports: true,
-    canManageStock: true,
-    canDeleteTicket: true,
-    canApplyManualDiscount: true,
-    canOpenDrawer: true,
-    canReprintTicket: true,
-  },
-  manager: {
-    role: 'manager',
-    maxDiscountPercent: 20,
-    canVoidSale: true,
-    canRefund: true,
-    canAccessReports: true,
-    canManageStock: true,
-    canDeleteTicket: false,
-    canApplyManualDiscount: true,
-    canOpenDrawer: true,
-    canReprintTicket: true,
-  },
-  cashier: {
-    role: 'cashier',
-    maxDiscountPercent: 5,
-    canVoidSale: false,
-    canRefund: false,
-    canAccessReports: false,
-    canManageStock: false,
-    canDeleteTicket: false,
-    canApplyManualDiscount: false,
-    canOpenDrawer: false,
-    canReprintTicket: true,
-  },
-};
-
 @ApiTags('employees')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -67,39 +27,23 @@ export class EmployeesController {
   @Get('me/rights')
   @ApiOperation({ summary: 'Get current employee rights' })
   async getMyRights(@Request() req: any) {
-    const emp = await this.employeesService.findOneForStore(
+    return this.employeesService.getEmployeeRights(
       req.user.employeeId,
       req.user.storeId,
     );
-    const defaults = ROLE_RIGHTS[emp.role] || ROLE_RIGHTS.cashier;
-    return {
-      employeeId: emp.id,
-      ...defaults,
-      maxDiscountPercent: emp.maxDiscountPercent ?? defaults.maxDiscountPercent,
-      isOverride: false,
-      updatedAt: emp.createdAt,
-    };
   }
 
   @Get('rights/defaults')
   @ApiOperation({ summary: 'Get role-based default rights' })
   getRoleDefaults() {
-    return ROLE_RIGHTS;
+    return this.employeesService.getAllDefaultRights();
   }
 
   @Get(':id/rights')
   @Roles('admin', 'manager')
   @ApiOperation({ summary: 'Get rights for a specific employee' })
   async getEmployeeRights(@Param('id') id: string, @Request() req: any) {
-    const emp = await this.employeesService.findOneForStore(id, req.user.storeId);
-    const defaults = ROLE_RIGHTS[emp.role] || ROLE_RIGHTS.cashier;
-    return {
-      employeeId: emp.id,
-      ...defaults,
-      maxDiscountPercent: emp.maxDiscountPercent ?? defaults.maxDiscountPercent,
-      isOverride: false,
-      updatedAt: emp.createdAt,
-    };
+    return this.employeesService.getEmployeeRights(id, req.user.storeId);
   }
 
   // ── CRUD endpoints ──

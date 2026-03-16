@@ -32,6 +32,7 @@ import helmet from 'helmet';
 import * as cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 import { TenantInterceptor } from './common/interceptors/tenant.interceptor';
+import { BusinessError } from './common/errors/business-error';
 
 // ── Global Exception Filter — sanitize error responses ──────────────────
 // Reports unhandled exceptions to Sentry (when SENTRY_DSN is set).
@@ -45,44 +46,79 @@ class GlobalExceptionFilter implements ExceptionFilter {
     const response = ctx.getResponse();
     const request = ctx.getRequest();
 
-    let status = HttpStatus.INTERNAL_SERVER_ERROR;
-    let message = 'Internal server error';
-
-    if (exception instanceof HttpException) {
-      status = exception.getStatus();
-      const res = exception.getResponse();
-      message = typeof res === 'string' ? res : (res as any).message || message;
-    } else {
-      // Build structured error context for monitoring
-      const errorContext = {
-        method: request.method,
-        url: request.url,
-        ip: request.ip,
-        userId: request.user?.employeeId || 'anon',
-        storeId: request.user?.storeId || 'unknown',
-        userAgent: (request.headers?.['user-agent'] || '').substring(0, 100),
-        errorName: exception instanceof Error ? exception.name : 'UnknownError',
-        errorMessage: exception instanceof Error ? exception.message : String(exception),
-      };
-
-      // Never leak stack traces or internal details to clients
-      this.logger.error(
-        `Unhandled exception: ${JSON.stringify(errorContext)}`,
-        exception instanceof Error ? exception.stack : String(exception),
-      );
-
-      // Report to Sentry if configured
-      if (process.env.SENTRY_DSN) {
-        Sentry.captureException(exception, { extra: errorContext });
-      }
+    // ── 1. BusinessError — already carries the structured payload ──
+    if (exception instanceof BusinessError) {
+      const body = exception.getResponse() as Record<string, any>;
+      response.status(exception.getStatus()).json(body);
+      return;
     }
 
+    // ── 2. Regular HttpException (including class-validator) ──
+    if (exception instanceof HttpException) {
+      const status = exception.getStatus();
+      const res = exception.getResponse();
+
+      // class-validator pipes return { message: string[], error, statusCode }
+      const isValidation =
+        typeof res === 'object' &&
+        res !== null &&
+        Array.isArray((res as any).message);
+
+      if (isValidation) {
+        response.status(status).json({
+          success: false,
+          code: 'VALIDATION_ERROR',
+          message: 'Erreur de validation.',
+          statusCode: status,
+          details: (res as any).message,
+        });
+        return;
+      }
+
+      // Any other HttpException
+      const message =
+        typeof res === 'string'
+          ? res
+          : (res as any).message || 'Internal server error';
+      response.status(status).json({
+        success: false,
+        code: 'HTTP_ERROR',
+        message,
+        statusCode: status,
+      });
+      return;
+    }
+
+    // ── 3. Unknown / unhandled errors ──
+    const errorContext = {
+      method: request.method,
+      url: request.url,
+      ip: request.ip,
+      userId: request.user?.employeeId || 'anon',
+      storeId: request.user?.storeId || 'unknown',
+      userAgent: (request.headers?.['user-agent'] || '').substring(0, 100),
+      errorName: exception instanceof Error ? exception.name : 'UnknownError',
+      errorMessage:
+        exception instanceof Error ? exception.message : String(exception),
+    };
+
+    this.logger.error(
+      `Unhandled exception: ${JSON.stringify(errorContext)}`,
+      exception instanceof Error ? exception.stack : String(exception),
+    );
+
+    if (process.env.SENTRY_DSN) {
+      Sentry.captureException(exception, { extra: errorContext });
+    }
+
+    const status = HttpStatus.INTERNAL_SERVER_ERROR;
     response.status(status).json({
+      success: false,
+      code: 'INTERNAL_ERROR',
+      message: 'Internal server error',
       statusCode: status,
-      message,
-      timestamp: new Date().toISOString(),
       ...(process.env.NODE_ENV !== 'production' && exception instanceof Error
-        ? { error: exception.name }
+        ? { details: exception.name }
         : {}),
     });
   }

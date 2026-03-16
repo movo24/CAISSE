@@ -10,10 +10,15 @@ import {
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { OrganizationsService } from './organizations.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { RolesGuard, Roles } from '../../common/guards/roles.guard';
+import {
+  CreateOrganizationDto,
+  UpdateOrganizationDto,
+} from '../../common/dto';
 
 @ApiTags('organizations')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('organizations')
 export class OrganizationsController {
   constructor(private service: OrganizationsService) {}
@@ -31,18 +36,21 @@ export class OrganizationsController {
   }
 
   @Post()
+  @Roles('admin')
   @ApiOperation({ summary: 'Create an organization' })
-  create(@Body() body: Partial<any>) {
-    return this.service.create(body);
+  create(@Body() dto: CreateOrganizationDto) {
+    return this.service.create(dto);
   }
 
   @Put(':id')
+  @Roles('admin')
   @ApiOperation({ summary: 'Update an organization' })
-  update(@Param('id') id: string, @Body() body: Partial<any>) {
-    return this.service.update(id, body);
+  update(@Param('id') id: string, @Body() dto: UpdateOrganizationDto) {
+    return this.service.update(id, dto);
   }
 
   @Put(':id/deactivate')
+  @Roles('admin')
   @ApiOperation({ summary: 'Deactivate an organization' })
   deactivate(@Param('id') id: string) {
     return this.service.deactivate(id);
