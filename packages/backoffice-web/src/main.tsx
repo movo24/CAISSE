@@ -17,6 +17,10 @@ import { PayrollPage } from './pages/PayrollPage';
 import { AssistantPage } from './pages/AssistantPage';
 import { LivePerformancePage } from './pages/LivePerformancePage';
 import { StockAlertsPage } from './pages/StockAlertsPage';
+import { OrganizationsPage } from './pages/OrganizationsPage';
+import { UnitsPage } from './pages/UnitsPage';
+import { StoresManagementPage } from './pages/StoresManagementPage';
+import { ConnectedAppsPage } from './pages/ConnectedAppsPage';
 import './styles/globals.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
@@ -42,6 +46,10 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             <Route path="/reports" element={<ReportsPage />} />
             <Route path="/assistant" element={<AssistantPage />} />
             <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/organizations" element={<OrganizationsPage />} />
+            <Route path="/units" element={<UnitsPage />} />
+            <Route path="/stores" element={<StoresManagementPage />} />
+            <Route path="/connected-apps" element={<ConnectedAppsPage />} />
           </Route>
         </Route>
       </Routes>

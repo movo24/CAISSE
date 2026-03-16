@@ -3,7 +3,7 @@ import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Package, FileBarChart, Settings, LogOut, Users,
   ChevronDown, ChevronRight, ShieldCheck, UsersRound, Clock, BarChart3, Calendar, Wallet,
-  Sparkles, Activity, AlertTriangle,
+  Sparkles, Activity, AlertTriangle, Building2, Store, Network, Plug,
 } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 
@@ -27,6 +27,17 @@ const navItems: NavItem[] = [
   { path: '/employees', label: 'Employes', icon: Users },
 ];
 
+const networkGroup: NavGroup = {
+  label: 'Réseau',
+  icon: Network,
+  items: [
+    { path: '/organizations', label: 'Organisations', icon: Building2 },
+    { path: '/units', label: 'Unités', icon: Building2 },
+    { path: '/stores', label: 'Magasins', icon: Store },
+    { path: '/connected-apps', label: 'Applications', icon: Plug },
+  ],
+};
+
 const rhGroup: NavGroup = {
   label: 'RH / Equipe',
   icon: UsersRound,
@@ -49,6 +60,9 @@ export function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
   const { employee, logout } = useAuthStore();
+  const [networkOpen, setNetworkOpen] = useState(() =>
+    networkGroup.items.some((i) => location.pathname === i.path),
+  );
   const [rhOpen, setRhOpen] = useState(() =>
     rhGroup.items.some((i) => location.pathname === i.path),
   );
@@ -103,6 +117,27 @@ export function Layout() {
         {/* Nav */}
         <nav className="flex-1 px-3 space-y-1 mt-2">
           {navItems.map((item) => renderNavItem(item))}
+
+          {/* Network Group (collapsible) */}
+          <div>
+            <button
+              onClick={() => setNetworkOpen(!networkOpen)}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 ${
+                networkGroup.items.some((i) => location.pathname === i.path)
+                  ? 'text-white/80'
+                  : 'text-white/50 hover:text-white hover:bg-bo-sidebar-hover'
+              }`}
+            >
+              <Network size={18} strokeWidth={1.5} />
+              <span className="flex-1 text-left">{networkGroup.label}</span>
+              {networkOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+            </button>
+            {networkOpen && (
+              <div className="mt-0.5 space-y-0.5">
+                {networkGroup.items.map((item) => renderNavItem(item, true))}
+              </div>
+            )}
+          </div>
 
           {/* RH Group (collapsible) */}
           <div>

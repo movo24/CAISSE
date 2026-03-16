@@ -168,8 +168,10 @@ export const employeesApi = {
 // Stores
 // ---------------------------------------------------------------------------
 export const storesApi = {
-  list: () => api.get('/stores'),
+  list: (filters?: { organizationId?: string; unitId?: string }) =>
+    api.get('/stores', { params: filters }),
   get: (id: string) => api.get(`/stores/${id}`),
+  create: (data: Record<string, unknown>) => api.post('/stores', data),
   update: (id: string, data: any) => api.put(`/stores/${id}`, data),
 };
 
@@ -354,6 +356,41 @@ export const livePerformanceApi = {
   networkSnapshot: () => api.get('/live-performance/network'),
   compact: () => api.get('/live-performance/compact'),
   aiInsight: () => api.get('/live-performance/insight'),
+};
+
+// ---------------------------------------------------------------------------
+// Organizations (Multi-entity hierarchy)
+// ---------------------------------------------------------------------------
+export const organizationsApi = {
+  list: () => api.get('/organizations'),
+  get: (id: string) => api.get(`/organizations/${id}`),
+  create: (data: Record<string, unknown>) => api.post('/organizations', data),
+  update: (id: string, data: Record<string, unknown>) => api.put(`/organizations/${id}`, data),
+  deactivate: (id: string) => api.put(`/organizations/${id}/deactivate`),
+};
+
+// ---------------------------------------------------------------------------
+// Units (Business units within an organization)
+// ---------------------------------------------------------------------------
+export const unitsApi = {
+  list: (organizationId?: string) =>
+    api.get('/units', { params: organizationId ? { organizationId } : {} }),
+  get: (id: string) => api.get(`/units/${id}`),
+  create: (data: Record<string, unknown>) => api.post('/units', data),
+  update: (id: string, data: Record<string, unknown>) => api.put(`/units/${id}`, data),
+  deactivate: (id: string) => api.put(`/units/${id}/deactivate`),
+};
+
+// ---------------------------------------------------------------------------
+// Connected Apps
+// ---------------------------------------------------------------------------
+export const connectedAppsApi = {
+  list: (organizationId: string) =>
+    api.get('/connected-apps', { params: { organizationId } }),
+  get: (id: string) => api.get(`/connected-apps/${id}`),
+  create: (data: Record<string, unknown>) => api.post('/connected-apps', data),
+  update: (id: string, data: Record<string, unknown>) => api.put(`/connected-apps/${id}`, data),
+  deactivate: (id: string) => api.put(`/connected-apps/${id}/deactivate`),
 };
 
 export default api;
