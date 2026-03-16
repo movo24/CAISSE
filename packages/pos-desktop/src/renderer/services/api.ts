@@ -240,4 +240,13 @@ export const livePerformanceApi = {
   insight: () => api.get('/live-performance/insight'),
 };
 
+// Stripe Terminal (in-store card payments)
+export const stripeTerminalApi = {
+  connectionToken: () => api.post('/stripe-terminal/connection-token'),
+  createPaymentIntent: (data: { amount: number; ticketNumber: string; currency?: string; description?: string }) =>
+    api.post('/stripe-terminal/payment-intent', data),
+  getPaymentIntent: (id: string) => api.get(`/stripe-terminal/payment-intent/${id}`),
+  cancelPaymentIntent: (id: string) => api.post(`/stripe-terminal/payment-intent/${id}/cancel`),
+};
+
 export default api;

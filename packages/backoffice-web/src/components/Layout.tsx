@@ -3,7 +3,7 @@ import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Package, FileBarChart, Settings, LogOut, Users,
   ChevronDown, ChevronRight, ShieldCheck, UsersRound, Clock, BarChart3, Calendar, Wallet,
-  Sparkles, Activity, AlertTriangle, Building2, Store, Network, Plug,
+  Sparkles, Activity, AlertTriangle, Building2, Store, Network, Plug, CreditCard,
 } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 
@@ -11,48 +11,66 @@ interface NavItem {
   path: string;
   label: string;
   icon: React.ElementType;
+  /** Minimum role required: 'cashier' < 'manager' < 'admin' */
+  minRole?: 'cashier' | 'manager' | 'admin';
 }
 
 interface NavGroup {
   label: string;
   icon: React.ElementType;
   items: NavItem[];
+  /** Minimum role to see this group at all */
+  minRole?: 'cashier' | 'manager' | 'admin';
+}
+
+const ROLE_LEVEL: Record<string, number> = {
+  cashier: 0,
+  manager: 1,
+  admin: 2,
+};
+
+function hasRole(userRole: string | undefined, minRole?: string): boolean {
+  if (!minRole) return true;
+  return (ROLE_LEVEL[userRole || 'cashier'] ?? 0) >= (ROLE_LEVEL[minRole] ?? 0);
 }
 
 const navItems: NavItem[] = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { path: '/live-performance', label: 'Perf. Réseau', icon: Activity },
+  { path: '/live-performance', label: 'Perf. Réseau', icon: Activity, minRole: 'manager' },
   { path: '/products', label: 'Produits', icon: Package },
   { path: '/stock-alerts', label: 'Alertes Stock', icon: AlertTriangle },
-  { path: '/employees', label: 'Employes', icon: Users },
+  { path: '/employees', label: 'Employes', icon: Users, minRole: 'manager' },
 ];
 
 const networkGroup: NavGroup = {
   label: 'Réseau',
   icon: Network,
+  minRole: 'admin',
   items: [
-    { path: '/organizations', label: 'Organisations', icon: Building2 },
-    { path: '/units', label: 'Unités', icon: Building2 },
-    { path: '/stores', label: 'Magasins', icon: Store },
-    { path: '/connected-apps', label: 'Applications', icon: Plug },
+    { path: '/organizations', label: 'Organisations', icon: Building2, minRole: 'admin' },
+    { path: '/units', label: 'Unités', icon: Building2, minRole: 'admin' },
+    { path: '/stores', label: 'Magasins', icon: Store, minRole: 'admin' },
+    { path: '/connected-apps', label: 'Applications', icon: Plug, minRole: 'admin' },
   ],
 };
 
 const rhGroup: NavGroup = {
   label: 'RH / Equipe',
   icon: UsersRound,
+  minRole: 'manager',
   items: [
-    { path: '/rights', label: 'Droits', icon: ShieldCheck },
-    { path: '/pointage', label: 'Pointage', icon: Clock },
-    { path: '/performance', label: 'Performance', icon: BarChart3 },
-    { path: '/planning', label: 'Planning', icon: Calendar },
-    { path: '/payroll', label: 'Paie', icon: Wallet },
+    { path: '/rights', label: 'Droits', icon: ShieldCheck, minRole: 'admin' },
+    { path: '/pointage', label: 'Pointage', icon: Clock, minRole: 'manager' },
+    { path: '/performance', label: 'Performance', icon: BarChart3, minRole: 'manager' },
+    { path: '/planning', label: 'Planning', icon: Calendar, minRole: 'manager' },
+    { path: '/payroll', label: 'Paie', icon: Wallet, minRole: 'admin' },
   ],
 };
 
 const navItemsBottom: NavItem[] = [
-  { path: '/reports', label: 'Rapports', icon: FileBarChart },
-  { path: '/assistant', label: 'Assistant IA', icon: Sparkles },
+  { path: '/reports', label: 'Rapports', icon: FileBarChart, minRole: 'manager' },
+  { path: '/assistant', label: 'Assistant IA', icon: Sparkles, minRole: 'manager' },
+  { path: '/billing', label: 'Abonnement', icon: CreditCard, minRole: 'admin' },
   { path: '/settings', label: 'Reglages', icon: Settings },
 ];
 
@@ -114,53 +132,57 @@ export function Layout() {
           </div>
         </div>
 
-        {/* Nav */}
+        {/* Nav — filtered by role */}
         <nav className="flex-1 px-3 space-y-1 mt-2">
-          {navItems.map((item) => renderNavItem(item))}
+          {navItems.filter((i) => hasRole(employee?.role, i.minRole)).map((item) => renderNavItem(item))}
 
-          {/* Network Group (collapsible) */}
-          <div>
-            <button
-              onClick={() => setNetworkOpen(!networkOpen)}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 ${
-                networkGroup.items.some((i) => location.pathname === i.path)
-                  ? 'text-white/80'
-                  : 'text-white/50 hover:text-white hover:bg-bo-sidebar-hover'
-              }`}
-            >
-              <Network size={18} strokeWidth={1.5} />
-              <span className="flex-1 text-left">{networkGroup.label}</span>
-              {networkOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-            </button>
-            {networkOpen && (
-              <div className="mt-0.5 space-y-0.5">
-                {networkGroup.items.map((item) => renderNavItem(item, true))}
-              </div>
-            )}
-          </div>
+          {/* Network Group (collapsible) — admin only */}
+          {hasRole(employee?.role, networkGroup.minRole) && (
+            <div>
+              <button
+                onClick={() => setNetworkOpen(!networkOpen)}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 ${
+                  networkGroup.items.some((i) => location.pathname === i.path)
+                    ? 'text-white/80'
+                    : 'text-white/50 hover:text-white hover:bg-bo-sidebar-hover'
+                }`}
+              >
+                <Network size={18} strokeWidth={1.5} />
+                <span className="flex-1 text-left">{networkGroup.label}</span>
+                {networkOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+              </button>
+              {networkOpen && (
+                <div className="mt-0.5 space-y-0.5">
+                  {networkGroup.items.filter((i) => hasRole(employee?.role, i.minRole)).map((item) => renderNavItem(item, true))}
+                </div>
+              )}
+            </div>
+          )}
 
-          {/* RH Group (collapsible) */}
-          <div>
-            <button
-              onClick={() => setRhOpen(!rhOpen)}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 ${
-                rhGroup.items.some((i) => location.pathname === i.path)
-                  ? 'text-white/80'
-                  : 'text-white/50 hover:text-white hover:bg-bo-sidebar-hover'
-              }`}
-            >
-              <UsersRound size={18} strokeWidth={1.5} />
-              <span className="flex-1 text-left">{rhGroup.label}</span>
-              {rhOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-            </button>
-            {rhOpen && (
-              <div className="mt-0.5 space-y-0.5">
-                {rhGroup.items.map((item) => renderNavItem(item, true))}
-              </div>
-            )}
-          </div>
+          {/* RH Group (collapsible) — manager+ */}
+          {hasRole(employee?.role, rhGroup.minRole) && (
+            <div>
+              <button
+                onClick={() => setRhOpen(!rhOpen)}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 ${
+                  rhGroup.items.some((i) => location.pathname === i.path)
+                    ? 'text-white/80'
+                    : 'text-white/50 hover:text-white hover:bg-bo-sidebar-hover'
+                }`}
+              >
+                <UsersRound size={18} strokeWidth={1.5} />
+                <span className="flex-1 text-left">{rhGroup.label}</span>
+                {rhOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+              </button>
+              {rhOpen && (
+                <div className="mt-0.5 space-y-0.5">
+                  {rhGroup.items.filter((i) => hasRole(employee?.role, i.minRole)).map((item) => renderNavItem(item, true))}
+                </div>
+              )}
+            </div>
+          )}
 
-          {navItemsBottom.map((item) => renderNavItem(item))}
+          {navItemsBottom.filter((i) => hasRole(employee?.role, i.minRole)).map((item) => renderNavItem(item))}
         </nav>
 
         {/* Footer */}

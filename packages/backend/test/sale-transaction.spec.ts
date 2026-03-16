@@ -16,13 +16,14 @@ describe('Sale Transaction Integrity', () => {
 
       expect(generateTicket(null)).toBe('T-000001');
       expect(generateTicket(0)).toBe('T-000001');
-      expect(generateTicket(1)).toBe('T-000001'); // Wait, fix:
+      expect(generateTicket(1)).toBe('T-000002');
     });
 
     it('should generate T-000001 for first sale', () => {
-      const lastTicketNumber: number | null = null;
+      // Simulate: no previous sale exists → first ticket
+      const lastTicketNumber = null as string | null;
       const nextNumber = lastTicketNumber
-        ? parseInt(lastTicketNumber.toString().replace(/\D/g, '')) + 1
+        ? parseInt(lastTicketNumber.replace(/\D/g, '')) + 1
         : 1;
       const ticket = `T-${String(nextNumber).padStart(6, '0')}`;
       expect(ticket).toBe('T-000001');

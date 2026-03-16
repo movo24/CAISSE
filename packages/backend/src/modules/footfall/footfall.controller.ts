@@ -11,11 +11,16 @@ import {
   Logger,
   HttpException,
   HttpStatus,
+  UseGuards,
 } from '@nestjs/common';
 import { SkipThrottle, Throttle } from '@nestjs/throttler';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { RolesGuard, Roles } from '../../common/guards/roles.guard';
 import { FootfallService } from './footfall.service';
 
 @Controller('footfall')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('admin', 'manager')
 export class FootfallController {
   private readonly logger = new Logger('Footfall:Controller');
 

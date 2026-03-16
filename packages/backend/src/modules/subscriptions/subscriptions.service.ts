@@ -212,10 +212,11 @@ export class SubscriptionsService {
       `Store ${storeId}: ${oldPlan} → ${newPlan} (${billingCycle})`,
     );
 
-    // MVP: log payment instead of charging Stripe
+    // Billing is now handled via StripeBillingService (Checkout Sessions).
+    // This method only updates the local subscription record.
     if (price > 0) {
       this.logger.log(
-        `[BILLING] Charge ${price / 100} EUR for store ${storeId} (Stripe TODO)`,
+        `[BILLING] Plan change recorded: ${price / 100} EUR for store ${storeId}. Use Stripe Checkout for payment.`,
       );
     }
 

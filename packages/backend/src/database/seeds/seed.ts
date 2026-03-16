@@ -26,7 +26,9 @@ async function seed() {
       process.env.DATABASE_URL ||
       'postgresql://caisse:caisse@localhost:5432/caisse',
     entities: [StoreEntity, EmployeeEntity, ProductEntity, PromoRuleEntity],
-    synchronize: true,
+    // NEVER synchronize in seed — use migrations instead.
+    // Set TYPEORM_SYNCHRONIZE=true ONLY for initial dev setup.
+    synchronize: process.env.TYPEORM_SYNCHRONIZE === 'true',
   });
 
   await ds.initialize();

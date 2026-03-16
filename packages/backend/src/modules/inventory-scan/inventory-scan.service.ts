@@ -1,19 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { InventoryScanEntity } from '../../database/entities/inventory-scan.entity';
 import { ProductEntity } from '../../database/entities/product.entity';
 import { StoreEntity } from '../../database/entities/store.entity';
 import { BusinessError } from '../../common/errors/business-error';
 import { StockService } from '../stock/stock.service';
-
-export interface CreateScanDto {
-  barcode: string;
-  quantity?: number;
-  scanType?: 'inventory' | 'receiving' | 'adjustment' | 'return';
-  notes?: string;
-  sessionId?: string;
-}
+import { CreateInventoryScanDto } from '../../common/dto';
 
 @Injectable()
 export class InventoryScanService {
@@ -27,6 +20,7 @@ export class InventoryScanService {
     @InjectRepository(StoreEntity)
     private storeRepo: Repository<StoreEntity>,
     private stockService: StockService,
+    private dataSource: DataSource,
   ) {}
 
   /**
@@ -39,7 +33,7 @@ export class InventoryScanService {
   async recordScan(
     storeId: string,
     employeeId: string,
-    dto: CreateScanDto,
+    dto: CreateInventoryScanDto,
   ): Promise<InventoryScanEntity> {
     // 1. Validate store
     const store = await this.storeRepo.findOne({ where: { id: storeId } });
@@ -84,8 +78,9 @@ export class InventoryScanService {
   }
 
   /**
-   * Apply pending scans to stock — updates product quantities for the store.
-   * Only applies scans with status 'matched' and 'pending'.
+   * Apply pending scans to stock — ATOMIC: all-or-nothing.
+   * Wraps all stock adjustments + scan status updates in a single transaction.
+   * If ANY scan fails, the entire batch is rolled back.
    */
   async applyScansToStock(
     storeId: string,
@@ -96,72 +91,77 @@ export class InventoryScanService {
     if (sessionId) where.sessionId = sessionId;
 
     const scans = await this.scanRepo.find({ where });
+
+    if (scans.length === 0) {
+      return { applied: 0, skipped: 0 };
+    }
+
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
     let applied = 0;
     let skipped = 0;
 
-    for (const scan of scans) {
-      if (!scan.productId) {
-        skipped++;
-        continue;
-      }
-
-      try {
-        if (scan.scanType === 'inventory') {
-          // Inventory count: set absolute quantity
-          await this.stockService.adjustStock(
-            scan.productId,
-            scan.quantity,
-            storeId,
-            employeeId,
-            `Inventaire scan (session: ${scan.sessionId || 'direct'})`,
-            'absolute',
-          );
-        } else if (scan.scanType === 'receiving') {
-          // Receiving: add to stock
-          await this.stockService.adjustStock(
-            scan.productId,
-            scan.quantity,
-            storeId,
-            employeeId,
-            `Reception marchandise scan`,
-            'delta',
-          );
-        } else if (scan.scanType === 'adjustment') {
-          // Manual adjustment
-          await this.stockService.adjustStock(
-            scan.productId,
-            scan.quantity,
-            storeId,
-            employeeId,
-            `Ajustement manuel scan`,
-            'delta',
-          );
-        } else if (scan.scanType === 'return') {
-          // Return: add back to stock
-          await this.stockService.adjustStock(
-            scan.productId,
-            scan.quantity,
-            storeId,
-            employeeId,
-            `Retour produit scan`,
-            'delta',
-          );
+    try {
+      for (const scan of scans) {
+        if (!scan.productId) {
+          skipped++;
+          continue;
         }
 
+        const modeMap: Record<string, { mode: 'absolute' | 'delta'; reason: string }> = {
+          inventory:  { mode: 'absolute', reason: `Inventaire scan (session: ${scan.sessionId || 'direct'})` },
+          receiving:  { mode: 'delta',    reason: 'Reception marchandise scan' },
+          adjustment: { mode: 'delta',    reason: 'Ajustement manuel scan' },
+          return:     { mode: 'delta',    reason: 'Retour produit scan' },
+        };
+
+        const config = modeMap[scan.scanType];
+        if (!config) {
+          skipped++;
+          continue;
+        }
+
+        // Lock product row + update stock within transaction
+        const product = await queryRunner.manager.findOne(ProductEntity, {
+          where: { id: scan.productId, storeId },
+          lock: { mode: 'pessimistic_write' },
+        });
+
+        if (!product) {
+          skipped++;
+          continue;
+        }
+
+        const oldQty = product.stockQuantity ?? 0;
+        product.stockQuantity = config.mode === 'delta'
+          ? Math.max(0, oldQty + scan.quantity)
+          : Math.max(0, scan.quantity);
+
+        await queryRunner.manager.save(ProductEntity, product);
+
+        // Mark scan as applied
         scan.status = 'applied';
-        await this.scanRepo.save(scan);
+        await queryRunner.manager.save(InventoryScanEntity, scan);
         applied++;
-      } catch (err) {
-        this.logger.error(`Failed to apply scan ${scan.id}: ${err}`);
-        scan.status = 'rejected';
-        await this.scanRepo.save(scan);
-        skipped++;
       }
+
+      await queryRunner.commitTransaction();
+
+      this.logger.log(
+        `Applied ${applied} scans atomically, skipped ${skipped} for store ${storeId}`,
+      );
+    } catch (err) {
+      await queryRunner.rollbackTransaction();
+      this.logger.error(
+        `Scan application ROLLED BACK for store ${storeId}: ${err}`,
+      );
+      throw err;
+    } finally {
+      await queryRunner.release();
     }
 
-    this.logger.log(
-      `Applied ${applied} scans, skipped ${skipped} for store ${storeId}`,
-    );
     return { applied, skipped };
   }
 

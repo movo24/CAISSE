@@ -91,6 +91,24 @@ export class SalesService {
       resolvedProducts.set(item.ean, product);
     }
 
+    // --- Pre-transaction: validate stock availability ---
+    const requestedQty: Map<string, number> = new Map();
+    for (const item of dto.items) {
+      requestedQty.set(
+        item.ean,
+        (requestedQty.get(item.ean) || 0) + item.quantity,
+      );
+    }
+    for (const [ean, qty] of requestedQty) {
+      const product = resolvedProducts.get(ean)!;
+      if (product.stockQuantity < qty) {
+        throw new BadRequestException(
+          `Insufficient stock for ${product.name} (${ean}): ` +
+            `${qty} requested, ${product.stockQuantity} available`,
+        );
+      }
+    }
+
     let customerId: string | undefined;
     let isFirstPurchase = false;
     if (dto.customerQrCode) {

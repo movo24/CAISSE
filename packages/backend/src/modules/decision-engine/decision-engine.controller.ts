@@ -13,13 +13,18 @@ import {
   Logger,
   HttpException,
   HttpStatus,
+  UseGuards,
 } from '@nestjs/common';
 import { SkipThrottle, Throttle } from '@nestjs/throttler';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { RolesGuard, Roles } from '../../common/guards/roles.guard';
 import { DecisionEngineService } from './decision-engine.service';
 import { ActionsService } from './actions.service';
 import { AuditLogger } from './audit.logger';
 
 @Controller('decision-engine')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('admin', 'manager')
 export class DecisionEngineController {
   private readonly logger = new Logger('DecisionEngine:Controller');
 

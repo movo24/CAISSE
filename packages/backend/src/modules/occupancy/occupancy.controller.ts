@@ -38,8 +38,11 @@ export class OccupancyController {
     @Body() body: { storeId: string; liveCount: number },
     @Headers('x-radar-key') radarKey: string,
   ) {
-    // Validate radar key (env-based shared secret)
-    const expectedKey = process.env.RADAR_API_KEY || 'radar-secret-key';
+    // Validate radar key (env-based shared secret — no fallback)
+    const expectedKey = process.env.RADAR_API_KEY;
+    if (!expectedKey) {
+      throw new UnauthorizedException('RADAR_API_KEY not configured on server');
+    }
     if (!radarKey || radarKey !== expectedKey) {
       throw new UnauthorizedException('Invalid radar API key');
     }

@@ -99,8 +99,8 @@ describe('Tenant Isolation — Service Patterns', () => {
     });
 
     it('should block update of another store', () => {
-      const callerStoreId = STORE_A;
-      const targetStoreId = STORE_B;
+      const callerStoreId: string = STORE_A;
+      const targetStoreId: string = STORE_B;
 
       // Simulates StoresService.update() check
       const isAllowed = targetStoreId === callerStoreId;
@@ -110,8 +110,8 @@ describe('Tenant Isolation — Service Patterns', () => {
 
   describe('TenantInterceptor enforcement', () => {
     it('should block request when body storeId differs from JWT', () => {
-      const jwtStoreId = STORE_A;
-      const bodyStoreId = STORE_B;
+      const jwtStoreId: string = STORE_A;
+      const bodyStoreId: string = STORE_B;
 
       const isMismatch = bodyStoreId !== jwtStoreId;
       expect(isMismatch).toBe(true);

@@ -52,8 +52,13 @@ export interface StockAlertPayload {
   }[];
 }
 
+export interface SaleErrorPayload {
+  message: string;
+}
+
 export interface PosEventMap {
   SALE_COMPLETED: SaleCompletedPayload;
+  SALE_ERROR: SaleErrorPayload;
   SESSION_OPENED: SessionOpenedPayload;
   SESSION_CLOSED: SessionClosedPayload;
   VOID_COMPLETED: VoidCompletedPayload;

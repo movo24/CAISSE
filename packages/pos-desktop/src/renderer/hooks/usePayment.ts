@@ -156,8 +156,18 @@ export function usePayment() {
       if (res.data.stockAlerts && res.data.stockAlerts.length > 0) {
         posEventBus.emit('STOCK_ALERT', { alerts: res.data.stockAlerts });
       }
-    } catch {
-      ticketNumber = `T-${Date.now().toString().slice(-6)}`;
+    } catch (err: any) {
+      setProcessing(false);
+      // Extract error message from backend response (e.g. "Insufficient stock")
+      const message =
+        err?.response?.data?.message ||
+        err?.response?.data?.details?.[0] ||
+        err?.message ||
+        'Erreur lors de la vente';
+      posEventBus.emit('SALE_ERROR', { message });
+      console.error('[POS] Sale failed:', message);
+      // Do NOT clear cart — let the cashier fix the issue and retry
+      return;
     }
     const timestamp = new Date();
     store.addTicketToHistory({

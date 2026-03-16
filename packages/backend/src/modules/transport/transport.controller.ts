@@ -11,11 +11,16 @@ import {
   Logger,
   HttpException,
   HttpStatus,
+  UseGuards,
 } from '@nestjs/common';
 import { SkipThrottle, Throttle } from '@nestjs/throttler';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { RolesGuard, Roles } from '../../common/guards/roles.guard';
 import { TransportService } from './transport.service';
 
 @Controller('transport')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('admin', 'manager')
 export class TransportController {
   private readonly logger = new Logger('Transport:Controller');
 

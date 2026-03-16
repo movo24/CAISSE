@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { SubscriptionsService } from './subscriptions.service';
+import { StripeBillingService } from './stripe-billing.service';
 import { SubscriptionsController } from './subscriptions.controller';
 import { SubscriptionEntity } from '../../database/entities/subscription.entity';
 import { StoreEntity } from '../../database/entities/store.entity';
@@ -19,7 +20,7 @@ import { AuditModule } from '../audit/audit.module';
     AuditModule,
   ],
   controllers: [SubscriptionsController],
-  providers: [SubscriptionsService],
-  exports: [SubscriptionsService],
+  providers: [SubscriptionsService, StripeBillingService],
+  exports: [SubscriptionsService, StripeBillingService],
 })
 export class SubscriptionsModule {}

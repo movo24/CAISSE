@@ -410,4 +410,20 @@ export const connectedAppsApi = {
   deactivate: (id: string) => api.put(`/connected-apps/${id}/deactivate`),
 };
 
+// ---------------------------------------------------------------------------
+// Subscriptions & Billing (Stripe)
+// ---------------------------------------------------------------------------
+export const subscriptionsApi = {
+  plans: () => api.get('/subscriptions/plans'),
+  get: (storeId: string) => api.get(`/subscriptions/${storeId}`),
+  usage: (storeId: string) => api.get(`/subscriptions/${storeId}/usage`),
+  changePlan: (storeId: string, data: { plan: string; billingCycle?: string }) =>
+    api.post(`/subscriptions/${storeId}/change-plan`, data),
+  cancel: (storeId: string) => api.post(`/subscriptions/${storeId}/cancel`),
+  createCheckout: (storeId: string, data: { plan: string; billingCycle?: string; successUrl: string; cancelUrl: string }) =>
+    api.post(`/subscriptions/${storeId}/checkout`, data),
+  createPortal: (storeId: string, returnUrl: string) =>
+    api.post(`/subscriptions/${storeId}/portal`, { returnUrl }),
+};
+
 export default api;

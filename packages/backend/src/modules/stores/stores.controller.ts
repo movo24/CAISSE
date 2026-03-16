@@ -15,6 +15,7 @@ import { StoresService } from './stores.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard, Roles } from '../../common/guards/roles.guard';
 import { CreateStoreDto, UpdateStoreDto } from '../../common/dto';
+import { BusinessError } from '../../common/errors/business-error';
 
 @ApiTags('stores')
 @ApiBearerAuth()
@@ -68,9 +69,9 @@ export class StoresController {
   @Get(':id')
   @ApiOperation({ summary: 'Get a store by ID (must be your own store)' })
   findOne(@Param('id') id: string, @Request() req: any) {
-    // Only allow accessing your own store
+    // Strict tenant isolation: reject cross-store access
     if (id !== req.user.storeId) {
-      return this.storesService.findMyStore(req.user.storeId);
+      throw BusinessError.forbidden('You can only access your own store');
     }
     return this.storesService.findMyStore(id);
   }

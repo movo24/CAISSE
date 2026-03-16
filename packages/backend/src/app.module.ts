@@ -38,6 +38,8 @@ import { OrganizationsModule } from './modules/organizations/organizations.modul
 import { UnitsModule } from './modules/units/units.module';
 import { ConnectedAppsModule } from './modules/connected-apps/connected-apps.module';
 import { InventoryScanModule } from './modules/inventory-scan/inventory-scan.module';
+import { StripeModule } from './common/stripe/stripe.module';
+import { StripeTerminalModule } from './modules/stripe-terminal/stripe-terminal.module';
 
 const isProd = process.env.NODE_ENV === 'production';
 
@@ -105,6 +107,8 @@ const isProd = process.env.NODE_ENV === 'production';
     UnitsModule,
     ConnectedAppsModule,
     InventoryScanModule,
+    StripeModule,
+    StripeTerminalModule,
   ],
   providers: [
     // Apply rate limiting globally to ALL endpoints

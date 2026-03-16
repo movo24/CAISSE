@@ -17,3 +17,5 @@ export * from './staffing.dto';
 export * from './pointage.dto';
 export * from './jackpot.dto';
 export * from './pagination.dto';
+export * from './inventory-scan.dto';
+export * from './stripe-terminal.dto';

@@ -156,7 +156,9 @@ function parseCorsOrigin(): string[] | boolean {
 async function bootstrap() {
   validateEnvironment();
 
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, {
+    rawBody: true, // Required for Stripe webhook signature verification
+  });
 
   // --- Security ---
   app.use(helmet());

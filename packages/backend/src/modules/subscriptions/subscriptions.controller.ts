@@ -5,11 +5,17 @@ import {
   Body,
   Param,
   Query,
+  Req,
+  Res,
   UseGuards,
+  RawBodyRequest,
+  Headers,
 } from '@nestjs/common';
+import { Request, Response } from 'express';
 import { SubscriptionsService } from './subscriptions.service';
+import { StripeBillingService } from './stripe-billing.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { RolesGuard } from '../../common/guards/roles.guard';
+import { RolesGuard, Roles } from '../../common/guards/roles.guard';
 import {
   ApiTags,
   ApiBearerAuth,
@@ -21,7 +27,10 @@ import { SkipTenantCheck } from '../../common/interceptors/tenant.interceptor';
 @ApiTags('subscriptions')
 @Controller('subscriptions')
 export class SubscriptionsController {
-  constructor(private readonly subscriptionsService: SubscriptionsService) {}
+  constructor(
+    private readonly subscriptionsService: SubscriptionsService,
+    private readonly stripeBilling: StripeBillingService,
+  ) {}
 
   // Public: get available plans (no auth, no tenant check)
   @Get('plans')
@@ -96,5 +105,81 @@ export class SubscriptionsController {
   @ApiOperation({ summary: 'Create a 14-day trial subscription for a new store' })
   async createTrial(@Param('storeId') storeId: string) {
     return this.subscriptionsService.createTrialForStore(storeId);
+  }
+
+  // -----------------------------------------------------------------------
+  // Stripe Billing endpoints
+  // -----------------------------------------------------------------------
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
+  @Post(':storeId/checkout')
+  @ApiOperation({ summary: 'Create Stripe Checkout session for subscription upgrade' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        plan: { type: 'string', enum: ['starter', 'business', 'enterprise'] },
+        billingCycle: { type: 'string', enum: ['monthly', 'yearly'] },
+        successUrl: { type: 'string' },
+        cancelUrl: { type: 'string' },
+      },
+    },
+  })
+  async createCheckout(
+    @Param('storeId') storeId: string,
+    @Body()
+    body: {
+      plan: string;
+      billingCycle?: 'monthly' | 'yearly';
+      successUrl: string;
+      cancelUrl: string;
+    },
+  ) {
+    return this.stripeBilling.createCheckoutSession(
+      storeId,
+      body.plan,
+      body.billingCycle || 'monthly',
+      body.successUrl,
+      body.cancelUrl,
+    );
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
+  @Post(':storeId/portal')
+  @ApiOperation({ summary: 'Create Stripe Customer Portal session' })
+  async createPortal(
+    @Param('storeId') storeId: string,
+    @Body() body: { returnUrl: string },
+  ) {
+    return this.stripeBilling.createPortalSession(storeId, body.returnUrl);
+  }
+
+  /**
+   * POST /api/subscriptions/webhook
+   * Stripe webhook endpoint — no auth, signature verified by Stripe.
+   */
+  @Post('webhook')
+  @SkipTenantCheck()
+  @ApiOperation({ summary: 'Stripe webhook handler (no auth — signature-verified)' })
+  async handleWebhook(
+    @Req() req: RawBodyRequest<Request>,
+    @Headers('stripe-signature') signature: string,
+    @Res() res: Response,
+  ) {
+    const rawBody = req.rawBody;
+    if (!rawBody) {
+      return res.status(400).json({ error: 'Missing raw body' });
+    }
+
+    try {
+      await this.stripeBilling.handleWebhook(rawBody, signature);
+      return res.status(200).json({ received: true });
+    } catch (err: any) {
+      return res.status(400).json({ error: err.message });
+    }
   }
 }

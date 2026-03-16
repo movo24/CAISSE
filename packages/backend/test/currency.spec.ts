@@ -76,9 +76,10 @@ describe('Multi-Currency Support', () => {
     });
 
     it('should convert EUR to BHD (3 decimal precision)', () => {
-      // 100.00 EUR at rate 0.4053 = 0.405 BHD = 405 minor units (BHD has 3 decimals)
+      // 10000 minor EUR = 100.00 EUR, rate 0.4053 → 100 * 0.4053 = 40.53 BHD major
+      // BHD has 3 decimal digits → 40.53 * 1000 = 40530 minor units
       const result = convertCurrency(10000, 'EUR', 'BHD', 0.4053);
-      expect(result).toBe(405); // Math.round(100 * 0.4053 * 1000)
+      expect(result).toBe(40530); // Math.round(100 * 0.4053 * 1000)
     });
   });
 

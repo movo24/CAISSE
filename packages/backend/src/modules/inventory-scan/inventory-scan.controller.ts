@@ -11,7 +11,8 @@ import {
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard, Roles } from '../../common/guards/roles.guard';
-import { InventoryScanService, CreateScanDto } from './inventory-scan.service';
+import { InventoryScanService } from './inventory-scan.service';
+import { CreateInventoryScanDto, ApplyScansDto } from '../../common/dto';
 import { BusinessError } from '../../common/errors/business-error';
 
 @ApiTags('inventory-scans')
@@ -28,7 +29,7 @@ export class InventoryScanController {
    */
   @Post()
   @ApiOperation({ summary: 'Record a barcode scan (requires store assignment)' })
-  async recordScan(@Request() req: any, @Body() dto: CreateScanDto) {
+  async recordScan(@Request() req: any, @Body() dto: CreateInventoryScanDto) {
     const storeId = req.user?.storeId;
     const employeeId = req.user?.employeeId;
 
@@ -75,7 +76,7 @@ export class InventoryScanController {
   @ApiOperation({ summary: 'Apply pending scans to stock (admin/manager)' })
   async applyScans(
     @Request() req: any,
-    @Body() body: { sessionId?: string },
+    @Body() body: ApplyScansDto,
   ) {
     const storeId = req.user?.storeId;
     const employeeId = req.user?.employeeId;

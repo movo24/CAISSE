@@ -21,6 +21,7 @@ import { OrganizationsPage } from './pages/OrganizationsPage';
 import { UnitsPage } from './pages/UnitsPage';
 import { StoresManagementPage } from './pages/StoresManagementPage';
 import { ConnectedAppsPage } from './pages/ConnectedAppsPage';
+import { BillingPage } from './pages/BillingPage';
 import './styles/globals.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
@@ -50,6 +51,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             <Route path="/units" element={<UnitsPage />} />
             <Route path="/stores" element={<StoresManagementPage />} />
             <Route path="/connected-apps" element={<ConnectedAppsPage />} />
+            <Route path="/billing" element={<BillingPage />} />
           </Route>
         </Route>
       </Routes>
