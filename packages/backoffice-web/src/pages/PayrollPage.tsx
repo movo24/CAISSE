@@ -66,19 +66,33 @@ export function PayrollPage() {
   const [payConfigs, setPayConfigs] = useState<EmployeePayConfig[]>([]);
 
   useEffect(() => {
-    employeesApi.list().then((res) => {
+    employeesApi.list().then(async (res) => {
       const emps: any[] = res.data || [];
-      setPayConfigs(emps.map((e: any) => ({
-        employeeId: e.id,
-        employeeName: `${e.firstName} ${e.lastName}`,
-        role: e.role || 'Caissier',
-        hourlyRateGross: 1320,
-        contractHoursWeek: 35,
-        overtimeRate25: 1.25,
-        overtimeRate50: 1.50,
-      })));
+      const configs: EmployeePayConfig[] = await Promise.all(
+        emps.map(async (e: any) => {
+          let hourlyRateGross = 1320;
+          let contractHoursWeek = 35;
+          try {
+            const payRes = await payrollApi.getEmployeePayslip(e.id, month);
+            if (payRes.data) {
+              hourlyRateGross = payRes.data.hourlyRateGross || hourlyRateGross;
+              contractHoursWeek = payRes.data.contractHoursWeek || contractHoursWeek;
+            }
+          } catch { /* use defaults */ }
+          return {
+            employeeId: e.id,
+            employeeName: `${e.firstName} ${e.lastName}`,
+            role: e.role || 'Caissier',
+            hourlyRateGross,
+            contractHoursWeek,
+            overtimeRate25: 1.25,
+            overtimeRate50: 1.50,
+          };
+        }),
+      );
+      setPayConfigs(configs);
     }).catch(() => {});
-  }, []);
+  }, [month]);
 
   useEffect(() => {
     storesApi.list().then((res) => {
@@ -207,11 +221,37 @@ export function PayrollPage() {
                     <td className="px-4 py-2.5 text-sm font-semibold text-gray-800">{c.employeeName}</td>
                     <td className="px-4 py-2.5 text-xs text-gray-500">{c.role}</td>
                     <td className="px-4 py-2.5 text-center">
-                      <span className="inline-flex items-center bg-emerald-50 text-emerald-700 rounded-lg px-2.5 py-1 text-xs font-bold">
-                        {formatCurrency(c.hourlyRateGross)}/h
-                      </span>
+                      <input
+                        type="number"
+                        min={0}
+                        step={10}
+                        value={c.hourlyRateGross}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value) || 0;
+                          setPayConfigs((prev) => prev.map((p) =>
+                            p.employeeId === c.employeeId ? { ...p, hourlyRateGross: val } : p,
+                          ));
+                        }}
+                        className="w-20 text-center text-xs font-bold bg-emerald-50 text-emerald-700 rounded-lg px-2 py-1 border border-emerald-200 focus:outline-none focus:ring-2 focus:ring-bo-accent/30"
+                      />
+                      <span className="text-[10px] text-gray-400 ml-1">cts/h</span>
                     </td>
-                    <td className="px-4 py-2.5 text-center text-xs font-bold text-gray-700">{c.contractHoursWeek}h</td>
+                    <td className="px-4 py-2.5 text-center">
+                      <input
+                        type="number"
+                        min={0}
+                        max={48}
+                        value={c.contractHoursWeek}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value) || 0;
+                          setPayConfigs((prev) => prev.map((p) =>
+                            p.employeeId === c.employeeId ? { ...p, contractHoursWeek: val } : p,
+                          ));
+                        }}
+                        className="w-14 text-center text-xs font-bold text-gray-700 rounded-lg px-2 py-1 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-bo-accent/30"
+                      />
+                      <span className="text-[10px] text-gray-400 ml-0.5">h</span>
+                    </td>
                     <td className="px-4 py-2.5 text-center text-xs text-gray-500">x{c.overtimeRate25}</td>
                     <td className="px-4 py-2.5 text-center text-xs text-gray-500">x{c.overtimeRate50}</td>
                   </tr>
@@ -219,9 +259,30 @@ export function PayrollPage() {
               </tbody>
             </table>
           </div>
-          <p className="text-[10px] text-gray-400 mt-3">
-            En production, ces taux sont modifiables et lies au contrat de chaque employe.
-          </p>
+          <div className="flex items-center justify-between mt-4">
+            <p className="text-[10px] text-gray-400">
+              Modifiez les taux et cliquez Enregistrer pour sauvegarder.
+            </p>
+            <button
+              onClick={async () => {
+                try {
+                  for (const c of payConfigs) {
+                    await payrollApi.updateHourlyRate(c.employeeId, {
+                      hourlyRateGross: c.hourlyRateGross,
+                      contractHoursWeek: c.contractHoursWeek,
+                    });
+                  }
+                  alert('Taux horaires sauvegardes');
+                } catch (err: any) {
+                  alert(err.response?.data?.message || 'Erreur lors de la sauvegarde');
+                }
+              }}
+              className="flex items-center gap-2 bg-bo-accent text-white px-4 py-2 rounded-xl text-xs font-semibold hover:bg-bo-accent/90 transition-colors"
+            >
+              <Save size={12} />
+              Enregistrer
+            </button>
+          </div>
         </div>
       )}
 

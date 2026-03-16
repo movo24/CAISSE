@@ -37,6 +37,7 @@ import { CacheModule } from './common/cache/cache.module';
 import { OrganizationsModule } from './modules/organizations/organizations.module';
 import { UnitsModule } from './modules/units/units.module';
 import { ConnectedAppsModule } from './modules/connected-apps/connected-apps.module';
+import { InventoryScanModule } from './modules/inventory-scan/inventory-scan.module';
 
 const isProd = process.env.NODE_ENV === 'production';
 
@@ -103,6 +104,7 @@ const isProd = process.env.NODE_ENV === 'production';
     OrganizationsModule,
     UnitsModule,
     ConnectedAppsModule,
+    InventoryScanModule,
   ],
   providers: [
     // Apply rate limiting globally to ALL endpoints

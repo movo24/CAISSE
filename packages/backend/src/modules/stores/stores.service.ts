@@ -7,6 +7,7 @@ import { UnitEntity } from '../../database/entities/unit.entity';
 import { BusinessError } from '../../common/errors/business-error';
 import { CreateStoreDto } from '../../common/dto';
 import { mapStoreEntityToStoreInfo } from './store-info.mapper';
+import { generateUniqueStoreCode } from '../../common/utils/store-code-generator';
 
 @Injectable()
 export class StoresService {
@@ -22,8 +23,21 @@ export class StoresService {
   ) {}
 
   async create(dto: CreateStoreDto): Promise<StoreEntity> {
-    // Validate storeCode uniqueness if provided
-    if (dto.storeCode) {
+    // ── 1. Auto-generate store_code if not provided ──
+    if (!dto.storeCode) {
+      dto.storeCode = await generateUniqueStoreCode(
+        dto.name,
+        dto.city,
+        async (code) => {
+          const found = await this.storeRepo.findOne({
+            where: { storeCode: code },
+          });
+          return !!found;
+        },
+      );
+      this.logger.log(`Auto-generated store code: ${dto.storeCode}`);
+    } else {
+      // ── 2. Validate storeCode uniqueness if manually provided ──
       const existing = await this.storeRepo.findOne({
         where: { storeCode: dto.storeCode },
       });
@@ -32,7 +46,7 @@ export class StoresService {
       }
     }
 
-    // Validate organization exists if provided
+    // ── 3. Validate organization exists if provided ──
     if (dto.organizationId) {
       const org = await this.orgRepo.findOne({
         where: { id: dto.organizationId },
@@ -44,7 +58,7 @@ export class StoresService {
       }
     }
 
-    // Validate unit exists and belongs to same org if provided
+    // ── 4. Validate unit exists and belongs to same org if provided ──
     if (dto.unitId) {
       const unit = await this.unitRepo.findOne({
         where: { id: dto.unitId },
@@ -66,7 +80,9 @@ export class StoresService {
 
     const store = this.storeRepo.create(dto);
     const saved = await this.storeRepo.save(store);
-    this.logger.log(`Store created: ${saved.name} (${saved.id})`);
+    this.logger.log(
+      `Store created: ${saved.name} [${saved.storeCode}] (${saved.id})`,
+    );
     return saved;
   }
 

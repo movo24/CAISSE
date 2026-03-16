@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Calendar,
   FileText,
@@ -16,53 +16,134 @@ import {
   Trophy,
   Percent,
   XCircle,
+  Loader2,
+  AlertCircle,
 } from 'lucide-react';
+import { reportsApi } from '../services/api';
+import { useAuthStore } from '../stores/authStore';
+
+interface ZReport {
+  date: string;
+  totalRevenue: number;
+  totalTax: number;
+  cashTotal: number;
+  cardTotal: number;
+  transactionCount: number;
+  avgBasket: number;
+  voidCount: number;
+  discountTotal: number;
+  topProducts: { name: string; qty: number; revenue: number }[];
+  peakHours: { hour: string; count: number }[];
+  comparison: {
+    revenueChange: number | null;
+    transactionChange: number | null;
+    basketChange: number | null;
+  };
+}
+
+const emptyReport: ZReport = {
+  date: '',
+  totalRevenue: 0,
+  totalTax: 0,
+  cashTotal: 0,
+  cardTotal: 0,
+  transactionCount: 0,
+  avgBasket: 0,
+  voidCount: 0,
+  discountTotal: 0,
+  topProducts: [],
+  peakHours: [],
+  comparison: { revenueChange: null, transactionChange: null, basketChange: null },
+};
 
 export function ReportsPage() {
+  const employee = useAuthStore((s) => s.employee);
   const [selectedDate, setSelectedDate] = useState(
     new Date().toISOString().split('T')[0],
   );
   const [activeTab, setActiveTab] = useState<'z-report' | 'analytics'>('z-report');
+  const [zReport, setZReport] = useState<ZReport>(emptyReport);
+  const [loading, setLoading] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [noData, setNoData] = useState(false);
 
-  // MVP: Static Z-report display
-  const zReport = {
-    date: selectedDate,
-    totalRevenue: 1245.8,
-    totalTax: 207.63,
-    cashTotal: 485.6,
-    cardTotal: 760.2,
-    transactionCount: 42,
-    avgBasket: 29.66,
-    voidCount: 2,
-    discountTotal: 45.5,
-    topProducts: [
-      { name: 'T-Shirt Blanc', qty: 15, revenue: 448.5 },
-      { name: 'Jean Slim Noir', qty: 8, revenue: 479.2 },
-      { name: 'Chaussettes', qty: 22, revenue: 195.8 },
-      { name: 'Casquette Sport', qty: 6, revenue: 119.4 },
-      { name: 'Echarpe Laine', qty: 4, revenue: 139.6 },
-    ],
-    peakHours: [
-      { hour: '09h', count: 3 },
-      { hour: '10h', count: 5 },
-      { hour: '11h', count: 8 },
-      { hour: '12h', count: 4 },
-      { hour: '13h', count: 3 },
-      { hour: '14h', count: 9 },
-      { hour: '15h', count: 7 },
-      { hour: '16h', count: 4 },
-      { hour: '17h', count: 2 },
-    ],
-    comparison: {
-      revenueChange: +12.5,
-      transactionChange: +8.2,
-      basketChange: -2.1,
-    },
+  const storeId = employee?.storeId || '';
+
+  const fetchReport = useCallback(async (date: string) => {
+    if (!storeId) return;
+    try {
+      setLoading(true);
+      setError(null);
+      setNoData(false);
+      const res = await reportsApi.getZReport(storeId, date);
+      const data = res.data;
+      if (!data || (data.transactionCount === 0 && data.totalRevenue === 0)) {
+        setNoData(true);
+        setZReport({ ...emptyReport, date });
+      } else {
+        setZReport({
+          date: data.date || date,
+          totalRevenue: (data.totalRevenue || 0) / 100,
+          totalTax: (data.totalTax || data.taxTotal || 0) / 100,
+          cashTotal: (data.cashTotal || 0) / 100,
+          cardTotal: (data.cardTotal || 0) / 100,
+          transactionCount: data.transactionCount || 0,
+          avgBasket: (data.avgBasket || 0) / 100,
+          voidCount: data.voidCount || 0,
+          discountTotal: (data.discountTotal || 0) / 100,
+          topProducts: (data.topProducts || []).map((p: any) => ({
+            name: p.name || p.productName || '',
+            qty: p.qty || p.quantity || 0,
+            revenue: (p.revenue || 0) / 100,
+          })),
+          peakHours: (data.peakHours || data.hourlyBreakdown || []).map((h: any) => ({
+            hour: h.hour || `${h.h}h`,
+            count: h.count || h.transactions || 0,
+          })),
+          comparison: {
+            revenueChange: data.comparison?.revenueChange ?? null,
+            transactionChange: data.comparison?.transactionChange ?? null,
+            basketChange: data.comparison?.basketChange ?? null,
+          },
+        });
+        setNoData(false);
+      }
+    } catch (err: any) {
+      if (err.response?.status === 404) {
+        setNoData(true);
+        setZReport({ ...emptyReport, date });
+      } else {
+        setError(err.response?.data?.message || 'Erreur lors du chargement du rapport');
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [storeId]);
+
+  useEffect(() => {
+    fetchReport(selectedDate);
+  }, [selectedDate, fetchReport]);
+
+  const handleGenerate = async () => {
+    if (!storeId) return;
+    try {
+      setGenerating(true);
+      await reportsApi.generateZReport(storeId, selectedDate);
+      await fetchReport(selectedDate);
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'Erreur lors de la generation du rapport');
+    } finally {
+      setGenerating(false);
+    }
   };
 
-  const maxCount = Math.max(...zReport.peakHours.map((h) => h.count));
-  const cardPercent = Math.round((zReport.cardTotal / zReport.totalRevenue) * 100);
-  const cashPercent = 100 - cardPercent;
+  const maxCount = zReport.peakHours.length > 0
+    ? Math.max(...zReport.peakHours.map((h) => h.count))
+    : 1;
+  const cardPercent = zReport.totalRevenue > 0
+    ? Math.round((zReport.cardTotal / zReport.totalRevenue) * 100)
+    : 0;
 
   const formatCurrency = (n: number) =>
     n.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' \u20ac';
@@ -89,8 +170,12 @@ export function ReportsPage() {
             <Printer size={16} />
             Imprimer
           </button>
-          <button className="flex items-center gap-2 bg-bo-accent text-white px-5 py-2.5 rounded-xl font-medium hover:bg-bo-accent/90 transition-colors shadow-lg shadow-bo-accent/25">
-            <FileText size={16} />
+          <button
+            onClick={handleGenerate}
+            disabled={generating}
+            className="flex items-center gap-2 bg-bo-accent text-white px-5 py-2.5 rounded-xl font-medium hover:bg-bo-accent/90 transition-colors shadow-lg shadow-bo-accent/25 disabled:opacity-50"
+          >
+            {generating ? <Loader2 size={16} className="animate-spin" /> : <FileText size={16} />}
             Generer Z-Report
           </button>
         </div>
@@ -120,8 +205,27 @@ export function ReportsPage() {
         })}
       </div>
 
-      {activeTab === 'z-report' ? (
+      {/* Error */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700 flex items-center gap-2">
+          <AlertCircle size={16} />
+          {error}
+        </div>
+      )}
+
+      {loading ? (
+        <div className="flex items-center justify-center h-64">
+          <Loader2 size={32} className="animate-spin text-bo-accent" />
+        </div>
+      ) : activeTab === 'z-report' ? (
         <>
+          {noData && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-700 flex items-center gap-2">
+              <AlertCircle size={16} />
+              Aucun rapport disponible pour cette date. Cliquez sur "Generer Z-Report" pour en creer un.
+            </div>
+          )}
+
           {/* Summary cards */}
           <div className="grid grid-cols-4 gap-4">
             {[
@@ -251,102 +355,112 @@ export function ReportsPage() {
                 <Clock size={16} className="text-bo-accent" />
                 Heures de pointe
               </h3>
-              <div className="flex items-end gap-2 h-44">
-                {zReport.peakHours.map((h) => {
-                  const heightPct = (h.count / maxCount) * 100;
-                  const isMax = h.count === maxCount;
-                  return (
-                    <div key={h.hour} className="flex-1 flex flex-col items-center gap-1.5 group">
-                      <span className={`text-xs font-semibold transition-colors ${isMax ? 'text-bo-accent' : 'text-gray-400'}`}>
-                        {h.count}
-                      </span>
-                      <div className="w-full relative flex items-end" style={{ height: '120px' }}>
-                        <div
-                          className={`w-full rounded-t-lg transition-all duration-500 ${
-                            isMax
-                              ? 'bg-gradient-to-t from-bo-accent to-indigo-400'
-                              : 'bg-gradient-to-t from-indigo-200 to-indigo-100 group-hover:from-bo-accent/60 group-hover:to-indigo-300'
-                          }`}
-                          style={{ height: `${heightPct}%`, minHeight: '6px' }}
-                        />
-                      </div>
-                      <span className={`text-[11px] font-medium ${isMax ? 'text-bo-accent' : 'text-gray-400'}`}>
-                        {h.hour}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-              <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between text-xs text-gray-400">
-                <span>Heure la plus dense: 14h</span>
-                <span className="text-bo-accent font-semibold">9 transactions</span>
-              </div>
+              {zReport.peakHours.length > 0 ? (
+                <>
+                  <div className="flex items-end gap-2 h-44">
+                    {zReport.peakHours.map((h) => {
+                      const heightPct = (h.count / maxCount) * 100;
+                      const isMax = h.count === maxCount;
+                      return (
+                        <div key={h.hour} className="flex-1 flex flex-col items-center gap-1.5 group">
+                          <span className={`text-xs font-semibold transition-colors ${isMax ? 'text-bo-accent' : 'text-gray-400'}`}>
+                            {h.count}
+                          </span>
+                          <div className="w-full relative flex items-end" style={{ height: '120px' }}>
+                            <div
+                              className={`w-full rounded-t-lg transition-all duration-500 ${
+                                isMax
+                                  ? 'bg-gradient-to-t from-bo-accent to-indigo-400'
+                                  : 'bg-gradient-to-t from-indigo-200 to-indigo-100 group-hover:from-bo-accent/60 group-hover:to-indigo-300'
+                              }`}
+                              style={{ height: `${heightPct}%`, minHeight: '6px' }}
+                            />
+                          </div>
+                          <span className={`text-[11px] font-medium ${isMax ? 'text-bo-accent' : 'text-gray-400'}`}>
+                            {h.hour}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between text-xs text-gray-400">
+                    <span>Heure la plus dense: {zReport.peakHours.reduce((max, h) => h.count > max.count ? h : max, zReport.peakHours[0])?.hour}</span>
+                    <span className="text-bo-accent font-semibold">{maxCount} transactions</span>
+                  </div>
+                </>
+              ) : (
+                <div className="h-44 flex items-center justify-center text-gray-300 text-sm">
+                  Aucune donnee disponible
+                </div>
+              )}
             </div>
           </div>
 
           {/* Top products */}
-          <div className="bg-white rounded-2xl p-6 shadow-soft border border-gray-100/50">
-            <div className="flex items-center justify-between mb-5">
-              <h3 className="font-semibold text-bo-text flex items-center gap-2">
-                <Trophy size={16} className="text-amber-500" />
-                Top produits de la journee
-              </h3>
-              <button className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-bo-accent transition-colors">
-                <Download size={13} />
-                Exporter CSV
-              </button>
-            </div>
-            <div className="overflow-hidden rounded-xl border border-gray-100">
-              <table className="w-full">
-                <thead>
-                  <tr className="bg-gray-50/50">
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider w-8">#</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Produit</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Quantite</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Chiffre d'affaires</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Part</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {zReport.topProducts.map((p, i) => {
-                    const share = Math.round((p.revenue / zReport.totalRevenue) * 100);
-                    return (
-                      <tr key={i} className="border-t border-gray-50 hover:bg-gray-50/50 transition-colors">
-                        <td className="py-3 px-4">
-                          <span className={`w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold ${
-                            i === 0 ? 'bg-amber-100 text-amber-700' :
-                            i === 1 ? 'bg-gray-100 text-gray-600' :
-                            i === 2 ? 'bg-orange-100 text-orange-600' :
-                            'bg-gray-50 text-gray-400'
-                          }`}>
-                            {i + 1}
-                          </span>
-                        </td>
-                        <td className="py-3 px-4 font-medium text-sm text-bo-text">{p.name}</td>
-                        <td className="py-3 px-4 text-right text-sm">
-                          <span className="bg-indigo-50 text-bo-accent text-xs font-semibold px-2.5 py-1 rounded-lg">
-                            {p.qty} vendus
-                          </span>
-                        </td>
-                        <td className="py-3 px-4 text-right font-semibold text-sm">{formatCurrency(p.revenue)}</td>
-                        <td className="py-3 px-4 text-right">
-                          <div className="flex items-center justify-end gap-2">
-                            <div className="w-16 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                              <div
-                                className="h-full bg-bo-accent rounded-full"
-                                style={{ width: `${share}%` }}
-                              />
+          {zReport.topProducts.length > 0 && (
+            <div className="bg-white rounded-2xl p-6 shadow-soft border border-gray-100/50">
+              <div className="flex items-center justify-between mb-5">
+                <h3 className="font-semibold text-bo-text flex items-center gap-2">
+                  <Trophy size={16} className="text-amber-500" />
+                  Top produits de la journee
+                </h3>
+                <button className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-bo-accent transition-colors">
+                  <Download size={13} />
+                  Exporter CSV
+                </button>
+              </div>
+              <div className="overflow-hidden rounded-xl border border-gray-100">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-gray-50/50">
+                      <th className="text-left py-3 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider w-8">#</th>
+                      <th className="text-left py-3 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Produit</th>
+                      <th className="text-right py-3 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Quantite</th>
+                      <th className="text-right py-3 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Chiffre d'affaires</th>
+                      <th className="text-right py-3 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Part</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {zReport.topProducts.map((p, i) => {
+                      const share = zReport.totalRevenue > 0 ? Math.round((p.revenue / zReport.totalRevenue) * 100) : 0;
+                      return (
+                        <tr key={i} className="border-t border-gray-50 hover:bg-gray-50/50 transition-colors">
+                          <td className="py-3 px-4">
+                            <span className={`w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold ${
+                              i === 0 ? 'bg-amber-100 text-amber-700' :
+                              i === 1 ? 'bg-gray-100 text-gray-600' :
+                              i === 2 ? 'bg-orange-100 text-orange-600' :
+                              'bg-gray-50 text-gray-400'
+                            }`}>
+                              {i + 1}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 font-medium text-sm text-bo-text">{p.name}</td>
+                          <td className="py-3 px-4 text-right text-sm">
+                            <span className="bg-indigo-50 text-bo-accent text-xs font-semibold px-2.5 py-1 rounded-lg">
+                              {p.qty} vendus
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-right font-semibold text-sm">{formatCurrency(p.revenue)}</td>
+                          <td className="py-3 px-4 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <div className="w-16 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                <div
+                                  className="h-full bg-bo-accent rounded-full"
+                                  style={{ width: `${share}%` }}
+                                />
+                              </div>
+                              <span className="text-xs text-gray-400 font-medium w-8 text-right">{share}%</span>
                             </div>
-                            <span className="text-xs text-gray-400 font-medium w-8 text-right">{share}%</span>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
+          )}
         </>
       ) : (
         /* Analytics tab - placeholder */

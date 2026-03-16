@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Search,
   Plus,
@@ -12,25 +12,24 @@ import {
   AlertTriangle,
   CheckCircle2,
   XCircle,
+  Loader2,
+  X,
 } from 'lucide-react';
+import { productsApi } from '../services/api';
+import { useAuthStore } from '../stores/authStore';
 
 type SortKey = 'name' | 'price' | 'stock' | 'category';
 type SortDir = 'asc' | 'desc';
 
-const products = [
-  { ean: '3760001000001', name: 'T-Shirt Blanc', price: 29.9, stock: 50, category: 'Haut', image: null },
-  { ean: '3760001000002', name: 'Jean Slim Noir', price: 59.9, stock: 30, category: 'Bas', image: null },
-  { ean: '3760001000003', name: 'Chaussettes (paire)', price: 8.9, stock: 100, category: 'Accessoire', image: null },
-  { ean: '3760001000004', name: 'Veste en Cuir', price: 199.0, stock: 8, category: 'Veste', image: null },
-  { ean: '3760001000005', name: 'Echarpe Laine', price: 34.9, stock: 25, category: 'Accessoire', image: null },
-  { ean: '3760001000006', name: 'Casquette Sport', price: 19.9, stock: 40, category: 'Accessoire', image: null },
-  { ean: '3760001000007', name: 'Sac a Main', price: 89.0, stock: 12, category: 'Accessoire', image: null },
-  { ean: '3760001000008', name: 'Ceinture Cuir', price: 24.9, stock: 35, category: 'Accessoire', image: null },
-  { ean: '3760001000009', name: 'Pull Marin', price: 45.0, stock: 3, category: 'Haut', image: null },
-  { ean: '3760001000010', name: 'Robe d\'ete', price: 64.9, stock: 18, category: 'Robe', image: null },
-];
-
-const categories = [...new Set(products.map((p) => p.category))];
+interface Product {
+  id: string;
+  ean: string;
+  name: string;
+  price: number;
+  stock: number;
+  category: string;
+  image: string | null;
+}
 
 const avatarColors = [
   'from-indigo-100 to-indigo-200 text-indigo-600',
@@ -56,10 +55,51 @@ function stockBadge(stock: number) {
 }
 
 export function ProductsPage() {
+  const employee = useAuthStore((s) => s.employee);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [filterCat, setFilterCat] = useState<string>('all');
   const [sortKey, setSortKey] = useState<SortKey>('name');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
+
+  // Modal state
+  const [showModal, setShowModal] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({ name: '', ean: '', price: '', stock: '', category: '' });
+
+  const fetchProducts = useCallback(async () => {
+    try {
+      setLoading(true);
+      const storeId = employee?.storeId;
+      const res = await productsApi.list(storeId);
+      const data: any[] = Array.isArray(res.data) ? res.data : (res.data?.data || res.data?.products || []);
+      setProducts(
+        data.map((p: any) => ({
+          id: p.id,
+          ean: p.ean || p.barcode || '',
+          name: p.name || '',
+          price: typeof p.price === 'number' ? p.price / 100 : (p.priceHT || p.priceTTC || 0),
+          stock: p.stock ?? p.quantity ?? 0,
+          category: p.category || 'Non classe',
+          image: p.image || null,
+        })),
+      );
+      setError(null);
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Erreur lors du chargement des produits');
+    } finally {
+      setLoading(false);
+    }
+  }, [employee?.storeId]);
+
+  useEffect(() => {
+    fetchProducts();
+  }, [fetchProducts]);
+
+  const categories = [...new Set(products.map((p) => p.category))];
 
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
@@ -84,10 +124,85 @@ export function ProductsPage() {
 
   const totalStock = products.reduce((s, p) => s + p.stock, 0);
   const lowStock = products.filter((p) => p.stock <= 15).length;
-  const avgPrice = products.reduce((s, p) => s + p.price, 0) / products.length;
+  const avgPrice = products.length > 0 ? products.reduce((s, p) => s + p.price, 0) / products.length : 0;
+
+  const resetForm = () => {
+    setForm({ name: '', ean: '', price: '', stock: '', category: '' });
+    setEditingId(null);
+  };
+
+  const openAdd = () => { resetForm(); setShowModal(true); };
+
+  const openEdit = (p: Product) => {
+    setForm({
+      name: p.name,
+      ean: p.ean,
+      price: String(p.price),
+      stock: String(p.stock),
+      category: p.category,
+    });
+    setEditingId(p.id);
+    setShowModal(true);
+  };
+
+  const handleSave = async () => {
+    if (!form.name.trim()) return;
+    try {
+      setSaving(true);
+      const payload = {
+        name: form.name,
+        ean: form.ean,
+        price: Math.round(parseFloat(form.price || '0') * 100),
+        stock: parseInt(form.stock || '0', 10),
+        category: form.category,
+        storeId: employee?.storeId,
+      };
+      if (editingId) {
+        await productsApi.update(editingId, payload);
+      } else {
+        await productsApi.create(payload);
+      }
+      setShowModal(false);
+      resetForm();
+      await fetchProducts();
+    } catch (err: any) {
+      const msg = err.response?.data?.message || 'Erreur lors de la sauvegarde';
+      alert(typeof msg === 'string' ? msg : JSON.stringify(msg));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Supprimer ce produit ?')) return;
+    try {
+      await productsApi.delete(id);
+      await fetchProducts();
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'Erreur lors de la suppression');
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <Loader2 size={32} className="animate-spin text-bo-accent" />
+      </div>
+    );
+  }
 
   return (
     <div className="p-8 space-y-6 animate-fade-in">
+      {/* Error banner */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700 flex items-center justify-between">
+          <span>{error}</span>
+          <button onClick={fetchProducts} className="text-red-600 font-medium hover:underline">
+            Reessayer
+          </button>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -101,7 +216,10 @@ export function ProductsPage() {
             <Download size={16} />
             Exporter
           </button>
-          <button className="flex items-center gap-2 bg-bo-accent text-white px-5 py-2.5 rounded-xl font-medium hover:bg-bo-accent/90 transition-colors shadow-lg shadow-bo-accent/25">
+          <button
+            onClick={openAdd}
+            className="flex items-center gap-2 bg-bo-accent text-white px-5 py-2.5 rounded-xl font-medium hover:bg-bo-accent/90 transition-colors shadow-lg shadow-bo-accent/25"
+          >
             <Plus size={16} />
             Nouveau produit
           </button>
@@ -210,7 +328,7 @@ export function ProductsPage() {
               const BadgeIcon = badge.icon;
               return (
                 <tr
-                  key={product.ean}
+                  key={product.id}
                   className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors group"
                 >
                   <td className="py-3 px-4 text-xs text-gray-300 font-mono">{idx + 1}</td>
@@ -244,10 +362,18 @@ export function ProductsPage() {
                   </td>
                   <td className="py-3 px-4 text-right">
                     <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button className="p-2 rounded-lg hover:bg-indigo-50 text-gray-400 hover:text-bo-accent transition-colors" title="Modifier">
+                      <button
+                        onClick={() => openEdit(product)}
+                        className="p-2 rounded-lg hover:bg-indigo-50 text-gray-400 hover:text-bo-accent transition-colors"
+                        title="Modifier"
+                      >
                         <Pencil size={14} />
                       </button>
-                      <button className="p-2 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors" title="Supprimer">
+                      <button
+                        onClick={() => handleDelete(product.id)}
+                        className="p-2 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"
+                        title="Supprimer"
+                      >
                         <Trash2 size={14} />
                       </button>
                     </div>
@@ -271,6 +397,103 @@ export function ProductsPage() {
           <span>Catalogue produits</span>
         </div>
       </div>
+
+      {/* Modal Add/Edit Product */}
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => { setShowModal(false); resetForm(); }} />
+          <div className="relative bg-white rounded-2xl shadow-elevated w-full max-w-lg p-6 animate-slide-up">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-bold text-bo-text">
+                {editingId ? 'Modifier le produit' : 'Nouveau produit'}
+              </h3>
+              <button
+                onClick={() => { setShowModal(false); resetForm(); }}
+                className="p-2 rounded-lg hover:bg-gray-100 text-gray-400 transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1.5">Nom du produit *</label>
+                <input
+                  type="text"
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-bo-accent/30 focus:border-bo-accent"
+                  placeholder="T-Shirt Blanc"
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1.5">Code EAN</label>
+                  <input
+                    type="text"
+                    className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-bo-accent/30 focus:border-bo-accent"
+                    placeholder="3760001000001"
+                    value={form.ean}
+                    onChange={(e) => setForm({ ...form, ean: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1.5">Categorie</label>
+                  <input
+                    type="text"
+                    className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-bo-accent/30 focus:border-bo-accent"
+                    placeholder="Haut"
+                    value={form.category}
+                    onChange={(e) => setForm({ ...form, category: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1.5">Prix TTC (EUR)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-bo-accent/30 focus:border-bo-accent"
+                    placeholder="29.90"
+                    value={form.price}
+                    onChange={(e) => setForm({ ...form, price: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1.5">Stock</label>
+                  <input
+                    type="number"
+                    min="0"
+                    className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-bo-accent/30 focus:border-bo-accent"
+                    placeholder="50"
+                    value={form.stock}
+                    onChange={(e) => setForm({ ...form, stock: e.target.value })}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 mt-6 pt-4 border-t border-gray-100">
+              <button
+                onClick={() => { setShowModal(false); resetForm(); }}
+                className="px-4 py-2.5 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={!form.name.trim() || saving}
+                className="px-5 py-2.5 rounded-xl text-sm font-medium bg-bo-accent text-white hover:bg-bo-accent/90 transition-colors shadow-lg shadow-bo-accent/25 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {saving && <Loader2 size={14} className="animate-spin" />}
+                {editingId ? 'Enregistrer' : 'Ajouter'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

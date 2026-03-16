@@ -1,4 +1,4 @@
-import { ExecutionContext } from '@nestjs/common';
+import { ExecutionContext, ForbiddenException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { RolesGuard, ROLES_KEY } from './roles.guard';
 
@@ -45,14 +45,24 @@ describe('RolesGuard', () => {
     expect(guard.canActivate(ctx)).toBe(true);
   });
 
-  it('should deny cashier for admin-only endpoint', () => {
+  it('should throw ForbiddenException for cashier on admin-only endpoint', () => {
     const ctx = createMockContext('cashier', ['admin']);
-    expect(guard.canActivate(ctx)).toBe(false);
+    expect(() => guard.canActivate(ctx)).toThrow(ForbiddenException);
   });
 
-  it('should deny cashier for admin/manager endpoint', () => {
+  it('should throw ForbiddenException for cashier on admin/manager endpoint', () => {
     const ctx = createMockContext('cashier', ['admin', 'manager']);
-    expect(guard.canActivate(ctx)).toBe(false);
+    expect(() => guard.canActivate(ctx)).toThrow(ForbiddenException);
+  });
+
+  it('should include role info in error message', () => {
+    const ctx = createMockContext('cashier', ['admin']);
+    try {
+      guard.canActivate(ctx);
+    } catch (e: any) {
+      expect(e.message).toContain('admin');
+      expect(e.message).toContain('cashier');
+    }
   });
 
   it('should allow cashier when cashier is in required roles', () => {

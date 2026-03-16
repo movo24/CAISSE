@@ -5,7 +5,7 @@ import {
   Percent, Ban, ReceiptText, Package, DoorOpen, Printer,
   Trash2, Edit3,
 } from 'lucide-react';
-import { employeesApi } from '../services/api';
+import { employeesApi, rightsApi } from '../services/api';
 
 /* ── Types ── */
 
@@ -91,16 +91,44 @@ export function RightsPage() {
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    employeesApi.list().then((res) => {
+    // Load role defaults from backend
+    rightsApi.getRoleDefaults().then((res) => {
+      const defaults = res.data;
+      if (defaults && typeof defaults === 'object') {
+        setRoleRights((prev) => ({
+          admin: { ...prev.admin, ...(defaults.admin || {}) },
+          manager: { ...prev.manager, ...(defaults.manager || {}) },
+          cashier: { ...prev.cashier, ...(defaults.cashier || {}) },
+        }));
+      }
+    }).catch(() => {});
+
+    // Load employees and their individual rights
+    employeesApi.list().then(async (res) => {
       const emps: any[] = res.data || [];
-      setEmployees(emps.map((e: any) => ({
-        id: e.id,
-        firstName: e.firstName,
-        lastName: e.lastName,
-        role: (e.role || 'cashier') as Role,
-        hasOverride: false,
-        rights: { ...defaultRoleRights[(e.role || 'cashier') as Role] || defaultRoleRights.cashier },
-      })));
+      const empList: EmployeeOverride[] = await Promise.all(
+        emps.map(async (e: any) => {
+          const role = (e.role || 'cashier') as Role;
+          let empRights = { ...defaultRoleRights[role] || defaultRoleRights.cashier };
+          let hasOverride = false;
+          try {
+            const rightsRes = await rightsApi.getEmployeeRights(e.id);
+            if (rightsRes.data && rightsRes.data.rights) {
+              empRights = { ...empRights, ...rightsRes.data.rights };
+              hasOverride = rightsRes.data.hasOverride || false;
+            }
+          } catch { /* use defaults */ }
+          return {
+            id: e.id,
+            firstName: e.firstName,
+            lastName: e.lastName,
+            role,
+            hasOverride,
+            rights: empRights,
+          };
+        }),
+      );
+      setEmployees(empList);
     }).catch(() => {});
   }, []);
 
@@ -149,12 +177,24 @@ export function RightsPage() {
     setSaved(false);
   };
 
-  const handleSave = () => {
-    // En production: appel API pour sauvegarder
-    console.log('[RIGHTS] Saved role defaults:', roleRights);
-    console.log('[RIGHTS] Saved employee overrides:', employees.filter((e) => e.hasOverride));
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+  const handleSave = async () => {
+    try {
+      // Save role defaults
+      for (const role of ['admin', 'manager', 'cashier'] as Role[]) {
+        await rightsApi.updateRoleDefaults(role, roleRights[role]);
+      }
+
+      // Save employee overrides
+      const overrides = employees.filter((e) => e.hasOverride);
+      for (const emp of overrides) {
+        await rightsApi.updateEmployeeRights(emp.id, emp.rights);
+      }
+
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'Erreur lors de la sauvegarde des droits');
+    }
   };
 
   return (

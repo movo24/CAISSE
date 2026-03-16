@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Users,
   Plus,
@@ -17,7 +17,9 @@ import {
   CheckCircle2,
   Clock,
   Ban,
+  Loader2,
 } from 'lucide-react';
+import { employeesApi } from '../services/api';
 
 type Role = 'admin' | 'manager' | 'cashier';
 type EmployeeStatus = 'active' | 'inactive' | 'suspended';
@@ -31,6 +33,7 @@ interface Employee {
   pin: string;
   role: Role;
   status: EmployeeStatus;
+  isActive?: boolean;
   createdAt: string;
   lastLogin: string | null;
 }
@@ -64,76 +67,22 @@ function avatarGradient(name: string) {
   return avatarColors[Math.abs(hash) % avatarColors.length];
 }
 
-const initialEmployees: Employee[] = [
-  {
-    id: 'emp-001',
-    firstName: 'Admin',
-    lastName: 'Manager',
-    email: 'admin@caisse.dev',
-    phone: '06 12 34 56 78',
-    pin: '1234',
-    role: 'admin',
-    status: 'active',
-    createdAt: '2024-01-15',
-    lastLogin: '2024-12-20 14:32',
-  },
-  {
-    id: 'emp-002',
-    firstName: 'Marie',
-    lastName: 'Dupont',
-    email: 'marie.dupont@caisse.dev',
-    phone: '06 23 45 67 89',
-    pin: '5678',
-    role: 'cashier',
-    status: 'active',
-    createdAt: '2024-03-10',
-    lastLogin: '2024-12-20 09:15',
-  },
-  {
-    id: 'emp-003',
-    firstName: 'Thomas',
-    lastName: 'Bernard',
-    email: 'thomas.b@caisse.dev',
-    phone: '06 34 56 78 90',
-    pin: '9012',
-    role: 'manager',
-    status: 'active',
-    createdAt: '2024-05-22',
-    lastLogin: '2024-12-19 18:45',
-  },
-  {
-    id: 'emp-004',
-    firstName: 'Sophie',
-    lastName: 'Martin',
-    email: 'sophie.m@caisse.dev',
-    phone: '06 45 67 89 01',
-    pin: '3456',
-    role: 'cashier',
-    status: 'inactive',
-    createdAt: '2024-06-18',
-    lastLogin: '2024-11-05 12:00',
-  },
-  {
-    id: 'emp-005',
-    firstName: 'Lucas',
-    lastName: 'Petit',
-    email: 'lucas.p@caisse.dev',
-    phone: '06 56 78 90 12',
-    pin: '7890',
-    role: 'cashier',
-    status: 'suspended',
-    createdAt: '2024-08-01',
-    lastLogin: null,
-  },
-];
+function mapStatus(emp: any): EmployeeStatus {
+  if (emp.status) return emp.status;
+  if (emp.isActive === false) return 'inactive';
+  return 'active';
+}
 
 export function EmployeesPage() {
-  const [employees, setEmployees] = useState<Employee[]>(initialEmployees);
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
   const [filterRole, setFilterRole] = useState<string>('all');
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showPin, setShowPin] = useState<Record<string, boolean>>({});
+  const [error, setError] = useState<string | null>(null);
 
   // Form state
   const [form, setForm] = useState({
@@ -144,6 +93,38 @@ export function EmployeesPage() {
     pin: '',
     role: 'cashier' as Role,
   });
+
+  const fetchEmployees = useCallback(async () => {
+    try {
+      setLoading(true);
+      const res = await employeesApi.list();
+      const emps: any[] = res.data || [];
+      setEmployees(
+        emps.map((e: any) => ({
+          id: e.id,
+          firstName: e.firstName || '',
+          lastName: e.lastName || '',
+          email: e.email || '',
+          phone: e.phone || '',
+          pin: e.pin || '',
+          role: (e.role || 'cashier') as Role,
+          status: mapStatus(e),
+          isActive: e.isActive !== false,
+          createdAt: e.createdAt ? new Date(e.createdAt).toISOString().split('T')[0] : '',
+          lastLogin: e.lastLogin || null,
+        })),
+      );
+      setError(null);
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Erreur lors du chargement des employes');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchEmployees();
+  }, [fetchEmployees]);
 
   const resetForm = () => {
     setForm({ firstName: '', lastName: '', email: '', phone: '', pin: '', role: 'cashier' });
@@ -168,44 +149,47 @@ export function EmployeesPage() {
     setShowModal(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!form.firstName.trim() || !form.lastName.trim() || !form.pin.trim()) return;
 
-    if (editingId) {
-      setEmployees((prev) =>
-        prev.map((e) =>
-          e.id === editingId
-            ? { ...e, ...form }
-            : e,
-        ),
-      );
-    } else {
-      const newEmp: Employee = {
-        id: `emp-${String(Date.now()).slice(-6)}`,
-        ...form,
-        status: 'active',
-        createdAt: new Date().toISOString().split('T')[0],
-        lastLogin: null,
-      };
-      setEmployees((prev) => [...prev, newEmp]);
+    try {
+      setSaving(true);
+      if (editingId) {
+        await employeesApi.update(editingId, form);
+      } else {
+        await employeesApi.create(form);
+      }
+      setShowModal(false);
+      resetForm();
+      await fetchEmployees();
+    } catch (err: any) {
+      const msg = err.response?.data?.message || 'Erreur lors de la sauvegarde';
+      alert(typeof msg === 'string' ? msg : JSON.stringify(msg));
+    } finally {
+      setSaving(false);
     }
-
-    setShowModal(false);
-    resetForm();
   };
 
-  const handleDelete = (id: string) => {
-    setEmployees((prev) => prev.filter((e) => e.id !== id));
+  const handleDelete = async (id: string) => {
+    if (!confirm('Desactiver cet employe ?')) return;
+    try {
+      await employeesApi.deactivate(id);
+      await fetchEmployees();
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'Erreur lors de la desactivation');
+    }
   };
 
-  const toggleStatus = (id: string) => {
-    setEmployees((prev) =>
-      prev.map((e) =>
-        e.id === id
-          ? { ...e, status: e.status === 'active' ? 'inactive' : 'active' }
-          : e,
-      ),
-    );
+  const toggleStatus = async (id: string) => {
+    const emp = employees.find((e) => e.id === id);
+    if (!emp) return;
+    try {
+      const newActive = emp.status !== 'active';
+      await employeesApi.update(id, { isActive: newActive });
+      await fetchEmployees();
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'Erreur lors du changement de statut');
+    }
   };
 
   const filtered = employees.filter((e) => {
@@ -219,8 +203,26 @@ export function EmployeesPage() {
   const countByRole = (role: Role) => employees.filter((e) => e.role === role).length;
   const activeCount = employees.filter((e) => e.status === 'active').length;
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <Loader2 size={32} className="animate-spin text-bo-accent" />
+      </div>
+    );
+  }
+
   return (
     <div className="p-8 space-y-6 animate-fade-in">
+      {/* Error banner */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700 flex items-center justify-between">
+          <span>{error}</span>
+          <button onClick={fetchEmployees} className="text-red-600 font-medium hover:underline">
+            Reessayer
+          </button>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -335,7 +337,7 @@ export function EmployeesPage() {
                   <button
                     onClick={() => handleDelete(emp.id)}
                     className="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"
-                    title="Supprimer"
+                    title="Desactiver"
                   >
                     <Trash2 size={13} />
                   </button>
@@ -346,11 +348,11 @@ export function EmployeesPage() {
               <div className="space-y-2 text-sm">
                 <div className="flex items-center gap-2 text-gray-500">
                   <Mail size={13} className="text-gray-400 flex-shrink-0" />
-                  <span className="truncate">{emp.email}</span>
+                  <span className="truncate">{emp.email || '—'}</span>
                 </div>
                 <div className="flex items-center gap-2 text-gray-500">
                   <Phone size={13} className="text-gray-400 flex-shrink-0" />
-                  <span>{emp.phone}</span>
+                  <span>{emp.phone || '—'}</span>
                 </div>
                 <div className="flex items-center gap-2 text-gray-500">
                   <Hash size={13} className="text-gray-400 flex-shrink-0" />
@@ -383,7 +385,7 @@ export function EmployeesPage() {
           );
         })}
 
-        {filtered.length === 0 && (
+        {filtered.length === 0 && !loading && (
           <div className="col-span-full py-12 text-center">
             <Users size={32} className="mx-auto text-gray-300 mb-3" />
             <p className="text-gray-400 text-sm">Aucun employe ne correspond a votre recherche</p>
@@ -504,9 +506,10 @@ export function EmployeesPage() {
               </button>
               <button
                 onClick={handleSave}
-                disabled={!form.firstName.trim() || !form.lastName.trim() || !form.pin.trim()}
-                className="px-5 py-2.5 rounded-xl text-sm font-medium bg-bo-accent text-white hover:bg-bo-accent/90 transition-colors shadow-lg shadow-bo-accent/25 disabled:opacity-40 disabled:cursor-not-allowed"
+                disabled={!form.firstName.trim() || !form.lastName.trim() || !form.pin.trim() || saving}
+                className="px-5 py-2.5 rounded-xl text-sm font-medium bg-bo-accent text-white hover:bg-bo-accent/90 transition-colors shadow-lg shadow-bo-accent/25 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
               >
+                {saving && <Loader2 size={14} className="animate-spin" />}
                 {editingId ? 'Enregistrer' : 'Ajouter'}
               </button>
             </div>

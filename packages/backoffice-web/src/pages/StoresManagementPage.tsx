@@ -78,9 +78,14 @@ export function StoresManagementPage() {
     setError(null);
 
     try {
-      const payload: Record<string, unknown> = { ...formData };
-      if (!payload.organizationId) delete payload.organizationId;
-      if (!payload.unitId) delete payload.unitId;
+      // Strip empty strings — only send non-empty optional fields
+      const payload: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(formData)) {
+        if (typeof value === 'string' && value.trim() === '') continue;
+        payload[key] = value;
+      }
+      // Name is required — always include even if somehow empty (caught above)
+      payload.name = formData.name.trim();
 
       if (editingStore) {
         await storesApi.update(editingStore.id, payload);
@@ -93,7 +98,17 @@ export function StoresManagementPage() {
       loadData();
       setTimeout(() => setSuccess(null), 2000);
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur');
+      const data = err.response?.data;
+      // Show detailed validation errors if available
+      if (data?.details && Array.isArray(data.details)) {
+        setError(data.details.join(' | '));
+      } else if (typeof data?.message === 'string') {
+        setError(data.message);
+      } else if (Array.isArray(data?.message)) {
+        setError(data.message.join(' | '));
+      } else {
+        setError('Erreur lors de la sauvegarde');
+      }
     } finally {
       setSubmitting(false);
     }
@@ -181,6 +196,11 @@ export function StoresManagementPage() {
               <div className="flex items-start justify-between mb-3">
                 <div>
                   <h3 className="font-bold text-bo-text">{store.name}</h3>
+                  {store.storeCode && (
+                    <span className="inline-block mt-0.5 text-[10px] font-mono font-semibold text-bo-accent bg-indigo-50 px-2 py-0.5 rounded-md">
+                      {store.storeCode}
+                    </span>
+                  )}
                   <div className="flex items-center gap-2 mt-1 text-xs text-bo-muted">
                     {store.organization && (
                       <span className="flex items-center gap-1">
@@ -263,10 +283,21 @@ export function StoresManagementPage() {
                     autoFocus />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-bo-text mb-1">Code magasin</label>
-                  <input type="text" value={formData.storeCode} onChange={(e) => setFormData({ ...formData, storeCode: e.target.value })}
-                    placeholder="MAG-001"
-                    className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-bo-accent/30" />
+                  <label className="block text-xs font-semibold text-bo-text mb-1">
+                    Code magasin
+                    {!editingStore && <span className="text-bo-muted font-normal ml-1">(genere automatiquement)</span>}
+                  </label>
+                  {editingStore ? (
+                    <input type="text" value={formData.storeCode}
+                      readOnly
+                      className="w-full px-4 py-2.5 rounded-xl border border-gray-100 bg-gray-50 text-sm font-mono text-bo-muted cursor-not-allowed" />
+                  ) : (
+                    <div className="w-full px-4 py-2.5 rounded-xl border border-dashed border-gray-300 bg-gray-50 text-sm font-mono text-bo-muted">
+                      {formData.name.trim()
+                        ? `~ ${formData.name.trim().slice(0, 3).toUpperCase()}${formData.city ? '-' + formData.city.trim().slice(0, 5).toUpperCase() : ''}-001`
+                        : 'Remplissez le nom pour voir la preview'}
+                    </div>
+                  )}
                 </div>
               </div>
 

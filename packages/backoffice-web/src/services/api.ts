@@ -179,6 +179,20 @@ export const storesApi = {
 };
 
 // ---------------------------------------------------------------------------
+// Inventory Scans
+// ---------------------------------------------------------------------------
+export const inventoryScansApi = {
+  record: (data: { barcode: string; quantity?: number; scanType?: string; sessionId?: string }) =>
+    api.post('/inventory-scans', data),
+  list: (filters?: { sessionId?: string; status?: string; scanType?: string; limit?: number }) =>
+    api.get('/inventory-scans', { params: filters }),
+  apply: (sessionId?: string) =>
+    api.post('/inventory-scans/apply', { sessionId }),
+  sessionStats: (sessionId: string) =>
+    api.get(`/inventory-scans/session/${sessionId}/stats`),
+};
+
+// ---------------------------------------------------------------------------
 // Reports
 // ---------------------------------------------------------------------------
 export const reportsApi = {
