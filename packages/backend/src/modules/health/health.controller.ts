@@ -16,7 +16,7 @@ export class HealthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Health check' })
   check() {
-    return { status: 'ok', timestamp: new Date().toISOString() };
+    return { status: 'ok', version: '1.1.0', timestamp: new Date().toISOString() };
   }
 
   @Head()
