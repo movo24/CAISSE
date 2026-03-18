@@ -5,7 +5,6 @@ import {
   employeesApi,
   storesApi,
   reportsApi,
-  livePerformanceApi,
   notificationsApi,
 } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
@@ -222,14 +221,12 @@ export function useDashboardData(): DashboardData {
         salesRes,
         employeesRes,
         storesRes,
-        networkRes,
       ] = await Promise.allSettled([
         productsApi.list(storeId),
         notificationsApi.stockAlerts(storeId),
         salesApi.list(todayStr()),
         employeesApi.list(),
         storesApi.list(),
-        livePerformanceApi.networkSnapshot(),
       ]);
 
       // ── Products ──
@@ -347,36 +344,8 @@ export function useDashboardData(): DashboardData {
         })));
       }
 
-      // ── Network / Live performance ──
-      if (networkRes.status === 'fulfilled') {
-        const network = networkRes.value.data;
-        if (network?.stores) {
-          setInterStoreComparison(network.stores.map((s: any) => ({
-            magasin: s.storeName || s.storeId,
-            tauxEspeces: 0,
-            ecartMoyen: 0,
-            annulationsPct: 0,
-          })));
-        }
-      }
-
-      // ── AI Insights (try) ──
-      try {
-        const insightRes = await livePerformanceApi.aiInsight();
-        if (insightRes.data) {
-          const d = insightRes.data;
-          setAiInsights({
-            tendances: d.tendances || [],
-            compaSemaine: d.compaSemaine || emptyAiInsights.compaSemaine,
-            anomalies: d.anomalies || [],
-            actionsConcretes: d.actionsConcretes || [],
-            previsionCA: d.previsionCA || emptyAiInsights.previsionCA,
-            objectifDynamique: d.objectifDynamique || emptyAiInsights.objectifDynamique,
-          });
-        }
-      } catch {
-        // AI endpoint may not exist yet
-      }
+      // Network / Live performance → migrated to TimeWin24
+      // AI Insights → migrated to TimeWin24
     } catch (err) {
       console.error('[Dashboard] Failed to fetch data:', err);
     } finally {

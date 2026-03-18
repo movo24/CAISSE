@@ -17,5 +17,6 @@
     }
   },
   "include": ["src"],
+  "exclude": ["src/pages/_migrated-to-timewin24"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

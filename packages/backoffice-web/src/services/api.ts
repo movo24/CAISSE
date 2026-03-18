@@ -241,20 +241,7 @@ export const auditApi = {
     api.get('/audit/verify', { params: { storeId } }),
 };
 
-// ---------------------------------------------------------------------------
-// IA / Intelligence
-// ---------------------------------------------------------------------------
-export const iaApi = {
-  suggestPrice: (productId: string) =>
-    api.get(`/ia/pricing/${productId}`),
-  forecastRevenue: (targetDate: string) =>
-    api.get('/ia/forecast', { params: { date: targetDate } }),
-  // Claude AI endpoints
-  chat: (data: { message: string; history?: { role: string; content: string }[] }) =>
-    api.post('/ia/chat', data),
-  generateReport: (data: { reportType: string; date?: string }) =>
-    api.post('/ia/report', data),
-};
+// IA / Intelligence → migrated to TimeWin24
 
 // ---------------------------------------------------------------------------
 // Currency
@@ -369,14 +356,7 @@ export const payrollApi = {
     api.get('/payroll/export', { params, responseType: 'blob' }),
 };
 
-// ---------------------------------------------------------------------------
-// Live Performance (Network comparison)
-// ---------------------------------------------------------------------------
-export const livePerformanceApi = {
-  networkSnapshot: () => api.get('/live-performance/network'),
-  compact: () => api.get('/live-performance/compact'),
-  aiInsight: () => api.get('/live-performance/insight'),
-};
+// Live Performance → migrated to TimeWin24
 
 // ---------------------------------------------------------------------------
 // Organizations (Multi-entity hierarchy)
