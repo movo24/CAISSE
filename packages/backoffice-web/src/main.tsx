@@ -10,11 +10,12 @@ import { ProductsPage } from './pages/ProductsPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { EmployeesPage } from './pages/EmployeesPage';
-import { RightsPage } from './pages/RightsPage';
-import { PointagePage } from './pages/PointagePage';
-import { PerformancePage } from './pages/PerformancePage';
-import { PlanningPage } from './pages/PlanningPage';
-import { PayrollPage } from './pages/PayrollPage';
+// RH pages removed from POS — belong in TimeWin24
+// import { RightsPage } from './pages/RightsPage';
+// import { PointagePage } from './pages/PointagePage';
+// import { PerformancePage } from './pages/PerformancePage';
+// import { PlanningPage } from './pages/PlanningPage';
+// import { PayrollPage } from './pages/PayrollPage';
 import { StockAlertsPage } from './pages/StockAlertsPage';
 import { OrganizationsPage } from './pages/OrganizationsPage';
 import { UnitsPage } from './pages/UnitsPage';
@@ -38,17 +39,14 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
 
           {/* Main app with sidebar */}
           <Route element={<Layout />}>
+            {/* POS Core */}
             <Route path="/" element={<DashboardPage />} />
             <Route path="/products" element={<ProductsPage />} />
             <Route path="/stock-alerts" element={<StockAlertsPage />} />
             <Route path="/employees" element={<EmployeesPage />} />
-            <Route path="/rights" element={<RightsPage />} />
-            <Route path="/pointage" element={<PointagePage />} />
-            <Route path="/performance" element={<PerformancePage />} />
-            <Route path="/planning" element={<PlanningPage />} />
-            <Route path="/payroll" element={<PayrollPage />} />
             <Route path="/reports" element={<ReportsPage />} />
             <Route path="/settings" element={<SettingsPage />} />
+            {/* Network / Admin */}
             <Route path="/organizations" element={<OrganizationsPage />} />
             <Route path="/units" element={<UnitsPage />} />
             <Route path="/stores" element={<StoresManagementPage />} />

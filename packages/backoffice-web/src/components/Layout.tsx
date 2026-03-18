@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Package, FileBarChart, Settings, LogOut, Users,
-  ChevronDown, ChevronRight, ShieldCheck, UsersRound, Clock, BarChart3, Calendar, Wallet,
+  ChevronDown, ChevronRight,
   AlertTriangle, Building2, Store, Network, Plug, CreditCard, Rocket,
 } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
@@ -54,18 +54,8 @@ const networkGroup: NavGroup = {
   ],
 };
 
-const rhGroup: NavGroup = {
-  label: 'RH / Equipe',
-  icon: UsersRound,
-  minRole: 'manager',
-  items: [
-    { path: '/rights', label: 'Droits', icon: ShieldCheck, minRole: 'admin' },
-    { path: '/pointage', label: 'Pointage', icon: Clock, minRole: 'manager' },
-    { path: '/performance', label: 'Performance', icon: BarChart3, minRole: 'manager' },
-    { path: '/planning', label: 'Planning', icon: Calendar, minRole: 'manager' },
-    { path: '/payroll', label: 'Paie', icon: Wallet, minRole: 'admin' },
-  ],
-};
+// RH Group removed — Planning, Pointage, Performance, Payroll, Rights
+// belong in TimeWin24, not in POS.
 
 const posNavBottom: NavItem[] = [
   { path: '/reports', label: 'Rapports', icon: FileBarChart, minRole: 'manager' },
@@ -84,9 +74,6 @@ export function Layout() {
   const { employee, logout, currentApp } = useAuthStore();
   const [networkOpen, setNetworkOpen] = useState(() =>
     networkGroup.items.some((i) => location.pathname === i.path),
-  );
-  const [rhOpen, setRhOpen] = useState(() =>
-    rhGroup.items.some((i) => location.pathname === i.path),
   );
 
   const handleLogout = () => {
@@ -159,28 +146,7 @@ export function Layout() {
                 </div>
               )}
 
-              {/* RH Group — manager+ */}
-              {hasRole(employee?.role, rhGroup.minRole) && (
-                <div>
-                  <button
-                    onClick={() => setRhOpen(!rhOpen)}
-                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 ${
-                      rhGroup.items.some((i) => location.pathname === i.path)
-                        ? 'text-white/80'
-                        : 'text-white/50 hover:text-white hover:bg-bo-sidebar-hover'
-                    }`}
-                  >
-                    <UsersRound size={18} strokeWidth={1.5} />
-                    <span className="flex-1 text-left">{rhGroup.label}</span>
-                    {rhOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                  </button>
-                  {rhOpen && (
-                    <div className="mt-0.5 space-y-0.5">
-                      {rhGroup.items.filter((i) => hasRole(employee?.role, i.minRole)).map((item) => renderNavItem(item, true))}
-                    </div>
-                  )}
-                </div>
-              )}
+              {/* RH removed — lives in TimeWin24 */}
 
               {posNavBottom.filter((i) => hasRole(employee?.role, i.minRole)).map((item) => renderNavItem(item))}
             </>
