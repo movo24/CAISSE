@@ -3,15 +3,16 @@ import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Package, FileBarChart, Settings, LogOut, Users,
   ChevronDown, ChevronRight, ShieldCheck, UsersRound, Clock, BarChart3, Calendar, Wallet,
-  AlertTriangle, Building2, Store, Network, Plug, CreditCard,
+  AlertTriangle, Building2, Store, Network, Plug, CreditCard, Rocket,
 } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
+import { AppSwitcher } from './AppSwitcher';
+import { StoreSwitcher } from './StoreSwitcher';
 
 interface NavItem {
   path: string;
   label: string;
   icon: React.ElementType;
-  /** Minimum role required: 'cashier' < 'manager' < 'admin' */
   minRole?: 'cashier' | 'manager' | 'admin';
 }
 
@@ -19,7 +20,6 @@ interface NavGroup {
   label: string;
   icon: React.ElementType;
   items: NavItem[];
-  /** Minimum role to see this group at all */
   minRole?: 'cashier' | 'manager' | 'admin';
 }
 
@@ -34,9 +34,9 @@ function hasRole(userRole: string | undefined, minRole?: string): boolean {
   return (ROLE_LEVEL[userRole || 'cashier'] ?? 0) >= (ROLE_LEVEL[minRole] ?? 0);
 }
 
-const navItems: NavItem[] = [
+// ── POS Navigation ──
+const posNavItems: NavItem[] = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
-  // live-performance → migrated to TimeWin24
   { path: '/products', label: 'Produits', icon: Package },
   { path: '/stock-alerts', label: 'Alertes Stock', icon: AlertTriangle },
   { path: '/employees', label: 'Employes', icon: Users, minRole: 'manager' },
@@ -67,17 +67,21 @@ const rhGroup: NavGroup = {
   ],
 };
 
-const navItemsBottom: NavItem[] = [
+const posNavBottom: NavItem[] = [
   { path: '/reports', label: 'Rapports', icon: FileBarChart, minRole: 'manager' },
-  // assistant IA → migrated to TimeWin24
   { path: '/billing', label: 'Abonnement', icon: CreditCard, minRole: 'admin' },
   { path: '/settings', label: 'Reglages', icon: Settings },
+];
+
+// ── TimeWin24 Navigation ──
+const tw24NavItems: NavItem[] = [
+  { path: '/timewin24', label: 'Accueil TimeWin24', icon: Rocket },
 ];
 
 export function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { employee, logout } = useAuthStore();
+  const { employee, logout, currentApp } = useAuthStore();
   const [networkOpen, setNetworkOpen] = useState(() =>
     networkGroup.items.some((i) => location.pathname === i.path),
   );
@@ -117,76 +121,80 @@ export function Layout() {
     );
   };
 
+  const isPOS = currentApp === 'pos';
+
   return (
-    <div className="min-h-screen flex">
+    <div className="min-h-screen flex" data-app={currentApp}>
       {/* Sidebar */}
-      <aside className="w-[240px] bg-bo-sidebar flex flex-col fixed inset-y-0 left-0 z-20">
-        {/* Logo */}
-        <div className="px-5 py-6 flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-bo-accent flex items-center justify-center">
-            <span className="text-white text-sm font-black">C</span>
-          </div>
-          <div>
-            <h1 className="text-white text-sm font-bold tracking-wide">CAISSE</h1>
-            <p className="text-white/30 text-[10px] font-medium">Back-Office</p>
-          </div>
-        </div>
+      <aside className="w-[240px] bg-bo-sidebar flex flex-col fixed inset-y-0 left-0 z-20 transition-colors duration-300">
+        {/* App Switcher (replaces static logo) */}
+        <AppSwitcher />
 
-        {/* Nav — filtered by role */}
-        <nav className="flex-1 px-3 space-y-1 mt-2">
-          {navItems.filter((i) => hasRole(employee?.role, i.minRole)).map((item) => renderNavItem(item))}
+        {/* Nav — conditional by app */}
+        <nav className="flex-1 px-3 space-y-1">
+          {isPOS ? (
+            <>
+              {posNavItems.filter((i) => hasRole(employee?.role, i.minRole)).map((item) => renderNavItem(item))}
 
-          {/* Network Group (collapsible) — admin only */}
-          {hasRole(employee?.role, networkGroup.minRole) && (
-            <div>
-              <button
-                onClick={() => setNetworkOpen(!networkOpen)}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 ${
-                  networkGroup.items.some((i) => location.pathname === i.path)
-                    ? 'text-white/80'
-                    : 'text-white/50 hover:text-white hover:bg-bo-sidebar-hover'
-                }`}
-              >
-                <Network size={18} strokeWidth={1.5} />
-                <span className="flex-1 text-left">{networkGroup.label}</span>
-                {networkOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-              </button>
-              {networkOpen && (
-                <div className="mt-0.5 space-y-0.5">
-                  {networkGroup.items.filter((i) => hasRole(employee?.role, i.minRole)).map((item) => renderNavItem(item, true))}
+              {/* Network Group — admin only */}
+              {hasRole(employee?.role, networkGroup.minRole) && (
+                <div>
+                  <button
+                    onClick={() => setNetworkOpen(!networkOpen)}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 ${
+                      networkGroup.items.some((i) => location.pathname === i.path)
+                        ? 'text-white/80'
+                        : 'text-white/50 hover:text-white hover:bg-bo-sidebar-hover'
+                    }`}
+                  >
+                    <Network size={18} strokeWidth={1.5} />
+                    <span className="flex-1 text-left">{networkGroup.label}</span>
+                    {networkOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                  </button>
+                  {networkOpen && (
+                    <div className="mt-0.5 space-y-0.5">
+                      {networkGroup.items.filter((i) => hasRole(employee?.role, i.minRole)).map((item) => renderNavItem(item, true))}
+                    </div>
+                  )}
                 </div>
               )}
-            </div>
-          )}
 
-          {/* RH Group (collapsible) — manager+ */}
-          {hasRole(employee?.role, rhGroup.minRole) && (
-            <div>
-              <button
-                onClick={() => setRhOpen(!rhOpen)}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 ${
-                  rhGroup.items.some((i) => location.pathname === i.path)
-                    ? 'text-white/80'
-                    : 'text-white/50 hover:text-white hover:bg-bo-sidebar-hover'
-                }`}
-              >
-                <UsersRound size={18} strokeWidth={1.5} />
-                <span className="flex-1 text-left">{rhGroup.label}</span>
-                {rhOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-              </button>
-              {rhOpen && (
-                <div className="mt-0.5 space-y-0.5">
-                  {rhGroup.items.filter((i) => hasRole(employee?.role, i.minRole)).map((item) => renderNavItem(item, true))}
+              {/* RH Group — manager+ */}
+              {hasRole(employee?.role, rhGroup.minRole) && (
+                <div>
+                  <button
+                    onClick={() => setRhOpen(!rhOpen)}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 ${
+                      rhGroup.items.some((i) => location.pathname === i.path)
+                        ? 'text-white/80'
+                        : 'text-white/50 hover:text-white hover:bg-bo-sidebar-hover'
+                    }`}
+                  >
+                    <UsersRound size={18} strokeWidth={1.5} />
+                    <span className="flex-1 text-left">{rhGroup.label}</span>
+                    {rhOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                  </button>
+                  {rhOpen && (
+                    <div className="mt-0.5 space-y-0.5">
+                      {rhGroup.items.filter((i) => hasRole(employee?.role, i.minRole)).map((item) => renderNavItem(item, true))}
+                    </div>
+                  )}
                 </div>
               )}
-            </div>
-          )}
 
-          {navItemsBottom.filter((i) => hasRole(employee?.role, i.minRole)).map((item) => renderNavItem(item))}
+              {posNavBottom.filter((i) => hasRole(employee?.role, i.minRole)).map((item) => renderNavItem(item))}
+            </>
+          ) : (
+            /* TimeWin24 nav */
+            tw24NavItems.map((item) => renderNavItem(item))
+          )}
         </nav>
 
         {/* Footer */}
         <div className="px-3 pb-5 space-y-2">
+          {/* Store Switcher (admin only, multi-store) */}
+          <StoreSwitcher />
+
           <div className="border-t border-white/10 pt-4 px-2">
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center">
@@ -206,7 +214,7 @@ export function Layout() {
             </div>
           </div>
           <p className="text-center text-[10px] text-white/20">
-            CAISSE v0.1.0
+            CAISSE v0.2.0
           </p>
         </div>
       </aside>

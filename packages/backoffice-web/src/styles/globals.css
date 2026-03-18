@@ -4,6 +4,31 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── App Themes (POS = indigo, TimeWin24 = violet) ── */
+:root,
+[data-app="pos"] {
+  --bo-bg: #F8F8FA;
+  --bo-card: #FFFFFF;
+  --bo-accent: #6366f1;
+  --bo-accent-light: #818cf8;
+  --bo-success: #22c55e;
+  --bo-warning: #f59e0b;
+  --bo-danger: #ef4444;
+  --bo-text: #0f172a;
+  --bo-muted: #64748b;
+  --bo-border: #e2e8f0;
+  --bo-subtle: #f1f5f9;
+  --bo-sidebar: #0f172a;
+  --bo-sidebar-hover: #1e293b;
+}
+
+[data-app="timewin24"] {
+  --bo-accent: #8b5cf6;
+  --bo-accent-light: #a78bfa;
+  --bo-sidebar: #1e1033;
+  --bo-sidebar-hover: #2d1b4e;
+}
+
 @layer base {
   body {
     @apply bg-bo-bg text-bo-text font-sans;

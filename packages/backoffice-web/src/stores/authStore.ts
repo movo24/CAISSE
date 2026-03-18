@@ -1,19 +1,28 @@
 import { create } from 'zustand';
-import { authApi } from '../services/api';
+import { authApi, storesApi } from '../services/api';
 
 // ── JWT expiry helper ──
 function isTokenExpired(token: string): boolean {
   try {
     const payload = JSON.parse(atob(token.split('.')[1]));
-    // 30s buffer
     return payload.exp * 1000 < Date.now() + 30000;
   } catch {
     return true;
   }
 }
 
+export type AppType = 'pos' | 'timewin24';
+
+export interface StoreInfo {
+  id: string;
+  name: string;
+  storeCode?: string;
+  city?: string;
+  isActive: boolean;
+}
+
 interface AuthState {
-  // State
+  // Auth (decoupled from store context)
   isAuthenticated: boolean;
   employee: {
     id: string;
@@ -26,18 +35,31 @@ interface AuthState {
   isLoading: boolean;
   error: string | null;
 
+  // Multi-store context (independent of auth)
+  currentStoreId: string | null;
+  stores: StoreInfo[];
+
+  // Multi-app context
+  currentApp: AppType;
+
   // Actions
   login: (storeId: string, pin: string) => Promise<void>;
   logout: () => void;
   restoreSession: () => void;
+  loadStores: () => Promise<void>;
+  setCurrentStore: (storeId: string) => void;
+  setCurrentApp: (app: AppType) => void;
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
+export const useAuthStore = create<AuthState>((set, get) => ({
   isAuthenticated: false,
   employee: null,
   accessToken: null,
   isLoading: false,
   error: null,
+  currentStoreId: null,
+  stores: [],
+  currentApp: (localStorage.getItem('currentApp') as AppType) || 'pos',
 
   login: async (storeId: string, pin: string) => {
     set({ isLoading: true, error: null });
@@ -48,13 +70,20 @@ export const useAuthStore = create<AuthState>((set) => ({
       localStorage.setItem('accessToken', accessToken);
       localStorage.setItem('refreshToken', refreshToken);
       localStorage.setItem('employee', JSON.stringify(employee));
+      localStorage.setItem('currentStoreId', employee.storeId);
 
       set({
         isAuthenticated: true,
         employee,
         accessToken,
+        currentStoreId: employee.storeId,
         isLoading: false,
       });
+
+      // Admin: load accessible stores in background
+      if (employee.role === 'admin') {
+        get().loadStores();
+      }
     } catch (err: any) {
       set({
         isLoading: false,
@@ -64,15 +93,19 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   logout: () => {
-    // Call backend logout to revoke tokens (fire-and-forget)
     authApi.logout().catch(() => {});
     localStorage.removeItem('accessToken');
     localStorage.removeItem('refreshToken');
     localStorage.removeItem('employee');
+    localStorage.removeItem('currentStoreId');
+    localStorage.removeItem('currentApp');
     set({
       isAuthenticated: false,
       employee: null,
       accessToken: null,
+      currentStoreId: null,
+      stores: [],
+      currentApp: 'pos',
     });
   },
 
@@ -80,19 +113,23 @@ export const useAuthStore = create<AuthState>((set) => ({
     const token = localStorage.getItem('accessToken');
     const refreshToken = localStorage.getItem('refreshToken');
     const empStr = localStorage.getItem('employee');
+    const savedStoreId = localStorage.getItem('currentStoreId');
+    const savedApp = (localStorage.getItem('currentApp') as AppType) || 'pos';
 
     if (!token || !empStr) return;
 
-    // Validate token expiry
     if (isTokenExpired(token)) {
-      // Access token expired — check if refresh token is still valid
       if (refreshToken && !isTokenExpired(refreshToken)) {
-        // Refresh token is valid, try to refresh (handled by api interceptor)
-        // For now, restore session with expired access token — the api interceptor
-        // will refresh it on the first API call
         try {
           const employee = JSON.parse(empStr);
-          set({ isAuthenticated: true, employee, accessToken: token });
+          set({
+            isAuthenticated: true,
+            employee,
+            accessToken: token,
+            currentStoreId: savedStoreId || employee.storeId,
+            currentApp: savedApp,
+          });
+          if (employee.role === 'admin') get().loadStores();
         } catch {
           localStorage.removeItem('accessToken');
           localStorage.removeItem('refreshToken');
@@ -100,7 +137,6 @@ export const useAuthStore = create<AuthState>((set) => ({
         }
         return;
       }
-      // Both tokens expired — clear session
       localStorage.removeItem('accessToken');
       localStorage.removeItem('refreshToken');
       localStorage.removeItem('employee');
@@ -109,12 +145,44 @@ export const useAuthStore = create<AuthState>((set) => ({
 
     try {
       const employee = JSON.parse(empStr);
-      set({ isAuthenticated: true, employee, accessToken: token });
+      set({
+        isAuthenticated: true,
+        employee,
+        accessToken: token,
+        currentStoreId: savedStoreId || employee.storeId,
+        currentApp: savedApp,
+      });
+      if (employee.role === 'admin') get().loadStores();
     } catch {
-      // Corrupted data, clear
       localStorage.removeItem('accessToken');
       localStorage.removeItem('refreshToken');
       localStorage.removeItem('employee');
     }
+  },
+
+  loadStores: async () => {
+    try {
+      const res = await storesApi.accessible();
+      const stores: StoreInfo[] = (res.data || []).map((s: any) => ({
+        id: s.id,
+        name: s.name,
+        storeCode: s.storeCode,
+        city: s.city,
+        isActive: s.isActive,
+      }));
+      set({ stores });
+    } catch {
+      // Silently fail — stores list is non-critical
+    }
+  },
+
+  setCurrentStore: (storeId: string) => {
+    localStorage.setItem('currentStoreId', storeId);
+    set({ currentStoreId: storeId });
+  },
+
+  setCurrentApp: (app: AppType) => {
+    localStorage.setItem('currentApp', app);
+    set({ currentApp: app });
   },
 }));

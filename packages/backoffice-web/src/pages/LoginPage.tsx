@@ -12,10 +12,15 @@ export function LoginPage() {
     e.preventDefault();
     if (!storeId.trim() || !pin.trim()) return;
     await login(storeId.trim(), pin.trim());
-    // If login succeeded, authStore.isAuthenticated will be true
-    const token = localStorage.getItem('accessToken');
-    if (token) {
-      navigate('/', { replace: true });
+    // If login succeeded, check role for redirect
+    const state = useAuthStore.getState();
+    if (state.isAuthenticated) {
+      // Admin with multiple stores → store selector
+      if (state.employee?.role === 'admin') {
+        navigate('/select-store', { replace: true });
+      } else {
+        navigate('/', { replace: true });
+      }
     }
   };
 

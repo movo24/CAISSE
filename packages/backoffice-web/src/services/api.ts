@@ -179,6 +179,7 @@ export const storesApi = {
   activate: (id: string) => api.post(`/stores/${id}/activate`),
   deactivate: (id: string) => api.post(`/stores/${id}/deactivate`),
   hardDelete: (id: string) => api.delete(`/stores/${id}`),
+  accessible: () => api.get('/stores/accessible'),
 };
 
 // ---------------------------------------------------------------------------

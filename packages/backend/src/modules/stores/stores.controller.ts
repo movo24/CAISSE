@@ -48,6 +48,20 @@ export class StoresController {
   }
 
   /**
+   * GET /api/stores/accessible — stores the current user can access.
+   * Admin: all active stores. Manager/Cashier: own store only.
+   */
+  @Get('accessible')
+  @ApiOperation({ summary: 'List stores accessible by current user' })
+  async accessible(@Request() req: any) {
+    if (req.user.role === 'admin') {
+      return this.storesService.findAll();
+    }
+    const store = await this.storesService.findMyStore(req.user.storeId);
+    return [store];
+  }
+
+  /**
    * GET /api/stores/me — returns the authenticated user's own store.
    * No cross-tenant leak: you can only see YOUR store.
    */
