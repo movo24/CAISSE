@@ -11,9 +11,8 @@ import {
   UpdateDateColumn,
   Index,
 } from 'typeorm';
-import type { StoreLocationContext } from '../../modules/pos-ai/store-context.types';
-import type { StoreTransportConfig } from '../../modules/transport/transport.types';
-import type { StoreFootfallConfig } from '../../modules/footfall/footfall.types';
+// Types migrated to TimeWin24 — use generic Record for JSONB columns
+// Original types: StoreLocationContext, StoreTransportConfig, StoreFootfallConfig
 
 @Entity('store_contexts')
 @Index(['storeId'], { unique: true })
@@ -25,7 +24,7 @@ export class StoreContextEntity {
   storeId: string;
 
   @Column({ name: 'location_context', type: 'jsonb', nullable: true })
-  locationContext: StoreLocationContext | null;
+  locationContext: Record<string, any> | null;
 
   @Column({ name: 'location_analyzed_at', type: 'timestamptz', nullable: true })
   locationAnalyzedAt: Date | null;
@@ -33,13 +32,13 @@ export class StoreContextEntity {
   @Column({ name: 'analysis_model', type: 'varchar', nullable: true })
   analysisModel: string | null;
 
-  /** Nearby stations config discovered via PRIM API (persisted) */
+  /** Nearby stations config (persisted, used by TimeWin24) */
   @Column({ name: 'transport_config', type: 'jsonb', nullable: true })
-  transportConfig: StoreTransportConfig | null;
+  transportConfig: Record<string, any> | null;
 
-  /** Nearby places config discovered via Google Places API (persisted) */
+  /** Nearby places config (persisted, used by TimeWin24) */
   @Column({ name: 'footfall_config', type: 'jsonb', nullable: true })
-  footfallConfig: StoreFootfallConfig | null;
+  footfallConfig: Record<string, any> | null;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

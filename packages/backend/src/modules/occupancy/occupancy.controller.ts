@@ -14,14 +14,12 @@ import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { OccupancyService } from './occupancy.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { SkipTenantCheck } from '../../common/interceptors/tenant.interceptor';
-import { WeatherService } from '../weather/weather.service';
 
 @ApiTags('occupancy')
 @Controller('occupancy')
 export class OccupancyController {
   constructor(
     private readonly occupancyService: OccupancyService,
-    private readonly weatherService: WeatherService,
   ) {}
 
   /**
@@ -73,30 +71,5 @@ export class OccupancyController {
     return this.occupancyService.getOccupancy(storeId);
   }
 
-  /**
-   * GET /api/occupancy/:storeId/weather
-   * PROXY → WeatherModule (retro-compat with legacy format)
-   * The old occupancy weather is replaced by the new Weather module.
-   */
-  @Get(':storeId/weather')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get weather (proxied to Weather module, legacy format)' })
-  async getWeather(@Param('storeId') storeId: string, @Request() req: any) {
-    if (storeId !== req.user.storeId) {
-      throw new UnauthorizedException('Access denied');
-    }
-    const weather = await this.weatherService.getWeather(storeId);
-    if (!weather) {
-      return { icon: null, temp: null, description: 'Non disponible' };
-    }
-    // Return legacy format for backward compat
-    const legacy = this.weatherService.toLegacyFormat(weather);
-    return {
-      icon: legacy.icon,
-      temp: legacy.temp,
-      description: legacy.description,
-      city: weather.storeCity,
-    };
-  }
+  // Weather proxy removed — weather analytics migrated to TimeWin24
 }

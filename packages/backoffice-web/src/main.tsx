@@ -14,8 +14,9 @@ import { PointagePage } from './pages/PointagePage';
 import { PerformancePage } from './pages/PerformancePage';
 import { PlanningPage } from './pages/PlanningPage';
 import { PayrollPage } from './pages/PayrollPage';
-import { AssistantPage } from './pages/AssistantPage';
-import { LivePerformancePage } from './pages/LivePerformancePage';
+// AI pages migrated to TimeWin24
+// import { AssistantPage } from './pages/AssistantPage';
+// import { LivePerformancePage } from './pages/LivePerformancePage';
 import { StockAlertsPage } from './pages/StockAlertsPage';
 import { OrganizationsPage } from './pages/OrganizationsPage';
 import { UnitsPage } from './pages/UnitsPage';
@@ -35,7 +36,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         <Route element={<ProtectedRoute />}>
           <Route element={<Layout />}>
             <Route path="/" element={<DashboardPage />} />
-            <Route path="/live-performance" element={<LivePerformancePage />} />
+            {/* live-performance → migrated to TimeWin24 */}
             <Route path="/products" element={<ProductsPage />} />
             <Route path="/stock-alerts" element={<StockAlertsPage />} />
             <Route path="/employees" element={<EmployeesPage />} />
@@ -45,7 +46,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             <Route path="/planning" element={<PlanningPage />} />
             <Route path="/payroll" element={<PayrollPage />} />
             <Route path="/reports" element={<ReportsPage />} />
-            <Route path="/assistant" element={<AssistantPage />} />
+            {/* assistant → migrated to TimeWin24 */}
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/organizations" element={<OrganizationsPage />} />
             <Route path="/units" element={<UnitsPage />} />

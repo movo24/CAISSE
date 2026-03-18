@@ -3,7 +3,7 @@ import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Package, FileBarChart, Settings, LogOut, Users,
   ChevronDown, ChevronRight, ShieldCheck, UsersRound, Clock, BarChart3, Calendar, Wallet,
-  Sparkles, Activity, AlertTriangle, Building2, Store, Network, Plug, CreditCard,
+  AlertTriangle, Building2, Store, Network, Plug, CreditCard,
 } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 
@@ -36,7 +36,7 @@ function hasRole(userRole: string | undefined, minRole?: string): boolean {
 
 const navItems: NavItem[] = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { path: '/live-performance', label: 'Perf. Réseau', icon: Activity, minRole: 'manager' },
+  // live-performance → migrated to TimeWin24
   { path: '/products', label: 'Produits', icon: Package },
   { path: '/stock-alerts', label: 'Alertes Stock', icon: AlertTriangle },
   { path: '/employees', label: 'Employes', icon: Users, minRole: 'manager' },
@@ -69,7 +69,7 @@ const rhGroup: NavGroup = {
 
 const navItemsBottom: NavItem[] = [
   { path: '/reports', label: 'Rapports', icon: FileBarChart, minRole: 'manager' },
-  { path: '/assistant', label: 'Assistant IA', icon: Sparkles, minRole: 'manager' },
+  // assistant IA → migrated to TimeWin24
   { path: '/billing', label: 'Abonnement', icon: CreditCard, minRole: 'admin' },
   { path: '/settings', label: 'Reglages', icon: Settings },
 ];

@@ -15,24 +15,26 @@ import { ReportsModule } from './modules/reports/reports.module';
 import { PromotionsModule } from './modules/promotions/promotions.module';
 import { StockModule } from './modules/stock/stock.module';
 import { AuditModule } from './modules/audit/audit.module';
-import { IaModule } from './modules/ia/ia.module';
+// ── MIGRATED TO TIMEWIN24 ── (see _migrated-to-timewin24/)
+// import { IaModule } from './modules/ia/ia.module';
 import { CurrencyModule } from './modules/currency/currency.module';
 import { SyncModule } from './modules/sync/sync.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
 import { OccupancyModule } from './modules/occupancy/occupancy.module';
 import { JackpotModule } from './modules/jackpot/jackpot.module';
-import { LivePerformanceModule } from './modules/live-performance/live-performance.module';
+// import { LivePerformanceModule } from './modules/live-performance/live-performance.module'; // MIGRATED
 import { HealthModule } from './modules/health/health.module';
 import { PlanningModule } from './modules/planning/planning.module';
 import { PointageModule } from './modules/pointage/pointage.module';
-import { StaffingModule } from './modules/staffing/staffing.module';
+// import { StaffingModule } from './modules/staffing/staffing.module'; // MIGRATED
 import { PayrollModule } from './modules/payroll/payroll.module';
-import { PosAiModule } from './modules/pos-ai/pos-ai.module';
-import { WeatherModule } from './modules/weather/weather.module';
-import { TransportModule } from './modules/transport/transport.module';
-import { FootfallModule } from './modules/footfall/footfall.module';
-import { DecisionEngineModule } from './modules/decision-engine/decision-engine.module';
+// ── MIGRATED TO TIMEWIN24 ──
+// import { PosAiModule } from './modules/pos-ai/pos-ai.module';
+// import { WeatherModule } from './modules/weather/weather.module';
+// import { TransportModule } from './modules/transport/transport.module';
+// import { FootfallModule } from './modules/footfall/footfall.module';
+// import { DecisionEngineModule } from './modules/decision-engine/decision-engine.module';
 import { CacheModule } from './common/cache/cache.module';
 import { OrganizationsModule } from './modules/organizations/organizations.module';
 import { UnitsModule } from './modules/units/units.module';
@@ -85,24 +87,24 @@ const isProd = process.env.NODE_ENV === 'production';
     PromotionsModule,
     StockModule,
     AuditModule,
-    IaModule,
+    // IaModule,                // → TimeWin24
     CurrencyModule,
     SyncModule,
     NotificationsModule,
     SubscriptionsModule,
     OccupancyModule,
     JackpotModule,
-    LivePerformanceModule,
+    // LivePerformanceModule,   // → TimeWin24
     HealthModule,
     PlanningModule,
     PointageModule,
-    StaffingModule,
+    // StaffingModule,          // → TimeWin24
     PayrollModule,
-    PosAiModule,
-    WeatherModule,
-    TransportModule,
-    FootfallModule,
-    DecisionEngineModule,
+    // PosAiModule,             // → TimeWin24
+    // WeatherModule,           // → TimeWin24
+    // TransportModule,         // → TimeWin24
+    // FootfallModule,          // → TimeWin24
+    // DecisionEngineModule,    // → TimeWin24
     OrganizationsModule,
     UnitsModule,
     ConnectedAppsModule,
