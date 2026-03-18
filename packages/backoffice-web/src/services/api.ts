@@ -161,6 +161,7 @@ export const employeesApi = {
   create: (data: any) => api.post('/employees', data),
   update: (id: string, data: any) => api.put(`/employees/${id}`, data),
   deactivate: (id: string) => api.post(`/employees/${id}/deactivate`),
+  reactivate: (id: string) => api.post(`/employees/${id}/reactivate`),
   generateQr: (id: string) => api.get(`/employees/${id}/qr-image`),
 };
 

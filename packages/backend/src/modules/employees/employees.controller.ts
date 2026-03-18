@@ -4,6 +4,7 @@ import {
   Post,
   Put,
   Delete,
+  Patch,
   Param,
   Body,
   UseGuards,
@@ -85,10 +86,24 @@ export class EmployeesController {
     return this.employeesService.update(id, dto, req.user.storeId);
   }
 
+  @Post(':id/deactivate')
+  @Roles('admin')
+  @ApiOperation({ summary: 'Deactivate employee (soft-delete)' })
+  deactivate(@Param('id') id: string, @Request() req: any) {
+    return this.employeesService.deactivate(id, req.user.storeId);
+  }
+
+  @Post(':id/reactivate')
+  @Roles('admin')
+  @ApiOperation({ summary: 'Reactivate a deactivated employee' })
+  reactivate(@Param('id') id: string, @Request() req: any) {
+    return this.employeesService.reactivate(id, req.user.storeId);
+  }
+
   @Delete(':id')
   @Roles('admin')
-  @ApiOperation({ summary: 'Deactivate employee' })
-  deactivate(@Param('id') id: string, @Request() req: any) {
+  @ApiOperation({ summary: 'Deactivate employee (alias for POST deactivate)' })
+  deactivateViaDelete(@Param('id') id: string, @Request() req: any) {
     return this.employeesService.deactivate(id, req.user.storeId);
   }
 }

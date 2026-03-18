@@ -127,9 +127,18 @@ export class EmployeesService {
     return this.findOneForStore(id, storeId);
   }
 
-  async deactivate(id: string, storeId: string): Promise<void> {
-    await this.findOneForStore(id, storeId);
+  async deactivate(id: string, storeId: string): Promise<{ message: string }> {
+    const emp = await this.findOneForStore(id, storeId);
     await this.employeeRepo.update(id, { isActive: false });
+    return { message: `${emp.firstName} ${emp.lastName} désactivé.` };
+  }
+
+  async reactivate(id: string, storeId: string): Promise<EmployeeEntity> {
+    // Find even inactive employees
+    const emp = await this.employeeRepo.findOne({ where: { id, storeId } });
+    if (!emp) throw new Error('Employé introuvable');
+    emp.isActive = true;
+    return this.employeeRepo.save(emp);
   }
 
   async generateQrImage(id: string, storeId: string): Promise<string> {
