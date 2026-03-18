@@ -110,6 +110,8 @@ api.interceptors.response.use(
 export const authApi = {
   loginPin: (storeId: string, pin: string) =>
     api.post('/auth/login/pin', { storeId, pin }),
+  loginAdmin: (email: string, pin: string) =>
+    api.post('/auth/login/admin', { email, pin }),
   loginQr: (qrCode: string, pin: string) =>
     api.post('/auth/login/qr', { qrCode, pin }),
   refreshToken: (refreshToken: string) =>

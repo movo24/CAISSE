@@ -1,21 +1,35 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
+import { ShieldCheck, Store } from 'lucide-react';
+
+type LoginMode = 'admin' | 'store';
 
 export function LoginPage() {
   const navigate = useNavigate();
-  const { login, isLoading, error } = useAuthStore();
+  const { login, loginAdmin, isLoading, error } = useAuthStore();
+  const [mode, setMode] = useState<LoginMode>('admin');
+  const [email, setEmail] = useState('');
   const [storeId, setStoreId] = useState('');
   const [pin, setPin] = useState('');
 
+  const canSubmit =
+    mode === 'admin'
+      ? !isLoading && email.trim() && pin.trim()
+      : !isLoading && storeId.trim() && pin.trim();
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!storeId.trim() || !pin.trim()) return;
-    await login(storeId.trim(), pin.trim());
-    // If login succeeded, check role for redirect
+    if (!canSubmit) return;
+
+    if (mode === 'admin') {
+      await loginAdmin(email.trim(), pin.trim());
+    } else {
+      await login(storeId.trim(), pin.trim());
+    }
+
     const state = useAuthStore.getState();
     if (state.isAuthenticated) {
-      // Admin with multiple stores → store selector
       if (state.employee?.role === 'admin') {
         navigate('/select-store', { replace: true });
       } else {
@@ -32,8 +46,36 @@ export function LoginPage() {
           <div className="inline-flex w-16 h-16 rounded-2xl bg-white/10 border border-white/20 items-center justify-center mb-4">
             <span className="text-3xl font-black text-white">C</span>
           </div>
-          <h1 className="text-2xl font-black text-white tracking-tight">CAISSE Backoffice</h1>
-          <p className="text-sm text-white/50 mt-1">Connectez-vous pour acceder au tableau de bord</p>
+          <h1 className="text-2xl font-black text-white tracking-tight">CAISSE</h1>
+          <p className="text-sm text-white/50 mt-1">Connectez-vous pour accéder au système</p>
+        </div>
+
+        {/* Mode toggle */}
+        <div className="flex gap-2 mb-6 bg-white/5 rounded-xl p-1">
+          <button
+            type="button"
+            onClick={() => { setMode('admin'); setPin(''); }}
+            className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition-all ${
+              mode === 'admin'
+                ? 'bg-indigo-600 text-white shadow-lg'
+                : 'text-white/40 hover:text-white/60'
+            }`}
+          >
+            <ShieldCheck size={14} />
+            Admin
+          </button>
+          <button
+            type="button"
+            onClick={() => { setMode('store'); setPin(''); }}
+            className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition-all ${
+              mode === 'store'
+                ? 'bg-indigo-600 text-white shadow-lg'
+                : 'text-white/40 hover:text-white/60'
+            }`}
+          >
+            <Store size={14} />
+            Employé
+          </button>
         </div>
 
         {/* Login form */}
@@ -44,19 +86,35 @@ export function LoginPage() {
             </div>
           )}
 
-          <div>
-            <label className="block text-xs font-semibold text-white/60 uppercase tracking-wider mb-2">
-              Identifiant Magasin (Store ID)
-            </label>
-            <input
-              type="text"
-              value={storeId}
-              onChange={(e) => setStoreId(e.target.value)}
-              className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/15 text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all text-sm"
-              placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-              autoFocus
-            />
-          </div>
+          {mode === 'admin' ? (
+            <div>
+              <label className="block text-xs font-semibold text-white/60 uppercase tracking-wider mb-2">
+                Email administrateur
+              </label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/15 text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all text-sm"
+                placeholder="contact@votreentreprise.com"
+                autoFocus
+              />
+            </div>
+          ) : (
+            <div>
+              <label className="block text-xs font-semibold text-white/60 uppercase tracking-wider mb-2">
+                Identifiant Magasin (Store ID)
+              </label>
+              <input
+                type="text"
+                value={storeId}
+                onChange={(e) => setStoreId(e.target.value)}
+                className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/15 text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all text-sm"
+                placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                autoFocus
+              />
+            </div>
+          )}
 
           <div>
             <label className="block text-xs font-semibold text-white/60 uppercase tracking-wider mb-2">
@@ -67,23 +125,25 @@ export function LoginPage() {
               inputMode="numeric"
               value={pin}
               onChange={(e) => setPin(e.target.value)}
-              className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/15 text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all text-sm text-center text-2xl tracking-[0.5em]"
-              placeholder="****"
+              className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/15 text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all text-sm text-center text-2xl tracking-[0.5em]"
+              placeholder="******"
               maxLength={8}
             />
           </div>
 
           <button
             type="submit"
-            disabled={isLoading || !storeId.trim() || !pin.trim()}
-            className="w-full py-3.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-sm transition-all shadow-lg shadow-blue-600/25"
+            disabled={!canSubmit}
+            className="w-full py-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-sm transition-all shadow-lg shadow-indigo-600/25"
           >
             {isLoading ? 'Connexion...' : 'Se connecter'}
           </button>
         </form>
 
         <p className="text-center text-xs text-white/30 mt-6">
-          Acces reserve au personnel autorise
+          {mode === 'admin'
+            ? 'Accès administrateur — tous les magasins et applications'
+            : 'Accès employé — magasin assigné uniquement'}
         </p>
       </div>
     </div>

@@ -73,6 +73,40 @@ export class AuthService {
     throw new UnauthorizedException('Invalid PIN');
   }
 
+  /**
+   * Super admin login: email + PIN, no storeId required.
+   * Only works for 'admin' role employees.
+   * Returns global access (storeId = employee's home store, but admin bypass grants all).
+   */
+  async loginByEmail(email: string, pin: string) {
+    const employee = await this.employeeRepo.findOne({
+      where: { email, isActive: true },
+    });
+
+    if (!employee) {
+      throw new UnauthorizedException('Invalid email or PIN');
+    }
+
+    if (employee.role !== 'admin') {
+      throw new UnauthorizedException('Admin login requires admin role');
+    }
+
+    this.checkLockout(employee.storeId);
+
+    const match = await bcrypt.compare(pin, employee.pinHash);
+    if (!match) {
+      this.recordFailedAttempt(employee.storeId);
+      throw new UnauthorizedException('Invalid email or PIN');
+    }
+
+    this.clearFailedAttempts(employee.storeId);
+    this.revokedTokens.delete(employee.id);
+    this.logger.log(
+      `Admin Login OK: ${employee.firstName} ${employee.lastName} (email=${email})`,
+    );
+    return await this.generateTokens(employee);
+  }
+
   async loginByQrCode(qrCode: string, pin: string) {
     const employee = await this.employeeRepo.findOne({
       where: { qrCode, isActive: true },

@@ -23,6 +23,17 @@ class LoginPinDto {
   pin: string;
 }
 
+class LoginAdminDto {
+  @IsString()
+  @IsNotEmpty()
+  email: string;
+
+  @IsString()
+  @MinLength(4, { message: 'PIN must be at least 4 characters' })
+  @MaxLength(8, { message: 'PIN must be at most 8 characters' })
+  pin: string;
+}
+
 class LoginQrDto {
   @IsString()
   @IsNotEmpty()
@@ -58,6 +69,23 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const result = await this.authService.loginByPin(dto.storeId, dto.pin);
+    this.setRefreshCookie(res, result.refreshToken);
+    return result;
+  }
+
+  /**
+   * POST /auth/login/admin — Super admin login with email + PIN (no storeId required).
+   * Returns access to ALL stores.
+   */
+  @Post('login/admin')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Super admin login with email + PIN (no store ID)' })
+  @Throttle({ default: { ttl: 60000, limit: 5 } })
+  async loginAdmin(
+    @Body() dto: LoginAdminDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.authService.loginByEmail(dto.email, dto.pin);
     this.setRefreshCookie(res, result.refreshToken);
     return result;
   }

@@ -44,6 +44,7 @@ interface AuthState {
 
   // Actions
   login: (storeId: string, pin: string) => Promise<void>;
+  loginAdmin: (email: string, pin: string) => Promise<void>;
   logout: () => void;
   restoreSession: () => void;
   loadStores: () => Promise<void>;
@@ -84,6 +85,36 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       if (employee.role === 'admin') {
         get().loadStores();
       }
+    } catch (err: any) {
+      set({
+        isLoading: false,
+        error: err.response?.data?.message || 'Erreur de connexion',
+      });
+    }
+  },
+
+  loginAdmin: async (email: string, pin: string) => {
+    set({ isLoading: true, error: null });
+    try {
+      const response = await authApi.loginAdmin(email, pin);
+      const { accessToken, refreshToken, employee } = response.data;
+
+      localStorage.setItem('accessToken', accessToken);
+      localStorage.setItem('refreshToken', refreshToken);
+      localStorage.setItem('employee', JSON.stringify(employee));
+      // Don't set currentStoreId yet — admin will pick from store selector
+      localStorage.removeItem('currentStoreId');
+
+      set({
+        isAuthenticated: true,
+        employee,
+        accessToken,
+        currentStoreId: null, // will be set in StoreSelectPage
+        isLoading: false,
+      });
+
+      // Load accessible stores immediately
+      get().loadStores();
     } catch (err: any) {
       set({
         isLoading: false,
