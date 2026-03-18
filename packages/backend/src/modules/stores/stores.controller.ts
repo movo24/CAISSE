@@ -4,6 +4,7 @@ import {
   Post,
   Put,
   Patch,
+  Delete,
   Param,
   Body,
   Query,
@@ -67,10 +68,10 @@ export class StoresController {
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get a store by ID (must be your own store)' })
+  @ApiOperation({ summary: 'Get a store by ID' })
   findOne(@Param('id') id: string, @Request() req: any) {
-    // Strict tenant isolation: reject cross-store access
-    if (id !== req.user.storeId) {
+    // Admins can view any store; others only their own
+    if (req.user.role !== 'admin' && id !== req.user.storeId) {
       throw BusinessError.forbidden('You can only access your own store');
     }
     return this.storesService.findMyStore(id);
@@ -78,20 +79,28 @@ export class StoresController {
 
   @Put(':id')
   @Roles('admin')
-  @ApiOperation({ summary: 'Update your store' })
+  @ApiOperation({ summary: 'Update a store (admin only)' })
   update(
     @Param('id') id: string,
     @Body() dto: UpdateStoreDto,
     @Request() req: any,
   ) {
-    return this.storesService.update(id, dto, req.user.storeId);
+    // Admins can update any store — pass null to skip caller check
+    return this.storesService.update(id, dto, req.user.role === 'admin' ? id : req.user.storeId);
   }
 
   @Patch(':id/archive')
   @Roles('admin')
-  @ApiOperation({ summary: 'Archive a store' })
-  archive(@Param('id') id: string) {
-    return this.storesService.archive(id);
+  @ApiOperation({ summary: 'Archive a store (soft-delete, data preserved)' })
+  archive(@Param('id') id: string, @Request() req: any) {
+    return this.storesService.archive(id, req.user.employeeId);
+  }
+
+  @Patch(':id/reactivate')
+  @Roles('admin')
+  @ApiOperation({ summary: 'Reactivate an archived store' })
+  reactivate(@Param('id') id: string, @Request() req: any) {
+    return this.storesService.reactivate(id, req.user.employeeId);
   }
 
   @Post(':id/activate')
@@ -106,5 +115,18 @@ export class StoresController {
   @ApiOperation({ summary: 'Deactivate a store' })
   deactivate(@Param('id') id: string) {
     return this.storesService.deactivate(id);
+  }
+
+  @Delete(':id')
+  @Roles('admin')
+  @ApiOperation({ summary: 'Hard-delete a store and ALL related data (irreversible)' })
+  hardDelete(@Param('id') id: string, @Request() req: any) {
+    // Cannot delete your own store — it would destroy your own session
+    if (id === req.user.storeId) {
+      throw BusinessError.forbidden(
+        'Vous ne pouvez pas supprimer le magasin auquel vous êtes connecté. Connectez-vous à un autre magasin d\'abord.',
+      );
+    }
+    return this.storesService.hardDelete(id, req.user.employeeId);
   }
 }

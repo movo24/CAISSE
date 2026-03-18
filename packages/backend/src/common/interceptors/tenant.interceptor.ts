@@ -66,6 +66,13 @@ export class TenantInterceptor implements NestInterceptor {
 
     const jwtStoreId: string = user.storeId;
 
+    // --- Admin bypass: admins can manage all stores ---
+    // Only cashiers and managers are restricted to their own store.
+    if (user.role === 'admin') {
+      request.tenantStoreId = jwtStoreId;
+      return next.handle();
+    }
+
     // --- Enforce: route params ---
     if (request.params?.storeId && request.params.storeId !== jwtStoreId) {
       this.logger.warn(
@@ -102,14 +109,10 @@ export class TenantInterceptor implements NestInterceptor {
     // --- Auto-inject storeId so services always have it ---
     request.tenantStoreId = jwtStoreId;
 
-    // Also auto-fill missing storeId in query/body so controllers
-    // don't need to manually extract it from JWT
-    if (request.query && !request.query.storeId) {
-      request.query.storeId = jwtStoreId;
-    }
-    if (request.body && typeof request.body === 'object' && !request.body.storeId) {
-      request.body.storeId = jwtStoreId;
-    }
+    // Services should use request.tenantStoreId (set above) — NOT body/query.
+    // We no longer auto-inject storeId into body/query because it conflicts
+    // with ValidationPipe's forbidNonWhitelisted option on DTOs that don't
+    // declare storeId as a field.
 
     return next.handle();
   }

@@ -174,8 +174,10 @@ export const storesApi = {
   create: (data: Record<string, unknown>) => api.post('/stores', data),
   update: (id: string, data: any) => api.put(`/stores/${id}`, data),
   archive: (id: string) => api.patch(`/stores/${id}/archive`),
+  reactivate: (id: string) => api.patch(`/stores/${id}/reactivate`),
   activate: (id: string) => api.post(`/stores/${id}/activate`),
   deactivate: (id: string) => api.post(`/stores/${id}/deactivate`),
+  hardDelete: (id: string) => api.delete(`/stores/${id}`),
 };
 
 // ---------------------------------------------------------------------------

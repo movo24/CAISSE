@@ -43,10 +43,10 @@ export class InventoryScanEntity {
   @Column()
   barcode: string;
 
-  @Column({ name: 'product_id', nullable: true })
+  @Column({ name: 'product_id', type: 'uuid', nullable: true })
   productId: string | null;
 
-  @Column({ name: 'product_name', nullable: true })
+  @Column({ name: 'product_name', type: 'varchar', nullable: true })
   productName: string | null;
 
   // ── Scan details ──
@@ -67,12 +67,12 @@ export class InventoryScanEntity {
   })
   status: 'matched' | 'new' | 'pending' | 'applied' | 'rejected';
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   notes: string;
 
   // ── Session tracking ──
 
-  @Column({ name: 'session_id', nullable: true })
+  @Column({ name: 'session_id', type: 'uuid', nullable: true })
   sessionId: string | null;
 
   // ── Timestamps ──

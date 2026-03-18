@@ -14,6 +14,7 @@
 import { DataSource } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { v4 as uuidv4 } from 'uuid';
+import * as path from 'path';
 import { StoreEntity } from '../entities/store.entity';
 import { EmployeeEntity } from '../entities/employee.entity';
 import { ProductEntity } from '../entities/product.entity';
@@ -25,7 +26,7 @@ async function seed() {
     url:
       process.env.DATABASE_URL ||
       'postgresql://caisse:caisse@localhost:5432/caisse',
-    entities: [StoreEntity, EmployeeEntity, ProductEntity, PromoRuleEntity],
+    entities: [path.join(__dirname, '../entities/*.entity.{ts,js}')],
     // NEVER synchronize in seed — use migrations instead.
     // Set TYPEORM_SYNCHRONIZE=true ONLY for initial dev setup.
     synchronize: process.env.TYPEORM_SYNCHRONIZE === 'true',
@@ -84,6 +85,25 @@ async function seed() {
       maxDiscountPercent: 100,
     });
     console.log(`Admin employee created: ${admin.firstName} ${admin.lastName} (PIN: 1234, QR: ${admin.qrCode})`);
+  }
+
+  // 2b. Create Wesley Candy Shop admin (PIN: 250781)
+  let wesley = await empRepo.findOne({
+    where: { email: 'contact@wesleycandyshop.com' },
+  });
+  if (!wesley) {
+    const pinHash = await bcrypt.hash('250781', 12);
+    wesley = await empRepo.save({
+      firstName: 'Wesley',
+      lastName: 'Candy Shop',
+      email: 'contact@wesleycandyshop.com',
+      pinHash,
+      qrCode: `EMP-${uuidv4().slice(0, 8).toUpperCase()}`,
+      role: 'admin',
+      storeId: store.id,
+      maxDiscountPercent: 100,
+    });
+    console.log(`Admin created: ${wesley.firstName} ${wesley.lastName} (PIN: 250781, QR: ${wesley.qrCode})`);
   }
 
   // 3. Create cashier employee (PIN: 5678)

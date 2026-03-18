@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { StoreEntity } from '../../database/entities/store.entity';
 import { OrganizationEntity } from '../../database/entities/organization.entity';
 import { UnitEntity } from '../../database/entities/unit.entity';
@@ -20,6 +20,7 @@ export class StoresService {
     private orgRepo: Repository<OrganizationEntity>,
     @InjectRepository(UnitEntity)
     private unitRepo: Repository<UnitEntity>,
+    private dataSource: DataSource,
   ) {}
 
   async create(dto: CreateStoreDto): Promise<StoreEntity> {
@@ -139,25 +140,95 @@ export class StoresService {
     return this.findOne(id);
   }
 
-  async archive(id: string): Promise<StoreEntity> {
+  // ─── Archive (soft-delete) ──────────────────────────────────────
+  async archive(id: string, adminId: string): Promise<StoreEntity> {
     const store = await this.findOne(id);
     store.isArchived = true;
     store.isActive = false;
     const saved = await this.storeRepo.save(store);
-    this.logger.log(`Store archived: ${saved.name} (${saved.id})`);
+    this.logger.warn(
+      `[STORE:ARCHIVE] Store "${saved.name}" (${saved.id}) archived by admin ${adminId} at ${new Date().toISOString()}`,
+    );
     return saved;
   }
 
-  async activate(id: string): Promise<StoreEntity> {
+  // ─── Reactivate ────────────────────────────────────────────────
+  async reactivate(id: string, adminId: string): Promise<StoreEntity> {
     const store = await this.findOne(id);
-    // An archived store cannot be activated — must be unarchived first
-    if (store.isArchived) {
-      throw BusinessError.archived('Store');
+    if (!store.isArchived) {
+      throw BusinessError.forbidden('Ce magasin n\'est pas archivé.');
     }
+    store.isArchived = false;
     store.isActive = true;
     const saved = await this.storeRepo.save(store);
-    this.logger.log(`Store activated: ${saved.name} (${saved.id})`);
+    this.logger.warn(
+      `[STORE:REACTIVATE] Store "${saved.name}" (${saved.id}) reactivated by admin ${adminId} at ${new Date().toISOString()}`,
+    );
     return saved;
+  }
+
+  // ─── Hard delete (irreversible) ────────────────────────────────
+  async hardDelete(id: string, adminId: string): Promise<{ message: string }> {
+    const store = await this.findOne(id);
+    const storeName = store.name;
+
+    // All related tables with store_id column — delete in dependency order
+    // Only tables that actually have a store_id column (verified against DB)
+    // Order: children before parents to avoid FK violations
+    const tablesWithStoreId = [
+      'inventory_scans',
+      'audit_entries',
+      'z_reports',
+      'pointage_entries',
+      'staffing_snapshots',
+      'payroll_configs',
+      'jackpot_wins',
+      'jackpot_configs',
+      'promo_rules',
+      'product_categories',
+      'subscriptions',
+      'store_contexts',
+    ];
+    // sale_line_items + sale_payments reference sales (not store_id)
+    const salesChildren = ['sale_line_items', 'sale_payments'];
+    // These have store_id AND are referenced by other tables
+    const coreTablesWithStoreId = ['sales', 'products', 'customers', 'employees'];
+
+    const qr = this.dataSource.createQueryRunner();
+    await qr.connect();
+    await qr.startTransaction();
+
+    try {
+      // 1. Delete sale children (they reference sales, not store_id)
+      for (const table of salesChildren) {
+        await qr.query(
+          `DELETE FROM ${table} WHERE sale_id IN (SELECT id FROM sales WHERE store_id = $1)`,
+          [id],
+        );
+      }
+      // 2. Delete tables with store_id (no ordering issues)
+      for (const table of tablesWithStoreId) {
+        await qr.query(`DELETE FROM ${table} WHERE store_id = $1`, [id]);
+      }
+      // 3. Delete core tables (sales, products, customers, employees)
+      for (const table of coreTablesWithStoreId) {
+        await qr.query(`DELETE FROM ${table} WHERE store_id = $1`, [id]);
+      }
+      // Finally delete the store itself
+      await qr.query(`DELETE FROM stores WHERE id = $1`, [id]);
+      await qr.commitTransaction();
+    } catch (err) {
+      await qr.rollbackTransaction();
+      this.logger.error(`[STORE:HARD_DELETE] Failed for store ${id}: ${err}`);
+      throw err;
+    } finally {
+      await qr.release();
+    }
+
+    this.logger.warn(
+      `[STORE:HARD_DELETE] Store "${storeName}" (${id}) permanently deleted by admin ${adminId} at ${new Date().toISOString()}. All related data destroyed.`,
+    );
+    return { message: `Magasin "${storeName}" et toutes ses données ont été supprimés définitivement.` };
   }
 
   async deactivate(id: string): Promise<StoreEntity> {
@@ -165,6 +236,17 @@ export class StoresService {
     store.isActive = false;
     const saved = await this.storeRepo.save(store);
     this.logger.log(`Store deactivated: ${saved.name} (${saved.id})`);
+    return saved;
+  }
+
+  async activate(id: string): Promise<StoreEntity> {
+    const store = await this.findOne(id);
+    if (store.isArchived) {
+      throw BusinessError.archived('Store');
+    }
+    store.isActive = true;
+    const saved = await this.storeRepo.save(store);
+    this.logger.log(`Store activated: ${saved.name} (${saved.id})`);
     return saved;
   }
 }

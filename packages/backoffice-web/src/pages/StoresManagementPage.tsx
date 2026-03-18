@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Store, Plus, Search, X, Pencil, MapPin, Globe, Clock,
-  CheckCircle2, Loader2, Building2, Users,
+  CheckCircle2, Loader2, Building2, Users, Trash2, Archive, RotateCcw,
 } from 'lucide-react';
 import { storesApi, organizationsApi, unitsApi } from '../services/api';
 
@@ -214,7 +214,15 @@ export function StoresManagementPage() {
                     )}
                   </div>
                 </div>
-                <div className={`w-2.5 h-2.5 rounded-full ${store.isActive ? 'bg-emerald-400' : 'bg-gray-300'}`} />
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                  (store as any).isArchived
+                    ? 'bg-amber-100 text-amber-700'
+                    : store.isActive
+                    ? 'bg-emerald-100 text-emerald-700'
+                    : 'bg-gray-100 text-gray-500'
+                }`}>
+                  {(store as any).isArchived ? 'Archivé' : store.isActive ? 'Actif' : 'Inactif'}
+                </span>
               </div>
 
               <div className="space-y-1.5 text-xs text-bo-muted">
@@ -345,12 +353,87 @@ export function StoresManagementPage() {
 
               {error && <p className="text-sm text-red-500">{error}</p>}
 
-              <div className="flex justify-end gap-3 pt-2">
-                <button type="button" onClick={resetForm} className="px-5 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-bo-muted hover:bg-gray-50">Annuler</button>
-                <button type="submit" disabled={submitting} className="px-6 py-2.5 rounded-xl bg-bo-accent text-white text-sm font-semibold hover:bg-bo-accent/90 disabled:opacity-50 flex items-center gap-2">
-                  {submitting && <Loader2 size={14} className="animate-spin" />}
-                  {editingStore ? 'Mettre a jour' : 'Creer'}
-                </button>
+              {/* ── Actions footer ── */}
+              <div className="flex justify-between pt-4 border-t border-gray-100 mt-2">
+                {editingStore ? (
+                  <div className="flex gap-2">
+                    {/* Archive / Reactivate */}
+                    {(editingStore as any).isArchived ? (
+                      <button
+                        type="button"
+                        disabled={submitting}
+                        onClick={async () => {
+                          setSubmitting(true);
+                          try {
+                            await storesApi.reactivate(editingStore.id);
+                            setSuccess('Magasin réactivé');
+                            resetForm();
+                            loadData();
+                            setTimeout(() => setSuccess(null), 2000);
+                          } catch (err: any) {
+                            setError(err.response?.data?.message || 'Erreur réactivation');
+                          } finally { setSubmitting(false); }
+                        }}
+                        className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-emerald-200 text-sm font-semibold text-emerald-600 hover:bg-emerald-50 disabled:opacity-50"
+                      >
+                        <RotateCcw size={14} /> Réactiver
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={submitting}
+                        onClick={async () => {
+                          if (!confirm(`Archiver le magasin "${editingStore.name}" ? Il sera masqué mais ses données conservées.`)) return;
+                          setSubmitting(true);
+                          try {
+                            await storesApi.archive(editingStore.id);
+                            setSuccess('Magasin archivé');
+                            resetForm();
+                            loadData();
+                            setTimeout(() => setSuccess(null), 2000);
+                          } catch (err: any) {
+                            setError(err.response?.data?.message || 'Erreur archivage');
+                          } finally { setSubmitting(false); }
+                        }}
+                        className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-amber-200 text-sm font-semibold text-amber-600 hover:bg-amber-50 disabled:opacity-50"
+                      >
+                        <Archive size={14} /> Archiver
+                      </button>
+                    )}
+
+                    {/* Hard delete */}
+                    <button
+                      type="button"
+                      disabled={submitting}
+                      onClick={async () => {
+                        const name = editingStore.name;
+                        if (!confirm(`⚠️ SUPPRESSION DÉFINITIVE\n\nCette action va supprimer le magasin "${name}" et TOUTES ses données :\n- Ventes et transactions\n- Employés\n- Produits et stock\n- Inventaires\n\nCette action est IRRÉVERSIBLE.\n\nConfirmer ?`)) return;
+                        if (!confirm(`Dernière confirmation : supprimer définitivement "${name}" ?`)) return;
+                        setSubmitting(true);
+                        try {
+                          await storesApi.hardDelete(editingStore.id);
+                          setSuccess(`Magasin "${name}" supprimé définitivement`);
+                          resetForm();
+                          loadData();
+                          setTimeout(() => setSuccess(null), 3000);
+                        } catch (err: any) {
+                          setError(err.response?.data?.message || 'Erreur suppression');
+                        } finally { setSubmitting(false); }
+                      }}
+                      className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-red-200 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50"
+                    >
+                      <Trash2 size={14} /> Supprimer
+                    </button>
+                  </div>
+                ) : <div />}
+
+                <div className="flex gap-3">
+                  <button type="button" onClick={resetForm} className="px-5 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-bo-muted hover:bg-gray-50">Annuler</button>
+                  <button type="submit" disabled={submitting} className="px-6 py-2.5 rounded-xl bg-bo-accent text-white text-sm font-semibold hover:bg-bo-accent/90 disabled:opacity-50 flex items-center gap-2">
+                    {submitting && <Loader2 size={14} className="animate-spin" />}
+                    {editingStore ? 'Mettre a jour' : 'Creer'}
+                  </button>
+                </div>
               </div>
             </form>
           </div>

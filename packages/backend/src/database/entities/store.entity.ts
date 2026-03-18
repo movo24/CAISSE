@@ -35,7 +35,7 @@ export class StoreEntity {
   @Column()
   name: string;
 
-  @Column()
+  @Column({ nullable: true })
   address: string;
 
   @Column({ name: 'postal_code', nullable: true })

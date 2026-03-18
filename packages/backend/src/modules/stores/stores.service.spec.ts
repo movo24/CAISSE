@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
+import { DataSource } from 'typeorm';
 import { StoresService } from './stores.service';
 import { StoreEntity } from '../../database/entities/store.entity';
 import { OrganizationEntity } from '../../database/entities/organization.entity';
@@ -59,6 +60,19 @@ describe('StoresService', () => {
         { provide: getRepositoryToken(StoreEntity), useValue: storeRepo },
         { provide: getRepositoryToken(OrganizationEntity), useValue: orgRepo },
         { provide: getRepositoryToken(UnitEntity), useValue: unitRepo },
+        {
+          provide: DataSource,
+          useValue: {
+            createQueryRunner: jest.fn().mockReturnValue({
+              connect: jest.fn(),
+              startTransaction: jest.fn(),
+              query: jest.fn(),
+              commitTransaction: jest.fn(),
+              rollbackTransaction: jest.fn(),
+              release: jest.fn(),
+            }),
+          },
+        },
       ],
     }).compile();
 
@@ -167,7 +181,7 @@ describe('StoresService', () => {
     it('should set isArchived=true and isActive=false', async () => {
       storeRepo.findOne.mockResolvedValue({ ...mockStore });
 
-      const result = await service.archive('store-1');
+      const result = await service.archive('store-1', 'admin-1');
 
       expect(result.isArchived).toBe(true);
       expect(result.isActive).toBe(false);

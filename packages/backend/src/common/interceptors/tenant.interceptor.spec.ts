@@ -152,15 +152,16 @@ describe('TenantInterceptor', () => {
   // Auto-injection
   // ─────────────────────────────────────────────────────────────
 
-  it('should auto-inject storeId into body and query when missing', (done) => {
+  it('should NOT inject storeId into body/query (prevents DTO validation conflicts)', (done) => {
     const body = { name: 'Test' };
     const query = {};
     const ctx = createMockContext({ body, query });
 
     interceptor.intercept(ctx, mockNext).subscribe({
       next: () => {
-        expect(body).toHaveProperty('storeId', 'store-1');
-        expect(query).toHaveProperty('storeId', 'store-1');
+        // storeId must NOT be injected into body/query — use request.tenantStoreId instead
+        expect(body).not.toHaveProperty('storeId');
+        expect(query).not.toHaveProperty('storeId');
         done();
       },
     });
