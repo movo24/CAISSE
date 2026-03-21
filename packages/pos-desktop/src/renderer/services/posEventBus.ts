@@ -56,9 +56,15 @@ export interface SaleErrorPayload {
   message: string;
 }
 
+export interface SaleOfflinePayload {
+  ticketNumber: string;
+  pendingCount: number;
+}
+
 export interface PosEventMap {
   SALE_COMPLETED: SaleCompletedPayload;
   SALE_ERROR: SaleErrorPayload;
+  SALE_OFFLINE: SaleOfflinePayload;
   SESSION_OPENED: SessionOpenedPayload;
   SESSION_CLOSED: SessionClosedPayload;
   VOID_COMPLETED: VoidCompletedPayload;
