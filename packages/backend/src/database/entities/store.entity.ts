@@ -9,7 +9,7 @@ import {
   JoinColumn,
   Index,
 } from 'typeorm';
-import { EmployeeEntity } from './employee.entity';
+// EmployeeEntity removed — employees managed by TimeWin24
 import { ProductEntity } from './product.entity';
 import { OrganizationEntity } from './organization.entity';
 import { UnitEntity } from './unit.entity';
@@ -138,8 +138,7 @@ export class StoreEntity {
   @JoinColumn({ name: 'unit_id' })
   unit: UnitEntity;
 
-  @OneToMany(() => EmployeeEntity, (e) => e.store)
-  employees: EmployeeEntity[];
+  // employees relation removed — managed by TimeWin24
 
   @OneToMany(() => ProductEntity, (p) => p.store)
   products: ProductEntity[];

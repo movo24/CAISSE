@@ -5,8 +5,8 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './jwt.strategy';
-import { EmployeeEntity } from '../../database/entities/employee.entity';
 import { StoreEntity } from '../../database/entities/store.entity';
+import { PosSessionEntity } from '../../database/entities/pos-session.entity';
 
 @Module({
   imports: [
@@ -24,7 +24,7 @@ import { StoreEntity } from '../../database/entities/store.entity';
       })(),
       signOptions: { expiresIn: '15m' },
     }),
-    TypeOrmModule.forFeature([EmployeeEntity, StoreEntity]),
+    TypeOrmModule.forFeature([StoreEntity, PosSessionEntity]),
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy],

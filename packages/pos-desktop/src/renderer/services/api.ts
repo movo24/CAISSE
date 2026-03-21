@@ -203,41 +203,28 @@ export const jackpotApi = {
     api.get('/jackpot/history', { params: { limit } }),
 };
 
-// Rights
-export const rightsApi = {
-  getMyRights: () => api.get('/employees/me/rights'),
-  getRoleDefaults: () => api.get('/employees/rights/defaults'),
+// ── RH APIs REMOVED — All managed by TimeWin24 ──
+// rightsApi, pointageApi, planningApi, performanceApi, staffingApi, livePerformanceApi
+
+// TimeWin24 Proxy
+export const timewinApi = {
+  health: () => api.get('/timewin/health'),
+  clockIn: (employeeId: string, storeId: string) => api.post('/timewin/clock-in', { employeeId, storeId }),
+  clockOut: (employeeId: string, storeId: string) => api.post('/timewin/clock-out', { employeeId, storeId }),
+  pushEvent: (data: { storeId: string; eventType: string; employeeId?: string; data?: any }) =>
+    api.post('/timewin/events', data),
+  todayShifts: (storeId: string) => api.get('/timewin/today-shifts', { params: { storeId } }),
 };
 
-// Pointage
-export const pointageApi = {
-  recordPunch: (data: any) => api.post('/pointage/punch', data),
-  getTodayPunches: (employeeId: string) => api.get(`/pointage/today/${employeeId}`),
-};
-
-// Planning
-export const planningApi = {
-  getMyWeek: () => api.get('/planning/me/week'),
-  getMyMonth: (month: string) => api.get('/planning/me/month', { params: { month } }),
-};
-
-// Performance Caissier
-export const performanceApi = {
-  submitSession: (data: any) => api.post('/performance/session', data),
-  getMyStats: (period?: string) => api.get('/performance/me', { params: { period } }),
-};
-
-// Staffing IA
-export const staffingApi = {
-  submitSnapshot: (data: any) => api.post('/staffing/snapshot', data),
-  getTargets: (storeId: string) => api.get(`/staffing/targets/${storeId}`),
-  getHistory: (storeId: string, date?: string) => api.get(`/staffing/history/${storeId}`, { params: { date } }),
-};
-
-// Live Performance (Network comparison)
-export const livePerformanceApi = {
-  compact: () => api.get('/live-performance/compact'),
-  insight: () => api.get('/live-performance/insight'),
+// Terminals (WisePad 3 / reader management)
+export const terminalsApi = {
+  list: () => api.get('/terminals'),
+  create: (data: { label: string; deviceType: string; serialNumber?: string; registrationCode?: string }) =>
+    api.post('/terminals', data),
+  update: (id: string, data: { label?: string; isActive?: boolean }) =>
+    api.patch(`/terminals/${id}`, data),
+  heartbeat: (id: string, data: { status: string; batteryLevel?: number }) =>
+    api.post(`/terminals/${id}/heartbeat`, data),
 };
 
 // Stripe Terminal (in-store card payments)

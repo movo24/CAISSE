@@ -71,6 +71,7 @@ export class SalesService {
     storeId: string,
     employeeId: string,
     dto: CreateSaleDto,
+    employeeSnapshot?: { employeeName?: string; employeeRole?: string; maxDiscount?: number },
   ): Promise<SaleEntity> {
     // --- Input validation ---
     if (!dto.items || dto.items.length === 0) {
@@ -173,6 +174,17 @@ export class SalesService {
       }
     }
 
+    // --- Enforce maxDiscount limit ---
+    const maxDiscountPct = employeeSnapshot?.maxDiscount ?? 100;
+    if (maxDiscountPct < 100 && subtotal > 0) {
+      const maxAllowedDiscount = Math.floor(subtotal * (maxDiscountPct / 100));
+      if (totalDiscount > maxAllowedDiscount) {
+        throw new BadRequestException(
+          `Discount ${totalDiscount} exceeds employee limit of ${maxDiscountPct}% (max ${maxAllowedDiscount} on subtotal ${subtotal})`,
+        );
+      }
+    }
+
     // Calculate totals
     const totalAfterDiscount = subtotal - totalDiscount;
     let taxTotal = 0;
@@ -197,20 +209,27 @@ export class SalesService {
 
     // =====================================================================
     // TRANSACTION BOUNDARY — everything below is atomic
+    // Retry up to 3 times on serialization/unique constraint failures
     // =====================================================================
+    const MAX_RETRIES = 3;
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
-    await queryRunner.startTransaction('SERIALIZABLE');
+    await queryRunner.startTransaction();
 
     try {
-      // --- Ticket number with row-level locking (no race condition) ---
-      // Uses a raw query with FOR UPDATE to lock the last sale row
+      // --- Ticket number: atomic increment using store row lock ---
+      // Lock the store row to serialize ticket number generation
+      await queryRunner.query(
+        `SELECT id FROM stores WHERE id = $1 FOR UPDATE`,
+        [storeId],
+      );
+
       const lastSaleResult = await queryRunner.query(
         `SELECT ticket_number FROM sales
          WHERE store_id = $1
-         ORDER BY created_at DESC
-         LIMIT 1
-         FOR UPDATE`,
+         ORDER BY ticket_number DESC
+         LIMIT 1`,
         [storeId],
       );
       const lastTicketNum =
@@ -223,7 +242,7 @@ export class SalesService {
       const prevHashResult = await queryRunner.query(
         `SELECT hash_chain_current FROM sales
          WHERE store_id = $1
-         ORDER BY created_at DESC
+         ORDER BY ticket_number DESC
          LIMIT 1`,
         [storeId],
       );
@@ -250,6 +269,9 @@ export class SalesService {
       sale.id = uuidv4();
       sale.storeId = storeId;
       sale.employeeId = employeeId;
+      sale.employeeNameSnapshot = employeeSnapshot?.employeeName || '';
+      sale.employeeRoleSnapshot = employeeSnapshot?.employeeRole || '';
+      sale.employeeMaxDiscountSnapshot = employeeSnapshot?.maxDiscount ?? 0;
       sale.customerId = customerId ?? (null as any);
       sale.status = 'completed';
       sale.subtotalMinorUnits = subtotal;
@@ -366,14 +388,34 @@ export class SalesService {
       return { ...saved, jackpotResult, stockAlerts } as SaleEntity & { jackpotResult: JackpotResult | null; stockAlerts: SaleStockAlert[] };
     } catch (error: any) {
       await queryRunner.rollbackTransaction();
+      await queryRunner.release();
+
+      // Retry on serialization failure or unique constraint violation
+      const isRetryable =
+        error?.message?.includes('could not serialize') ||
+        error?.message?.includes('duplicate key') ||
+        error?.code === '40001' || // serialization_failure
+        error?.code === '23505';   // unique_violation
+
+      if (isRetryable && attempt < MAX_RETRIES) {
+        this.logger.warn(`Sale transaction conflict (attempt ${attempt}/${MAX_RETRIES}), retrying...`);
+        await new Promise(r => setTimeout(r, 10 + Math.random() * 50)); // jitter
+        continue; // retry
+      }
+
       this.logger.error(
-        `Sale creation failed, transaction rolled back: ${error?.message}`,
+        `Sale creation failed after ${attempt} attempt(s): ${error?.message}`,
         error?.stack,
       );
       throw error;
     } finally {
-      await queryRunner.release();
+      if (queryRunner.isReleased === false) {
+        await queryRunner.release();
+      }
     }
+    } // end retry loop
+    // Should never reach here
+    throw new BadRequestException('Sale creation failed after max retries');
   }
 
   /**

@@ -24,8 +24,7 @@ async function seed() {
   const ds = new DataSource({
     type: 'postgres',
     url:
-      process.env.DATABASE_URL ||
-      'postgresql://caisse:caisse@localhost:5432/caisse',
+      process.env.DATABASE_URL,
     entities: [path.join(__dirname, '../entities/*.entity.{ts,js}')],
     // NEVER synchronize in seed — use migrations instead.
     // Set TYPEORM_SYNCHRONIZE=true ONLY for initial dev setup.
@@ -84,10 +83,10 @@ async function seed() {
       storeId: store.id,
       maxDiscountPercent: 100,
     });
-    console.log(`Admin employee created: ${admin.firstName} ${admin.lastName} (PIN: 1234, QR: ${admin.qrCode})`);
+    console.log(`Admin employee created: ${admin.firstName} ${admin.lastName} (QR: ${admin.qrCode})`);
   }
 
-  // 2b. Create Wesley Candy Shop admin (PIN: 250781)
+  // 2b. Create Wesley Candy Shop admin
   let wesley = await empRepo.findOne({
     where: { email: 'contact@wesleycandyshop.com' },
   });
@@ -103,10 +102,10 @@ async function seed() {
       storeId: store.id,
       maxDiscountPercent: 100,
     });
-    console.log(`Admin created: ${wesley.firstName} ${wesley.lastName} (PIN: 250781, QR: ${wesley.qrCode})`);
+    console.log(`Admin created: ${wesley.firstName} ${wesley.lastName} (QR: ${wesley.qrCode})`);
   }
 
-  // 3. Create cashier employee (PIN: 5678)
+  // 3. Create cashier employee
   let cashier = await empRepo.findOne({
     where: { email: 'cashier@caisse.dev' },
   });
@@ -122,7 +121,7 @@ async function seed() {
       storeId: store.id,
       maxDiscountPercent: 5,
     });
-    console.log(`Cashier created: ${cashier.firstName} ${cashier.lastName} (PIN: 5678, QR: ${cashier.qrCode})`);
+    console.log(`Cashier created: ${cashier.firstName} ${cashier.lastName} (QR: ${cashier.qrCode})`);
   }
 
   // 4. Create sample products
@@ -200,8 +199,7 @@ async function seed() {
 
   console.log('\nSeed complete!');
   console.log(`\nStore ID: ${store.id}`);
-  console.log(`Admin PIN: 1234`);
-  console.log(`Cashier PIN: 5678`);
+  console.log(`PINs set from seed data (check source for values)`);
 
   await ds.destroy();
 }

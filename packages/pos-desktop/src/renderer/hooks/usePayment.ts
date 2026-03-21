@@ -13,6 +13,9 @@ export interface PartialPayment {
   id: string;
   method: PaymentMethod;
   amountMinorUnits: number;
+  stripePaymentIntentId?: string;
+  stripeReaderId?: string;
+  terminalId?: string;
 }
 
 export interface ConfirmationData {
@@ -148,7 +151,13 @@ export function usePayment() {
       const res = await salesApi.create({
         items: store.cartItems.map((i) => ({ ean: i.ean, quantity: i.quantity })),
         customerQrCode: store.customerQrCode || undefined,
-        payments: payments.map((p) => ({ method: p.method, amountMinorUnits: p.amountMinorUnits })),
+        payments: payments.map((p) => ({
+          method: p.method,
+          amountMinorUnits: p.amountMinorUnits,
+          stripePaymentIntentId: p.stripePaymentIntentId,
+          stripeReaderId: p.stripeReaderId,
+          terminalId: p.terminalId,
+        })),
       });
       ticketNumber = res.data.ticketNumber || `T-${Date.now().toString().slice(-6)}`;
       if (res.data.jackpotResult) store.setJackpotResult(res.data.jackpotResult);

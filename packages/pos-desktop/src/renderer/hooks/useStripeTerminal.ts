@@ -3,7 +3,7 @@
  *
  * Lifecycle:
  *   1. initTerminal() — loads the SDK, fetches connection token, discovers readers
- *   2. connectReader(reader) — connects to a specific reader
+ *   2. connectReader(reader, dbTerminalId?) — connects to a specific reader
  *   3. collectPayment(amount, ticketNumber) — creates PI on backend, collects on reader
  *   4. cancelPayment() — cancels in-progress collection
  *
@@ -11,9 +11,9 @@
  * It only manages the reader interaction for card-present payments.
  */
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { loadStripeTerminal } from '@stripe/terminal-js';
-import { stripeTerminalApi } from '../services/api';
+import { stripeTerminalApi, terminalsApi } from '../services/api';
 
 // Stripe Terminal types (simplified — the SDK's types are complex)
 interface StripeReader {
@@ -32,14 +32,91 @@ interface TerminalError {
   code?: string;
 }
 
+const HEARTBEAT_INTERVAL_MS = 60_000; // 60 seconds
+
+/**
+ * Map Stripe SDK / common error codes to French user-facing messages.
+ */
+function getFrenchErrorMessage(err: any): string {
+  const code = err?.code || err?.decline_code || '';
+  const msg = (err?.message || '').toLowerCase();
+
+  if (code === 'reader_not_found' || msg.includes('reader not found')) {
+    return 'Lecteur introuvable. Verifiez qu\'il est allume et a portee.';
+  }
+  if (code === 'bluetooth_disabled' || msg.includes('bluetooth')) {
+    return 'Bluetooth desactive. Activez le Bluetooth pour connecter le lecteur.';
+  }
+  if (code === 'reader_busy' || msg.includes('reader is busy') || msg.includes('busy')) {
+    return 'Le lecteur est occupe. Attendez la fin de l\'operation en cours.';
+  }
+  if (code === 'card_declined' || msg.includes('card declined') || msg.includes('declined')) {
+    return 'Carte refusee. Demandez au client un autre moyen de paiement.';
+  }
+  if (code === 'timed_out' || msg.includes('timeout') || msg.includes('timed out')) {
+    return 'Delai d\'attente depasse. Veuillez reessayer.';
+  }
+  if (code === 'network_error' || msg.includes('network') || msg.includes('fetch')) {
+    return 'Erreur reseau. Verifiez la connexion Internet.';
+  }
+  if (code === 'reader_disconnected' || msg.includes('disconnected')) {
+    return 'Lecteur deconnecte. Reconnectez le lecteur.';
+  }
+
+  return err?.message || 'Erreur terminal de paiement';
+}
+
 export function useStripeTerminal() {
   const [status, setStatus] = useState<TerminalStatus>('idle');
   const [error, setError] = useState<TerminalError | null>(null);
   const [readers, setReaders] = useState<StripeReader[]>([]);
   const [connectedReader, setConnectedReader] = useState<StripeReader | null>(null);
+  const [connectedTerminalId, setConnectedTerminalId] = useState<string | null>(null);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const terminalRef = useRef<any>(null);
+  const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  /**
+   * Send a heartbeat to our backend for the connected terminal.
+   */
+  const sendHeartbeat = useCallback(async (terminalId: string, terminalStatus: string, batteryLevel?: number) => {
+    try {
+      await terminalsApi.heartbeat(terminalId, { status: terminalStatus, batteryLevel });
+    } catch (err) {
+      console.warn('[StripeTerminal] Heartbeat failed:', err);
+    }
+  }, []);
+
+  /**
+   * Clear heartbeat interval.
+   */
+  const clearHeartbeat = useCallback(() => {
+    if (heartbeatRef.current) {
+      clearInterval(heartbeatRef.current);
+      heartbeatRef.current = null;
+    }
+  }, []);
+
+  /**
+   * Start periodic heartbeat for a terminal.
+   */
+  const startHeartbeat = useCallback((terminalId: string) => {
+    clearHeartbeat();
+    // Send immediate heartbeat
+    sendHeartbeat(terminalId, 'ONLINE');
+    // Set up interval
+    heartbeatRef.current = setInterval(() => {
+      sendHeartbeat(terminalId, 'ONLINE');
+    }, HEARTBEAT_INTERVAL_MS);
+  }, [clearHeartbeat, sendHeartbeat]);
+
+  // Cleanup heartbeat on unmount
+  useEffect(() => {
+    return () => {
+      clearHeartbeat();
+    };
+  }, [clearHeartbeat]);
 
   /**
    * Fetch a fresh connection token from our backend.
@@ -67,9 +144,15 @@ export function useStripeTerminal() {
         onFetchConnectionToken: fetchConnectionToken,
         onUnexpectedReaderDisconnect: () => {
           console.warn('[StripeTerminal] Reader disconnected unexpectedly');
+          // Send offline heartbeat if we have a terminal ID
+          if (connectedTerminalId) {
+            sendHeartbeat(connectedTerminalId, 'OFFLINE');
+          }
+          clearHeartbeat();
           setConnectedReader(null);
+          setConnectedTerminalId(null);
           setStatus('idle');
-          setError({ message: 'Lecteur déconnecté' });
+          setError({ message: 'Lecteur deconnecte de maniere inattendue.' });
         },
       });
 
@@ -91,20 +174,22 @@ export function useStripeTerminal() {
 
       return discoveredReaders;
     } catch (err: any) {
-      const msg = err?.message || 'Erreur initialisation terminal';
-      setError({ message: msg });
+      const msg = getFrenchErrorMessage(err);
+      setError({ message: msg, code: err?.code });
       setStatus('error');
       throw err;
     }
-  }, [fetchConnectionToken]);
+  }, [fetchConnectionToken, connectedTerminalId, sendHeartbeat, clearHeartbeat]);
 
   /**
    * Connect to a specific reader.
+   * @param reader - The Stripe reader object from discovery
+   * @param dbTerminalId - Optional: our database terminal ID for heartbeat tracking
    */
-  const connectReader = useCallback(async (reader: StripeReader) => {
+  const connectReader = useCallback(async (reader: StripeReader, dbTerminalId?: string) => {
     const terminal = terminalRef.current;
     if (!terminal) {
-      setError({ message: 'Terminal non initialisé' });
+      setError({ message: 'Terminal non initialise. Veuillez relancer la decouverte.' });
       return;
     }
 
@@ -119,13 +204,20 @@ export function useStripeTerminal() {
       }
 
       setConnectedReader(result.reader as StripeReader);
+      setConnectedTerminalId(dbTerminalId || null);
       setStatus('connected');
+
+      // Start heartbeat if we have a DB terminal ID
+      if (dbTerminalId) {
+        startHeartbeat(dbTerminalId);
+      }
     } catch (err: any) {
-      setError({ message: err?.message || 'Erreur connexion lecteur' });
+      const msg = getFrenchErrorMessage(err);
+      setError({ message: msg, code: err?.code });
       setStatus('error');
       throw err;
     }
-  }, []);
+  }, [startHeartbeat]);
 
   /**
    * Collect a card payment via the connected reader.
@@ -141,8 +233,8 @@ export function useStripeTerminal() {
     currency = 'eur',
   ): Promise<{ paymentIntentId: string }> => {
     const terminal = terminalRef.current;
-    if (!terminal) throw new Error('Terminal non initialisé');
-    if (!connectedReader) throw new Error('Aucun lecteur connecté');
+    if (!terminal) throw new Error('Terminal non initialise');
+    if (!connectedReader) throw new Error('Aucun lecteur connecte');
 
     setStatus('collecting');
     setError(null);
@@ -160,7 +252,7 @@ export function useStripeTerminal() {
       const collectResult = await terminal.collectPaymentMethod(clientSecret);
 
       if ('error' in collectResult && collectResult.error) {
-        throw new Error(collectResult.error.message || 'Collection annulée');
+        throw new Error(collectResult.error.message || 'Collection annulee');
       }
 
       // 3. Process the payment
@@ -169,14 +261,15 @@ export function useStripeTerminal() {
       );
 
       if ('error' in processResult && processResult.error) {
-        throw new Error(processResult.error.message || 'Paiement refusé');
+        throw new Error(processResult.error.message || 'Paiement refuse');
       }
 
       setStatus('connected');
       return { paymentIntentId: piRes.data.paymentIntentId };
     } catch (err: any) {
       setStatus('connected'); // Still connected to reader
-      setError({ message: err?.message || 'Erreur paiement' });
+      const msg = getFrenchErrorMessage(err);
+      setError({ message: msg, code: err?.code });
       throw err;
     }
   }, [connectedReader]);
@@ -202,16 +295,25 @@ export function useStripeTerminal() {
    */
   const disconnectReader = useCallback(async () => {
     const terminal = terminalRef.current;
-    if (!terminal) return;
 
-    try {
-      await terminal.disconnectReader();
-    } catch {
-      // Ignore disconnect errors
+    // Send offline heartbeat before disconnecting
+    if (connectedTerminalId) {
+      await sendHeartbeat(connectedTerminalId, 'OFFLINE');
     }
+    clearHeartbeat();
+
+    if (terminal) {
+      try {
+        await terminal.disconnectReader();
+      } catch {
+        // Ignore disconnect errors
+      }
+    }
+
     setConnectedReader(null);
+    setConnectedTerminalId(null);
     setStatus('idle');
-  }, []);
+  }, [connectedTerminalId, sendHeartbeat, clearHeartbeat]);
 
   return {
     // State
@@ -219,6 +321,7 @@ export function useStripeTerminal() {
     error,
     readers,
     connectedReader,
+    connectedTerminalId,
     isReady: status === 'connected',
     isCollecting: status === 'collecting',
 

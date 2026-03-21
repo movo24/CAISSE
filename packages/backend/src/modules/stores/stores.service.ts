@@ -8,6 +8,7 @@ import { BusinessError } from '../../common/errors/business-error';
 import { CreateStoreDto } from '../../common/dto';
 import { mapStoreEntityToStoreInfo } from './store-info.mapper';
 import { generateUniqueStoreCode } from '../../common/utils/store-code-generator';
+import { TimewinService } from '../timewin/timewin.service';
 
 @Injectable()
 export class StoresService {
@@ -21,6 +22,7 @@ export class StoresService {
     @InjectRepository(UnitEntity)
     private unitRepo: Repository<UnitEntity>,
     private dataSource: DataSource,
+    private timewinService: TimewinService,
   ) {}
 
   async create(dto: CreateStoreDto): Promise<StoreEntity> {
@@ -248,5 +250,60 @@ export class StoresService {
     const saved = await this.storeRepo.save(store);
     this.logger.log(`Store activated: ${saved.name} (${saved.id})`);
     return saved;
+  }
+
+  /** Sync stores from TimeWin24 (source of truth) → POS local DB */
+  async syncFromTimeWin(): Promise<{ created: number; updated: number; total: number }> {
+    const twStores = await this.timewinService.fetchStores();
+    let created = 0;
+    let updated = 0;
+
+    for (const tw of twStores) {
+      const existing = await this.storeRepo.findOne({ where: { id: tw.id } });
+
+      if (existing) {
+        // Update name, storeCode, city, status from TimeWin24
+        existing.name = tw.name;
+        existing.storeCode = tw.storeCode || existing.storeCode;
+        existing.city = tw.city || existing.city;
+        existing.currencyCode = tw.currency || existing.currencyCode;
+        existing.timezone = tw.timezone || existing.timezone;
+        existing.isActive = tw.status === 'ACTIVE';
+        existing.latitude = tw.latitude ?? existing.latitude;
+        existing.longitude = tw.longitude ?? existing.longitude;
+        await this.storeRepo.save(existing);
+        updated++;
+      } else {
+        // Create new store with TimeWin24 UUID
+        const store = this.storeRepo.create({
+          id: tw.id,
+          name: tw.name,
+          storeCode: tw.storeCode || undefined,
+          city: tw.city || undefined,
+          address: tw.address || undefined,
+          currencyCode: tw.currency || 'EUR',
+          timezone: tw.timezone || 'Europe/Paris',
+          isActive: tw.status === 'ACTIVE',
+          latitude: tw.latitude,
+          longitude: tw.longitude,
+        });
+        await this.storeRepo.save(store);
+        created++;
+      }
+    }
+
+    // Deactivate POS stores not present in TimeWin24
+    const twIds = twStores.map((s: any) => s.id);
+    const allLocal = await this.storeRepo.find({ where: { isActive: true } });
+    for (const local of allLocal) {
+      if (!twIds.includes(local.id)) {
+        local.isActive = false;
+        await this.storeRepo.save(local);
+        this.logger.warn(`[SYNC] Deactivated store "${local.name}" (${local.id}) — not in TimeWin24`);
+      }
+    }
+
+    this.logger.log(`[SYNC] TimeWin24 → POS: ${created} created, ${updated} updated, ${twStores.length} total`);
+    return { created, updated, total: twStores.length };
   }
 }

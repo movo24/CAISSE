@@ -1,5 +1,5 @@
 export { StoreEntity } from './store.entity';
-export { EmployeeEntity } from './employee.entity';
+// EmployeeEntity removed — managed by TimeWin24
 export { ProductEntity } from './product.entity';
 export { ProductCategoryEntity } from './product-category.entity';
 export { CustomerEntity } from './customer.entity';
@@ -12,6 +12,7 @@ export { PriceHistoryEntity } from './price-history.entity';
 export { FxRateEntity } from './fx-rate.entity';
 export { ZReportEntity } from './z-report.entity';
 export { SubscriptionEntity } from './subscription.entity';
-export { PointageEntryEntity } from './pointage-entry.entity';
-export { StaffingSnapshotEntity } from './staffing-snapshot.entity';
-export { PayrollConfigEntity } from './payroll-config.entity';
+// PointageEntryEntity removed — managed by TimeWin24
+// StaffingSnapshotEntity removed — managed by TimeWin24
+// PayrollConfigEntity removed — managed by TimeWin24
+export { PosSessionEntity } from './pos-session.entity';

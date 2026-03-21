@@ -1,7 +1,7 @@
 import { Controller, Post, Body, HttpCode, HttpStatus, UseGuards, Request, Res } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
-import { IsString, IsNotEmpty, IsOptional, MinLength, MaxLength, IsUUID } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, MinLength, MaxLength } from 'class-validator';
 import { Response } from 'express';
 import { AuthService } from './auth.service';
 import { SkipTenantCheck } from '../../common/interceptors/tenant.interceptor';
@@ -14,7 +14,6 @@ const REFRESH_COOKIE_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days
 class LoginPinDto {
   @IsString()
   @IsNotEmpty()
-  @IsUUID()
   storeId: string;
 
   @IsString()

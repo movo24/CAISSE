@@ -1,13 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Lock, QrCode, Store, ArrowRight, Monitor, Tablet, Smartphone } from 'lucide-react';
-import { authApi, rightsApi, storesApi } from '../services/api';
+import { authApi, storesApi } from '../services/api';
 import { usePOSStore } from '../stores/posStore';
 import { useRightsStore } from '../stores/rightsStore';
 import { usePointageStore } from '../stores/pointageStore';
 import { usePerformanceStore } from '../stores/performanceStore';
-import { usePlanningStore } from '../stores/planningStore';
-import { planningApi } from '../services/api';
 import { useDeviceProfile, platformClasses } from '../hooks/useDeviceProfile';
 
 export function LoginPage() {
@@ -16,7 +14,6 @@ export function LoginPage() {
   const rightsStore = useRightsStore();
   const pointageStore = usePointageStore();
   const perfStore = usePerformanceStore();
-  const planningStore = usePlanningStore();
   const device = useDeviceProfile();
   const [storeId, setStoreId] = useState('');
   const [pin, setPin] = useState('');
@@ -56,28 +53,35 @@ export function LoginPage() {
           console.warn('[LOGIN] Could not fetch store info');
         }
       }
-      // Fetch employee rights (fallback to cached or role defaults)
-      try {
-        const rightsRes = await rightsApi.getMyRights();
-        rightsStore.setRights(rightsRes.data);
-      } catch {
+      // Set employee rights from TimeWin24 permissions (or fallback to role defaults)
+      if (res.data.permissions) {
+        rightsStore.setRights({
+          employeeId: res.data.employee.id,
+          role: res.data.employee.role,
+          maxDiscountPercent: res.data.permissions.discount_max || res.data.employee.maxDiscountPercent || 5,
+          canVoidSale: res.data.permissions.void_sale || false,
+          canRefund: res.data.permissions.refund || false,
+          canAccessReports: res.data.permissions.view_reports || false,
+          canManageStock: res.data.permissions.manage_stock || false,
+          canDeleteTicket: false,
+          canApplyManualDiscount: res.data.permissions.discount_max > 0,
+          canOpenDrawer: res.data.permissions.open_register || true,
+          canReprintTicket: true,
+          isOverride: false,
+          updatedAt: new Date().toISOString(),
+        });
+      } else {
         const cached = rightsStore.loadFromCache();
         if (!cached) rightsStore.setRightsForRole(res.data.employee.id, res.data.employee.role);
       }
-      // Auto clock-in (pointage)
+      // Auto clock-in (local UI only — TimeWin24 handles actual clock-in via auth flow)
       const emp = res.data.employee;
-      pointageStore.clockIn(emp.id, `${emp.firstName} ${emp.lastName}`, emp.storeId, 'auto_login');
+      const fullName = `${emp.firstName} ${emp.lastName}`;
+      pointageStore.clockIn(emp.id, fullName, emp.storeId);
       // Init performance session
       perfStore.loadPersistedData();
       if (!perfStore.session || perfStore.session.employeeId !== emp.id) {
-        perfStore.initSession(emp.id, `${emp.firstName} ${emp.lastName}`, emp.storeId);
-      }
-      // Fetch planning (fallback to cache)
-      try {
-        const planRes = await planningApi.getMyWeek();
-        planningStore.setWeekPlanning(planRes.data);
-      } catch {
-        planningStore.loadFromCache();
+        perfStore.initSession(emp.id, fullName, emp.storeId);
       }
       navigate('/pos');
     } catch (err: any) {

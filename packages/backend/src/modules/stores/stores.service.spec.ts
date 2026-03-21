@@ -7,6 +7,7 @@ import { OrganizationEntity } from '../../database/entities/organization.entity'
 import { UnitEntity } from '../../database/entities/unit.entity';
 import { BusinessError } from '../../common/errors/business-error';
 import { HttpStatus } from '@nestjs/common';
+import { TimewinService } from '../timewin/timewin.service';
 
 describe('StoresService', () => {
   let service: StoresService;
@@ -71,6 +72,13 @@ describe('StoresService', () => {
               rollbackTransaction: jest.fn(),
               release: jest.fn(),
             }),
+          },
+        },
+        {
+          provide: TimewinService,
+          useValue: {
+            syncStoreToTimewin: jest.fn().mockResolvedValue(undefined),
+            notifyStoreDeleted: jest.fn().mockResolvedValue(undefined),
           },
         },
       ],

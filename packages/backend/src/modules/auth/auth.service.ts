@@ -2,284 +2,214 @@ import {
   Injectable,
   UnauthorizedException,
   Logger,
+  Inject,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import * as bcrypt from 'bcrypt';
 import { randomBytes } from 'crypto';
-import { EmployeeEntity } from '../../database/entities/employee.entity';
 import { StoreEntity } from '../../database/entities/store.entity';
 import { mapStoreEntityToStoreInfo } from '../stores/store-info.mapper';
+import { TimewinService } from '../timewin/timewin.service';
+import { CACHE_STORE } from '../../common/cache/cache.module';
+import { ICacheStore } from '../../common/cache/cache-store';
 
-// Bcrypt cost factor 12 = ~250ms per hash on modern hardware
-// Makes brute-force on 4-digit PINs impractical even with the rate limiter bypassed
-const BCRYPT_SALT_ROUNDS = 12;
+const TOKEN_REVOKE_TTL = 7 * 24 * 60 * 60; // 7 days in seconds
 
-// Lockout after N failed attempts per store
-const MAX_FAILED_ATTEMPTS = 5;
-const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 minutes
-
+/**
+ * Auth service — delegates employee authentication to TimeWin24.
+ *
+ * Token revocation is now persisted via ICacheStore (Redis in production).
+ * This means:
+ *   - Revocations survive server restarts
+ *   - Consistent across multiple POS instances
+ *   - Auto-expire after 7 days (JWT max lifetime)
+ */
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
 
-  // In-memory lockout map (use Redis in V1 for multi-instance deployments)
-  private readonly failedAttempts = new Map<
-    string,
-    { count: number; lockedUntil: Date | null }
-  >();
-
-  // In-memory token revocation set (use Redis in V1 for multi-instance deployments)
-  // Tracks employeeIds whose tokens have been revoked via logout
-  private readonly revokedTokens = new Set<string>();
-
-  /**
-   * Token family tracking — maps employeeId to their current valid refresh token family.
-   * If a refresh token is reused (replay), the entire family is revoked.
-   * Key: employeeId, Value: current valid jti
-   */
-  private readonly tokenFamilies = new Map<string, string>();
-
   constructor(
-    @InjectRepository(EmployeeEntity)
-    private employeeRepo: Repository<EmployeeEntity>,
     @InjectRepository(StoreEntity)
     private storeRepo: Repository<StoreEntity>,
     private jwtService: JwtService,
+    private timewin: TimewinService,
+    @Inject(CACHE_STORE) private cache: ICacheStore,
   ) {}
 
+  /**
+   * Login by PIN — primary flow via TimeWin24
+   */
   async loginByPin(storeId: string, pin: string) {
-    this.checkLockout(storeId);
-
-    const employees = await this.employeeRepo.find({
-      where: { storeId, isActive: true },
-    });
-
-    for (const emp of employees) {
-      const match = await bcrypt.compare(pin, emp.pinHash);
-      if (match) {
-        this.clearFailedAttempts(storeId);
-        // Clear any previous revocation on re-login
-        this.revokedTokens.delete(emp.id);
-        this.logger.log(
-          `Login OK: ${emp.firstName} ${emp.lastName} (${emp.role}) store=${storeId}`,
-        );
-        return await this.generateTokens(emp);
+    try {
+      const twResult = await this.timewin.loginEmployee({ pin, storeId });
+      return await this.buildSessionFromTimewin(twResult, storeId);
+    } catch (err: any) {
+      if (err.status === undefined || err.status >= 500) {
+        this.logger.warn(`TimeWin24 unreachable for PIN login, attempting offline cache`);
+        return this.offlineFallback(storeId, { pin });
       }
+      throw new UnauthorizedException(
+        err.response?.error || 'Invalid PIN',
+      );
     }
-
-    this.recordFailedAttempt(storeId);
-    throw new UnauthorizedException('Invalid PIN');
   }
 
   /**
-   * Super admin login: email + PIN, no storeId required.
-   * Only works for 'admin' role employees.
-   * Returns global access (storeId = employee's home store, but admin bypass grants all).
+   * Admin login by email — via TimeWin24
    */
   async loginByEmail(email: string, pin: string) {
-    const employee = await this.employeeRepo.findOne({
-      where: { email, isActive: true },
-    });
-
-    if (!employee) {
-      throw new UnauthorizedException('Invalid email or PIN');
+    try {
+      const twResult = await this.timewin.loginEmployee({
+        pin,
+        employeeCode: email,
+        storeId: '_admin',
+      });
+      return await this.buildSessionFromTimewin(twResult, twResult.store_id);
+    } catch (err: any) {
+      throw new UnauthorizedException(
+        err.response?.error || 'Invalid email or PIN',
+      );
     }
-
-    if (employee.role !== 'admin') {
-      throw new UnauthorizedException('Admin login requires admin role');
-    }
-
-    this.checkLockout(employee.storeId);
-
-    const match = await bcrypt.compare(pin, employee.pinHash);
-    if (!match) {
-      this.recordFailedAttempt(employee.storeId);
-      throw new UnauthorizedException('Invalid email or PIN');
-    }
-
-    this.clearFailedAttempts(employee.storeId);
-    this.revokedTokens.delete(employee.id);
-    this.logger.log(
-      `Admin Login OK: ${employee.firstName} ${employee.lastName} (email=${email})`,
-    );
-    return await this.generateTokens(employee);
   }
 
+  /**
+   * Login by QR code — via TimeWin24
+   */
   async loginByQrCode(qrCode: string, pin: string) {
-    const employee = await this.employeeRepo.findOne({
-      where: { qrCode, isActive: true },
-    });
-    if (!employee) throw new UnauthorizedException('Invalid QR code');
-
-    this.checkLockout(employee.storeId);
-
-    const match = await bcrypt.compare(pin, employee.pinHash);
-    if (!match) {
-      this.recordFailedAttempt(employee.storeId);
-      throw new UnauthorizedException('Invalid PIN');
+    try {
+      const twResult = await this.timewin.loginEmployee({ qrCode, pin, storeId: '_any' });
+      return await this.buildSessionFromTimewin(twResult, twResult.store_id);
+    } catch (err: any) {
+      if (err.status === undefined || err.status >= 500) {
+        this.logger.warn(`TimeWin24 unreachable for QR login`);
+        throw new UnauthorizedException('TimeWin24 unreachable — QR login requires online connection');
+      }
+      throw new UnauthorizedException(
+        err.response?.error || 'Invalid QR code',
+      );
     }
-
-    this.clearFailedAttempts(employee.storeId);
-    this.revokedTokens.delete(employee.id);
-    this.logger.log(
-      `QR Login OK: ${employee.firstName} ${employee.lastName} store=${employee.storeId}`,
-    );
-    return await this.generateTokens(employee);
   }
 
-  async validateEmployee(id: string): Promise<EmployeeEntity | null> {
-    // Check if token was revoked via logout
-    if (this.revokedTokens.has(id)) return null;
-    return this.employeeRepo.findOne({ where: { id, isActive: true } });
+  /**
+   * Validate an employee by ID (for JWT strategy).
+   * Checks revocation in persistent cache.
+   */
+  async validateEmployee(id: string): Promise<any | null> {
+    const isRevoked = await this.cache.sismember('revoked_tokens', id);
+    if (isRevoked) return null;
+    return { id, isActive: true };
   }
 
-  /** Hash a PIN. Exported for use by EmployeesService. */
-  static async hashPin(pin: string): Promise<string> {
-    return bcrypt.hash(pin, BCRYPT_SALT_ROUNDS);
-  }
-
-  // -----------------------------------------------------------------------
-  // Refresh token — validate and issue new access + refresh tokens (rotation)
-  // Implements token family tracking for replay detection.
-  // -----------------------------------------------------------------------
+  /**
+   * Refresh access token — with replay detection via persistent cache
+   */
   async refreshAccessToken(refreshToken: string) {
     try {
       const payload = this.jwtService.verify(refreshToken, {
         secret: process.env.JWT_REFRESH_SECRET!,
       });
 
-      // Check if token was revoked
-      if (this.revokedTokens.has(payload.sub)) {
+      // Check revocation
+      const isRevoked = await this.cache.sismember('revoked_tokens', payload.sub);
+      if (isRevoked) {
         throw new UnauthorizedException('Token has been revoked');
       }
 
-      // Replay detection: check if the refresh token's jti matches the current family
-      const currentJti = this.tokenFamilies.get(payload.sub);
+      // Replay detection — compare JTI with stored family
+      const currentJti = await this.cache.get<string>(`token_family:${payload.sub}`);
       if (payload.jti && currentJti && payload.jti !== currentJti) {
-        // Token reuse detected! Revoke the entire family (potential token theft)
-        this.logger.error(
-          `TOKEN REPLAY DETECTED for employee ${payload.sub}! ` +
-          `Expected jti=${currentJti}, got jti=${payload.jti}. Revoking all tokens.`,
-        );
-        this.revokedTokens.add(payload.sub);
-        this.tokenFamilies.delete(payload.sub);
-        throw new UnauthorizedException('Token reuse detected. All sessions revoked.');
+        this.logger.error(`TOKEN REPLAY DETECTED for ${payload.sub}`);
+        // Revoke entire family
+        await this.cache.sadd('revoked_tokens', payload.sub, TOKEN_REVOKE_TTL);
+        await this.cache.del(`token_family:${payload.sub}`);
+        throw new UnauthorizedException('Token reuse detected');
       }
 
-      // Verify employee still exists and is active
-      const employee = await this.employeeRepo.findOne({
-        where: { id: payload.sub, isActive: true },
-      });
-      if (!employee) {
-        throw new UnauthorizedException('Employee no longer active');
-      }
+      // Re-issue tokens with new JTI
+      const jti = randomBytes(16).toString('hex');
+      await this.cache.set(`token_family:${payload.sub}`, jti, TOKEN_REVOKE_TTL);
 
-      // Issue new tokens (rotation: old refresh token is implicitly replaced)
-      this.logger.log(`Token refreshed for ${employee.firstName} ${employee.lastName}`);
-      return await this.generateTokens(employee);
+      return {
+        accessToken: this.jwtService.sign({
+          sub: payload.sub,
+          storeId: payload.storeId,
+          role: payload.role,
+          employeeName: payload.employeeName,
+          maxDiscount: payload.maxDiscount,
+        }),
+        refreshToken: this.jwtService.sign(
+          { sub: payload.sub, storeId: payload.storeId, role: payload.role, jti },
+          { secret: process.env.JWT_REFRESH_SECRET!, expiresIn: '7d' },
+        ),
+        employee: {
+          id: payload.sub,
+          storeId: payload.storeId,
+          role: payload.role,
+        },
+      };
     } catch (error) {
       if (error instanceof UnauthorizedException) throw error;
       throw new UnauthorizedException('Invalid or expired refresh token');
     }
   }
 
-  // -----------------------------------------------------------------------
-  // Logout — revoke tokens for employee
-  // -----------------------------------------------------------------------
-  logout(employeeId: string): void {
-    this.revokedTokens.add(employeeId);
-    this.logger.log(`Logout: tokens revoked for employee ${employeeId}`);
-
-    // Auto-cleanup: remove from revoked set after refresh token max lifetime (7 days)
-    setTimeout(() => {
-      this.revokedTokens.delete(employeeId);
-    }, 7 * 24 * 60 * 60 * 1000);
+  /**
+   * Logout — revoke tokens (persisted in Redis, survives restart)
+   */
+  async logout(employeeId: string): Promise<void> {
+    await this.cache.sadd('revoked_tokens', employeeId, TOKEN_REVOKE_TTL);
+    await this.cache.del(`token_family:${employeeId}`);
+    this.logger.log(`Logout: tokens revoked for ${employeeId}`);
   }
 
-  // -----------------------------------------------------------------------
-  // Token generation + store info
-  // -----------------------------------------------------------------------
-  private async generateTokens(employee: EmployeeEntity) {
-    // Generate unique token ID for replay protection
+  /* ── Private helpers ── */
+
+  private async buildSessionFromTimewin(tw: any, storeId: string) {
     const jti = randomBytes(16).toString('hex');
+    await this.cache.set(`token_family:${tw.employee_id}`, jti, TOKEN_REVOKE_TTL);
+    // Clear any previous revocation on fresh login
+    await this.cache.srem('revoked_tokens', tw.employee_id);
 
     const payload = {
-      sub: employee.id,
-      storeId: employee.storeId,
-      role: employee.role,
+      sub: tw.employee_id,
+      storeId: tw.store_id || storeId,
+      role: tw.role,
+      employeeName: tw.full_name,
+      maxDiscount: tw.max_discount,
     };
 
-    // Fetch store to build storeInfo for the frontend
-    const store = await this.storeRepo.findOne({
-      where: { id: employee.storeId },
-    });
+    const store = await this.storeRepo.findOne({ where: { id: storeId } }).catch(() => null);
 
-    // Track the current valid refresh token family
-    this.tokenFamilies.set(employee.id, jti);
+    this.logger.log(`Login OK via TimeWin24: ${tw.full_name} (${tw.role}) store=${storeId}`);
 
     return {
       accessToken: this.jwtService.sign(payload),
       refreshToken: this.jwtService.sign(
         { ...payload, jti },
-        {
-          secret: process.env.JWT_REFRESH_SECRET!,
-          expiresIn: '7d',
-        },
+        { secret: process.env.JWT_REFRESH_SECRET!, expiresIn: '7d' },
       ),
       employee: {
-        id: employee.id,
-        firstName: employee.firstName,
-        lastName: employee.lastName,
-        role: employee.role,
-        storeId: employee.storeId,
+        id: tw.employee_id,
+        employeeCode: tw.employee_code,
+        firstName: tw.full_name.split(' ')[0],
+        lastName: tw.full_name.split(' ').slice(1).join(' '),
+        role: tw.role,
+        storeId: tw.store_id || storeId,
+        maxDiscountPercent: tw.max_discount,
       },
+      permissions: tw.permissions,
       storeInfo: store ? mapStoreEntityToStoreInfo(store) : null,
+      snapshot: tw.snapshot,
     };
   }
 
-  // -----------------------------------------------------------------------
-  // Brute-force lockout
-  // -----------------------------------------------------------------------
-  private checkLockout(storeId: string): void {
-    const record = this.failedAttempts.get(storeId);
-    if (!record) return;
-
-    if (record.lockedUntil && record.lockedUntil > new Date()) {
-      const remaining = Math.ceil(
-        (record.lockedUntil.getTime() - Date.now()) / 1000,
-      );
-      this.logger.warn(`Lockout active: store ${storeId}, ${remaining}s left`);
-      throw new UnauthorizedException(
-        `Too many failed attempts. Try again in ${remaining} seconds.`,
-      );
-    }
-
-    // Lockout expired
-    if (record.lockedUntil && record.lockedUntil <= new Date()) {
-      this.failedAttempts.delete(storeId);
-    }
-  }
-
-  private recordFailedAttempt(storeId: string): void {
-    const record = this.failedAttempts.get(storeId) || {
-      count: 0,
-      lockedUntil: null,
-    };
-    record.count++;
-
-    if (record.count >= MAX_FAILED_ATTEMPTS) {
-      record.lockedUntil = new Date(Date.now() + LOCKOUT_DURATION_MS);
-      this.logger.warn(
-        `Store ${storeId} LOCKED after ${record.count} failures until ${record.lockedUntil.toISOString()}`,
-      );
-    }
-
-    this.failedAttempts.set(storeId, record);
-  }
-
-  private clearFailedAttempts(storeId: string): void {
-    this.failedAttempts.delete(storeId);
+  /**
+   * Offline fallback — disabled for security (PINs not cached in plaintext)
+   */
+  private async offlineFallback(storeId: string, _opts: { pin?: string }): Promise<never> {
+    throw new UnauthorizedException(
+      'TimeWin24 unreachable — new logins require online connection. Use existing session if available.',
+    );
   }
 }

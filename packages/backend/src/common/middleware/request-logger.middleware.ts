@@ -2,17 +2,90 @@ import { Injectable, NestMiddleware, Logger } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
 
 /**
- * Request Logger Middleware
+ * Request Logger Middleware — structured JSON logs + metrics
  *
- * Logs every HTTP request with:
- * - Method + URL
- * - Response status code
- * - Duration in ms
- * - IP address
- * - User agent (truncated)
- *
- * Skips health check and Swagger endpoints to reduce noise.
+ * Outputs structured JSON for production log aggregation (ELK, CloudWatch, etc.)
+ * Tracks in-memory metrics for /api/health/metrics endpoint.
  */
+
+// ── In-memory metrics (reset on restart, scraped by health endpoint) ──
+export class PosMetrics {
+  private static _instance: PosMetrics;
+  static get instance(): PosMetrics {
+    if (!PosMetrics._instance) PosMetrics._instance = new PosMetrics();
+    return PosMetrics._instance;
+  }
+
+  totalRequests = 0;
+  totalSales = 0;
+  totalErrors = 0;
+  loginFailed = 0;
+  rateLimitTriggered = 0;
+  latencySum = 0;
+  latencyCount = 0;
+  latencyMax = 0;
+  statusCounts: Record<string, number> = {};
+  startedAt = Date.now();
+
+  // Sliding window: last 60 seconds
+  private salesWindow: number[] = [];
+  private errorWindow: number[] = [];
+  private requestWindow: number[] = [];
+
+  recordRequest(status: number, durationMs: number, isSale: boolean, path?: string) {
+    this.totalRequests++;
+    this.latencySum += durationMs;
+    this.latencyCount++;
+    if (durationMs > this.latencyMax) this.latencyMax = durationMs;
+
+    const bucket = `${Math.floor(status / 100)}xx`;
+    this.statusCounts[bucket] = (this.statusCounts[bucket] || 0) + 1;
+
+    const now = Date.now();
+    this.requestWindow.push(now);
+
+    if (status >= 500) {
+      this.totalErrors++;
+      this.errorWindow.push(now);
+    }
+    if (status === 429) {
+      this.rateLimitTriggered++;
+    }
+    if (status === 401 && path?.includes('/login')) {
+      this.loginFailed++;
+    }
+    if (isSale && status < 400) {
+      this.totalSales++;
+      this.salesWindow.push(now);
+    }
+
+    // Trim windows to last 60s
+    const cutoff = now - 60_000;
+    this.salesWindow = this.salesWindow.filter(t => t > cutoff);
+    this.errorWindow = this.errorWindow.filter(t => t > cutoff);
+    this.requestWindow = this.requestWindow.filter(t => t > cutoff);
+  }
+
+  getSnapshot() {
+    const uptimeSec = Math.floor((Date.now() - this.startedAt) / 1000);
+    return {
+      uptime_seconds: uptimeSec,
+      total_requests: this.totalRequests,
+      total_sales: this.totalSales,
+      total_errors: this.totalErrors,
+      login_failed: this.loginFailed,
+      rate_limit_triggered: this.rateLimitTriggered,
+      req_per_minute: this.requestWindow.length,
+      sales_per_minute: this.salesWindow.length,
+      errors_per_minute: this.errorWindow.length,
+      avg_latency_ms: this.latencyCount > 0 ? Math.round(this.latencySum / this.latencyCount) : 0,
+      max_latency_ms: this.latencyMax,
+      error_rate_pct: this.totalRequests > 0 ? parseFloat((this.totalErrors / this.totalRequests * 100).toFixed(2)) : 0,
+      status_codes: this.statusCounts,
+    };
+  }
+}
+
 @Injectable()
 export class RequestLoggerMiddleware implements NestMiddleware {
   private readonly logger = new Logger('HTTP');
@@ -31,24 +104,34 @@ export class RequestLoggerMiddleware implements NestMiddleware {
       const duration = Date.now() - start;
       const { statusCode } = res;
 
-      // Extract employee info from JWT if available
       const user = (req as any).user;
       const userId = user?.employeeId || 'anon';
       const storeId = user?.storeId || '-';
 
-      const logLine =
-        `${method} ${originalUrl} ${statusCode} ${duration}ms ` +
-        `[user=${userId} store=${storeId}] ${ip} "${userAgent}"`;
+      const isSale = method === 'POST' && originalUrl === '/api/sales';
+
+      // Record metrics
+      PosMetrics.instance.recordRequest(statusCode, duration, isSale, originalUrl);
+
+      // Structured log entry
+      const entry = {
+        ts: new Date().toISOString(),
+        method,
+        path: originalUrl,
+        status: statusCode,
+        ms: duration,
+        user: userId,
+        store: storeId,
+        ip,
+        ua: userAgent,
+      };
 
       if (statusCode >= 500) {
-        this.logger.error(logLine);
-      } else if (statusCode >= 400) {
-        this.logger.warn(logLine);
-      } else if (duration > 1000) {
-        // Flag slow requests
-        this.logger.warn(`SLOW ${logLine}`);
+        this.logger.error(JSON.stringify(entry));
+      } else if (statusCode >= 400 || duration > 1000) {
+        this.logger.warn(JSON.stringify(entry));
       } else {
-        this.logger.log(logLine);
+        this.logger.log(JSON.stringify(entry));
       }
     });
 

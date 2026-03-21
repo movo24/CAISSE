@@ -9,7 +9,7 @@ import {
 } from 'typeorm';
 import { StoreEntity } from './store.entity';
 import { ProductEntity } from './product.entity';
-import { EmployeeEntity } from './employee.entity';
+// EmployeeEntity removed — employees managed by TimeWin24
 
 /**
  * Inventory Scan — every barcode scan is recorded here.
@@ -90,7 +90,5 @@ export class InventoryScanEntity {
   @JoinColumn({ name: 'product_id' })
   product: ProductEntity;
 
-  @ManyToOne(() => EmployeeEntity, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'employee_id' })
-  employee: EmployeeEntity;
+  // employee relation removed — managed by TimeWin24 (employeeId kept as string reference)
 }

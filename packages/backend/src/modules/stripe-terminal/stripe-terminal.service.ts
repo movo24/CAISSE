@@ -111,6 +111,59 @@ export class StripeTerminalService {
     return { id: cancelled.id, status: cancelled.status };
   }
 
+  /**
+   * Register a physical reader with Stripe Terminal.
+   */
+  async registerReader(
+    registrationCode: string,
+    label: string,
+    locationId: string,
+  ): Promise<{ id: string; object: string; label: string }> {
+    this.assertStripeConfigured();
+
+    const reader = await this.stripe.terminal.readers.create({
+      registration_code: registrationCode,
+      label,
+      location: locationId,
+    });
+
+    this.logger.log(`Reader registered: ${reader.id} — ${label}`);
+
+    return { id: reader.id, object: reader.object, label: reader.label || label };
+  }
+
+  /**
+   * List readers for a given Stripe Location.
+   */
+  async listReaders(locationId: string) {
+    this.assertStripeConfigured();
+
+    const result = await this.stripe.terminal.readers.list({
+      location: locationId,
+    });
+
+    return result.data;
+  }
+
+  /**
+   * Create a Stripe Terminal Location.
+   */
+  async createLocation(
+    displayName: string,
+    country = 'FR',
+  ): Promise<{ id: string; display_name: string }> {
+    this.assertStripeConfigured();
+
+    const location = await this.stripe.terminal.locations.create({
+      display_name: displayName,
+      address: { country, line1: '', city: '', postal_code: '', state: '' },
+    });
+
+    this.logger.log(`Location created: ${location.id} — ${displayName}`);
+
+    return { id: location.id, display_name: location.display_name };
+  }
+
   private assertStripeConfigured(): void {
     if (!this.stripe) {
       throw new BadRequestException(

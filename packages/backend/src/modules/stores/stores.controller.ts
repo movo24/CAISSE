@@ -131,6 +131,13 @@ export class StoresController {
     return this.storesService.deactivate(id);
   }
 
+  @Post('sync')
+  @Roles('admin')
+  @ApiOperation({ summary: 'Sync stores from TimeWin24 (source of truth)' })
+  syncFromTimeWin() {
+    return this.storesService.syncFromTimeWin();
+  }
+
   @Delete(':id')
   @Roles('admin')
   @ApiOperation({ summary: 'Hard-delete a store and ALL related data (irreversible)' })

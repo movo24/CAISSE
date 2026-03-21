@@ -158,13 +158,29 @@ export const customersApi = {
 // Employees
 // ---------------------------------------------------------------------------
 export const employeesApi = {
-  list: () => api.get('/employees'),
+  list: (storeId?: string) =>
+    api.get('/employees', { params: storeId ? { storeId } : {} }),
   get: (id: string) => api.get(`/employees/${id}`),
   create: (data: any) => api.post('/employees', data),
   update: (id: string, data: any) => api.put(`/employees/${id}`, data),
-  deactivate: (id: string) => api.post(`/employees/${id}/deactivate`),
-  reactivate: (id: string) => api.post(`/employees/${id}/reactivate`),
-  generateQr: (id: string) => api.get(`/employees/${id}/qr-image`),
+  deactivate: (id: string) => api.put(`/employees/${id}/deactivate`),
+};
+
+// ---------------------------------------------------------------------------
+// TimeWin24 Proxy (employee context, clock-in/out, events)
+// ---------------------------------------------------------------------------
+export const timewinApi = {
+  health: () => api.get('/timewin/health'),
+  login: (data: { pin?: string; qrCode?: string; storeId: string; deviceId?: string }) =>
+    api.post('/timewin/login', data),
+  getContext: (employeeId: string) => api.get(`/timewin/employees/${employeeId}/context`),
+  syncEmployees: (storeId: string) => api.get('/timewin/employees/sync', { params: { storeId } }),
+  todayShifts: (storeId: string) => api.get('/timewin/today-shifts', { params: { storeId } }),
+  storeConfig: (storeId: string) => api.get('/timewin/store-config', { params: { storeId } }),
+  clockIn: (employeeId: string, storeId: string) => api.post('/timewin/clock-in', { employeeId, storeId }),
+  clockOut: (employeeId: string, storeId: string) => api.post('/timewin/clock-out', { employeeId, storeId }),
+  pushEvent: (data: { storeId: string; eventType: string; employeeId?: string; data?: any }) =>
+    api.post('/timewin/events', data),
 };
 
 // ---------------------------------------------------------------------------
@@ -182,6 +198,7 @@ export const storesApi = {
   deactivate: (id: string) => api.post(`/stores/${id}/deactivate`),
   hardDelete: (id: string) => api.delete(`/stores/${id}`),
   accessible: () => api.get('/stores/accessible'),
+  syncFromTimeWin: () => api.post('/stores/sync'),
 };
 
 // ---------------------------------------------------------------------------
@@ -292,74 +309,48 @@ export const syncApi = {
 };
 
 // ---------------------------------------------------------------------------
-// Rights (Droits & Permissions)
+// Rights
 // ---------------------------------------------------------------------------
 export const rightsApi = {
-  getRoleDefaults: () => api.get('/employees/rights/defaults'),
-  updateRoleDefaults: (role: string, data: any) =>
-    api.put(`/employees/rights/defaults/${role}`, data),
-  getEmployeeRights: (id: string) => api.get(`/employees/${id}/rights`),
-  updateEmployeeRights: (id: string, data: any) =>
-    api.put(`/employees/${id}/rights`, data),
+  list: (employeeId?: string) =>
+    api.get('/rights', { params: employeeId ? { employeeId } : {} }),
+  update: (employeeId: string, data: any) =>
+    api.put(`/rights/${employeeId}`, data),
 };
 
 // ---------------------------------------------------------------------------
-// Pointage
+// Pointage (Attendance)
 // ---------------------------------------------------------------------------
 export const pointageApi = {
-  list: (params: { date?: string; employeeId?: string }) =>
-    api.get('/pointage', { params }),
-  liveStatus: (storeId: string) => api.get(`/pointage/live/${storeId}`),
-  summary: (params: { employeeId?: string; startDate: string; endDate: string }) =>
-    api.get('/pointage/summary', { params }),
-  anomalies: (storeId: string, date?: string) =>
-    api.get('/pointage/anomalies', { params: { storeId, date } }),
-};
-
-// ---------------------------------------------------------------------------
-// Performance Caissier
-// ---------------------------------------------------------------------------
-export const performanceApi = {
-  ranking: (params: { period?: string; storeId?: string }) =>
-    api.get('/performance/ranking', { params }),
-  cashierDetail: (employeeId: string, params: { period?: string }) =>
-    api.get(`/performance/${employeeId}`, { params }),
-  teamStats: (params: { period?: string; storeId?: string }) =>
-    api.get('/performance/team', { params }),
-  sessions: (employeeId: string, params: { startDate: string; endDate: string }) =>
-    api.get(`/performance/${employeeId}/sessions`, { params }),
+  list: (params?: { storeId?: string; date?: string; employeeId?: string }) =>
+    api.get('/clock-in', { params }),
+  clockIn: (data: { employeeId: string; storeId: string }) =>
+    api.post('/clock-in', data),
+  clockOut: (id: string, data?: any) =>
+    api.put(`/clock-in/${id}`, data),
 };
 
 // ---------------------------------------------------------------------------
 // Planning
 // ---------------------------------------------------------------------------
 export const planningApi = {
-  getWeek: (params: { storeId?: string; weekStart: string }) =>
-    api.get('/planning/week', { params }),
-  getMonth: (params: { storeId?: string; month: string }) =>
-    api.get('/planning/month', { params }),
-  createShift: (data: any) => api.post('/planning/shifts', data),
-  updateShift: (id: string, data: any) => api.put(`/planning/shifts/${id}`, data),
-  deleteShift: (id: string) => api.delete(`/planning/shifts/${id}`),
-  copyPreviousWeek: (params: { storeId: string; sourceWeek: string; targetWeek: string }) =>
-    api.post('/planning/copy-week', params),
+  list: (params?: { storeId?: string; weekStart?: string }) =>
+    api.get('/shifts', { params }),
+  create: (data: any) => api.post('/shifts', data),
+  update: (id: string, data: any) => api.put(`/shifts/${id}`, data),
+  delete: (id: string) => api.delete(`/shifts/${id}`),
+  generate: (data: any) => api.post('/planning/generate', data),
 };
 
 // ---------------------------------------------------------------------------
-// Payroll (Paie)
+// Payroll
 // ---------------------------------------------------------------------------
 export const payrollApi = {
-  getMonthSummary: (params: { storeId?: string; month: string }) =>
+  calculate: (params: { storeId: string; periodStart: string; periodEnd: string }) =>
+    api.get('/payroll/calculate', { params }),
+  summary: (params: { storeId: string; month: string }) =>
     api.get('/payroll/summary', { params }),
-  getEmployeePayslip: (employeeId: string, month: string) =>
-    api.get(`/payroll/${employeeId}`, { params: { month } }),
-  updateHourlyRate: (employeeId: string, data: { hourlyRateGross: number; contractHoursWeek: number }) =>
-    api.put(`/payroll/${employeeId}/rate`, data),
-  exportCSV: (params: { storeId?: string; month: string }) =>
-    api.get('/payroll/export', { params, responseType: 'blob' }),
 };
-
-// Live Performance → migrated to TimeWin24
 
 // ---------------------------------------------------------------------------
 // Organizations (Multi-entity hierarchy)

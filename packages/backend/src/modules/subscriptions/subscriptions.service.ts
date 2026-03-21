@@ -11,7 +11,7 @@ import { Repository } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
 import { SubscriptionEntity } from '../../database/entities/subscription.entity';
 import { ProductEntity } from '../../database/entities/product.entity';
-import { EmployeeEntity } from '../../database/entities/employee.entity';
+import { TimewinService } from '../timewin/timewin.service';
 import { AuditService } from '../audit/audit.service';
 
 // ---------------------------------------------------------------------------
@@ -106,9 +106,7 @@ export class SubscriptionsService {
     @InjectRepository(ProductEntity)
     private readonly productsRepo: Repository<ProductEntity>,
 
-    @InjectRepository(EmployeeEntity)
-    private readonly employeesRepo: Repository<EmployeeEntity>,
-
+    private readonly timewin: TimewinService,
     private readonly auditService: AuditService,
   ) {}
 
@@ -283,9 +281,15 @@ export class SubscriptionsService {
 
     if (sub.maxEmployees === -1) return;
 
-    const count = await this.employeesRepo.count({
-      where: { storeId, isActive: true },
-    });
+    // Employee count from TimeWin24 (via cached sync or live call)
+    let count = 0;
+    try {
+      const employees = await this.timewin.syncEmployees(storeId);
+      count = employees.length;
+    } catch {
+      const cached = this.timewin.getCachedEmployees(storeId);
+      count = cached?.length ?? 0;
+    }
     if (count >= sub.maxEmployees) {
       throw new ForbiddenException(
         `Employee limit reached (${sub.maxEmployees}). ` +
@@ -333,10 +337,16 @@ export class SubscriptionsService {
   }> {
     const sub = await this.getByStoreId(storeId);
 
-    const [productCount, employeeCount] = await Promise.all([
-      this.productsRepo.count({ where: { storeId, isActive: true } }),
-      this.employeesRepo.count({ where: { storeId, isActive: true } }),
-    ]);
+    const productCount = await this.productsRepo.count({ where: { storeId, isActive: true } });
+    // Employee count from TimeWin24
+    let employeeCount = 0;
+    try {
+      const employees = await this.timewin.syncEmployees(storeId);
+      employeeCount = employees.length;
+    } catch {
+      const cached = this.timewin.getCachedEmployees(storeId);
+      employeeCount = cached?.length ?? 0;
+    }
 
     return {
       plan: sub.plan,

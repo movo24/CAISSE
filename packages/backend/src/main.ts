@@ -126,6 +126,9 @@ class GlobalExceptionFilter implements ExceptionFilter {
 
 // ── Environment Validation ──────────────────────────────────────────────
 function validateEnvironment() {
+  const logger = new Logger('EnvValidation');
+
+  // Critical secrets — app MUST NOT start without these
   const required = [
     'DATABASE_URL',
     'JWT_SECRET',
@@ -134,12 +137,54 @@ function validateEnvironment() {
   const missing = required.filter((key) => !process.env[key]);
   if (missing.length > 0) {
     throw new Error(
-      `Missing required environment variables: ${missing.join(', ')}. ` +
+      `FATAL: Missing required environment variables: ${missing.join(', ')}. ` +
       'Copy .env.example to .env and fill in all values.',
     );
   }
+
+  // Reject insecure defaults
   if (process.env.JWT_SECRET === 'dev-jwt-secret' || process.env.JWT_REFRESH_SECRET === 'dev-refresh-secret') {
     throw new Error('JWT secrets must not use insecure defaults. Generate with: openssl rand -hex 32');
+  }
+
+  // Minimum secret length
+  if (process.env.JWT_SECRET!.length < 32) {
+    throw new Error('JWT_SECRET must be at least 32 characters');
+  }
+
+  // Production-only checks
+  const isProd = process.env.NODE_ENV === 'production';
+  if (isProd) {
+    const prodRequired = ['REDIS_URL', 'TIMEWIN24_API_KEY', 'TIMEWIN24_POS_SECRET'];
+    const prodMissing = prodRequired.filter((key) => !process.env[key]);
+    if (prodMissing.length > 0) {
+      throw new Error(`FATAL (production): Missing ${prodMissing.join(', ')}`);
+    }
+    if (process.env.TYPEORM_SYNCHRONIZE === 'true') {
+      throw new Error('FATAL: TYPEORM_SYNCHRONIZE=true is forbidden in production');
+    }
+  }
+
+  // Production CORS check
+  if (isProd) {
+    const cors = process.env.CORS_ORIGIN;
+    if (!cors || cors === '*' || cors.includes('localhost')) {
+      throw new Error('FATAL (production): CORS_ORIGIN must be set to production domains only (no wildcard, no localhost)');
+    }
+    if (!process.env.TIMEWIN24_POS_KEY_ID) {
+      logger.warn('TIMEWIN24_POS_KEY_ID not set — HMAC authentication disabled, using legacy X-POS-Secret');
+    }
+  }
+
+  // Warnings for recommended settings
+  if (!process.env.REDIS_URL) {
+    logger.warn('REDIS_URL not set — rate limiting and token revocation will be in-memory only (not multi-instance safe)');
+  }
+  if (!process.env.SENTRY_DSN) {
+    logger.warn('SENTRY_DSN not set — error tracking disabled');
+  }
+  if (!process.env.TIMEWIN24_URL) {
+    logger.warn('TIMEWIN24_URL not set — TimeWin24 integration disabled');
   }
 }
 
@@ -153,15 +198,48 @@ function parseCorsOrigin(): string[] | boolean {
   return raw.split(',').map((o) => o.trim()).filter(Boolean);
 }
 
+// Map LOG_LEVEL env to NestJS log levels
+function getLogLevels(): ('log' | 'error' | 'warn' | 'debug' | 'verbose')[] {
+  const level = (process.env.LOG_LEVEL || 'info').toLowerCase();
+  switch (level) {
+    case 'error': return ['error'];
+    case 'warn': return ['error', 'warn'];
+    case 'info': return ['error', 'warn', 'log'];
+    case 'debug': return ['error', 'warn', 'log', 'debug'];
+    case 'verbose': return ['error', 'warn', 'log', 'debug', 'verbose'];
+    default: return ['error', 'warn', 'log'];
+  }
+}
+
 async function bootstrap() {
   validateEnvironment();
 
   const app = await NestFactory.create(AppModule, {
     rawBody: true, // Required for Stripe webhook signature verification
+    logger: getLogLevels(),
   });
 
   // --- Security ---
-  app.use(helmet());
+  app.use(helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", "data:"],
+        fontSrc: ["'self'"],
+        connectSrc: ["'self'"],
+        frameAncestors: ["'none'"],
+        baseUri: ["'self'"],
+        formAction: ["'self'"],
+      },
+    },
+    hsts: {
+      maxAge: 63072000,
+      includeSubDomains: true,
+      preload: true,
+    },
+  }));
   app.use(cookieParser());
   app.enableCors({
     origin: parseCorsOrigin(),

@@ -6,7 +6,7 @@ import { SubscriptionsController } from './subscriptions.controller';
 import { SubscriptionEntity } from '../../database/entities/subscription.entity';
 import { StoreEntity } from '../../database/entities/store.entity';
 import { ProductEntity } from '../../database/entities/product.entity';
-import { EmployeeEntity } from '../../database/entities/employee.entity';
+// EmployeeEntity removed — employees managed by TimeWin24
 import { AuditModule } from '../audit/audit.module';
 
 @Module({
@@ -15,7 +15,6 @@ import { AuditModule } from '../audit/audit.module';
       SubscriptionEntity,
       StoreEntity,
       ProductEntity,
-      EmployeeEntity,
     ]),
     AuditModule,
   ],

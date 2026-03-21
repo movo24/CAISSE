@@ -14,8 +14,7 @@ dotenv.config();
 export default new DataSource({
   type: 'postgres',
   url:
-    process.env.DATABASE_URL ||
-    'postgresql://caisse:caisse@localhost:5432/caisse',
+    process.env.DATABASE_URL,
   entities: ['src/database/entities/*.entity.ts'],
   migrations: ['src/database/migrations/*.ts'],
   synchronize: false, // NEVER true in production

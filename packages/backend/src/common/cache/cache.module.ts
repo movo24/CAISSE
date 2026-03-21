@@ -1,27 +1,41 @@
-import { Global, Module } from '@nestjs/common';
-import { InMemoryCacheStore, ICacheStore } from './cache-store';
+import { Global, Module, Logger } from '@nestjs/common';
+import { InMemoryCacheStore, ResilientCacheStore, ICacheStore } from './cache-store';
+import { AlertService } from '../alert/alert.service';
 
 export const CACHE_STORE = 'CACHE_STORE';
 
 /**
  * CacheModule — provides ICacheStore globally.
  *
- * Current: InMemoryCacheStore (zero dependencies, single-instance).
- *
- * To switch to Redis:
- *   1. npm install ioredis
- *   2. Uncomment RedisCacheStore in cache-store.ts
- *   3. Change the provider below:
- *      useFactory: () => new RedisCacheStore(process.env.REDIS_URL)
- *   4. Add REDIS_URL to .env
+ * Strategy:
+ *   - If REDIS_URL is set → ResilientCacheStore (Redis primary, in-memory fallback, fail-fast)
+ *   - Otherwise → InMemoryCacheStore (single-instance only)
  */
 @Global()
 @Module({
   providers: [
     {
       provide: CACHE_STORE,
-      useFactory: () => {
-        // Swap to RedisCacheStore here for multi-instance deployments
+      useFactory: (): ICacheStore => {
+        const logger = new Logger('CacheModule');
+        const redisUrl = process.env.REDIS_URL;
+
+        if (redisUrl) {
+          logger.log(`Using resilient Redis cache: ${redisUrl.replace(/\/\/.*@/, '//***@')}`);
+          return new ResilientCacheStore(redisUrl, {
+            failThreshold: 2,
+            healthCheckIntervalMs: 5_000,
+            onStateChange: (state, error) => {
+              if (state === 'FALLBACK') {
+                AlertService.instance.fire('REDIS_DOWN', `Redis DOWN: ${error}`);
+              } else {
+                AlertService.instance.fire('REDIS_RECOVERED', 'Redis recovered');
+              }
+            },
+          });
+        }
+
+        logger.warn('REDIS_URL not set — using in-memory cache (not safe for multi-instance)');
         return new InMemoryCacheStore();
       },
     },

@@ -7,6 +7,7 @@ import {
   Query,
   UseGuards,
   Request,
+  ParseUUIDPipe,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { SalesService } from './sales.service';
@@ -28,6 +29,11 @@ export class SalesController {
       req.user.storeId,
       req.user.employeeId,
       dto,
+      {
+        employeeName: req.user.employeeName,
+        employeeRole: req.user.role,
+        maxDiscount: req.user.maxDiscount,
+      },
     );
   }
 
@@ -43,7 +49,7 @@ export class SalesController {
 
   @Get(':id')
   @ApiOperation({ summary: 'Get sale details (tenant-scoped)' })
-  findOne(@Param('id') id: string, @Request() req: any) {
+  findOne(@Param('id', ParseUUIDPipe) id: string, @Request() req: any) {
     return this.salesService.findOne(id, req.user.storeId);
   }
 
@@ -51,7 +57,7 @@ export class SalesController {
   @Roles('admin', 'manager')
   @UseGuards(RolesGuard)
   @ApiOperation({ summary: 'Void a sale (restores stock, logs audit)' })
-  voidSale(@Param('id') id: string, @Request() req: any) {
+  voidSale(@Param('id', ParseUUIDPipe) id: string, @Request() req: any) {
     return this.salesService.voidSale(
       id,
       req.user.employeeId,

@@ -25,6 +25,18 @@ export class SaleEntity {
   @Column({ name: 'employee_id' })
   employeeId: string;
 
+  /** Snapshot: employee name at time of sale (immutable history) */
+  @Column({ name: 'employee_name_snapshot', nullable: true })
+  employeeNameSnapshot: string;
+
+  /** Snapshot: employee role at time of sale */
+  @Column({ name: 'employee_role_snapshot', nullable: true })
+  employeeRoleSnapshot: string;
+
+  /** Snapshot: max discount at time of sale */
+  @Column({ name: 'employee_max_discount_snapshot', type: 'decimal', nullable: true })
+  employeeMaxDiscountSnapshot: number;
+
   @Column({ name: 'customer_id', nullable: true })
   customerId: string;
 

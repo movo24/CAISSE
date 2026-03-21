@@ -39,7 +39,7 @@ const posNavItems: NavItem[] = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
   { path: '/products', label: 'Produits', icon: Package },
   { path: '/stock-alerts', label: 'Alertes Stock', icon: AlertTriangle },
-  { path: '/employees', label: 'Employes', icon: Users, minRole: 'manager' },
+  // Employees removed — managed in TimeWin24
 ];
 
 const networkGroup: NavGroup = {
