@@ -19,6 +19,7 @@ import { AuditService } from '../audit/audit.service';
 import { StockService } from '../stock/stock.service';
 import { JackpotService, JackpotResult } from '../jackpot/jackpot.service';
 import { PaginatedResult } from '../../common/dto/pagination.dto';
+import { logBusinessEvent } from '../../common/business-logger';
 
 function sha256(data: string): string {
   return createHash('sha256').update(data).digest('hex');
@@ -342,7 +343,21 @@ export class SalesService {
       // --- COMMIT ---
       await queryRunner.commitTransaction();
 
-      // --- Post-transaction side effects (non-critical) ---
+      // --- Post-transaction: Business event logging ---
+      logBusinessEvent({
+        event: 'SALE_COMPLETED',
+        storeId,
+        employeeId,
+        data: {
+          saleId: saved.id,
+          ticketNumber,
+          totalMinorUnits: totalAfterDiscount,
+          itemCount: lineItems.length,
+          discountMinorUnits: totalDiscount,
+          paymentMethods: dto.payments.map((p) => p.method),
+        },
+      });
+
       // Audit log
       try {
         await this.auditService.log({
@@ -551,10 +566,26 @@ export class SalesService {
     id: string,
     employeeId: string,
     storeId: string,
+    employeeRole?: string,
+    maxDiscountPercent?: number,
   ): Promise<SaleEntity> {
     const sale = await this.findOne(id, storeId);
     if (sale.status === 'voided') {
       throw new BadRequestException('Sale already voided');
+    }
+
+    // ── Permission check: managers can only void sales under 500€ ──
+    const MAX_MANAGER_VOID_CENTS = 50000; // 500€
+    if (employeeRole === 'manager' && sale.totalMinorUnits > MAX_MANAGER_VOID_CENTS) {
+      logBusinessEvent({
+        event: 'VOID_ATTEMPTED',
+        storeId,
+        employeeId,
+        data: { saleId: id, amount: sale.totalMinorUnits, denied: true, reason: 'exceeds_manager_limit' },
+      });
+      throw new BadRequestException(
+        `Annulation refusee : montant (${(sale.totalMinorUnits / 100).toFixed(2)}€) depasse la limite manager (${(MAX_MANAGER_VOID_CENTS / 100).toFixed(2)}€). Contactez un administrateur.`,
+      );
     }
 
     // Void within transaction
@@ -577,6 +608,17 @@ export class SalesService {
       }
 
       await queryRunner.commitTransaction();
+
+      logBusinessEvent({
+        event: 'SALE_VOIDED',
+        storeId: sale.storeId,
+        employeeId,
+        data: {
+          saleId: sale.id,
+          ticketNumber: sale.ticketNumber,
+          totalMinorUnits: sale.totalMinorUnits,
+        },
+      });
 
       // Audit (post-transaction)
       await this.auditService.log({

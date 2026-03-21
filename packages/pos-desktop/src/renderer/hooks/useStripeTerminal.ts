@@ -33,6 +33,19 @@ interface TerminalError {
 }
 
 const HEARTBEAT_INTERVAL_MS = 60_000; // 60 seconds
+const COLLECT_TIMEOUT_MS = 120_000; // 2 minutes for customer to tap/insert
+const MAX_BACKEND_RETRIES = 2;
+const RETRY_DELAY_MS = 1500;
+
+/** Generate a unique idempotency key per payment attempt */
+function makeIdempotencyKey(ticketNumber: string): string {
+  return `pi_${ticketNumber}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/** Sleep helper for retry backoff */
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
 
 /**
  * Map Stripe SDK / common error codes to French user-facing messages.
@@ -227,6 +240,9 @@ export function useStripeTerminal() {
    *
    * Returns the PaymentIntent ID on success.
    */
+  // Track in-flight payment to prevent double charges
+  const activePaymentRef = useRef<string | null>(null);
+
   const collectPayment = useCallback(async (
     amountMinorUnits: number,
     ticketNumber: string,
@@ -236,20 +252,41 @@ export function useStripeTerminal() {
     if (!terminal) throw new Error('Terminal non initialise');
     if (!connectedReader) throw new Error('Aucun lecteur connecte');
 
+    // ── Double payment protection ──
+    if (activePaymentRef.current) {
+      throw new Error('Un paiement est deja en cours. Veuillez patienter.');
+    }
+    const idempotencyKey = makeIdempotencyKey(ticketNumber);
+    activePaymentRef.current = idempotencyKey;
+
     setStatus('collecting');
     setError(null);
 
     try {
-      // 1. Create PaymentIntent on backend
-      const piRes = await stripeTerminalApi.createPaymentIntent({
-        amount: amountMinorUnits,
-        ticketNumber,
-        currency,
-      });
+      // 1. Create PaymentIntent on backend (with retry)
+      let piRes: any;
+      for (let attempt = 0; attempt <= MAX_BACKEND_RETRIES; attempt++) {
+        try {
+          piRes = await stripeTerminalApi.createPaymentIntent({
+            amount: amountMinorUnits,
+            ticketNumber,
+            currency,
+          });
+          break; // Success
+        } catch (backendErr: any) {
+          if (attempt === MAX_BACKEND_RETRIES) throw backendErr;
+          console.warn(`[StripeTerminal] PI creation attempt ${attempt + 1} failed, retrying...`);
+          await sleep(RETRY_DELAY_MS * (attempt + 1));
+        }
+      }
       const clientSecret = piRes.data.clientSecret;
 
-      // 2. Collect payment method on reader (customer taps/inserts card)
-      const collectResult = await terminal.collectPaymentMethod(clientSecret);
+      // 2. Collect payment method on reader (with timeout)
+      const collectPromise = terminal.collectPaymentMethod(clientSecret);
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Delai d\'attente depasse (2 min). Veuillez reessayer.')), COLLECT_TIMEOUT_MS),
+      );
+      const collectResult: any = await Promise.race([collectPromise, timeoutPromise]);
 
       if ('error' in collectResult && collectResult.error) {
         throw new Error(collectResult.error.message || 'Collection annulee');
@@ -271,6 +308,8 @@ export function useStripeTerminal() {
       const msg = getFrenchErrorMessage(err);
       setError({ message: msg, code: err?.code });
       throw err;
+    } finally {
+      activePaymentRef.current = null; // Release lock
     }
   }, [connectedReader]);
 

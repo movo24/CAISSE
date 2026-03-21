@@ -13,6 +13,7 @@ import { StoreEntity } from '../../database/entities/store.entity';
 import { EmployeeEntity } from '../../database/entities/employee.entity';
 import { mapStoreEntityToStoreInfo } from '../stores/store-info.mapper';
 import { TimewinService } from '../timewin/timewin.service';
+import { logBusinessEvent } from '../../common/business-logger';
 import { CACHE_STORE } from '../../common/cache/cache.module';
 import { ICacheStore } from '../../common/cache/cache-store';
 
@@ -189,6 +190,12 @@ export class AuthService {
     const store = await this.storeRepo.findOne({ where: { id: storeId } }).catch(() => null);
 
     this.logger.log(`Login OK via TimeWin24: ${tw.full_name} (${tw.role}) store=${storeId}`);
+    logBusinessEvent({
+      event: 'EMPLOYEE_LOGIN',
+      storeId: tw.store_id || storeId,
+      employeeId: tw.employee_id,
+      data: { name: tw.full_name, role: tw.role, via: 'timewin24' },
+    });
 
     return {
       accessToken: this.jwtService.sign(payload),
