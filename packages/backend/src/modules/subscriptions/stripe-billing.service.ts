@@ -131,8 +131,8 @@ export class StripeBillingService {
 
     const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
     if (!webhookSecret) {
-      this.logger.warn('STRIPE_WEBHOOK_SECRET not set — skipping signature verification');
-      return;
+      this.logger.error('STRIPE_WEBHOOK_SECRET not set — rejecting webhook for security');
+      throw new Error('Webhook secret not configured — cannot verify signature');
     }
 
     let event: Stripe.Event;
