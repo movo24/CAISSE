@@ -7,34 +7,32 @@ export class StripeTerminalService {
 
   constructor(@Inject('STRIPE') private readonly stripe: Stripe) {}
 
-  /**
-   * Create a connection token for the Stripe Terminal JS SDK.
-   * Called by the POS frontend to initialize the reader connection.
-   * Each token is short-lived and scoped to the terminal session.
-   */
-  async createConnectionToken(): Promise<{ secret: string }> {
-    this.assertStripeConfigured();
+  // ── Connection Token ──────────────────────────────────────────
 
-    const token = await this.stripe.terminal.connectionTokens.create();
+  async createConnectionToken(locationId?: string): Promise<{ secret: string }> {
+    this.assertStripe();
+
+    const params: Stripe.Terminal.ConnectionTokenCreateParams = {};
+    if (locationId) {
+      params.location = locationId;
+    }
+
+    const token = await this.stripe.terminal.connectionTokens.create(params);
+    this.logger.log(`Connection token created${locationId ? ` for location ${locationId}` : ''}`);
     return { secret: token.secret };
   }
 
-  /**
-   * Create a PaymentIntent for an in-store card payment.
-   * The POS collects the payment via Stripe Terminal SDK,
-   * then we confirm/capture on the backend.
-   */
+  // ── PaymentIntent ─────────────────────────────────────────────
+
   async createPaymentIntent(
     amount: number,
     currency: string,
     storeId: string,
     ticketNumber: string,
+    employeeId?: string,
     description?: string,
-  ): Promise<{
-    clientSecret: string;
-    paymentIntentId: string;
-  }> {
-    this.assertStripeConfigured();
+  ): Promise<{ clientSecret: string; paymentIntentId: string }> {
+    this.assertStripe();
 
     const pi = await this.stripe.paymentIntents.create({
       amount,
@@ -45,24 +43,18 @@ export class StripeTerminalService {
       metadata: {
         storeId,
         ticketNumber,
+        employeeId: employeeId || 'unknown',
         source: 'caisse_pos_terminal',
       },
     });
 
     this.logger.log(
-      `PaymentIntent created: ${pi.id} — ${amount / 100} ${currency} — ticket ${ticketNumber}`,
+      `[PAYMENT] PaymentIntent created: ${pi.id} — ${amount / 100} ${currency.toUpperCase()} — ticket ${ticketNumber} — employee ${employeeId || 'unknown'}`,
     );
 
-    return {
-      clientSecret: pi.client_secret!,
-      paymentIntentId: pi.id,
-    };
+    return { clientSecret: pi.client_secret!, paymentIntentId: pi.id };
   }
 
-  /**
-   * Retrieve a PaymentIntent status.
-   * Used by the POS to poll/confirm payment status after reader interaction.
-   */
   async getPaymentIntent(
     paymentIntentId: string,
     storeId: string,
@@ -71,13 +63,13 @@ export class StripeTerminalService {
     status: string;
     amount: number;
     currency: string;
+    readerId?: string;
   }> {
-    this.assertStripeConfigured();
-
+    this.assertStripe();
     const pi = await this.stripe.paymentIntents.retrieve(paymentIntentId);
 
-    // Tenant check: only the store that created the PI can read it
     if (pi.metadata.storeId !== storeId) {
+      this.logger.warn(`[SECURITY] Store ${storeId} tried to access PI ${paymentIntentId} owned by ${pi.metadata.storeId}`);
       throw new BadRequestException('PaymentIntent does not belong to this store.');
     }
 
@@ -86,40 +78,67 @@ export class StripeTerminalService {
       status: pi.status,
       amount: pi.amount,
       currency: pi.currency,
+      readerId: (pi as any).latest_charge?.payment_method_details?.card_present?.reader || undefined,
     };
   }
 
-  /**
-   * Cancel a PaymentIntent (e.g., customer cancelled at the reader).
-   */
   async cancelPaymentIntent(
     paymentIntentId: string,
     storeId: string,
   ): Promise<{ id: string; status: string }> {
-    this.assertStripeConfigured();
+    this.assertStripe();
 
-    // Verify ownership
     const pi = await this.stripe.paymentIntents.retrieve(paymentIntentId);
     if (pi.metadata.storeId !== storeId) {
       throw new BadRequestException('PaymentIntent does not belong to this store.');
     }
 
     const cancelled = await this.stripe.paymentIntents.cancel(paymentIntentId);
-
-    this.logger.log(`PaymentIntent cancelled: ${cancelled.id}`);
-
+    this.logger.log(`[PAYMENT] PaymentIntent cancelled: ${cancelled.id}`);
     return { id: cancelled.id, status: cancelled.status };
   }
 
-  /**
-   * Register a physical reader with Stripe Terminal.
-   */
+  // ── Locations ─────────────────────────────────────────────────
+
+  async listLocations(): Promise<Stripe.Terminal.Location[]> {
+    this.assertStripe();
+    const result = await this.stripe.terminal.locations.list({ limit: 100 });
+    return result.data;
+  }
+
+  async createLocation(
+    displayName: string,
+    country = 'FR',
+  ): Promise<{ id: string; display_name: string }> {
+    this.assertStripe();
+
+    const location = await this.stripe.terminal.locations.create({
+      display_name: displayName,
+      address: { country, line1: 'N/A', city: 'N/A', postal_code: '00000' },
+    });
+
+    this.logger.log(`[LOCATION] Created: ${location.id} — ${displayName}`);
+    return { id: location.id, display_name: location.display_name };
+  }
+
+  // ── Readers ───────────────────────────────────────────────────
+
+  async listReaders(locationId?: string): Promise<Stripe.Terminal.Reader[]> {
+    this.assertStripe();
+
+    const params: Stripe.Terminal.ReaderListParams = { limit: 100 };
+    if (locationId) params.location = locationId;
+
+    const result = await this.stripe.terminal.readers.list(params);
+    return result.data;
+  }
+
   async registerReader(
     registrationCode: string,
     label: string,
     locationId: string,
-  ): Promise<{ id: string; object: string; label: string }> {
-    this.assertStripeConfigured();
+  ): Promise<{ id: string; label: string; status: string; deviceType: string }> {
+    this.assertStripe();
 
     const reader = await this.stripe.terminal.readers.create({
       registration_code: registrationCode,
@@ -127,48 +146,21 @@ export class StripeTerminalService {
       location: locationId,
     });
 
-    this.logger.log(`Reader registered: ${reader.id} — ${label}`);
+    this.logger.log(`[READER] Registered: ${reader.id} — ${label} — ${reader.device_type}`);
 
-    return { id: reader.id, object: reader.object, label: reader.label || label };
+    return {
+      id: reader.id,
+      label: reader.label || label,
+      status: reader.status || 'online',
+      deviceType: reader.device_type,
+    };
   }
 
-  /**
-   * List readers for a given Stripe Location.
-   */
-  async listReaders(locationId: string) {
-    this.assertStripeConfigured();
+  // ── Guard ─────────────────────────────────────────────────────
 
-    const result = await this.stripe.terminal.readers.list({
-      location: locationId,
-    });
-
-    return result.data;
-  }
-
-  /**
-   * Create a Stripe Terminal Location.
-   */
-  async createLocation(
-    displayName: string,
-    country = 'FR',
-  ): Promise<{ id: string; display_name: string }> {
-    this.assertStripeConfigured();
-
-    const location = await this.stripe.terminal.locations.create({
-      display_name: displayName,
-      address: { country, line1: '', city: '', postal_code: '', state: '' },
-    });
-
-    this.logger.log(`Location created: ${location.id} — ${displayName}`);
-
-    return { id: location.id, display_name: location.display_name };
-  }
-
-  private assertStripeConfigured(): void {
+  private assertStripe(): void {
     if (!this.stripe) {
-      throw new BadRequestException(
-        'Stripe is not configured. Set STRIPE_SECRET_KEY in environment.',
-      );
+      throw new BadRequestException('Stripe not configured. Set STRIPE_SECRET_KEY.');
     }
   }
 }
