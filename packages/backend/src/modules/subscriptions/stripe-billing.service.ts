@@ -166,6 +166,18 @@ export class StripeBillingService {
         await this.handlePaymentFailed(event.data.object as Stripe.Invoice);
         break;
 
+      case 'invoice.payment_action_required':
+        this.logger.warn(
+          `Payment action required for invoice ${(event.data.object as Stripe.Invoice).id} — customer must complete authentication`,
+        );
+        break;
+
+      case 'customer.subscription.trial_will_end':
+        this.logger.log(
+          `Trial ending soon for subscription ${(event.data.object as Stripe.Subscription).id}`,
+        );
+        break;
+
       default:
         this.logger.log(`Unhandled event type: ${event.type}`);
     }

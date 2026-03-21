@@ -308,49 +308,8 @@ export const syncApi = {
     api.get('/sync/pull', { params: { storeId, lastSyncAt } }),
 };
 
-// ---------------------------------------------------------------------------
-// Rights
-// ---------------------------------------------------------------------------
-export const rightsApi = {
-  list: (employeeId?: string) =>
-    api.get('/rights', { params: employeeId ? { employeeId } : {} }),
-  update: (employeeId: string, data: any) =>
-    api.put(`/rights/${employeeId}`, data),
-};
-
-// ---------------------------------------------------------------------------
-// Pointage (Attendance)
-// ---------------------------------------------------------------------------
-export const pointageApi = {
-  list: (params?: { storeId?: string; date?: string; employeeId?: string }) =>
-    api.get('/clock-in', { params }),
-  clockIn: (data: { employeeId: string; storeId: string }) =>
-    api.post('/clock-in', data),
-  clockOut: (id: string, data?: any) =>
-    api.put(`/clock-in/${id}`, data),
-};
-
-// ---------------------------------------------------------------------------
-// Planning
-// ---------------------------------------------------------------------------
-export const planningApi = {
-  list: (params?: { storeId?: string; weekStart?: string }) =>
-    api.get('/shifts', { params }),
-  create: (data: any) => api.post('/shifts', data),
-  update: (id: string, data: any) => api.put(`/shifts/${id}`, data),
-  delete: (id: string) => api.delete(`/shifts/${id}`),
-  generate: (data: any) => api.post('/planning/generate', data),
-};
-
-// ---------------------------------------------------------------------------
-// Payroll
-// ---------------------------------------------------------------------------
-export const payrollApi = {
-  calculate: (params: { storeId: string; periodStart: string; periodEnd: string }) =>
-    api.get('/payroll/calculate', { params }),
-  summary: (params: { storeId: string; month: string }) =>
-    api.get('/payroll/summary', { params }),
-};
+// ── RH APIs removed — managed by TimeWin24 ──
+// rightsApi, pointageApi, planningApi, payrollApi
 
 // ---------------------------------------------------------------------------
 // Organizations (Multi-entity hierarchy)

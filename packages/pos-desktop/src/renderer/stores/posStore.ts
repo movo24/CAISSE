@@ -216,11 +216,13 @@ export const usePOSStore = create<POSState>((set, get) => ({
 
   setEmployee: (employee, token) => {
     localStorage.setItem('accessToken', token);
+    localStorage.setItem('pos_employee', JSON.stringify(employee));
     set({ employee, accessToken: token });
   },
 
   logout: () => {
     localStorage.removeItem('accessToken');
+    localStorage.removeItem('pos_employee');
     set({
       employee: null,
       accessToken: null,

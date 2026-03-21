@@ -4,19 +4,30 @@ import { usePOSStore } from '../stores/posStore';
 
 /**
  * Route guard for POS Desktop.
- * Checks posStore for employee + accessToken.
- * Restores token from localStorage on mount (prevents flash of login).
+ * Restores session from localStorage on mount (prevents flash of login).
  * Redirects to /login if not authenticated.
  */
 export function ProtectedRoute() {
   const employee = usePOSStore((s) => s.employee);
   const accessToken = usePOSStore((s) => s.accessToken);
+  const setEmployee = usePOSStore((s) => s.setEmployee);
   const [checked, setChecked] = useState(false);
 
   useEffect(() => {
-    // If posStore has no token but localStorage does, the store will
-    // have been hydrated by zustand persist (if configured).
-    // Either way, after first render we know the auth state.
+    // Restore session from localStorage if store is empty
+    if (!employee || !accessToken) {
+      const savedToken = localStorage.getItem('accessToken');
+      const savedEmp = localStorage.getItem('pos_employee');
+      if (savedToken && savedEmp) {
+        try {
+          const emp = JSON.parse(savedEmp);
+          setEmployee(emp, savedToken);
+        } catch {
+          localStorage.removeItem('accessToken');
+          localStorage.removeItem('pos_employee');
+        }
+      }
+    }
     setChecked(true);
   }, []);
 

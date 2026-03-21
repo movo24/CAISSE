@@ -16,3 +16,12 @@ export { SubscriptionEntity } from './subscription.entity';
 // StaffingSnapshotEntity removed — managed by TimeWin24
 // PayrollConfigEntity removed — managed by TimeWin24
 export { PosSessionEntity } from './pos-session.entity';
+export { OrganizationEntity } from './organization.entity';
+export { UnitEntity } from './unit.entity';
+export { ConnectedAppEntity } from './connected-app.entity';
+export { InventoryScanEntity } from './inventory-scan.entity';
+export { JackpotConfigEntity } from './jackpot-config.entity';
+export { JackpotWinEntity } from './jackpot-win.entity';
+export { PaymentTerminalEntity } from './payment-terminal.entity';
+export { StoreContextEntity } from './store-context.entity';
+// EmployeeEntity kept but not re-exported — transitional (auth fallback only)
