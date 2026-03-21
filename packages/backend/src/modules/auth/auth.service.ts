@@ -8,7 +8,9 @@ import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { randomBytes } from 'crypto';
+import * as bcrypt from 'bcrypt';
 import { StoreEntity } from '../../database/entities/store.entity';
+import { EmployeeEntity } from '../../database/entities/employee.entity';
 import { mapStoreEntityToStoreInfo } from '../stores/store-info.mapper';
 import { TimewinService } from '../timewin/timewin.service';
 import { CACHE_STORE } from '../../common/cache/cache.module';
@@ -32,6 +34,8 @@ export class AuthService {
   constructor(
     @InjectRepository(StoreEntity)
     private storeRepo: Repository<StoreEntity>,
+    @InjectRepository(EmployeeEntity)
+    private employeeRepo: Repository<EmployeeEntity>,
     private jwtService: JwtService,
     private timewin: TimewinService,
     @Inject(CACHE_STORE) private cache: ICacheStore,
@@ -41,17 +45,18 @@ export class AuthService {
    * Login by PIN — primary flow via TimeWin24
    */
   async loginByPin(storeId: string, pin: string) {
+    // Try TimeWin24 first, fallback to local DB if unavailable
     try {
       const twResult = await this.timewin.loginEmployee({ pin, storeId });
       return await this.buildSessionFromTimewin(twResult, storeId);
     } catch (err: any) {
-      if (err.status === undefined || err.status >= 500) {
-        this.logger.warn(`TimeWin24 unreachable for PIN login, attempting offline cache`);
-        return this.offlineFallback(storeId, { pin });
+      // TimeWin24 returned a clear auth rejection (401/403) — don't fallback
+      if (err.status === 401 || err.status === 403) {
+        throw new UnauthorizedException(err.response?.error || 'Invalid PIN');
       }
-      throw new UnauthorizedException(
-        err.response?.error || 'Invalid PIN',
-      );
+      // Any other error (network, timeout, 500, circuit breaker) — try local DB
+      this.logger.warn(`[AUTH] TimeWin24 unavailable (${err.message}), falling back to local DB`);
+      return this.offlineFallback(storeId, { pin });
     }
   }
 
@@ -67,9 +72,11 @@ export class AuthService {
       });
       return await this.buildSessionFromTimewin(twResult, twResult.store_id);
     } catch (err: any) {
-      throw new UnauthorizedException(
-        err.response?.error || 'Invalid email or PIN',
-      );
+      if (err.status === 401 || err.status === 403) {
+        throw new UnauthorizedException(err.response?.error || 'Invalid email or PIN');
+      }
+      this.logger.warn(`[AUTH] TimeWin24 unavailable (${err.message}), falling back to local DB`);
+      return this.offlineFallback('_admin', { pin, email });
     }
   }
 
@@ -205,11 +212,71 @@ export class AuthService {
   }
 
   /**
-   * Offline fallback — disabled for security (PINs not cached in plaintext)
+   * Offline fallback — authenticates against local employees table.
+   * Used when TimeWin24 is unreachable (network down, not configured, etc.)
    */
-  private async offlineFallback(storeId: string, _opts: { pin?: string }): Promise<never> {
-    throw new UnauthorizedException(
-      'TimeWin24 unreachable — new logins require online connection. Use existing session if available.',
-    );
+  private async offlineFallback(storeId: string, opts: { pin?: string; email?: string }) {
+    this.logger.warn(`[AUTH] Offline fallback — authenticating against local DB`);
+
+    let employees: EmployeeEntity[];
+
+    if (opts.email) {
+      // Admin login by email — search across all stores
+      employees = await this.employeeRepo.find({
+        where: { email: opts.email, isActive: true },
+      });
+    } else {
+      // PIN login — search employees in the given store
+      employees = await this.employeeRepo.find({
+        where: { storeId, isActive: true },
+      });
+    }
+
+    if (!employees.length) {
+      throw new UnauthorizedException('Employé introuvable');
+    }
+
+    // Check PIN against each employee's bcrypt hash
+    for (const emp of employees) {
+      if (opts.pin && await bcrypt.compare(opts.pin, emp.pinHash)) {
+        // Match found — build session locally
+        const jti = randomBytes(16).toString('hex');
+        await this.cache.set(`token_family:${emp.id}`, jti, TOKEN_REVOKE_TTL);
+        await this.cache.srem('revoked_tokens', emp.id);
+
+        const payload = {
+          sub: emp.id,
+          storeId: emp.storeId,
+          role: emp.role,
+          employeeName: `${emp.firstName} ${emp.lastName}`,
+          maxDiscount: emp.maxDiscountPercent,
+        };
+
+        const store = await this.storeRepo.findOne({ where: { id: emp.storeId } }).catch(() => null);
+
+        this.logger.log(`[AUTH] Login OK (offline): ${emp.firstName} ${emp.lastName} (${emp.role}) store=${emp.storeId}`);
+
+        return {
+          accessToken: this.jwtService.sign(payload),
+          refreshToken: this.jwtService.sign(
+            { ...payload, jti },
+            { secret: process.env.JWT_REFRESH_SECRET!, expiresIn: '7d' },
+          ),
+          employee: {
+            id: emp.id,
+            employeeCode: emp.qrCode,
+            firstName: emp.firstName,
+            lastName: emp.lastName,
+            email: emp.email,
+            role: emp.role,
+            storeId: emp.storeId,
+            maxDiscountPercent: emp.maxDiscountPercent,
+          },
+          storeInfo: store ? mapStoreEntityToStoreInfo(store) : null,
+        };
+      }
+    }
+
+    throw new UnauthorizedException('Invalid PIN');
   }
 }

@@ -6,6 +6,7 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './jwt.strategy';
 import { StoreEntity } from '../../database/entities/store.entity';
+import { EmployeeEntity } from '../../database/entities/employee.entity';
 import { PosSessionEntity } from '../../database/entities/pos-session.entity';
 
 @Module({
@@ -24,7 +25,7 @@ import { PosSessionEntity } from '../../database/entities/pos-session.entity';
       })(),
       signOptions: { expiresIn: '15m' },
     }),
-    TypeOrmModule.forFeature([StoreEntity, PosSessionEntity]),
+    TypeOrmModule.forFeature([StoreEntity, EmployeeEntity, PosSessionEntity]),
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy],
