@@ -66,22 +66,22 @@ export function usePointage() {
   );
 
   const clockOut = useCallback(
-    (employeeId: string) => {
-      if (isClocked) store.clockOut(employeeId);
+    () => {
+      if (isClocked) store.clockOut();
     },
     [isClocked, store],
   );
 
   const startBreak = useCallback(
-    (employeeId: string) => {
-      if (isClocked && !isOnBreak) store.startBreak(employeeId);
+    () => {
+      if (isClocked && !isOnBreak) store.startBreak();
     },
     [isClocked, isOnBreak, store],
   );
 
   const endBreak = useCallback(
-    (employeeId: string) => {
-      if (isClocked && isOnBreak) store.endBreak(employeeId);
+    () => {
+      if (isClocked && isOnBreak) store.endBreak();
     },
     [isClocked, isOnBreak, store],
   );

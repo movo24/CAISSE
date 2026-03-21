@@ -942,7 +942,7 @@ export function POSPage() {
                     }
                     // Auto clock-out before logout
                     if (store.employee) {
-                      usePointageStore.getState().clockOut(store.employee.id, 'auto_logout');
+                      usePointageStore.getState().clockOut();
                     }
                     store.logout();
                     setProfileOpen(false);

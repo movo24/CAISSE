@@ -73,14 +73,14 @@ export function ShiftIndicator() {
               {/* Break toggle */}
               {pointage.isOnBreak ? (
                 <button
-                  onClick={() => { pointage.endBreak(employee.id); setOpen(false); }}
+                  onClick={() => { pointage.endBreak(); setOpen(false); }}
                   className="w-full flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-semibold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 transition-colors"
                 >
                   <Play size={12} /> Fin de pause
                 </button>
               ) : (
                 <button
-                  onClick={() => { pointage.startBreak(employee.id); setOpen(false); }}
+                  onClick={() => { pointage.startBreak(); setOpen(false); }}
                   className="w-full flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-semibold bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 transition-colors"
                 >
                   <Pause size={12} /> Prendre une pause
@@ -89,7 +89,7 @@ export function ShiftIndicator() {
 
               {/* Clock out */}
               <button
-                onClick={() => { pointage.clockOut(employee.id); setOpen(false); }}
+                onClick={() => { pointage.clockOut(); setOpen(false); }}
                 className="w-full flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-semibold bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 transition-colors"
               >
                 <LogOut size={12} /> Pointer la sortie

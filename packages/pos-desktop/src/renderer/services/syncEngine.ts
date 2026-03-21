@@ -1,6 +1,6 @@
 import { useOfflineStore, OfflineQueueEntry } from '../stores/offlineStore';
 import { signSyncRequest, markAsSent, isAlreadySent, logSecurityEvent } from './hmacSecurity';
-import { salesApi, pointageApi, performanceApi, staffingApi } from './api';
+import { salesApi, timewinApi } from './api';
 
 /* ═══════════════════════════════════════════════════════════════
    SYNC ENGINE — Resynchronisation automatique FIFO
@@ -155,18 +155,19 @@ async function syncEntry(entry: OfflineQueueEntry): Promise<{ success: boolean; 
         break;
 
       case 'pointage':
-        await pointageApi.recordPunch(entry.payload);
-        console.log(`[SYNC] Pointage synced: ${entry.payload.type} for ${entry.payload.employeeName}`);
+        // Pointage now managed by TimeWin24
+        await timewinApi.pushEvent({ type: 'pointage', ...entry.payload });
+        console.log(`[SYNC] Pointage synced via TimeWin24: ${entry.payload.type} for ${entry.payload.employeeName}`);
         break;
 
       case 'cashier_metrics':
-        await performanceApi.submitSession(entry.payload);
-        console.log(`[SYNC] Cashier metrics synced: ${entry.payload.employeeName}`);
+        await timewinApi.pushEvent({ type: 'cashier_metrics', ...entry.payload });
+        console.log(`[SYNC] Cashier metrics synced via TimeWin24: ${entry.payload.employeeName}`);
         break;
 
       case 'staffing_snapshot':
-        await staffingApi.submitSnapshot(entry.payload);
-        console.log(`[SYNC] Staffing snapshot synced: ${entry.payload.activeCashiers} cashiers`);
+        await timewinApi.pushEvent({ type: 'staffing_snapshot', ...entry.payload });
+        console.log(`[SYNC] Staffing snapshot synced via TimeWin24: ${entry.payload.activeCashiers} cashiers`);
         break;
 
       default:

@@ -326,7 +326,7 @@ export function IPadPOSLayout() {
                             timestamp: new Date().toISOString(),
                             reason: 'manual_logout',
                           });
-                          usePointageStore.getState().clockOut(store.employee.id, 'auto_logout');
+                          usePointageStore.getState().clockOut();
                         }
                         store.logout();
                         setProfileOpen(false);
