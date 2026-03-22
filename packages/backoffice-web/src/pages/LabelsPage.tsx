@@ -47,7 +47,7 @@ export function LabelsPage() {
     productsApi.list().then((res) => {
       setProducts(res.data?.data || res.data || []);
       setLoading(false);
-    }).catch(() => setLoading(false));
+    }).catch(() => { setLoading(false); console.error('[Labels] Failed to load products'); });
   }, []);
 
   const filtered = products.filter(

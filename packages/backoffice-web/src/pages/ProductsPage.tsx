@@ -198,7 +198,7 @@ export function ProductsPage() {
         <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700 flex items-center justify-between">
           <span>{error}</span>
           <button onClick={fetchProducts} className="text-red-600 font-medium hover:underline">
-            Reessayer
+            Réessayer
           </button>
         </div>
       )}
