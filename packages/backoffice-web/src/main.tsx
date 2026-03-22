@@ -19,10 +19,12 @@ import { StoresManagementPage } from './pages/StoresManagementPage';
 import { ConnectedAppsPage } from './pages/ConnectedAppsPage';
 import { BillingPage } from './pages/BillingPage';
 import { ComingSoonPage } from './pages/ComingSoonPage';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import './styles/globals.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
+    <ErrorBoundary>
     <BrowserRouter>
       <Routes>
         {/* Public */}
@@ -54,5 +56,6 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         </Route>
       </Routes>
     </BrowserRouter>
+    </ErrorBoundary>
   </React.StrictMode>,
 );

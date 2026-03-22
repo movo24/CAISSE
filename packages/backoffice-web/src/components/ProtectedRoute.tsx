@@ -4,22 +4,44 @@ import { useAuthStore } from '../stores/authStore';
 
 /**
  * Route guard for backoffice.
- * Redirects to /login if user is not authenticated.
- * Restores session from localStorage on first render with JWT expiry validation.
+ * Restores session from localStorage on first render.
+ * Shows a minimal loading state (not blank) while restoring.
+ * Redirects to /login only if restore is done AND not authenticated.
  */
 export function ProtectedRoute() {
   const { isAuthenticated, restoreSession } = useAuthStore();
   const [isRestoring, setIsRestoring] = useState(true);
 
-  // Try to restore session from localStorage on mount
   useEffect(() => {
-    restoreSession();
+    try {
+      restoreSession();
+    } catch (err) {
+      console.error('[ProtectedRoute] restoreSession failed:', err);
+    }
     setIsRestoring(false);
   }, []);
 
-  // Show nothing while restoring session (prevents flash of login page)
+  // Show a minimal spinner while restoring (prevents page blanche)
   if (isRestoring) {
-    return null;
+    return (
+      <div style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: '#F8F8FA',
+      }}>
+        <div style={{
+          width: '32px',
+          height: '32px',
+          border: '3px solid #e2e8f0',
+          borderTopColor: '#6366f1',
+          borderRadius: '50%',
+          animation: 'spin 0.8s linear infinite',
+        }} />
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+    );
   }
 
   if (!isAuthenticated) {
