@@ -12,6 +12,7 @@ import { SettingsPage } from './pages/SettingsPage';
 // ── ALL RH PAGES REMOVED — Managed exclusively by TimeWin24 ──
 // EmployeesPage, RightsPage, PointagePage, PerformancePage, PlanningPage, PayrollPage
 import { StockAlertsPage } from './pages/StockAlertsPage';
+import { LabelsPage } from './pages/LabelsPage';
 import { OrganizationsPage } from './pages/OrganizationsPage';
 import { UnitsPage } from './pages/UnitsPage';
 import { StoresManagementPage } from './pages/StoresManagementPage';
@@ -38,7 +39,8 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             <Route path="/" element={<DashboardPage />} />
             <Route path="/products" element={<ProductsPage />} />
             <Route path="/stock-alerts" element={<StockAlertsPage />} />
-            {/* Employees managed in TimeWin24 — removed from POS */}
+            <Route path="/labels" element={<LabelsPage />} />
+            <Route path="/labels" element={<LabelsPage />} />
             <Route path="/reports" element={<ReportsPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             {/* Network / Admin */}

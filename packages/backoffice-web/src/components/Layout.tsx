@@ -3,7 +3,7 @@ import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Package, FileBarChart, Settings, LogOut, Users,
   ChevronDown, ChevronRight,
-  AlertTriangle, Building2, Store, Network, Plug, CreditCard, Rocket,
+  AlertTriangle, Building2, Store, Network, Plug, CreditCard, Rocket, Tag,
 } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 import { AppSwitcher } from './AppSwitcher';
@@ -39,7 +39,7 @@ const posNavItems: NavItem[] = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
   { path: '/products', label: 'Produits', icon: Package },
   { path: '/stock-alerts', label: 'Alertes Stock', icon: AlertTriangle },
-  // Employees removed — managed in TimeWin24
+  { path: '/labels', label: 'Etiquettes', icon: Tag, minRole: 'manager' },
 ];
 
 const networkGroup: NavGroup = {
