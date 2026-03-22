@@ -12,6 +12,8 @@ import { usePOSStore } from '../stores/posStore';
 import { productsApi, salesApi, customersApi, occupancyApi } from '../services/api';
 import { FluxWidget } from '../components/FluxWidget';
 import { useOfflineMode } from '../hooks/useOfflineMode';
+import { useWakeLock } from '../hooks/useWakeLock';
+import { EmployeePinGate } from '../components/EmployeePinGate';
 import { useRights } from '../hooks/useRights';
 import { usePointageStore } from '../stores/pointageStore';
 import { ShiftIndicator } from '../components/ShiftIndicator';
@@ -105,6 +107,7 @@ export function POSPage() {
   const navigate = useNavigate();
   const store = usePOSStore();
   const offlineMode = useOfflineMode();
+  useWakeLock(); // Keep screen awake on iPad
   const rights = useRights();
   const device = useDeviceProfile();
   const cloudSync = useCloudSyncStore();
@@ -760,6 +763,7 @@ export function POSPage() {
   if (device.isIPad) {
     return (
       <>
+        <EmployeePinGate onVerified={(name) => console.log(`[POS] Employee verified: ${name}`)} />
         <IPadPOSLayout />
         <StockAlertToast />
       </>

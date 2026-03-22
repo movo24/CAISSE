@@ -15,7 +15,7 @@ export function LoginPage() {
   const pointageStore = usePointageStore();
   const perfStore = usePerformanceStore();
   const device = useDeviceProfile();
-  const [storeId, setStoreId] = useState('');
+  const [storeId, setStoreId] = useState(() => localStorage.getItem('pos_storeId') || '');
   const [pin, setPin] = useState('');
   const [qrCode, setQrCode] = useState('');
   const [mode, setMode] = useState<'pin' | 'qr'>('pin');
@@ -38,6 +38,8 @@ export function LoginPage() {
         res = await authApi.loginQr(qrCode, pin);
       }
       setEmployee(res.data.employee, res.data.accessToken);
+      // Remember store ID for next login (no need to re-enter)
+      if (storeId) localStorage.setItem('pos_storeId', storeId);
       // Store refresh token for session persistence
       if (res.data.refreshToken) {
         localStorage.setItem('refreshToken', res.data.refreshToken);
