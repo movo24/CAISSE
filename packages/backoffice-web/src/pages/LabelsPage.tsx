@@ -97,59 +97,70 @@ export function LabelsPage() {
       const priceMajor = Math.floor(p.priceMinorUnits / 100);
       const priceMinor = String(p.priceMinorUnits % 100).padStart(2, '0');
       const symbol = p.currencyCode === 'EUR' ? '\u20AC' : p.currencyCode;
-      const pricePerUnit = p.unitType === 'unit'
-        ? ''
-        : `${(p.priceMinorUnits / 100).toFixed(2)} ${symbol}/${p.unitType === 'pair' ? 'paire' : p.unitType}`;
+      // Prix au litre/kg/paire
+      const unitLabel = p.unitType === 'pair' ? 'paire' : p.unitType === 'kg' ? 'kg' : 'l';
+      const pricePerUnit = p.unitType !== 'unit'
+        ? `Prix U.: ${(p.priceMinorUnits / 100).toFixed(2)} ${symbol}/${unitLabel}`
+        : '';
+
+      // Padding adapté à la taille
+      const pad = labelSize === 'small' ? '1.5mm 2mm' : labelSize === 'medium' ? '2mm 3mm' : '3mm 4mm';
 
       return `
       <div style="
         width:${size.w}mm;height:${size.h}mm;
-        border:1px solid #000;
+        border:2px solid #555;border-radius:2mm;
+        background:#e8e8e8;
         font-family:Arial,Helvetica,sans-serif;
         page-break-inside:avoid;box-sizing:border-box;
         display:flex;flex-direction:column;
         overflow:hidden;
       ">
-        <!-- TITRE PRODUIT -->
+        <!-- ZONE 1: TITRE PRODUIT (rouge foncé, gros) -->
         <div style="
-          padding:${labelSize === 'small' ? '1mm 2mm' : '2mm 3mm'};
-          font-size:${titleSize}px;font-weight:800;
-          text-transform:uppercase;letter-spacing:0.3px;
+          padding:${pad};
+          font-size:${titleSize}px;font-weight:900;
+          color:#8B0000;
+          text-transform:uppercase;letter-spacing:0.5px;
           line-height:1.15;
           white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
         ">${p.name}</div>
 
-        <!-- SEPARATEUR -->
-        <div style="width:100%;height:1px;background:#000;"></div>
+        <!-- SEPARATEUR NOIR -->
+        <div style="width:calc(100% - 4mm);height:1.5px;background:#333;margin:0 auto;"></div>
 
-        <!-- CONTENU PRINCIPAL -->
-        <div style="flex:1;display:flex;padding:${labelSize === 'small' ? '1mm' : '2mm 3mm'};">
-          <!-- GAUCHE: EAN + prix unitaire -->
+        <!-- ZONE 2: CONTENU — 2 colonnes -->
+        <div style="flex:1;display:flex;padding:${pad};gap:2mm;">
+
+          <!-- COLONNE GAUCHE: prix unitaire + code-barres + EAN -->
           <div style="flex:1;display:flex;flex-direction:column;justify-content:space-between;">
-            <div style="font-family:monospace;font-size:${eanSize}px;color:#333;letter-spacing:0.5px;">
-              ${p.ean}
+            ${pricePerUnit
+              ? `<div style="font-size:${metaSize}px;font-weight:700;color:#333;">${pricePerUnit}</div>`
+              : `<div></div>`
+            }
+            <!-- Code-barres CSS (simulation visuelle) -->
+            <div style="margin:${labelSize === 'small' ? '1mm 0' : '2mm 0'};">
+              <div style="display:flex;gap:0.3mm;height:${labelSize === 'small' ? '6mm' : labelSize === 'medium' ? '10mm' : '14mm'};">
+                ${p.ean.split('').map((_: string, i: number) =>
+                  `<div style="width:${i % 3 === 0 ? '0.8' : i % 2 === 0 ? '0.5' : '0.3'}mm;background:#000;height:100%;"></div>`
+                ).join('')}
+              </div>
+              <div style="font-size:${eanSize}px;color:#333;font-family:monospace;margin-top:0.5mm;letter-spacing:1px;">${p.ean}</div>
             </div>
-            ${pricePerUnit ? `<div style="font-size:${metaSize}px;color:#444;font-weight:600;margin-top:2px;">${pricePerUnit}</div>` : ''}
           </div>
 
-          <!-- DROITE: PRIX DOMINANT -->
-          <div style="display:flex;align-items:center;justify-content:flex-end;min-width:50%;">
+          <!-- COLONNE DROITE: PRIX GEANT + TVA + date -->
+          <div style="display:flex;flex-direction:column;align-items:flex-end;justify-content:space-between;min-width:45%;">
+            <!-- PRIX -->
+            <div style="text-align:right;line-height:1;">
+              <span style="font-size:${priceSize}px;font-weight:900;color:#000;letter-spacing:-1px;">${priceMajor}</span><span style="font-size:${Math.round(priceSize * 0.55)}px;font-weight:900;color:#000;">,${priceMinor}</span>
+            </div>
+            <!-- TVA + DATE -->
             <div style="text-align:right;">
-              <span style="font-size:${priceSize}px;font-weight:900;line-height:1;letter-spacing:-1px;">${priceMajor}</span><span style="font-size:${Math.round(priceSize * 0.5)}px;font-weight:900;vertical-align:super;margin-left:1px;">,${priceMinor}</span>
-              <span style="font-size:${Math.round(priceSize * 0.35)}px;font-weight:700;margin-left:2px;">${symbol}</span>
+              <div style="font-size:${metaSize}px;font-weight:700;color:#333;">TVA ${p.taxRate}% incl.</div>
+              <div style="font-size:${metaSize}px;color:#555;">${today}</div>
             </div>
           </div>
-        </div>
-
-        <!-- BAS: TVA + DATE -->
-        <div style="
-          display:flex;justify-content:space-between;align-items:center;
-          padding:${labelSize === 'small' ? '0.5mm 2mm' : '1mm 3mm'};
-          border-top:0.5px solid #ccc;
-          font-size:${metaSize}px;color:#666;
-        ">
-          <span>TVA ${p.taxRate}% incl.</span>
-          <span>${today}</span>
         </div>
       </div>`;
     }).join('');
