@@ -73,8 +73,7 @@ export function ProductsPage() {
   const fetchProducts = useCallback(async () => {
     try {
       setLoading(true);
-      const storeId = employee?.storeId;
-      const res = await productsApi.list(storeId);
+      const res = await productsApi.list();
       const data: any[] = Array.isArray(res.data) ? res.data : (res.data?.data || res.data?.products || []);
       setProducts(
         data.map((p: any) => ({

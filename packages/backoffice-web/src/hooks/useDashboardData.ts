@@ -222,7 +222,7 @@ export function useDashboardData(): DashboardData {
         employeesRes,
         storesRes,
       ] = await Promise.allSettled([
-        productsApi.list(storeId),
+        productsApi.list(),
         notificationsApi.stockAlerts(storeId),
         salesApi.list(todayStr()),
         employeesApi.list(),

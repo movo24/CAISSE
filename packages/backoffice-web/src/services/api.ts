@@ -125,8 +125,7 @@ export const authApi = {
 // Products
 // ---------------------------------------------------------------------------
 export const productsApi = {
-  list: (storeId?: string) =>
-    api.get('/products', { params: { storeId } }),
+  list: () => api.get('/products'),
   get: (id: string) => api.get(`/products/${id}`),
   create: (data: any) => api.post('/products', data),
   update: (id: string, data: any) => api.put(`/products/${id}`, data),
