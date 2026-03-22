@@ -82,9 +82,8 @@ function detectCapabilities(): ScannerCapabilities {
     cameraBlockedReason = `Contexte non securise (HTTP sur ${host}). La camera necessite HTTPS.`;
   } else if (!hasMediaDevices) {
     cameraBlockedReason = 'API MediaDevices non disponible dans ce navigateur.';
-  } else if (!hasBarcodeDetector) {
-    cameraBlockedReason = 'BarcodeDetector non supporte. Utilisez un pistolet scanner.';
   }
+  // Note: BarcodeDetector not required — ZXing fallback handles Safari/iOS
 
   return {
     isSecureContext,
@@ -187,7 +186,7 @@ export function ScannerTool({ open, onClose, onScan, isLandscape }: ScannerToolP
         setCameraReady(true);
       }
 
-      // BarcodeDetector — continuous detection
+      // BarcodeDetector — continuous detection (Chrome/Edge/Android)
       if (caps.hasBarcodeDetector) {
         const detector = new (window as any).BarcodeDetector({
           formats: ['ean_13', 'ean_8', 'code_128', 'code_39', 'qr_code', 'upc_a', 'upc_e'],
@@ -202,7 +201,53 @@ export function ScannerTool({ open, onClose, onScan, isLandscape }: ScannerToolP
           } catch { /* frame error */ }
         }, 150);
       } else {
-        setCameraError('BarcodeDetector non supporte. Utilisez un pistolet scanner.');
+        // ZXing fallback — works on Safari iPad / iOS
+        try {
+          // Stop the stream we opened (ZXing opens its own)
+          if (streamRef.current) {
+            streamRef.current.getTracks().forEach(t => t.stop());
+            streamRef.current = null;
+          }
+          if (videoRef.current) videoRef.current.srcObject = null;
+
+          const { BrowserMultiFormatReader } = await import('@zxing/browser');
+          const { BarcodeFormat, DecodeHintType } = await import('@zxing/library');
+
+          const hints = new Map();
+          hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+            BarcodeFormat.EAN_13, BarcodeFormat.EAN_8,
+            BarcodeFormat.UPC_A, BarcodeFormat.UPC_E,
+            BarcodeFormat.CODE_128, BarcodeFormat.CODE_39,
+            BarcodeFormat.QR_CODE,
+          ]);
+          hints.set(DecodeHintType.TRY_HARDER, true);
+
+          const reader = new BrowserMultiFormatReader(hints, {
+            delayBetweenScanAttempts: 150,
+            delayBetweenScanSuccess: 1000,
+          });
+
+          const controls = await reader.decodeFromConstraints(
+            { video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
+            videoRef.current!,
+            (result: any, error: any) => {
+              if (result) {
+                handleDetection(result.getText(), BarcodeFormat[result.getBarcodeFormat()] || 'unknown');
+              }
+            },
+          );
+
+          // Store controls for cleanup
+          (scanIntervalRef as any).zxingControls = controls;
+
+          // Grab stream for torch
+          if (videoRef.current?.srcObject) {
+            streamRef.current = videoRef.current.srcObject as MediaStream;
+          }
+          setCameraReady(true);
+        } catch (zxErr: any) {
+          setCameraError(`Scanner camera: ${zxErr.message || 'erreur'}. Utilisez saisie manuelle.`);
+        }
       }
     } catch (e: any) {
       if (e.name === 'NotAllowedError') {
@@ -219,6 +264,11 @@ export function ScannerTool({ open, onClose, onScan, isLandscape }: ScannerToolP
 
   const stopCamera = useCallback(() => {
     if (scanIntervalRef.current) { clearInterval(scanIntervalRef.current); scanIntervalRef.current = null; }
+    // Stop ZXing controls if active
+    if ((scanIntervalRef as any).zxingControls) {
+      try { (scanIntervalRef as any).zxingControls.stop(); } catch { /* */ }
+      (scanIntervalRef as any).zxingControls = null;
+    }
     if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
     if (videoRef.current) videoRef.current.srcObject = null;
     setCameraReady(false);
