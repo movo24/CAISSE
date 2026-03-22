@@ -35,6 +35,9 @@ export class ProductEntity {
   @Column({ name: 'price_minor_units', type: 'integer' })
   priceMinorUnits: number;
 
+  @Column({ name: 'old_price_minor_units', type: 'integer', nullable: true })
+  oldPriceMinorUnits: number | null;
+
   @Column({ name: 'currency_code', default: 'EUR' })
   currencyCode: string;
 

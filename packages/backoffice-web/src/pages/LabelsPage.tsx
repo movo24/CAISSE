@@ -7,6 +7,7 @@ interface Product {
   ean: string;
   name: string;
   priceMinorUnits: number;
+  oldPriceMinorUnits: number | null;
   currencyCode: string;
   taxRate: string;
   unitType: string;
@@ -98,7 +99,11 @@ export function LabelsPage() {
       const priceMinor = String(p.priceMinorUnits % 100).padStart(2, '0');
       const symbol = p.currencyCode === 'EUR' ? '\u20AC' : p.currencyCode;
 
-      // Prix unitaire conditionnel (litre/kg/paire vs "Prix unitaire")
+      // Promo: ancien prix barré si oldPrice > currentPrice
+      const isPromo = p.oldPriceMinorUnits != null && p.oldPriceMinorUnits > p.priceMinorUnits;
+      const oldPriceFormatted = isPromo ? `${(p.oldPriceMinorUnits! / 100).toFixed(2)} ${symbol}` : '';
+
+      // Prix unitaire conditionnel
       const unitMap: Record<string, string> = { l: 'L', ml: 'L', kg: 'kg', pair: 'paire' };
       const unitSuffix = unitMap[p.unitType] || '';
       const pricePerUnitText = unitSuffix
@@ -107,6 +112,8 @@ export function LabelsPage() {
 
       const pad = labelSize === 'small' ? '1.5mm 2mm' : labelSize === 'medium' ? '2.5mm 3.5mm' : '3mm 5mm';
       const barcodeH = labelSize === 'small' ? '5mm' : labelSize === 'medium' ? '8mm' : '12mm';
+      // Prix en rouge si promo, noir sinon
+      const priceColor = isPromo ? '#CC0000' : '#000';
 
       return `
       <div style="
@@ -131,13 +138,14 @@ export function LabelsPage() {
         <!-- SEPARATEUR -->
         <div style="width:calc(100% - 4mm);height:1.5px;background:#333;margin:0 auto;"></div>
 
-        <!-- ZONE CENTRALE: prix unitaire gauche + PRIX GEANT droite -->
+        <!-- ZONE CENTRALE: prix unitaire gauche + ancien prix barré + PRIX GEANT droite -->
         <div style="display:flex;align-items:center;padding:${pad};flex:1;">
           <div style="flex:1;">
             <div style="font-size:${metaSize}px;font-weight:700;color:#333;">${pricePerUnitText}</div>
+            ${isPromo ? `<div style="font-size:${Math.round(priceSize * 0.35)}px;color:#333;text-decoration:line-through;margin-top:1mm;">${oldPriceFormatted}</div>` : ''}
           </div>
           <div style="text-align:right;">
-            <span style="font-size:${priceSize}px;font-weight:900;color:#000;letter-spacing:-1px;">${priceMajor}</span><span style="font-size:${Math.round(priceSize * 0.55)}px;font-weight:900;color:#000;">,${priceMinor}</span>
+            <span style="font-size:${priceSize}px;font-weight:900;color:${priceColor};letter-spacing:-1px;">${priceMajor}</span><span style="font-size:${Math.round(priceSize * 0.55)}px;font-weight:900;color:${priceColor};">,${priceMinor}</span>
           </div>
         </div>
 
