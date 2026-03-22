@@ -17,7 +17,9 @@ export function LoginPage() {
   const [storeId, setStoreId] = useState(
     () => localStorage.getItem('caisse_login_storeId') || '',
   );
-  const [pin, setPin] = useState('');
+  const [pin, setPin] = useState(
+    () => sessionStorage.getItem('caisse_login_pin') || '',
+  );
 
   const canSubmit =
     mode === 'admin'
@@ -36,6 +38,8 @@ export function LoginPage() {
 
     const state = useAuthStore.getState();
     if (state.isAuthenticated) {
+      // Clear PIN from session storage on successful login (security)
+      sessionStorage.removeItem('caisse_login_pin');
       if (state.employee?.role === 'admin') {
         navigate('/select-store', { replace: true });
       } else {
@@ -130,7 +134,7 @@ export function LoginPage() {
               type="password"
               inputMode="numeric"
               value={pin}
-              onChange={(e) => setPin(e.target.value)}
+              onChange={(e) => { setPin(e.target.value); sessionStorage.setItem('caisse_login_pin', e.target.value); }}
               className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/15 text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all text-sm text-center text-2xl tracking-[0.5em]"
               placeholder="******"
               maxLength={8}

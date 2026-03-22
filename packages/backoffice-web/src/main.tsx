@@ -40,7 +40,6 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             <Route path="/products" element={<ProductsPage />} />
             <Route path="/stock-alerts" element={<StockAlertsPage />} />
             <Route path="/labels" element={<LabelsPage />} />
-            <Route path="/labels" element={<LabelsPage />} />
             <Route path="/reports" element={<ReportsPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             {/* Network / Admin */}
