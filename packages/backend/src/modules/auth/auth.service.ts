@@ -45,7 +45,19 @@ export class AuthService {
   /**
    * Login by PIN — primary flow via TimeWin24
    */
-  async loginByPin(storeId: string, pin: string) {
+  async loginByPin(storeIdOrCode: string, pin: string) {
+    // Resolve storeCode to storeId if not a UUID
+    let storeId = storeIdOrCode;
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(storeIdOrCode);
+    if (!isUUID) {
+      const store = await this.storeRepo.findOne({ where: { storeCode: storeIdOrCode.toUpperCase() } });
+      if (!store) {
+        throw new UnauthorizedException(`Magasin introuvable: ${storeIdOrCode}`);
+      }
+      storeId = store.id;
+      this.logger.log(`[AUTH] Resolved storeCode "${storeIdOrCode}" → storeId "${storeId}"`);
+    }
+
     // Try TimeWin24 first, fallback to local DB if unavailable
     try {
       const twResult = await this.timewin.loginEmployee({ pin, storeId });
