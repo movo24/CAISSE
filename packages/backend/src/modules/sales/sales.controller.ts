@@ -62,6 +62,8 @@ export class SalesController {
       id,
       req.user.employeeId,
       req.user.storeId,
+      req.user.role,
+      req.user.maxDiscount,
     );
   }
 }

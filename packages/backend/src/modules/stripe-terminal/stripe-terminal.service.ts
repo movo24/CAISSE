@@ -36,8 +36,9 @@ export class StripeTerminalService {
     this.assertStripe();
 
     // Idempotency key: prevents double charge on network retry
+    // Uses ticketNumber + storeId + amount + currency + employeeId + ms timestamp
     const idempotencyKey = createHash('sha256')
-      .update(`${storeId}:${ticketNumber}:${amount}:${new Date().toISOString().slice(0, 10)}`)
+      .update(`${storeId}:${ticketNumber}:${amount}:${currency}:${employeeId || ''}:${Date.now()}`)
       .digest('hex');
 
     const pi = await this.stripe.paymentIntents.create(
