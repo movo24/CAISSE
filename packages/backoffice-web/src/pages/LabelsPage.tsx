@@ -83,33 +83,96 @@ export function LabelsPage() {
     setGenerating(true);
 
     const size = LABEL_SIZES[labelSize];
-    const fontSize = labelSize === 'small' ? 8 : labelSize === 'medium' ? 11 : 14;
-    const priceFontSize = labelSize === 'small' ? 14 : labelSize === 'medium' ? 20 : 28;
+    const titleSize = labelSize === 'small' ? 9 : labelSize === 'medium' ? 12 : 16;
+    const priceSize = labelSize === 'small' ? 22 : labelSize === 'medium' ? 36 : 52;
+    const metaSize = labelSize === 'small' ? 6 : labelSize === 'medium' ? 8 : 10;
+    const eanSize = labelSize === 'small' ? 5 : labelSize === 'medium' ? 7 : 9;
+    const today = new Date().toLocaleDateString('fr-FR');
 
     const allLabels = cart.flatMap((item) =>
       Array.from({ length: item.quantity }, () => item.product),
     );
 
-    const labelsHTML = allLabels.map((p) => `
+    const labelsHTML = allLabels.map((p) => {
+      const priceMajor = Math.floor(p.priceMinorUnits / 100);
+      const priceMinor = String(p.priceMinorUnits % 100).padStart(2, '0');
+      const symbol = p.currencyCode === 'EUR' ? '\u20AC' : p.currencyCode;
+      const pricePerUnit = p.unitType === 'unit'
+        ? ''
+        : `${(p.priceMinorUnits / 100).toFixed(2)} ${symbol}/${p.unitType === 'pair' ? 'paire' : p.unitType}`;
+
+      return `
       <div style="
         width:${size.w}mm;height:${size.h}mm;
-        border:0.5px solid #ccc;padding:2mm;
-        display:flex;flex-direction:column;justify-content:space-between;
-        font-family:'Inter',Arial,sans-serif;
+        border:1px solid #000;
+        font-family:Arial,Helvetica,sans-serif;
         page-break-inside:avoid;box-sizing:border-box;
+        display:flex;flex-direction:column;
+        overflow:hidden;
       ">
-        <div style="font-size:${fontSize}px;font-weight:600;line-height:1.2;overflow:hidden;text-overflow:ellipsis;">${p.name}</div>
-        <div style="text-align:center;">
-          <div style="font-size:${priceFontSize}px;font-weight:900;letter-spacing:-0.5px;">${formatPrice(p.priceMinorUnits, p.currencyCode)}</div>
-          <div style="font-size:${Math.max(fontSize - 2, 6)}px;color:#666;">TVA ${p.taxRate}%</div>
-        </div>
-        <div style="font-size:${Math.max(fontSize - 3, 5)}px;color:#999;font-family:monospace;">${p.ean}</div>
-      </div>
-    `).join('');
+        <!-- TITRE PRODUIT -->
+        <div style="
+          padding:${labelSize === 'small' ? '1mm 2mm' : '2mm 3mm'};
+          font-size:${titleSize}px;font-weight:800;
+          text-transform:uppercase;letter-spacing:0.3px;
+          line-height:1.15;
+          white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+        ">${p.name}</div>
 
+        <!-- SEPARATEUR -->
+        <div style="width:100%;height:1px;background:#000;"></div>
+
+        <!-- CONTENU PRINCIPAL -->
+        <div style="flex:1;display:flex;padding:${labelSize === 'small' ? '1mm' : '2mm 3mm'};">
+          <!-- GAUCHE: EAN + prix unitaire -->
+          <div style="flex:1;display:flex;flex-direction:column;justify-content:space-between;">
+            <div style="font-family:monospace;font-size:${eanSize}px;color:#333;letter-spacing:0.5px;">
+              ${p.ean}
+            </div>
+            ${pricePerUnit ? `<div style="font-size:${metaSize}px;color:#444;font-weight:600;margin-top:2px;">${pricePerUnit}</div>` : ''}
+          </div>
+
+          <!-- DROITE: PRIX DOMINANT -->
+          <div style="display:flex;align-items:center;justify-content:flex-end;min-width:50%;">
+            <div style="text-align:right;">
+              <span style="font-size:${priceSize}px;font-weight:900;line-height:1;letter-spacing:-1px;">${priceMajor}</span><span style="font-size:${Math.round(priceSize * 0.5)}px;font-weight:900;vertical-align:super;margin-left:1px;">,${priceMinor}</span>
+              <span style="font-size:${Math.round(priceSize * 0.35)}px;font-weight:700;margin-left:2px;">${symbol}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- BAS: TVA + DATE -->
+        <div style="
+          display:flex;justify-content:space-between;align-items:center;
+          padding:${labelSize === 'small' ? '0.5mm 2mm' : '1mm 3mm'};
+          border-top:0.5px solid #ccc;
+          font-size:${metaSize}px;color:#666;
+        ">
+          <span>TVA ${p.taxRate}% incl.</span>
+          <span>${today}</span>
+        </div>
+      </div>`;
+    }).join('');
+
+    // Fix: wait for DOM render before print (prevents "page not finished loading")
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Etiquettes CAISSE</title>
-      <style>@page{margin:5mm}body{margin:0;padding:0}.grid{display:flex;flex-wrap:wrap;gap:2mm}</style>
-      </head><body><div class="grid">${labelsHTML}</div><script>window.onload=()=>window.print()</script></body></html>`;
+      <style>
+        @page{margin:5mm;size:auto}
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{background:#fff}
+        .grid{display:flex;flex-wrap:wrap;gap:2mm;padding:2mm}
+      </style>
+      </head><body>
+        <div class="grid">${labelsHTML}</div>
+        <script>
+          // Wait for full render before printing
+          requestAnimationFrame(function(){
+            requestAnimationFrame(function(){
+              setTimeout(function(){ window.print(); }, 300);
+            });
+          });
+        </script>
+      </body></html>`;
 
     const blob = new Blob([html], { type: 'text/html' });
     const url = URL.createObjectURL(blob);
