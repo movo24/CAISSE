@@ -155,24 +155,20 @@ function validateEnvironment() {
   // Production-only checks
   const isProd = process.env.NODE_ENV === 'production';
   if (isProd) {
-    const prodRequired = ['REDIS_URL', 'TIMEWIN24_API_KEY', 'TIMEWIN24_POS_SECRET'];
-    const prodMissing = prodRequired.filter((key) => !process.env[key]);
-    if (prodMissing.length > 0) {
-      throw new Error(`FATAL (production): Missing ${prodMissing.join(', ')}`);
-    }
     if (process.env.TYPEORM_SYNCHRONIZE === 'true') {
       throw new Error('FATAL: TYPEORM_SYNCHRONIZE=true is forbidden in production');
     }
-  }
-
-  // Production CORS check
-  if (isProd) {
-    const cors = process.env.CORS_ORIGIN;
-    if (!cors || cors === '*' || cors.includes('localhost')) {
-      throw new Error('FATAL (production): CORS_ORIGIN must be set to production domains only (no wildcard, no localhost)');
+    // Warn about missing optional services (don't crash — POS can work without them)
+    if (!process.env.REDIS_URL) {
+      logger.warn('REDIS_URL not set in production — using in-memory cache (not multi-instance safe)');
     }
-    if (!process.env.TIMEWIN24_POS_KEY_ID) {
-      logger.warn('TIMEWIN24_POS_KEY_ID not set — HMAC authentication disabled, using legacy X-POS-Secret');
+    if (!process.env.TIMEWIN24_API_KEY) {
+      logger.warn('TIMEWIN24_API_KEY not set — TimeWin24 integration disabled');
+    }
+    if (!process.env.CORS_ORIGIN) {
+      logger.warn('CORS_ORIGIN not set — using permissive defaults');
+    } else if (process.env.CORS_ORIGIN === '*') {
+      logger.warn('CORS_ORIGIN is wildcard (*) — restrict for production');
     }
   }
 
