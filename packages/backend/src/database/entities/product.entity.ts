@@ -20,6 +20,9 @@ export class ProductEntity {
   @Column()
   ean: string;
 
+  @Column({ name: 'barcode_source', type: 'varchar', default: 'imported' })
+  barcodeSource: 'imported' | 'manual' | 'generated';
+
   @Column()
   name: string;
 

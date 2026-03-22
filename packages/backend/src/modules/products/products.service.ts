@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -209,5 +210,49 @@ export class ProductsService {
       where: { productId },
       order: { changedAt: 'DESC' },
     });
+  }
+
+  /**
+   * Generate an internal barcode (EAN-13 format with prefix 290)
+   * for products that don't have a barcode from their supplier.
+   */
+  async generateBarcode(productId: string, storeId: string): Promise<ProductEntity> {
+    const product = await this.findOneForStore(productId, storeId);
+
+    // Don't overwrite imported barcodes
+    if (product.barcodeSource === 'imported' && product.ean && !product.ean.startsWith('290')) {
+      throw new BadRequestException(
+        'Ce produit a déjà un code-barres fournisseur. Utilisez la modification manuelle pour le changer.',
+      );
+    }
+
+    // Generate unique EAN-13 with prefix 290 (internal use)
+    let ean: string;
+    let attempts = 0;
+    do {
+      // 290 + 9 random digits + 1 check digit = 13 chars
+      const random = String(Math.floor(Math.random() * 1_000_000_000)).padStart(9, '0');
+      const partial = `290${random}`;
+      // EAN-13 check digit
+      let sum = 0;
+      for (let i = 0; i < 12; i++) {
+        sum += parseInt(partial[i]) * (i % 2 === 0 ? 1 : 3);
+      }
+      const checkDigit = (10 - (sum % 10)) % 10;
+      ean = `${partial}${checkDigit}`;
+
+      // Verify uniqueness
+      const existing = await this.productRepo.findOne({ where: { ean, storeId } });
+      if (!existing || existing.id === productId) break;
+      attempts++;
+    } while (attempts < 10);
+
+    if (attempts >= 10) {
+      throw new BadRequestException('Impossible de générer un code-barres unique. Réessayez.');
+    }
+
+    product.ean = ean;
+    product.barcodeSource = 'generated';
+    return this.productRepo.save(product);
   }
 }

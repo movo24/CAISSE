@@ -134,6 +134,7 @@ export const productsApi = {
   scan: (ean: string) => api.get(`/products/scan/${ean}`),
   stockAlerts: () => api.get('/products/stock-alerts'),
   priceHistory: (id: string) => api.get(`/products/${id}/price-history`),
+  generateBarcode: (id: string) => api.post(`/products/${id}/generate-barcode`),
 };
 
 // ---------------------------------------------------------------------------

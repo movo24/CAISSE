@@ -13,6 +13,7 @@ import {
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { ProductsService } from './products.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { RolesGuard, Roles } from '../../common/guards/roles.guard';
 import { CreateProductDto, UpdateProductDto, PaginationQueryDto } from '../../common/dto';
 
 @ApiTags('products')
@@ -82,5 +83,13 @@ export class ProductsController {
       reason,
       req.user.storeId,
     );
+  }
+
+  @Post(':id/generate-barcode')
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'Generate internal barcode for a product without one' })
+  async generateBarcode(@Param('id') id: string, @Request() req: any) {
+    return this.productsService.generateBarcode(id, req.user.storeId);
   }
 }
