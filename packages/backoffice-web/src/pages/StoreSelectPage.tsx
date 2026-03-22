@@ -9,17 +9,42 @@ export function StoreSelectPage() {
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
 
+  const [storesLoaded, setStoresLoaded] = useState(false);
+
   useEffect(() => {
-    loadStores().then(() => setLoading(false));
+    loadStores().then(() => {
+      setLoading(false);
+      setStoresLoaded(true);
+    });
   }, []);
 
-  // If not admin or only 1 store, skip directly
+  // Only auto-skip AFTER stores are fully loaded and confirmed
   useEffect(() => {
-    if (!loading && (employee?.role !== 'admin' || stores.length <= 1)) {
-      if (stores.length === 1) setCurrentStore(stores[0].id);
+    if (!storesLoaded) return; // Wait until loadStores() has completed
+
+    const storeCount = stores.filter((s) => s.isActive).length;
+
+    // Non-admin → go to dashboard
+    if (employee?.role !== 'admin') {
+      if (storeCount === 1) setCurrentStore(stores[0].id);
+      navigate('/', { replace: true });
+      return;
+    }
+
+    // Admin with exactly 1 store → auto-select and skip
+    if (storeCount === 1) {
+      setCurrentStore(stores[0].id);
+      navigate('/', { replace: true });
+      return;
+    }
+
+    // Admin with 0 stores → go to dashboard (nothing to select)
+    if (storeCount === 0) {
       navigate('/', { replace: true });
     }
-  }, [loading, stores, employee]);
+
+    // Admin with 2+ stores → stay on this page (don't navigate)
+  }, [storesLoaded]);
 
   const filtered = stores.filter(
     (s) =>
