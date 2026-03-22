@@ -122,7 +122,7 @@ export function LabelsPage() {
           font-size:${titleSize}px;font-weight:900;
           color:#8B0000;
           text-transform:uppercase;letter-spacing:0.5px;
-          line-height:1.15;
+          line-height:1.15;text-align:center;
           white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
         ">${p.name}</div>
 
