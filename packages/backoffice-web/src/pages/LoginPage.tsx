@@ -8,9 +8,15 @@ type LoginMode = 'admin' | 'store';
 export function LoginPage() {
   const navigate = useNavigate();
   const { login, loginAdmin, isLoading, error } = useAuthStore();
-  const [mode, setMode] = useState<LoginMode>('admin');
-  const [email, setEmail] = useState('');
-  const [storeId, setStoreId] = useState('');
+  const [mode, setMode] = useState<LoginMode>(
+    () => (localStorage.getItem('caisse_login_mode') as LoginMode) || 'admin',
+  );
+  const [email, setEmail] = useState(
+    () => localStorage.getItem('caisse_login_email') || '',
+  );
+  const [storeId, setStoreId] = useState(
+    () => localStorage.getItem('caisse_login_storeId') || '',
+  );
   const [pin, setPin] = useState('');
 
   const canSubmit =
@@ -54,7 +60,7 @@ export function LoginPage() {
         <div className="flex gap-2 mb-6 bg-white/5 rounded-xl p-1">
           <button
             type="button"
-            onClick={() => { setMode('admin'); setPin(''); }}
+            onClick={() => { setMode('admin'); setPin(''); localStorage.setItem('caisse_login_mode', 'admin'); }}
             className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition-all ${
               mode === 'admin'
                 ? 'bg-indigo-600 text-white shadow-lg'
@@ -66,7 +72,7 @@ export function LoginPage() {
           </button>
           <button
             type="button"
-            onClick={() => { setMode('store'); setPin(''); }}
+            onClick={() => { setMode('store'); setPin(''); localStorage.setItem('caisse_login_mode', 'store'); }}
             className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition-all ${
               mode === 'store'
                 ? 'bg-indigo-600 text-white shadow-lg'
@@ -94,7 +100,7 @@ export function LoginPage() {
               <input
                 type="email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => { setEmail(e.target.value); localStorage.setItem('caisse_login_email', e.target.value); }}
                 className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/15 text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all text-sm"
                 placeholder="contact@votreentreprise.com"
                 autoFocus
@@ -108,7 +114,7 @@ export function LoginPage() {
               <input
                 type="text"
                 value={storeId}
-                onChange={(e) => setStoreId(e.target.value)}
+                onChange={(e) => { setStoreId(e.target.value); localStorage.setItem('caisse_login_storeId', e.target.value); }}
                 className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/15 text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all text-sm"
                 placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
                 autoFocus
