@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Store, Search, MapPin, Loader2 } from 'lucide-react';
+import { Store, Search, MapPin, Loader2, Building2, ArrowRight } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 
 export function StoreSelectPage() {
@@ -79,6 +79,21 @@ export function StoreSelectPage() {
             Bonjour {employee?.firstName}, choisissez le magasin à gérer
           </p>
         </div>
+
+        {/* Network View Button */}
+        <button
+          onClick={() => navigate('/network')}
+          className="w-full mb-6 p-4 rounded-2xl border-2 border-bo-accent/30 bg-bo-accent/5 hover:bg-bo-accent/10 transition-all flex items-center gap-4 group"
+        >
+          <div className="w-12 h-12 rounded-xl bg-bo-accent flex items-center justify-center">
+            <Building2 size={24} className="text-white" />
+          </div>
+          <div className="text-left flex-1">
+            <p className="text-sm font-bold text-bo-text group-hover:text-bo-accent transition-colors">Vue Réseau — Toutes les boutiques</p>
+            <p className="text-xs text-bo-muted">CA consolidé, classement, comparaison multi-magasins</p>
+          </div>
+          <ArrowRight size={18} className="text-bo-muted group-hover:text-bo-accent transition-colors" />
+        </button>
 
         {/* Search */}
         <div className="relative mb-6 max-w-md mx-auto">

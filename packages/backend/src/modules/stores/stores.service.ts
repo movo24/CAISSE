@@ -306,4 +306,90 @@ export class StoresService {
     this.logger.log(`[SYNC] TimeWin24 → POS: ${created} created, ${updated} updated, ${twStores.length} total`);
     return { created, updated, total: twStores.length };
   }
+
+  /**
+   * Get consolidated network summary across all stores with includeInNetwork=true.
+   */
+  async getNetworkSummary() {
+    const stores = await this.storeRepo.find({
+      where: { isActive: true },
+      order: { name: 'ASC' },
+    });
+
+    const includedStores = stores.filter((s) => s.includeInNetwork);
+    const excludedStores = stores.filter((s) => !s.includeInNetwork);
+
+    // Get sales data per store
+    const storeStats = await Promise.all(
+      includedStores.map(async (store) => {
+        const result = await this.dataSource.query(
+          `SELECT
+            COALESCE(COUNT(*), 0) as sale_count,
+            COALESCE(SUM(total_minor_units), 0) as total_revenue,
+            COALESCE(AVG(total_minor_units), 0) as avg_ticket
+          FROM sales
+          WHERE store_id = $1 AND status = 'completed'`,
+          [store.id],
+        );
+
+        const todayResult = await this.dataSource.query(
+          `SELECT
+            COALESCE(COUNT(*), 0) as sale_count,
+            COALESCE(SUM(total_minor_units), 0) as total_revenue
+          FROM sales
+          WHERE store_id = $1 AND status = 'completed'
+            AND created_at >= CURRENT_DATE`,
+          [store.id],
+        );
+
+        return {
+          id: store.id,
+          name: store.name,
+          storeCode: store.storeCode,
+          city: store.city,
+          includeInNetwork: store.includeInNetwork,
+          totalSales: parseInt(result[0]?.sale_count || '0'),
+          totalRevenue: parseInt(result[0]?.total_revenue || '0'),
+          avgTicket: Math.round(parseFloat(result[0]?.avg_ticket || '0')),
+          todaySales: parseInt(todayResult[0]?.sale_count || '0'),
+          todayRevenue: parseInt(todayResult[0]?.total_revenue || '0'),
+        };
+      }),
+    );
+
+    // Network totals
+    const networkTotalRevenue = storeStats.reduce((s, st) => s + st.totalRevenue, 0);
+    const networkTotalSales = storeStats.reduce((s, st) => s + st.totalSales, 0);
+    const networkAvgTicket = networkTotalSales > 0 ? Math.round(networkTotalRevenue / networkTotalSales) : 0;
+    const networkTodayRevenue = storeStats.reduce((s, st) => s + st.todayRevenue, 0);
+    const networkTodaySales = storeStats.reduce((s, st) => s + st.todaySales, 0);
+
+    // Rankings
+    const sortedByRevenue = [...storeStats].sort((a, b) => b.totalRevenue - a.totalRevenue);
+
+    return {
+      network: {
+        storeCount: includedStores.length,
+        excludedCount: excludedStores.length,
+        totalRevenue: networkTotalRevenue,
+        totalSales: networkTotalSales,
+        avgTicket: networkAvgTicket,
+        todayRevenue: networkTodayRevenue,
+        todaySales: networkTodaySales,
+      },
+      stores: storeStats,
+      ranking: sortedByRevenue.map((s, i) => ({
+        rank: i + 1,
+        storeId: s.id,
+        name: s.name,
+        totalRevenue: s.totalRevenue,
+        todayRevenue: s.todayRevenue,
+      })),
+      excludedStores: excludedStores.map((s) => ({
+        id: s.id,
+        name: s.name,
+        storeCode: s.storeCode,
+      })),
+    };
+  }
 }

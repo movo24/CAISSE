@@ -62,6 +62,17 @@ export class StoresController {
   }
 
   /**
+   * GET /api/stores/network-summary — consolidated KPIs across all stores.
+   * Only includes stores with includeInNetwork=true.
+   */
+  @Get('network-summary')
+  @Roles('admin')
+  @ApiOperation({ summary: 'Consolidated network KPIs across all stores' })
+  async networkSummary() {
+    return this.storesService.getNetworkSummary();
+  }
+
+  /**
    * GET /api/stores/me — returns the authenticated user's own store.
    * No cross-tenant leak: you can only see YOUR store.
    */

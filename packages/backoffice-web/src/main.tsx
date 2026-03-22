@@ -19,6 +19,7 @@ import { StoresManagementPage } from './pages/StoresManagementPage';
 import { ConnectedAppsPage } from './pages/ConnectedAppsPage';
 import { BillingPage } from './pages/BillingPage';
 import { ComingSoonPage } from './pages/ComingSoonPage';
+import { NetworkDashboardPage } from './pages/NetworkDashboardPage';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import './styles/globals.css';
 
@@ -34,6 +35,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         <Route element={<ProtectedRoute />}>
           {/* Store selector (full screen, no sidebar) */}
           <Route path="/select-store" element={<StoreSelectPage />} />
+          <Route path="/network" element={<NetworkDashboardPage />} />
 
           {/* Main app with sidebar */}
           <Route element={<Layout />}>

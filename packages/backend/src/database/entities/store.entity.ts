@@ -122,6 +122,9 @@ export class StoreEntity {
   @Column({ name: 'is_active', default: true })
   isActive: boolean;
 
+  @Column({ name: 'include_in_network', default: true })
+  includeInNetwork: boolean;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

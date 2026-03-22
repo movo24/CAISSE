@@ -200,6 +200,7 @@ export const storesApi = {
   deactivate: (id: string) => api.post(`/stores/${id}/deactivate`),
   hardDelete: (id: string) => api.delete(`/stores/${id}`),
   accessible: () => api.get('/stores/accessible'),
+  networkSummary: () => api.get('/stores/network-summary'),
   syncFromTimeWin: () => api.post('/stores/sync'),
 };
 
