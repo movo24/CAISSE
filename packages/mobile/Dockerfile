@@ -4,6 +4,8 @@
 
 FROM node:20-alpine AS builder
 WORKDIR /app
+ARG VITE_API_URL=https://api.addxintelligence.com
+ENV VITE_API_URL=$VITE_API_URL
 COPY package.json ./
 RUN npm install --legacy-peer-deps
 COPY . .
