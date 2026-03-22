@@ -65,11 +65,11 @@ api.interceptors.request.use(async (config) => {
         token = newToken;
         onRefreshed(newToken);
       } else {
-        // Refresh failed — clear tokens, redirect to login
+        // Refresh failed — clear tokens, let ProtectedRoute redirect
         localStorage.removeItem('accessToken');
         localStorage.removeItem('refreshToken');
-        window.location.href = '/login';
-        return config;
+        localStorage.removeItem('pos_employee');
+        return Promise.reject(new Error('Session expired'));
       }
     } else {
       // Wait for the ongoing refresh to complete
@@ -110,15 +110,8 @@ api.interceptors.response.use(
       // Refresh failed or no refresh token — force logout
       localStorage.removeItem('accessToken');
       localStorage.removeItem('refreshToken');
-      localStorage.removeItem('employee');
-      // Only redirect in browser context (not during sync)
-      // Use React-friendly navigation instead of hard redirect
-      if (typeof window !== 'undefined' && window.location) {
-        // Don't redirect if already on login page
-        if (!window.location.pathname.startsWith('/login') && window.location.pathname !== '/') {
-          window.location.href = '/login';
-        }
-      }
+      localStorage.removeItem('pos_employee');
+      // Don't hard redirect — let ProtectedRoute handle it via React router
     }
     return Promise.reject(error);
   },

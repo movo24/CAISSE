@@ -10,6 +10,7 @@ import { ScanPage } from './pages/ScanPage';
 import { InventoryPage } from './pages/InventoryPage';
 import { ReceivingPage } from './pages/ReceivingPage';
 import { SearchPage } from './pages/SearchPage';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import './styles/globals.css';
 
 function App() {
@@ -44,6 +45,8 @@ function App() {
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <App />
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
   </React.StrictMode>,
 );

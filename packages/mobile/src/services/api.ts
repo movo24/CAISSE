@@ -66,9 +66,7 @@ function redirectToLogin() {
   localStorage.removeItem('refreshToken');
   localStorage.removeItem('employee');
   localStorage.removeItem('storeInfo');
-  if (typeof window !== 'undefined' && window.location) {
-    window.location.href = '/login';
-  }
+  // Don't hard redirect — ProtectedRoute handles it via React router
 }
 
 // ── Request interceptor: attach JWT, proactively refresh if expired ──
