@@ -58,11 +58,12 @@ api.interceptors.request.use(async (config) => {
         token = newToken;
         onRefreshed(newToken);
       } else {
+        // Soft logout — clear storage, Zustand state will trigger React redirect
         localStorage.removeItem('accessToken');
         localStorage.removeItem('refreshToken');
         localStorage.removeItem('employee');
-        window.location.href = '/login';
-        return config;
+        // Don't use window.location.href (kills React router → page blanche)
+        return Promise.reject(new Error('Session expired'));
       }
     } else {
       token = await new Promise<string>((resolve) => {
@@ -94,13 +95,10 @@ api.interceptors.response.use(
         error.config.headers.Authorization = `Bearer ${newToken}`;
         return api(error.config);
       }
+      // Soft logout — let ProtectedRoute handle redirect via React router
       localStorage.removeItem('accessToken');
       localStorage.removeItem('refreshToken');
       localStorage.removeItem('employee');
-      // Don't redirect if already on login page
-      if (!window.location.pathname.startsWith('/login') && window.location.pathname !== '/') {
-        window.location.href = '/login';
-      }
     }
     return Promise.reject(error);
   },

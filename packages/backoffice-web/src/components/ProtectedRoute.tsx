@@ -4,14 +4,16 @@ import { useAuthStore } from '../stores/authStore';
 
 /**
  * Route guard for backoffice.
- * Restores session from localStorage on first render.
- * Shows a minimal loading state (not blank) while restoring.
- * Redirects to /login only if restore is done AND not authenticated.
+ * - Restores session from localStorage on first render
+ * - Watches for token removal (API interceptor logout)
+ * - Shows spinner while restoring (never blank page)
+ * - Redirects to /login via React router (never window.location.href)
  */
 export function ProtectedRoute() {
   const { isAuthenticated, restoreSession } = useAuthStore();
   const [isRestoring, setIsRestoring] = useState(true);
 
+  // Restore session on mount
   useEffect(() => {
     try {
       restoreSession();
@@ -21,7 +23,38 @@ export function ProtectedRoute() {
     setIsRestoring(false);
   }, []);
 
-  // Show a minimal spinner while restoring (prevents page blanche)
+  // Watch for token removal by API interceptors (soft logout)
+  useEffect(() => {
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === 'accessToken' && e.newValue === null) {
+        // Token was removed → force unauthenticated state
+        useAuthStore.setState({
+          isAuthenticated: false,
+          employee: null,
+          accessToken: null,
+        });
+      }
+    };
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, []);
+
+  // Also poll localStorage periodically (storage event doesn't fire in same tab)
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const interval = setInterval(() => {
+      const token = localStorage.getItem('accessToken');
+      if (!token && isAuthenticated) {
+        useAuthStore.setState({
+          isAuthenticated: false,
+          employee: null,
+          accessToken: null,
+        });
+      }
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [isAuthenticated]);
+
   if (isRestoring) {
     return (
       <div style={{

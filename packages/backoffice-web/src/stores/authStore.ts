@@ -151,6 +151,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     if (isTokenExpired(token)) {
       if (refreshToken && !isTokenExpired(refreshToken)) {
+        // Access token expired but refresh is valid — restore session,
+        // API interceptor will refresh on first call
         try {
           const employee = JSON.parse(empStr);
           set({
@@ -165,12 +167,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           localStorage.removeItem('accessToken');
           localStorage.removeItem('refreshToken');
           localStorage.removeItem('employee');
+          set({ isAuthenticated: false, employee: null, accessToken: null });
         }
         return;
       }
+      // Both tokens expired — force logout state
       localStorage.removeItem('accessToken');
       localStorage.removeItem('refreshToken');
       localStorage.removeItem('employee');
+      set({ isAuthenticated: false, employee: null, accessToken: null, currentStoreId: null });
       return;
     }
 
@@ -188,6 +193,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       localStorage.removeItem('accessToken');
       localStorage.removeItem('refreshToken');
       localStorage.removeItem('employee');
+      set({ isAuthenticated: false, employee: null, accessToken: null });
     }
   },
 
