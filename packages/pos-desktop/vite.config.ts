@@ -17,7 +17,7 @@ export default defineConfig(async () => {
   return {
     plugins,
     server: {
-      port: 5174,
+      port: 5175,
       host: true,
       ...(useHttps ? { https: {} } : {}),
       // Proxy API calls through Vite dev server
