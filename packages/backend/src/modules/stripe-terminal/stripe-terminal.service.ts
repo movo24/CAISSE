@@ -1,5 +1,6 @@
 import { Injectable, Inject, Logger, BadRequestException } from '@nestjs/common';
 import Stripe from 'stripe';
+import { createHash } from 'crypto';
 
 @Injectable()
 export class StripeTerminalService {
@@ -34,19 +35,27 @@ export class StripeTerminalService {
   ): Promise<{ clientSecret: string; paymentIntentId: string }> {
     this.assertStripe();
 
-    const pi = await this.stripe.paymentIntents.create({
-      amount,
-      currency: currency.toLowerCase(),
-      payment_method_types: ['card_present'],
-      capture_method: 'automatic',
-      description: description || `CAISSE POS — ${ticketNumber}`,
-      metadata: {
-        storeId,
-        ticketNumber,
-        employeeId: employeeId || 'unknown',
-        source: 'caisse_pos_terminal',
+    // Idempotency key: prevents double charge on network retry
+    const idempotencyKey = createHash('sha256')
+      .update(`${storeId}:${ticketNumber}:${amount}:${new Date().toISOString().slice(0, 10)}`)
+      .digest('hex');
+
+    const pi = await this.stripe.paymentIntents.create(
+      {
+        amount,
+        currency: currency.toLowerCase(),
+        payment_method_types: ['card_present'],
+        capture_method: 'automatic',
+        description: description || `CAISSE POS — ${ticketNumber}`,
+        metadata: {
+          storeId,
+          ticketNumber,
+          employeeId: employeeId || 'unknown',
+          source: 'caisse_pos_terminal',
+        },
       },
-    });
+      { idempotencyKey },
+    );
 
     this.logger.log(
       `[PAYMENT] PaymentIntent created: ${pi.id} — ${amount / 100} ${currency.toUpperCase()} — ticket ${ticketNumber} — employee ${employeeId || 'unknown'}`,

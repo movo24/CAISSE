@@ -10,7 +10,7 @@
 // Status bar shows real-time pipeline state at bottom of scanner.
 // ─────────────────────────────────────────────────────────────────
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { ScannerOverlay } from '../components/ScannerOverlay';
 import { ProductCard } from '../components/ProductCard';
 import { CreateProductForm } from '../components/CreateProductForm';
@@ -49,7 +49,13 @@ export function ScanPage() {
   const [unknownEan, setUnknownEan] = useState<string | null>(null);
   const [status, setStatus] = useState<PipelineStatus>({ step: 'idle' });
 
+  // Anti-double scan: ignore same code within 1.5 seconds
+  const lastScanRef = useRef<{ code: string; time: number }>({ code: '', time: 0 });
+
   const handleScan = useCallback(async (result: ScanResult) => {
+    const now = Date.now();
+    if (lastScanRef.current.code === result.code && now - lastScanRef.current.time < 1500) return;
+    lastScanRef.current = { code: result.code, time: now };
     const code = result.code;
     console.log('[ScanPage] 1. Code scanné:', code, 'format:', result.format);
     setStatus({ step: 'searching', code });

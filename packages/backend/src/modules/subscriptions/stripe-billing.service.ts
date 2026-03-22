@@ -16,6 +16,7 @@ import { PLAN_CATALOG } from './subscriptions.service';
 @Injectable()
 export class StripeBillingService {
   private readonly logger = new Logger(StripeBillingService.name);
+  private readonly processedEvents = new Set<string>();
 
   constructor(
     @Inject('STRIPE') private readonly stripe: Stripe,
@@ -147,7 +148,21 @@ export class StripeBillingService {
       throw new BadRequestException('Invalid webhook signature.');
     }
 
-    this.logger.log(`Stripe webhook received: ${event.type}`);
+    this.logger.log(`Stripe webhook received: ${event.type} (${event.id})`);
+
+    // Deduplicate: skip already-processed events (Stripe can retry)
+    const eventCacheKey = `stripe_event:${event.id}`;
+    const alreadyProcessed = this.processedEvents.has(event.id);
+    if (alreadyProcessed) {
+      this.logger.log(`Webhook event ${event.id} already processed — skipping`);
+      return;
+    }
+    this.processedEvents.add(event.id);
+    // Cleanup old events (keep last 1000)
+    if (this.processedEvents.size > 1000) {
+      const entries = Array.from(this.processedEvents);
+      entries.slice(0, entries.length - 1000).forEach((e) => this.processedEvents.delete(e));
+    }
 
     switch (event.type) {
       case 'checkout.session.completed':

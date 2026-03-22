@@ -113,8 +113,16 @@ export function useCart() {
     setWeightValue('');
   }, [weightModal, weightValue, addProductToCart]);
 
+  // Anti-double scan: ignore same barcode within 1.5 seconds
+  const lastScanRef = useRef<{ value: string; time: number }>({ value: '', time: 0 });
+
   const handleScan = useCallback(async (value: string) => {
     if (!value.trim()) return;
+    const now = Date.now();
+    if (lastScanRef.current.value === value.trim() && now - lastScanRef.current.time < 1500) {
+      return; // Same barcode within 1.5s → ignore
+    }
+    lastScanRef.current = { value: value.trim(), time: now };
     setError('');
     const localMatch = catalogue.find((p) => p.ean === value.trim());
     if (localMatch) { handleSelectProduct(localMatch); return; }

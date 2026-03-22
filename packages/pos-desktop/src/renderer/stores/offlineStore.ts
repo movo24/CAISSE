@@ -527,9 +527,24 @@ export const useOfflineStore = create<OfflineState>((set, get) => ({
 
   persistQueue: () => {
     try {
-      localStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(get().queue));
-    } catch (e) {
-      console.error('[OFFLINE] Failed to persist queue:', e);
+      const queue = get().queue;
+      // Serialize first — if this fails, don't corrupt localStorage
+      const serialized = JSON.stringify(queue);
+      localStorage.setItem(QUEUE_STORAGE_KEY, serialized);
+    } catch (e: any) {
+      if (e?.name === 'QuotaExceededError') {
+        // Storage full — remove oldest synced entries and retry
+        const queue = get().queue.filter((entry) => entry.status !== 'synced');
+        try {
+          localStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(queue));
+          set({ queue, syncedCount: 0 });
+          console.warn('[OFFLINE] Storage quota exceeded — cleared synced entries');
+        } catch {
+          console.error('[OFFLINE] CRITICAL: Cannot persist queue even after cleanup');
+        }
+      } else {
+        console.error('[OFFLINE] Failed to persist queue:', e);
+      }
     }
   },
 
