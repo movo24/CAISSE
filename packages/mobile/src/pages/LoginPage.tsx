@@ -14,26 +14,30 @@ export function LoginPage() {
   const [showStoreInput, setShowStoreInput] = useState(() => !localStorage.getItem('lastStoreId'));
 
   const handlePinDigit = useCallback((digit: string) => {
+    // Clear error on new input
+    if (useAuthStore.getState().error) {
+      useAuthStore.setState({ error: null });
+    }
     setPin((prev) => {
-      if (prev.length >= 6) return prev;
-      const newPin = prev + digit;
-      // Auto-submit on 4 digits (or 6)
-      if (newPin.length === 4 && storeId) {
-        setTimeout(() => {
-          useAuthStore.getState().login(storeId, newPin);
-        }, 150);
-      }
-      return newPin;
+      if (prev.length >= 8) return prev;
+      return prev + digit;
     });
-  }, [storeId]);
+  }, []);
 
   const handleDelete = useCallback(() => {
+    if (useAuthStore.getState().error) {
+      useAuthStore.setState({ error: null });
+    }
     setPin((prev) => prev.slice(0, -1));
   }, []);
 
-  const handleSubmit = useCallback(() => {
+  const handleSubmit = useCallback(async () => {
     if (pin.length >= 4 && storeId) {
-      login(storeId, pin);
+      await login(storeId, pin);
+      // Reset PIN after failed attempt
+      if (!useAuthStore.getState().isAuthenticated) {
+        setTimeout(() => setPin(''), 1500);
+      }
     }
   }, [pin, storeId, login]);
 
@@ -91,9 +95,9 @@ export function LoginPage() {
             {storeId}
           </button>
 
-          {/* PIN dots */}
-          <div className="flex items-center justify-center gap-3 mb-6">
-            {[0, 1, 2, 3].map((i) => (
+          {/* PIN dots (supports 4-8 digit PINs) */}
+          <div className="flex items-center justify-center gap-2.5 mb-6">
+            {[0, 1, 2, 3, 4, 5].map((i) => (
               <div
                 key={i}
                 className={`w-4 h-4 rounded-full transition-all duration-200 ${
