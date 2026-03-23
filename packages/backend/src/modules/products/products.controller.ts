@@ -49,9 +49,15 @@ export class ProductsController {
   }
 
   @Get('categories')
-  @ApiOperation({ summary: 'List distinct product categories for store' })
+  @ApiOperation({ summary: 'List product categories for store' })
   getCategories(@Request() req: any) {
     return this.productsService.getCategories(req.user.storeId);
+  }
+
+  @Post('categories')
+  @ApiOperation({ summary: 'Create a product category' })
+  createCategory(@Request() req: any, @Body() body: { name: string }) {
+    return this.productsService.createCategory(req.user.storeId, body.name);
   }
 
   @Get('stock-alerts')

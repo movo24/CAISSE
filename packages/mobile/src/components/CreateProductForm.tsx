@@ -8,9 +8,9 @@
 // On success: returns the created product so ScanPage can show it.
 // ─────────────────────────────────────────────────────────────────
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
-  X, PackagePlus, Check, Loader2, ChevronDown,
+  X, PackagePlus, Check, Loader2, ChevronDown, Plus,
 } from 'lucide-react';
 import { productsApi } from '../services/api';
 import { ProductImagePicker } from './ProductImagePicker';
@@ -32,7 +32,11 @@ export function CreateProductForm({ ean, onCreated, onClose }: CreateProductForm
   const [description, setDescription] = useState('');
   const [productImage, setProductImage] = useState<string | null>(null);
 
-  const [categories, setCategories] = useState<string[]>([]);
+  const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
+  const [catSearch, setCatSearch] = useState('');
+  const [catOpen, setCatOpen] = useState(false);
+  const [creatingCat, setCreatingCat] = useState(false);
+  const catRef = useRef<HTMLDivElement>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -42,10 +46,44 @@ export function CreateProductForm({ ean, onCreated, onClose }: CreateProductForm
     productsApi.categories()
       .then((res) => {
         const cats = res.data;
-        if (Array.isArray(cats)) setCategories(cats.filter(Boolean));
+        if (Array.isArray(cats)) setCategories(cats.filter((c: any) => c && c.id));
       })
       .catch(() => {});
   }, []);
+
+  // Close category dropdown on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (catRef.current && !catRef.current.contains(e.target as Node)) setCatOpen(false);
+    };
+    if (catOpen) document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [catOpen]);
+
+  const selectedCatName = categories.find((c) => c.id === categoryId)?.name || '';
+  const filteredCats = categories.filter((c) =>
+    c.name.toLowerCase().includes(catSearch.toLowerCase()),
+  );
+  const canCreateNewCat = catSearch.trim().length > 0 && !filteredCats.some(
+    (c) => c.name.toLowerCase() === catSearch.trim().toLowerCase(),
+  );
+
+  const handleCreateCategory = async () => {
+    if (!catSearch.trim() || creatingCat) return;
+    setCreatingCat(true);
+    try {
+      const res = await productsApi.createCategory(catSearch.trim());
+      const newCat = res.data;
+      setCategories((prev) => [...prev, newCat].sort((a, b) => a.name.localeCompare(b.name)));
+      setCategoryId(newCat.id);
+      setCatSearch('');
+      setCatOpen(false);
+    } catch {
+      // silently fail — user can retry
+    } finally {
+      setCreatingCat(false);
+    }
+  };
 
   const handleSubmit = async () => {
     // Validation
@@ -179,31 +217,74 @@ export function CreateProductForm({ ean, onCreated, onClose }: CreateProductForm
               </div>
             </div>
 
-            {/* Catégorie — select existante ou saisie libre */}
-            <div>
+            {/* Catégorie — dropdown avec recherche + création */}
+            <div ref={catRef} className="relative">
               <label className="block text-xs font-semibold text-gray-700 mb-1">Catégorie</label>
-              {categories.length > 0 ? (
-                <div className="relative">
-                  <select
-                    value={categoryId}
-                    onChange={(e) => setCategoryId(e.target.value)}
-                    className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm appearance-none bg-white focus:outline-none focus:ring-2 focus:ring-violet-500"
-                  >
-                    <option value="">-- Aucune --</option>
-                    {categories.map((cat) => (
-                      <option key={cat} value={cat}>{cat}</option>
+              <button
+                type="button"
+                onClick={() => setCatOpen(!catOpen)}
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm bg-white flex items-center justify-between focus:outline-none focus:ring-2 focus:ring-violet-500"
+              >
+                <span className={selectedCatName ? 'text-gray-900 font-medium' : 'text-gray-400'}>
+                  {selectedCatName || '-- Sélectionner --'}
+                </span>
+                <ChevronDown size={16} className={`text-gray-400 transition-transform ${catOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {catOpen && (
+                <div className="absolute left-0 right-0 top-full mt-1 bg-white rounded-xl border border-gray-200 shadow-lg z-20 max-h-48 overflow-hidden">
+                  {/* Search */}
+                  <div className="p-2 border-b border-gray-100">
+                    <input
+                      type="text"
+                      value={catSearch}
+                      onChange={(e) => setCatSearch(e.target.value)}
+                      placeholder="Rechercher ou créer..."
+                      className="w-full px-3 py-2 rounded-lg border border-gray-200 text-xs focus:outline-none focus:ring-1 focus:ring-violet-500"
+                      autoFocus
+                    />
+                  </div>
+
+                  {/* Options */}
+                  <div className="overflow-y-auto max-h-32">
+                    {/* None option */}
+                    <button
+                      type="button"
+                      onClick={() => { setCategoryId(''); setCatOpen(false); setCatSearch(''); }}
+                      className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 ${!categoryId ? 'text-violet-600 font-semibold' : 'text-gray-500'}`}
+                    >
+                      -- Aucune --
+                    </button>
+
+                    {filteredCats.map((cat) => (
+                      <button
+                        key={cat.id}
+                        type="button"
+                        onClick={() => { setCategoryId(cat.id); setCatOpen(false); setCatSearch(''); }}
+                        className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 ${categoryId === cat.id ? 'text-violet-600 font-semibold bg-violet-50' : 'text-gray-700'}`}
+                      >
+                        {cat.name}
+                      </button>
                     ))}
-                  </select>
-                  <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+
+                    {filteredCats.length === 0 && !canCreateNewCat && (
+                      <p className="text-center text-[10px] text-gray-400 py-2">Aucune catégorie</p>
+                    )}
+                  </div>
+
+                  {/* Create new */}
+                  {canCreateNewCat && (
+                    <button
+                      type="button"
+                      onClick={handleCreateCategory}
+                      disabled={creatingCat}
+                      className="w-full flex items-center gap-2 px-3 py-2.5 text-xs font-bold text-violet-600 bg-violet-50 border-t border-gray-100 hover:bg-violet-100 transition-colors"
+                    >
+                      {creatingCat ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />}
+                      Créer « {catSearch.trim()} »
+                    </button>
+                  )}
                 </div>
-              ) : (
-                <input
-                  type="text"
-                  value={categoryId}
-                  onChange={(e) => setCategoryId(e.target.value)}
-                  placeholder="Ex: Boissons, Snacks, Confiserie..."
-                  className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
-                />
               )}
             </div>
 

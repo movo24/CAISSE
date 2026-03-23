@@ -8,6 +8,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ProductEntity } from '../../database/entities/product.entity';
 import { PriceHistoryEntity } from '../../database/entities/price-history.entity';
+import { ProductCategoryEntity } from '../../database/entities/product-category.entity';
 import { AuditService } from '../audit/audit.service';
 import { PaginatedResult } from '../../common/dto/pagination.dto';
 
@@ -18,6 +19,8 @@ export class ProductsService {
     private productRepo: Repository<ProductEntity>,
     @InjectRepository(PriceHistoryEntity)
     private priceHistoryRepo: Repository<PriceHistoryEntity>,
+    @InjectRepository(ProductCategoryEntity)
+    private categoryRepo: Repository<ProductCategoryEntity>,
     private auditService: AuditService,
   ) {}
 
@@ -163,15 +166,30 @@ export class ProductsService {
     return this.productRepo.save(product);
   }
 
-  async getCategories(storeId: string): Promise<string[]> {
-    const result = await this.productRepo
-      .createQueryBuilder('p')
-      .select('DISTINCT p.category_id', 'category')
-      .where('p.store_id = :storeId', { storeId })
-      .andWhere('p.category_id IS NOT NULL')
-      .orderBy('p.category_id')
-      .getRawMany();
-    return result.map((r) => r.category);
+  async getCategories(storeId: string): Promise<{ id: string; name: string }[]> {
+    return this.categoryRepo.find({
+      where: { storeId },
+      order: { name: 'ASC' },
+      select: ['id', 'name'],
+    });
+  }
+
+  async createCategory(storeId: string, name: string): Promise<ProductCategoryEntity> {
+    const trimmed = name.trim();
+    if (!trimmed) throw new BadRequestException('Category name is required');
+
+    // Check for duplicates (case-insensitive)
+    const existing = await this.categoryRepo
+      .createQueryBuilder('c')
+      .where('c.store_id = :storeId', { storeId })
+      .andWhere('LOWER(c.name) = LOWER(:name)', { name: trimmed })
+      .getOne();
+    if (existing) return existing;
+
+    return this.categoryRepo.save({
+      name: trimmed,
+      storeId,
+    });
   }
 
   async getStockAlerts(storeId: string): Promise<{

@@ -170,6 +170,7 @@ export const productsApi = {
   scan: (ean: string) => api.get(`/products/scan/${ean}`),
   get: (id: string) => api.get(`/products/${id}`),
   categories: () => api.get('/products/categories'),
+  createCategory: (name: string) => api.post('/products/categories', { name }),
   create: (data: {
     ean: string;
     name: string;
