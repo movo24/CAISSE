@@ -9,7 +9,7 @@
 import { useState } from 'react';
 import {
   X, Minus, Plus, Package, Tag, BarChart3,
-  CheckCircle2, AlertTriangle,
+  CheckCircle2, AlertTriangle, ChevronDown, ShieldAlert,
 } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 import { stockApi, productsApi } from '../services/api';
@@ -37,6 +37,20 @@ interface ProductCardProps {
   onStockUpdated?: (newQuantity: number) => void;
 }
 
+const STOCK_REASONS = [
+  { value: 'reception', label: 'Réception marchandise', type: 'positive' },
+  { value: 'retour_client', label: 'Retour client', type: 'positive' },
+  { value: 'correction_inventaire', label: 'Correction inventaire', type: 'both' },
+  { value: 'casse', label: 'Casse', type: 'negative' },
+  { value: 'vol_client', label: 'Vol client', type: 'negative' },
+  { value: 'perte_inconnue', label: 'Perte inconnue', type: 'negative' },
+  { value: 'retour_fournisseur', label: 'Retour fournisseur', type: 'negative' },
+  { value: 'erreur_caisse', label: 'Erreur caisse', type: 'negative' },
+  { value: 'autre', label: 'Autre', type: 'both' },
+] as const;
+
+const MANAGER_THRESHOLD = -5; // Needs manager confirmation if adjustment <= -5
+
 export function ProductCard({ product, onClose, onStockUpdated }: ProductCardProps) {
   const canModifyStock = useAuthStore((s) => s.canModifyStock);
   const [adjustQty, setAdjustQty] = useState(0);
@@ -45,22 +59,45 @@ export function ProductCard({ product, onClose, onStockUpdated }: ProductCardPro
   const [error, setError] = useState<string | null>(null);
   const [imageUrl, setImageUrl] = useState(product.imageUrl || null);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [reason, setReason] = useState('');
+  const [reasonComment, setReasonComment] = useState('');
+  const [showReasonPicker, setShowReasonPicker] = useState(false);
 
   const stockQty = safeInt(product.stockQuantity);
   const price = safeInt(product.priceMinorUnits);
   const threshold = product.stockAlertThreshold != null ? safeInt(product.stockAlertThreshold) : null;
   const isLowStock = threshold !== null && stockQty <= threshold;
 
-  const handleAdjust = async () => {
+  const handleAdjustClick = () => {
     if (adjustQty === 0) return;
+    setError(null);
+    // Show reason picker before adjustment
+    setShowReasonPicker(true);
+  };
+
+  const handleConfirmAdjust = async () => {
+    if (!reason) {
+      setError('Sélectionnez un motif');
+      return;
+    }
+    if (reason === 'autre' && !reasonComment.trim()) {
+      setError('Commentaire obligatoire pour "Autre"');
+      return;
+    }
+
+    setShowReasonPicker(false);
     setAdjusting(true);
     setError(null);
 
+    const reasonLabel = STOCK_REASONS.find((r) => r.value === reason)?.label || reason;
+    const fullReason = reason === 'autre'
+      ? `Autre: ${reasonComment.trim()}`
+      : reasonLabel;
+
     try {
-      // Use DELTA mode — adjust relative to current stock
       await stockApi.adjust(product.id, {
         quantity: adjustQty,
-        reason: adjustQty > 0 ? 'reception_mobile' : 'ajustement_mobile',
+        reason: fullReason,
         mode: 'delta',
       });
 
@@ -70,6 +107,8 @@ export function ProductCard({ product, onClose, onStockUpdated }: ProductCardPro
       setTimeout(() => {
         setSuccess(false);
         setAdjustQty(0);
+        setReason('');
+        setReasonComment('');
       }, 1500);
     } catch (err: any) {
       const rawMsg = err.response?.data?.message;
@@ -223,28 +262,93 @@ export function ProductCard({ product, onClose, onStockUpdated }: ProductCardPro
                 </p>
               )}
 
+              {/* Threshold warning */}
+              {adjustQty <= MANAGER_THRESHOLD && (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-50 border border-amber-200 mb-3">
+                  <ShieldAlert size={14} className="text-amber-600 flex-shrink-0" />
+                  <p className="text-[10px] text-amber-700 font-medium">
+                    Ajustement important ({adjustQty}) — vérification manager recommandée
+                  </p>
+                </div>
+              )}
+
               {error && <p className="text-xs text-red-500 text-center mb-3">{error}</p>}
 
               {success && (
                 <div className="flex items-center justify-center gap-2 text-emerald-600 text-sm font-semibold mb-3">
                   <CheckCircle2 size={16} />
-                  Stock mis a jour
+                  Stock mis à jour
                 </div>
               )}
 
-              <button
-                onClick={handleAdjust}
-                disabled={adjustQty === 0 || adjusting}
-                className={`w-full py-3.5 rounded-2xl font-bold text-sm transition-all disabled:opacity-30 active:scale-[0.97] ${
-                  adjustQty > 0 ? 'bg-emerald-500 text-white' : adjustQty < 0 ? 'bg-red-500 text-white' : 'bg-gray-200 text-gray-500'
-                }`}
-              >
-                {adjusting
-                  ? 'Enregistrement...'
-                  : adjustQty === 0
-                    ? 'Aucun ajustement'
-                    : `Appliquer ${adjustQty > 0 ? '+' : ''}${adjustQty}`}
-              </button>
+              {/* Reason picker (shows before confirm) */}
+              {showReasonPicker && (
+                <div className="mb-4 p-4 rounded-2xl border border-gray-200 bg-gray-50 space-y-3">
+                  <p className="text-xs font-bold text-gray-700">Motif de l'ajustement <span className="text-red-500">*</span></p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {STOCK_REASONS
+                      .filter((r) => r.type === 'both' || (adjustQty > 0 ? r.type === 'positive' : r.type === 'negative'))
+                      .map((r) => (
+                        <button
+                          key={r.value}
+                          type="button"
+                          onClick={() => { setReason(r.value); setError(null); }}
+                          className={`px-3 py-2.5 rounded-xl text-[11px] font-semibold border transition-all ${
+                            reason === r.value
+                              ? 'bg-violet-600 text-white border-violet-600'
+                              : 'bg-white text-gray-600 border-gray-200 active:scale-95'
+                          }`}
+                        >
+                          {r.label}
+                        </button>
+                      ))}
+                  </div>
+
+                  {reason === 'autre' && (
+                    <input
+                      type="text"
+                      value={reasonComment}
+                      onChange={(e) => setReasonComment(e.target.value)}
+                      placeholder="Précisez le motif..."
+                      className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-xs focus:outline-none focus:ring-2 focus:ring-violet-500"
+                      autoFocus
+                    />
+                  )}
+
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => { setShowReasonPicker(false); setReason(''); setReasonComment(''); }}
+                      className="flex-1 py-2.5 rounded-xl border border-gray-200 text-xs font-semibold text-gray-500"
+                    >
+                      Annuler
+                    </button>
+                    <button
+                      onClick={handleConfirmAdjust}
+                      disabled={!reason || adjusting}
+                      className="flex-1 py-2.5 rounded-xl bg-violet-600 text-white text-xs font-bold disabled:opacity-40"
+                    >
+                      {adjusting ? 'Enregistrement...' : 'Confirmer'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Adjust button (opens reason picker) */}
+              {!showReasonPicker && (
+                <button
+                  onClick={handleAdjustClick}
+                  disabled={adjustQty === 0 || adjusting}
+                  className={`w-full py-3.5 rounded-2xl font-bold text-sm transition-all disabled:opacity-30 active:scale-[0.97] ${
+                    adjustQty > 0 ? 'bg-emerald-500 text-white' : adjustQty < 0 ? 'bg-red-500 text-white' : 'bg-gray-200 text-gray-500'
+                  }`}
+                >
+                  {adjusting
+                    ? 'Enregistrement...'
+                    : adjustQty === 0
+                      ? 'Aucun ajustement'
+                      : `Appliquer ${adjustQty > 0 ? '+' : ''}${adjustQty}`}
+                </button>
+              )}
             </div>
           )}
         </div>
