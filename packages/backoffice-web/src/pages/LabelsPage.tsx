@@ -1,6 +1,25 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Tag, Printer, Search, Check, Download, Plus, Minus, X, FileText, History } from 'lucide-react';
 import { productsApi } from '../services/api';
+import JsBarcode from 'jsbarcode';
+
+/** Generate barcode SVG string for a given EAN */
+function generateBarcodeSVG(ean: string, height: number): string {
+  try {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    JsBarcode(svg, ean, {
+      format: ean.length === 13 ? 'EAN13' : ean.length === 8 ? 'EAN8' : 'CODE128',
+      width: 1.2,
+      height,
+      displayValue: false,
+      margin: 0,
+    });
+    return svg.outerHTML;
+  } catch {
+    // Fallback: just show the EAN text if barcode generation fails
+    return `<span style="font-family:monospace;font-size:8px;">[${ean}]</span>`;
+  }
+}
 
 interface Product {
   id: string;
@@ -153,10 +172,8 @@ export function LabelsPage() {
         <div style="display:flex;align-items:flex-end;padding:${pad};padding-top:0;gap:2mm;">
           <!-- Code-barres + EAN -->
           <div style="flex:1;">
-            <div style="display:flex;gap:0.3mm;height:${barcodeH};">
-              ${p.ean.split('').map((_: string, i: number) =>
-                `<div style="width:${i % 3 === 0 ? '0.8' : i % 2 === 0 ? '0.5' : '0.3'}mm;background:#000;height:100%;"></div>`
-              ).join('')}
+            <div style="height:${barcodeH};overflow:hidden;">
+              ${generateBarcodeSVG(p.ean, labelSize === 'small' ? 20 : labelSize === 'medium' ? 30 : 45)}
             </div>
             <div style="font-size:${eanSize}px;color:#333;font-family:monospace;margin-top:0.5mm;letter-spacing:1px;">${p.ean}</div>
           </div>

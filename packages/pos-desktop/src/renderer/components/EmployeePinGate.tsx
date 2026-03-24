@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { Lock, Delete, UserCircle } from 'lucide-react';
+import { Lock, Delete, UserCircle, Loader2 } from 'lucide-react';
 import { usePOSStore } from '../stores/posStore';
+import { authApi } from '../services/api';
 
 /**
  * Overlay that requires employee PIN before starting a new ticket.
@@ -60,7 +61,7 @@ export function EmployeePinGate({ onVerified }: Props) {
 
   const handleDigit = useCallback((digit: string) => {
     setError('');
-    setPin((prev) => (prev.length >= 6 ? prev : prev + digit));
+    setPin((prev) => (prev.length >= 8 ? prev : prev + digit));
   }, []);
 
   const handleDelete = useCallback(() => {
@@ -68,20 +69,40 @@ export function EmployeePinGate({ onVerified }: Props) {
     setPin((prev) => prev.slice(0, -1));
   }, []);
 
-  const handleSubmit = useCallback(() => {
-    if (!employee) return;
-    // For now, verify against the logged-in employee's existence
-    // In a multi-employee setup, this would check against all store employees
-    if (pin.length >= 4) {
-      // Accept: employee is already authenticated via JWT session
-      // The PIN gate is for accountability (who is using the register right now)
+  const [verifying, setVerifying] = useState(false);
+
+  const handleSubmit = useCallback(async () => {
+    if (!employee || pin.length < 4) {
+      setError('PIN trop court (min 4 chiffres)');
+      return;
+    }
+
+    setVerifying(true);
+    setError('');
+
+    try {
+      // Verify PIN against backend — this checks the real bcrypt hash
+      const res = await authApi.loginPin(employee.storeId, pin);
+      const verified = res.data?.employee;
+
+      if (!verified) {
+        setError('PIN invalide');
+        setPin('');
+        setVerifying(false);
+        return;
+      }
+
+      // PIN is valid — use the verified employee name for accountability
       setLocked(false);
       setPin('');
       setError('');
-      const name = `${employee.firstName} ${employee.lastName}`;
-      onVerified(name);
-    } else {
-      setError('PIN trop court (min 4 chiffres)');
+      onVerified(`${verified.firstName} ${verified.lastName}`);
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || 'PIN invalide';
+      setError(msg);
+      setPin('');
+    } finally {
+      setVerifying(false);
     }
   }, [pin, employee, onVerified]);
 
@@ -96,12 +117,12 @@ export function EmployeePinGate({ onVerified }: Props) {
           <p className="text-xs text-gray-500 mt-1">Saisissez votre PIN pour commencer</p>
         </div>
 
-        {/* PIN dots */}
-        <div className="flex items-center justify-center gap-2.5 mb-4">
-          {[0, 1, 2, 3].map((i) => (
+        {/* PIN dots (supports 4-8 digit PINs) */}
+        <div className="flex items-center justify-center gap-2 mb-4">
+          {[0, 1, 2, 3, 4, 5].map((i) => (
             <div
-              key={i}
-              className={`w-3.5 h-3.5 rounded-full transition-all ${
+              key={`pin-dot-${i}`}
+              className={`w-3 h-3 rounded-full transition-all ${
                 pin.length > i ? 'bg-indigo-600 scale-110' : 'bg-gray-200'
               }`}
             />
@@ -134,9 +155,9 @@ export function EmployeePinGate({ onVerified }: Props) {
         </div>
 
         {pin.length >= 4 && (
-          <button onClick={handleSubmit}
-            className="w-full mt-4 py-3 rounded-xl bg-indigo-600 text-white font-bold text-sm hover:bg-indigo-700 transition-colors">
-            Valider
+          <button onClick={handleSubmit} disabled={verifying}
+            className="w-full mt-4 py-3 rounded-xl bg-indigo-600 text-white font-bold text-sm hover:bg-indigo-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
+            {verifying ? <><Loader2 size={16} className="animate-spin" /> Vérification...</> : 'Valider'}
           </button>
         )}
       </div>

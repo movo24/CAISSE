@@ -35,6 +35,8 @@ export function ReceivingPage() {
   const [error, setError] = useState<string | null>(null);
   const [submitProgress, setSubmitProgress] = useState({ current: 0, total: 0 });
   const [lastAddedName, setLastAddedName] = useState<string | null>(null);
+  const [blNumber, setBlNumber] = useState('');
+  const [supplier, setSupplier] = useState('');
 
   useEffect(() => {
     if (sessionType !== 'receiving') {
@@ -106,7 +108,7 @@ export function ReceivingPage() {
         // Use DELTA mode — add received quantity to current stock
         await stockApi.adjust(item.product.id, {
           quantity: receivedQty,
-          reason: 'reception_mobile',
+          reason: `reception_mobile${blNumber ? ` | BL: ${blNumber}` : ''}${supplier ? ` | Fournisseur: ${supplier}` : ''}`,
           mode: 'delta',
         });
       } catch (err: any) {
@@ -206,6 +208,24 @@ export function ReceivingPage() {
           <ScanBarcode size={14} />
           Scanner
         </button>
+      </div>
+
+      {/* BL / Supplier (optional) */}
+      <div className="px-4 pt-3 pb-1 flex gap-2">
+        <input
+          type="text"
+          value={blNumber}
+          onChange={(e) => setBlNumber(e.target.value)}
+          placeholder="N° BL (optionnel)"
+          className="flex-1 px-3 py-2 rounded-lg border border-gray-200 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-400 bg-white"
+        />
+        <input
+          type="text"
+          value={supplier}
+          onChange={(e) => setSupplier(e.target.value)}
+          placeholder="Fournisseur"
+          className="flex-1 px-3 py-2 rounded-lg border border-gray-200 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-400 bg-white"
+        />
       </div>
 
       {/* Items list */}

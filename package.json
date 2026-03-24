@@ -27,6 +27,7 @@
   },
   "dependencies": {
     "@zxing/browser": "^0.1.5",
-    "@zxing/library": "^0.21.3"
+    "@zxing/library": "^0.21.3",
+    "jsbarcode": "^3.12.3"
   }
 }
