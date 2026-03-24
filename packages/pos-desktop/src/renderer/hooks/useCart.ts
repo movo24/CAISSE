@@ -50,7 +50,10 @@ export function useCart() {
 
     productsApi.categories()
       .then((res) => {
-        if (Array.isArray(res.data)) setCategories(res.data);
+        if (Array.isArray(res.data)) {
+          // API may return strings or {id, name} objects — normalize to strings
+          setCategories(res.data.map((c: any) => typeof c === 'string' ? c : c.name || c.id || String(c)));
+        }
       })
       .catch(() => {
         // Categories endpoint may not exist yet
