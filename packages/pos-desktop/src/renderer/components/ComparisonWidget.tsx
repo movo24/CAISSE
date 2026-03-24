@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Trophy, AlertTriangle, TrendingUp, Sparkles, X } from 'lucide-react';
 import { useComparisonStore } from '../stores/comparisonStore';
 
@@ -25,6 +25,26 @@ export function ComparisonWidget() {
   const [open, setOpen] = useState(false);
   const [aiInsight, setAiInsight] = useState<string | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Close on click outside + Escape
+  useEffect(() => {
+    if (!open) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [open]);
 
   // Auto-refresh display every 60s
   const [, setTick] = useState(0);
@@ -57,7 +77,7 @@ export function ComparisonWidget() {
   };
 
   return (
-    <div className="relative">
+    <div ref={containerRef} className="relative">
       {/* Badge compact */}
       <button
         onClick={() => setOpen(!open)}
