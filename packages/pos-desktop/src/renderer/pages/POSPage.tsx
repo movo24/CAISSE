@@ -32,6 +32,7 @@ import { useCloudSyncStore } from '../services/cloudSyncIdentity';
 import { Wifi, WifiOff, CloudOff, Cloud, RefreshCw as SyncIcon, ShieldAlert, Upload, Lock as LockIcon } from 'lucide-react';
 import { IPadPOSLayout } from '../components/ipad/IPadPOSLayout';
 import { StockAlertToast } from '../components/StockAlertToast';
+import { SalesCockpit } from '../components/SalesCockpit';
 
 /* ── Helpers ── */
 
@@ -1029,6 +1030,11 @@ export function POSPage() {
           {error && (
             <div className="max-w-2xl mx-auto w-full bg-pos-danger/5 text-pos-danger rounded-2xl px-4 py-2.5 text-sm font-medium animate-slide-up">{error}</div>
           )}
+
+          {/* ── Sales Cockpit (shift performance) ── */}
+          <div className="max-w-2xl mx-auto w-full mb-3">
+            <SalesCockpit />
+          </div>
 
           {/* ── Cart items ── */}
           <div className="flex-1 overflow-auto space-y-2 max-w-2xl mx-auto w-full">
