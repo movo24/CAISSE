@@ -78,6 +78,12 @@ export class ProductsController {
     return this.productsService.getPriceHistory(id, req.user.storeId);
   }
 
+  @Get(':id/price-analytics')
+  @ApiOperation({ summary: 'Get price analytics with sales impact per period' })
+  priceAnalytics(@Param('id') id: string, @Request() req: any) {
+    return this.productsService.getPriceAnalytics(id, req.user.storeId);
+  }
+
   @Put(':id')
   @ApiOperation({ summary: 'Update a product' })
   update(@Param('id') id: string, @Body() dto: UpdateProductDto, @Request() req: any) {

@@ -225,7 +225,6 @@ export class ProductsService {
     productId: string,
     storeId?: string,
   ): Promise<PriceHistoryEntity[]> {
-    // Verify product belongs to store before returning history
     if (storeId) {
       await this.findOneForStore(productId, storeId);
     }
@@ -233,6 +232,142 @@ export class ProductsService {
       where: { productId },
       order: { changedAt: 'DESC' },
     });
+  }
+
+  /**
+   * Price analytics: for each price period, calculate sales impact.
+   * Returns periods with units sold, revenue, daily averages, and delta vs previous period.
+   */
+  async getPriceAnalytics(productId: string, storeId: string) {
+    const product = await this.findOneForStore(productId, storeId);
+    const history = await this.priceHistoryRepo.find({
+      where: { productId },
+      order: { changedAt: 'ASC' },
+    });
+
+    // Build price periods: each change creates a new period
+    const periods: {
+      priceMinorUnits: number;
+      from: Date;
+      to: Date;
+      changedBy: string;
+      changedByRole: string;
+      changeSource: string;
+      reason: string;
+    }[] = [];
+
+    const now = new Date();
+
+    if (history.length === 0) {
+      // No price changes — single period since product creation
+      periods.push({
+        priceMinorUnits: product.priceMinorUnits,
+        from: product.createdAt,
+        to: now,
+        changedBy: 'initial',
+        changedByRole: '-',
+        changeSource: 'creation',
+        reason: 'Prix initial',
+      });
+    } else {
+      // First period: from product creation to first change
+      periods.push({
+        priceMinorUnits: history[0].oldPriceMinorUnits,
+        from: product.createdAt,
+        to: history[0].changedAt,
+        changedBy: 'initial',
+        changedByRole: '-',
+        changeSource: 'creation',
+        reason: 'Prix initial',
+      });
+
+      // Subsequent periods from each price change
+      for (let i = 0; i < history.length; i++) {
+        const entry = history[i];
+        const nextEntry = history[i + 1];
+        periods.push({
+          priceMinorUnits: entry.newPriceMinorUnits,
+          from: entry.changedAt,
+          to: nextEntry ? nextEntry.changedAt : now,
+          changedBy: entry.changedBy,
+          changedByRole: entry.changedByRole || '-',
+          changeSource: entry.changeSource || 'unknown',
+          reason: entry.reason || '-',
+        });
+      }
+    }
+
+    // For each period, query sales data
+    const analytics = [];
+    for (let i = 0; i < periods.length; i++) {
+      const period = periods[i];
+      const daysDuration = Math.max(1, Math.ceil(
+        (period.to.getTime() - period.from.getTime()) / (1000 * 60 * 60 * 24),
+      ));
+
+      // Query: sum quantities and revenue for this product in this period
+      const result = await this.productRepo.manager.query(
+        `SELECT
+           COALESCE(SUM(li.quantity), 0) AS units_sold,
+           COALESCE(SUM(li.line_total_minor_units), 0) AS revenue
+         FROM sale_line_items li
+         JOIN sales s ON s.id = li.sale_id
+         WHERE li.product_id = $1
+           AND s.store_id = $2
+           AND s.status = 'completed'
+           AND s.created_at >= $3
+           AND s.created_at < $4`,
+        [productId, storeId, period.from.toISOString(), period.to.toISOString()],
+      );
+
+      const unitsSold = parseInt(result[0]?.units_sold || '0', 10);
+      const revenue = parseInt(result[0]?.revenue || '0', 10);
+      const unitsPerDay = Math.round((unitsSold / daysDuration) * 100) / 100;
+      const revenuePerDay = Math.round((revenue / daysDuration) * 100) / 100;
+
+      // Delta vs previous period
+      const prev: any = i > 0 ? analytics[i - 1] : null;
+      const priceDeltaPct = prev
+        ? Math.round(((period.priceMinorUnits - prev.priceMinorUnits) / prev.priceMinorUnits) * 10000) / 100
+        : null;
+      const unitsPerDayDeltaPct = prev && prev.unitsPerDay > 0
+        ? Math.round(((unitsPerDay - prev.unitsPerDay) / prev.unitsPerDay) * 10000) / 100
+        : null;
+      const revenuePerDayDeltaPct = prev && prev.revenuePerDay > 0
+        ? Math.round(((revenuePerDay - prev.revenuePerDay) / prev.revenuePerDay) * 10000) / 100
+        : null;
+
+      analytics.push({
+        periodIndex: i,
+        priceMinorUnits: period.priceMinorUnits,
+        priceEuros: period.priceMinorUnits / 100,
+        from: period.from.toISOString(),
+        to: period.to.toISOString(),
+        daysDuration,
+        unitsSold,
+        revenueMinorUnits: revenue,
+        revenueEuros: revenue / 100,
+        unitsPerDay,
+        revenuePerDay: revenuePerDay / 100,
+        changedBy: period.changedBy,
+        changedByRole: period.changedByRole,
+        changeSource: period.changeSource,
+        reason: period.reason,
+        // Delta vs previous period
+        vs: prev ? {
+          priceDeltaPct,
+          unitsPerDayDeltaPct,
+          revenuePerDayDeltaPct,
+        } : null,
+      });
+    }
+
+    return {
+      productId,
+      productName: product.name,
+      currentPriceMinorUnits: product.priceMinorUnits,
+      periods: analytics,
+    };
   }
 
   /**
