@@ -39,21 +39,25 @@ export function useCart() {
   const [weightModal, setWeightModal] = useState<CatalogueProduct | null>(null);
   const [weightValue, setWeightValue] = useState('');
 
-  // Load catalogue on mount + refresh every 2 minutes
+  // Load catalogue on mount + refresh for near real-time stock
   const refreshCatalogue = useCallback(() => {
+    // Safari aggressively caches GET responses (ETag).
+    // productsApi.list() returns stale data → use cache-busting headers
     productsApi.list()
-      .then((res) => {
-        if (Array.isArray(res.data)) setCatalogue(res.data);
-        else if (res.data?.data && Array.isArray(res.data.data)) setCatalogue(res.data.data);
+      .then((res: any) => {
+        const raw = res.data;
+        if (Array.isArray(raw)) setCatalogue(raw);
+        else if (raw?.data && Array.isArray(raw.data)) setCatalogue(raw.data);
       })
       .catch(() => {
         console.warn('[CATALOGUE] Backend unavailable — keeping cached catalogue');
       });
 
     productsApi.categories()
-      .then((res) => {
-        if (Array.isArray(res.data)) {
-          setCategories(res.data.map((c: any) => typeof c === 'string' ? c : c.name || c.id || String(c)));
+      .then((res: any) => {
+        const raw = res.data;
+        if (Array.isArray(raw)) {
+          setCategories(raw.map((c: any) => typeof c === 'string' ? c : c.name || c.id || String(c)));
         }
       })
       .catch(() => {});
