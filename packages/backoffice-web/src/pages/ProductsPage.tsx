@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { productsApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
+import { PriceAnalyticsPanel } from '../components/PriceAnalyticsPanel';
 
 type SortKey = 'name' | 'price' | 'stock' | 'category';
 type SortDir = 'asc' | 'desc';
@@ -69,6 +70,9 @@ export function ProductsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ name: '', ean: '', price: '', stock: '', category: '' });
+
+  // Price analytics panel
+  const [analyticsProductId, setAnalyticsProductId] = useState<string | null>(null);
 
   const fetchProducts = useCallback(async () => {
     try {
@@ -326,8 +330,8 @@ export function ProductsPage() {
               const badge = stockBadge(product.stock);
               const BadgeIcon = badge.icon;
               return (
+                <React.Fragment key={product.id}>
                 <tr
-                  key={product.id}
                   className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors group"
                 >
                   <td className="py-3 px-4 text-xs text-gray-300 font-mono">{idx + 1}</td>
@@ -362,6 +366,13 @@ export function ProductsPage() {
                   <td className="py-3 px-4 text-right">
                     <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button
+                        onClick={() => setAnalyticsProductId(analyticsProductId === product.id ? null : product.id)}
+                        className={`p-2 rounded-lg transition-colors ${analyticsProductId === product.id ? 'bg-indigo-100 text-bo-accent' : 'hover:bg-indigo-50 text-gray-400 hover:text-bo-accent'}`}
+                        title="Historique tarifaire"
+                      >
+                        <BarChart3 size={14} />
+                      </button>
+                      <button
                         onClick={() => openEdit(product)}
                         className="p-2 rounded-lg hover:bg-indigo-50 text-gray-400 hover:text-bo-accent transition-colors"
                         title="Modifier"
@@ -378,6 +389,17 @@ export function ProductsPage() {
                     </div>
                   </td>
                 </tr>
+                {/* Price analytics expandable row */}
+                {analyticsProductId === product.id && (
+                  <tr>
+                    <td colSpan={6} className="p-0">
+                      <div className="px-6 py-4 bg-bo-subtle/50 border-b border-bo-border animate-fade-in">
+                        <PriceAnalyticsPanel productId={product.id} />
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                </React.Fragment>
               );
             })}
           </tbody>
