@@ -19,6 +19,7 @@ import { ShiftIndicator } from '../ShiftIndicator';
 import { StaffingWidget } from '../StaffingWidget';
 import { ComparisonWidget } from '../ComparisonWidget';
 import { ShiftWarning } from '../ShiftWarning';
+import { SalesCockpit } from '../SalesCockpit';
 import { CategoryPanel } from './CategoryPanel';
 import { ProductGrid } from './ProductGrid';
 import { FavoritesBar } from './FavoritesBar';
@@ -447,6 +448,11 @@ export function IPadPOSLayout() {
               </div>
             </div>
           )}
+
+          {/* Sales Cockpit — shift performance */}
+          <div className="px-2 pt-2">
+            <SalesCockpit />
+          </div>
 
           {/* Cart items — bigger touch targets in landscape */}
           <div className={`flex-1 overflow-y-auto cart-scroll space-y-1 ${isLandscape ? 'p-2' : 'p-2'}`}>
