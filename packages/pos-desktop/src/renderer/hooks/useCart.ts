@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { usePOSStore } from '../stores/posStore';
 import { productsApi, customersApi } from '../services/api';
+import { posEventBus } from '../services/posEventBus';
 
 /* ── Product type (mirrors backend API) ── */
 
@@ -58,10 +59,19 @@ export function useCart() {
       .catch(() => {});
   }, []);
 
+  // Refresh immediately after a sale completes (stock changed on backend)
+  useEffect(() => {
+    const unsub = posEventBus.on('SALE_COMPLETED', () => {
+      // Small delay to let backend commit the transaction
+      setTimeout(refreshCatalogue, 500);
+    });
+    return unsub;
+  }, [refreshCatalogue]);
+
   useEffect(() => {
     refreshCatalogue();
-    // Auto-refresh every 2 minutes to pick up new products
-    const interval = setInterval(refreshCatalogue, 120_000);
+    // Auto-refresh every 15 seconds for near real-time stock sync
+    const interval = setInterval(refreshCatalogue, 15_000);
     return () => clearInterval(interval);
   }, [refreshCatalogue]);
 

@@ -416,6 +416,9 @@ export function useDashboardData(): DashboardData {
 
   useEffect(() => {
     fetchAll();
+    // Auto-refresh dashboard every 30 seconds for near real-time data
+    const interval = setInterval(fetchAll, 30_000);
+    return () => clearInterval(interval);
   }, [fetchAll]);
 
   return {
