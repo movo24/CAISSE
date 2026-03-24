@@ -70,7 +70,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       set({
         isAuthenticated: true,
         employee,
-        storeInfo: storeInfo || { id: storeId, name: storeId },
+        storeInfo: storeInfo
+          ? { id: storeId, name: storeInfo.storeName || storeInfo.name || storeId, address: storeInfo.address }
+          : { id: storeId, name: storeId },
         accessToken,
         isLoading: false,
       });
