@@ -136,6 +136,9 @@ export function ProductsPage() {
 
   const openAdd = () => { resetForm(); setShowModal(true); };
 
+  const [originalPrice, setOriginalPrice] = useState<number | null>(null);
+  const [priceConfirm, setPriceConfirm] = useState(false);
+
   const openEdit = (p: Product) => {
     setForm({
       name: p.name,
@@ -144,18 +147,31 @@ export function ProductsPage() {
       stock: String(p.stock),
       category: p.category,
     });
+    setOriginalPrice(p.price);
     setEditingId(p.id);
     setShowModal(true);
   };
 
   const handleSave = async () => {
     if (!form.name.trim()) return;
+
+    // Price change confirmation for edits
+    const newPrice = Math.round(parseFloat(form.price || '0') * 100);
+    if (editingId && originalPrice !== null) {
+      const oldPriceCents = Math.round(originalPrice * 100);
+      if (oldPriceCents !== newPrice && !priceConfirm) {
+        setPriceConfirm(true);
+        return;
+      }
+    }
+    setPriceConfirm(false);
+
     try {
       setSaving(true);
       const payload = {
         name: form.name,
         ean: form.ean,
-        price: Math.round(parseFloat(form.price || '0') * 100),
+        price: newPrice,
         stock: parseInt(form.stock || '0', 10),
         category: form.category,
         storeId: employee?.storeId,
@@ -166,6 +182,7 @@ export function ProductsPage() {
         await productsApi.create(payload);
       }
       setShowModal(false);
+      setOriginalPrice(null);
       resetForm();
       await fetchProducts();
     } catch (err: any) {
@@ -497,8 +514,19 @@ export function ProductsPage() {
             </div>
 
             <div className="flex items-center justify-end gap-2 mt-6 pt-4 border-t border-gray-100">
+              {/* Price change confirmation */}
+              {priceConfirm && originalPrice !== null && (
+                <div className="flex-1 px-4 py-3 rounded-xl bg-amber-50 border border-amber-200 text-xs">
+                  <p className="font-bold text-amber-800 mb-1">⚠️ Modification de prix détectée</p>
+                  <p className="text-amber-700">
+                    Ancien : <strong>{originalPrice.toFixed(2)} €</strong> → Nouveau : <strong>{parseFloat(form.price || '0').toFixed(2)} €</strong>
+                    {' '}({((parseFloat(form.price || '0') - originalPrice) / originalPrice * 100).toFixed(1)}%)
+                  </p>
+                  <p className="text-amber-600 mt-1">Cliquez à nouveau sur "Enregistrer" pour confirmer.</p>
+                </div>
+              )}
               <button
-                onClick={() => { setShowModal(false); resetForm(); }}
+                onClick={() => { setShowModal(false); setPriceConfirm(false); setOriginalPrice(null); resetForm(); }}
                 className="px-4 py-2.5 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors"
               >
                 Annuler
@@ -506,10 +534,12 @@ export function ProductsPage() {
               <button
                 onClick={handleSave}
                 disabled={!form.name.trim() || saving}
-                className="px-5 py-2.5 rounded-xl text-sm font-medium bg-bo-accent text-white hover:bg-bo-accent/90 transition-colors shadow-lg shadow-bo-accent/25 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
+                className={`px-5 py-2.5 rounded-xl text-sm font-medium text-white transition-colors shadow-lg disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 ${
+                  priceConfirm ? 'bg-amber-600 hover:bg-amber-700 shadow-amber-600/25' : 'bg-bo-accent hover:bg-bo-accent/90 shadow-bo-accent/25'
+                }`}
               >
                 {saving && <Loader2 size={14} className="animate-spin" />}
-                {editingId ? 'Enregistrer' : 'Ajouter'}
+                {priceConfirm ? 'Confirmer le changement de prix' : editingId ? 'Enregistrer' : 'Ajouter'}
               </button>
             </div>
           </div>

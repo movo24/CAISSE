@@ -174,9 +174,14 @@ const emptyAiInsights = {
   objectifDynamique: { jourSuggere: 0, semaineSuggere: 0, moisSuggere: 0, justification: '' },
 };
 
-/* ── Helper: today's date string ── */
+/* ── Date helpers ── */
 function todayStr() {
   return new Date().toISOString().slice(0, 10);
+}
+function yesterdayStr() {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  return d.toISOString().slice(0, 10);
 }
 
 /* ── Hook ── */
@@ -219,12 +224,14 @@ export function useDashboardData(): DashboardData {
         productsRes,
         stockAlertsRes,
         salesRes,
+        salesYesterdayRes,
         employeesRes,
         storesRes,
       ] = await Promise.allSettled([
         productsApi.list(),
         notificationsApi.stockAlerts(storeId),
         salesApi.list(todayStr()),
+        salesApi.list(yesterdayStr()),
         employeesApi.list(),
         storesApi.list(),
       ]);
@@ -299,12 +306,66 @@ export function useDashboardData(): DashboardData {
           tva10: 0, tva55: 0,
         });
 
+        // ── Top/Flop products from today's sales ──
+        const productSalesMap: Record<string, { name: string; ean: string; qty: number; ca: number; stock: number }> = {};
+        const allProducts: any[] = productsRes.status === 'fulfilled'
+          ? (Array.isArray(productsRes.value.data) ? productsRes.value.data : productsRes.value.data?.data || [])
+          : [];
+
+        for (const sale of sales) {
+          const items = sale.lineItems || sale.items || [];
+          for (const item of items) {
+            const key = item.productId || item.ean || item.name;
+            if (!productSalesMap[key]) {
+              const prod = allProducts.find((p: any) => p.id === key || p.ean === item.ean);
+              productSalesMap[key] = {
+                name: item.productName || item.name || prod?.name || 'Produit',
+                ean: item.ean || prod?.ean || '',
+                qty: 0,
+                ca: 0,
+                stock: prod?.stockQuantity ?? 0,
+              };
+            }
+            productSalesMap[key].qty += item.quantity || 1;
+            productSalesMap[key].ca += item.totalMinorUnits || (item.unitPriceMinorUnits || 0) * (item.quantity || 1);
+          }
+        }
+
+        const sortedProducts = Object.values(productSalesMap).sort((a, b) => b.ca - a.ca);
+        setTopProducts(sortedProducts.slice(0, 5).map((p, i) => ({
+          rank: i + 1, name: p.name, ean: p.ean, qty: p.qty,
+          ca: p.ca, marge: 0, stock: p.stock,
+        })));
+        setFlopProducts(
+          sortedProducts.length > 5
+            ? sortedProducts.slice(-5).reverse().map((p, i) => ({
+                rank: i + 1, name: p.name, ean: p.ean, qty: p.qty,
+                ca: p.ca, marge: 0, stock: p.stock,
+              }))
+            : [],
+        );
+
         setPerfData((prev) => ({
           ...prev,
           caJour: totalCA,
           ticketsJour: nbTickets,
           panierMoyen: avgBasket,
           hourlyCA,
+        }));
+      }
+
+      // ── N-1 data (yesterday) ──
+      if (salesYesterdayRes.status === 'fulfilled') {
+        const yesterdaySales: any[] = salesYesterdayRes.value.data || [];
+        const yCa = yesterdaySales.reduce((s: number, sale: any) => s + (sale.totalMinorUnits || 0), 0);
+        const yTickets = yesterdaySales.length;
+        const yAvg = yTickets > 0 ? Math.round(yCa / yTickets) : 0;
+
+        setPerfData((prev) => ({
+          ...prev,
+          caJourN1: yCa,
+          ticketsJourN1: yTickets,
+          panierMoyenN1: yAvg,
         }));
       }
 
