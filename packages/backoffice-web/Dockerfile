@@ -9,7 +9,7 @@ ENV VITE_API_URL=$VITE_API_URL
 COPY package.json ./
 RUN npm install --legacy-peer-deps
 COPY . .
-RUN npm run build
+RUN npx vite build
 
 FROM nginx:alpine AS runner
 COPY --from=builder /app/dist /usr/share/nginx/html
