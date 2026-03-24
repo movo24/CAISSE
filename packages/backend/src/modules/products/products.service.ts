@@ -124,21 +124,25 @@ export class ProductsService {
       ? await this.findOneForStore(id, storeId)
       : await this.findOne(id);
 
-    // Track price changes
+    // Track price changes (non-blocking: don't crash product update if history fails)
     if (
       data.priceMinorUnits !== undefined &&
       data.priceMinorUnits !== existing.priceMinorUnits
     ) {
-      await this.priceHistoryRepo.save({
-        productId: id,
-        oldPriceMinorUnits: existing.priceMinorUnits,
-        newPriceMinorUnits: data.priceMinorUnits,
-        changedBy: employeeId,
-        storeId: existing.storeId,
-        reason: reason || 'Manual price update',
-        changeSource: changeSource || 'backoffice',
-        changedByRole: employeeRole || 'unknown',
-      });
+      try {
+        await this.priceHistoryRepo.save({
+          productId: id,
+          oldPriceMinorUnits: existing.priceMinorUnits,
+          newPriceMinorUnits: data.priceMinorUnits,
+          changedBy: employeeId,
+          storeId: existing.storeId,
+          reason: reason || 'Manual price update',
+          changeSource: changeSource || 'backoffice',
+          changedByRole: employeeRole || 'unknown',
+        });
+      } catch (historyErr: any) {
+        console.warn(`[ProductsService] Price history save failed (non-blocking): ${historyErr?.message}`);
+      }
 
       await this.auditService.log({
         storeId: existing.storeId,
