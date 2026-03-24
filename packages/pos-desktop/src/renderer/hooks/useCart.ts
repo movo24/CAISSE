@@ -203,5 +203,6 @@ export function useCart() {
     handleWeightConfirm,
     handleScan,
     handleSearchKeyDown,
+    refreshCatalogue,
   };
 }
