@@ -1,8 +1,13 @@
 import axios from 'axios';
 
-// Use Vite proxy in dev (empty string = relative URL = same host).
-// Set VITE_API_URL only for production or custom backend URLs.
-const API_URL = (import.meta as any).env?.VITE_API_URL || '';
+// Use Vite proxy in dev (empty = relative URL = same host).
+// In production, fall back to api.addxintelligence.com if VITE_API_URL not set.
+const VITE_URL = (import.meta as any).env?.VITE_API_URL || '';
+const API_URL = VITE_URL || (
+  typeof window !== 'undefined' && !window.location.hostname.includes('localhost')
+    ? 'https://api.addxintelligence.com'
+    : ''
+);
 
 const api = axios.create({
   baseURL: `${API_URL}/api`,

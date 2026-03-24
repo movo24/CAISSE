@@ -3,7 +3,12 @@ import axios from 'axios';
 // In dev, Vite proxies /api → http://localhost:3001/api (see vite.config.ts)
 // This avoids mixed-content issues when serving over HTTPS (iPad camera needs HTTPS)
 // In production, the API is served from the same origin
-const API_URL = (import.meta as any).env?.VITE_API_URL || '';
+const VITE_URL = (import.meta as any).env?.VITE_API_URL || '';
+const API_URL = VITE_URL || (
+  typeof window !== 'undefined' && !window.location.hostname.includes('localhost')
+    ? 'https://api.addxintelligence.com'
+    : ''
+);
 
 const api = axios.create({
   baseURL: `${API_URL}/api`,

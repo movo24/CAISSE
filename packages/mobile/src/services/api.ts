@@ -9,7 +9,12 @@
 
 import axios from 'axios';
 
-const API_URL = (import.meta as any).env?.VITE_API_URL || '';
+const VITE_URL = (import.meta as any).env?.VITE_API_URL || '';
+const API_URL = VITE_URL || (
+  typeof window !== 'undefined' && !window.location.hostname.includes('localhost')
+    ? 'https://api.addxintelligence.com'
+    : ''
+);
 
 const api = axios.create({
   baseURL: `${API_URL}/api`,
