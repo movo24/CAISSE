@@ -117,6 +117,8 @@ export class ProductsService {
     employeeId: string,
     reason?: string,
     storeId?: string,
+    changeSource?: string,
+    employeeRole?: string,
   ): Promise<ProductEntity> {
     const existing = storeId
       ? await this.findOneForStore(id, storeId)
@@ -132,7 +134,10 @@ export class ProductsService {
         oldPriceMinorUnits: existing.priceMinorUnits,
         newPriceMinorUnits: data.priceMinorUnits,
         changedBy: employeeId,
+        storeId: existing.storeId,
         reason: reason || 'Manual price update',
+        changeSource: changeSource || 'backoffice',
+        changedByRole: employeeRole || 'unknown',
       });
 
       await this.auditService.log({

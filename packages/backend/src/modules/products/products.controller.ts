@@ -82,12 +82,19 @@ export class ProductsController {
   @ApiOperation({ summary: 'Update a product' })
   update(@Param('id') id: string, @Body() dto: UpdateProductDto, @Request() req: any) {
     const { reason, ...data } = dto;
+    // Detect change source from user-agent
+    const ua = (req.headers?.['user-agent'] || '').toLowerCase();
+    const changeSource = ua.includes('mobile') || ua.includes('ipad') || ua.includes('iphone')
+      ? 'mobile' : 'backoffice';
+
     return this.productsService.update(
       id,
       data,
       req.user.employeeId,
       reason,
       req.user.storeId,
+      changeSource,
+      req.user.role,
     );
   }
 

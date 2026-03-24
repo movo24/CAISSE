@@ -18,8 +18,17 @@ export class PriceHistoryEntity {
   @Column({ name: 'changed_by' })
   changedBy: string;
 
+  @Column({ name: 'store_id', nullable: true })
+  storeId: string;
+
   @Column({ nullable: true })
   reason: string;
+
+  @Column({ name: 'change_source', type: 'varchar', nullable: true })
+  changeSource: string; // 'mobile' | 'backoffice' | 'import' | 'api'
+
+  @Column({ name: 'changed_by_role', type: 'varchar', nullable: true })
+  changedByRole: string;
 
   @CreateDateColumn({ name: 'changed_at' })
   changedAt: Date;
