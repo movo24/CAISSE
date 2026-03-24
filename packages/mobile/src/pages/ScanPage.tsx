@@ -104,6 +104,8 @@ export function ScanPage() {
   const handleProductCreated = (newProduct: any) => {
     console.log('[ScanPage] Produit créé:', newProduct.name);
     setUnknownEan(null);
+    // Don't open ProductCard after creation — stock was already set.
+    // Just show success in status bar and return to scanner.
     const p: Product = {
       ...newProduct,
       priceMinorUnits: safeInt(newProduct.priceMinorUnits),
@@ -111,8 +113,10 @@ export function ScanPage() {
       stockAlertThreshold: newProduct.stockAlertThreshold != null
         ? safeInt(newProduct.stockAlertThreshold) : undefined,
     };
-    setProduct(p);
-    setStatus({ step: 'found', product: p });
+    setProduct(null); // Don't open ProductCard — avoids confusing "adjustQty: 0"
+    setStatus({ step: 'found', product: p }); // Show green "TROUVÉ" status
+    // Auto-clear after 3s to return to idle
+    setTimeout(() => setStatus({ step: 'idle' }), 3000);
   };
 
   return (
