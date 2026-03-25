@@ -140,6 +140,7 @@ export const storesApi = {
 // Products
 export const productsApi = {
   list: () => api.get('/products'),
+  get: (id: string) => api.get(`/products/${id}`),
   scan: (ean: string) => api.get(`/products/scan/${ean}`),
   create: (data: any) => api.post('/products', data),
   update: (id: string, data: any) => api.put(`/products/${id}`, data),

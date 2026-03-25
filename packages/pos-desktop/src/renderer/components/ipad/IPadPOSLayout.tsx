@@ -20,6 +20,7 @@ import { StaffingWidget } from '../StaffingWidget';
 import { ComparisonWidget } from '../ComparisonWidget';
 import { ShiftWarning } from '../ShiftWarning';
 import { SalesCockpit } from '../SalesCockpit';
+import { AiRecommendation } from '../AiRecommendation';
 import { CategoryPanel } from './CategoryPanel';
 import { ProductGrid } from './ProductGrid';
 import { FavoritesBar } from './FavoritesBar';
@@ -455,6 +456,9 @@ export function IPadPOSLayout() {
               <SalesCockpit />
             </div>
           )}
+
+          {/* AI Recommendations — shows only when confident signal exists */}
+          <AiRecommendation />
 
           {/* Cart items — bigger touch targets in landscape */}
           <div className={`flex-1 overflow-y-auto cart-scroll space-y-1 ${isLandscape ? 'p-2' : 'p-2'}`}>

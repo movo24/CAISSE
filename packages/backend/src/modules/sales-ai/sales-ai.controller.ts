@@ -2,13 +2,17 @@ import { Controller, Get, Query, Request, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { SalesAiService } from './sales-ai.service';
+import { ExternalContextService } from './external-context.service';
 
 @ApiTags('sales-ai')
 @ApiBearerAuth()
 @Controller('sales-ai')
 @UseGuards(JwtAuthGuard)
 export class SalesAiController {
-  constructor(private readonly aiService: SalesAiService) {}
+  constructor(
+    private readonly aiService: SalesAiService,
+    private readonly externalContext: ExternalContextService,
+  ) {}
 
   @Get('recommendations')
   @ApiOperation({ summary: 'Get AI-powered sales recommendations for current context' })
@@ -56,5 +60,19 @@ export class SalesAiController {
       allPatterns: patterns,
       dataAvailable: patterns.length > 0,
     };
+  }
+
+  @Get('external-context')
+  @ApiOperation({ summary: 'Get weather + transport context for AI enrichment' })
+  async getExternalContext(
+    @Query('lat') lat?: string,
+    @Query('lon') lon?: string,
+    @Query('station') station?: string,
+  ) {
+    return this.externalContext.getFullContext(
+      lat ? parseFloat(lat) : undefined,
+      lon ? parseFloat(lon) : undefined,
+      station || undefined,
+    );
   }
 }
