@@ -152,8 +152,9 @@ export function SalesCockpit() {
     }
   }, [data?.status, data?.percentAchieved]);
 
+  // Never return null between hooks — render nothing instead
   if (!data || !session) {
-    return null; // No session = no cockpit
+    return <></>;
   }
 
   const statusColors = {

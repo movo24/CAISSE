@@ -54,10 +54,7 @@ export function EmployeePinGate({ onVerified }: Props) {
     };
   }, [cartItems.length]);
 
-  // Don't show if employee is active and cart has items (ticket in progress)
-  if (!locked && employee && cartItems.length > 0) return null;
-  // Don't show if not locked and employee exists (ready for new ticket)
-  if (!locked && employee) return null;
+  const shouldShow = locked || !employee;
 
   const handleDigit = useCallback((digit: string) => {
     setError('');
@@ -105,6 +102,8 @@ export function EmployeePinGate({ onVerified }: Props) {
       setVerifying(false);
     }
   }, [pin, employee, onVerified]);
+
+  if (!shouldShow) return <></>;
 
   return (
     <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-center justify-center">
