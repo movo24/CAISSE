@@ -6,13 +6,15 @@ import { ProductEntity } from '../../database/entities/product.entity';
 import { SalesAiService } from './sales-ai.service';
 import { SalesAiController } from './sales-ai.controller';
 import { ExternalContextService } from './external-context.service';
+import { AiLearningService } from './ai-learning.service';
+import { AiRecommendationLogEntity } from '../../database/entities/ai-recommendation-log.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([SaleEntity, SaleLineItemEntity, ProductEntity]),
+    TypeOrmModule.forFeature([SaleEntity, SaleLineItemEntity, ProductEntity, AiRecommendationLogEntity]),
   ],
   controllers: [SalesAiController],
-  providers: [SalesAiService, ExternalContextService],
-  exports: [SalesAiService, ExternalContextService],
+  providers: [SalesAiService, ExternalContextService, AiLearningService],
+  exports: [SalesAiService, ExternalContextService, AiLearningService],
 })
 export class SalesAiModule {}

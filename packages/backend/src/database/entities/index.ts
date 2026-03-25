@@ -24,4 +24,5 @@ export { JackpotConfigEntity } from './jackpot-config.entity';
 export { JackpotWinEntity } from './jackpot-win.entity';
 export { PaymentTerminalEntity } from './payment-terminal.entity';
 export { StoreContextEntity } from './store-context.entity';
+export { AiRecommendationLogEntity } from './ai-recommendation-log.entity';
 // EmployeeEntity kept but not re-exported — transitional (auth fallback only)

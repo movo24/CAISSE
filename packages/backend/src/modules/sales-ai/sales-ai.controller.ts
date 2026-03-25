@@ -1,8 +1,9 @@
-import { Controller, Get, Query, Request, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Param, Body, Query, Request, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { SalesAiService } from './sales-ai.service';
 import { ExternalContextService } from './external-context.service';
+import { AiLearningService } from './ai-learning.service';
 
 @ApiTags('sales-ai')
 @ApiBearerAuth()
@@ -12,6 +13,7 @@ export class SalesAiController {
   constructor(
     private readonly aiService: SalesAiService,
     private readonly externalContext: ExternalContextService,
+    private readonly learning: AiLearningService,
   ) {}
 
   @Get('recommendations')
@@ -74,5 +76,43 @@ export class SalesAiController {
       lon ? parseFloat(lon) : undefined,
       station || undefined,
     );
+  }
+
+  // ── LEARNING ENDPOINTS ──
+
+  @Post('log/display')
+  @ApiOperation({ summary: 'Log that a recommendation was displayed to the cashier' })
+  async logDisplay(@Body() body: any, @Request() req: any) {
+    return { logId: await this.learning.logDisplay({ ...body, storeId: req.user.storeId, employeeId: req.user.employeeId }) };
+  }
+
+  @Patch('log/:logId/click')
+  @ApiOperation({ summary: 'Log that a recommendation was clicked' })
+  async logClick(@Param('logId') logId: string) {
+    await this.learning.logClick(logId);
+    return { ok: true };
+  }
+
+  @Patch('log/:logId/add-to-cart')
+  @ApiOperation({ summary: 'Log that the suggested product was added to cart' })
+  async logAddToCart(@Param('logId') logId: string) {
+    await this.learning.logAddToCart(logId);
+    return { ok: true };
+  }
+
+  @Patch('log/:logId/convert')
+  @ApiOperation({ summary: 'Log that the sale was completed with the recommended product' })
+  async logConversion(
+    @Param('logId') logId: string,
+    @Body() body: { saleId: string; revenueGenerated: number; marginGenerated: number },
+  ) {
+    await this.learning.logConversion(logId, body.saleId, body.revenueGenerated, body.marginGenerated);
+    return { ok: true };
+  }
+
+  @Get('kpi')
+  @ApiOperation({ summary: 'Get AI performance KPIs (CTR, conversion, revenue generated)' })
+  async getKPI(@Request() req: any) {
+    return this.learning.getKPI(req.user.storeId);
   }
 }
