@@ -137,7 +137,7 @@ export function IPadPOSLayout() {
   const isLandscape = device.isLandscape;
 
   return (
-    <div className={`h-[100dvh] flex flex-col bg-pos-bg safe-area-top safe-area-bottom ${platformClasses(device)}`}>
+    <div className={`h-[100dvh] flex flex-col bg-pos-bg safe-area-top safe-area-bottom overflow-x-hidden ${platformClasses(device)}`}>
       {/* ═══ INSTALL PWA BANNER — shown in Safari, hidden in standalone mode ═══ */}
       {showInstallBanner && (
         <div className="bg-gradient-to-r from-pos-accent via-pink-500 to-rose-500 px-4 py-3 flex items-center justify-between relative z-50">

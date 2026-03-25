@@ -772,7 +772,7 @@ export function POSPage() {
   }
 
   return (
-    <div className={`h-screen flex flex-col bg-pos-bg safe-area-top safe-area-bottom ${platformClasses(device)}`}>
+    <div className={`h-screen flex flex-col bg-pos-bg safe-area-top safe-area-bottom overflow-x-hidden ${platformClasses(device)}`}>
       {/* ═══════ OFFLINE BANNER ═══════ */}
       {offlineMode.isOffline && (
         <div className="bg-gradient-to-r from-red-600 via-red-500 to-rose-500 px-4 py-2 flex items-center justify-between relative z-50 shadow-lg animate-slide-down">
