@@ -80,9 +80,13 @@ const W_STOCK_PRESSURE = 0.15; // Push overstock, block low stock
 const W_TEMPORAL = 0.10;      // Time-of-day relevance
 const W_CONSISTENCY = 0.10;   // Pattern stability
 
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes cache
+
 @Injectable()
 export class SalesAiService {
   private readonly logger = new Logger('SalesAI');
+  private associationCache = new Map<string, { data: ProductAssociation[]; timestamp: number }>();
+  private hourlyCache = new Map<string, { data: HourlyPattern[]; timestamp: number }>();
 
   constructor(
     @InjectRepository(SaleEntity) private readonly saleRepo: Repository<SaleEntity>,
@@ -93,9 +97,15 @@ export class SalesAiService {
     @Inject(forwardRef(() => ExternalContextService)) private readonly externalCtx: ExternalContextService,
   ) {}
 
-  // ── 1. PRODUCT ASSOCIATIONS ──
-  // Find which products are frequently bought together
+  // ── 1. PRODUCT ASSOCIATIONS (cached 5 min) ──
   async computeAssociations(storeId: string, daysBack = 30): Promise<ProductAssociation[]> {
+    // Check cache first — avoid recalculating on every request
+    const cacheKey = `${storeId}:${daysBack}`;
+    const cached = this.associationCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+      return cached.data;
+    }
+
     // Get all completed sales with line items for this store
     const sales = await this.saleRepo
       .createQueryBuilder('s')
@@ -233,11 +243,20 @@ export class SalesAiService {
     associations.sort((a, b) => (b.confidence * b.estimatedCashImpact) - (a.confidence * a.estimatedCashImpact));
 
     this.logger.log(`[AI] Found ${associations.length} product associations from ${totalTickets} tickets`);
+
+    // Cache result
+    this.associationCache.set(cacheKey, { data: associations, timestamp: Date.now() });
+
     return associations;
   }
 
-  // ── 2. HOURLY PATTERNS ──
+  // ── 2. HOURLY PATTERNS (cached 5 min) ──
   async computeHourlyPatterns(storeId: string, daysBack = 30): Promise<HourlyPattern[]> {
+    const cacheKey = `hourly:${storeId}:${daysBack}`;
+    const cached = this.hourlyCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+      return cached.data;
+    }
     const result = await this.dataSource.query(`
       SELECT
         EXTRACT(HOUR FROM s.created_at) as hour,
@@ -269,6 +288,9 @@ export class SalesAiService {
         isRush: (tickets / days) > (avgTicketsGlobal / result.length * RUSH_THRESHOLD_MULTIPLIER),
       };
     });
+
+    // Cache result
+    this.hourlyCache.set(cacheKey, { data: patterns, timestamp: Date.now() });
 
     return patterns;
   }
