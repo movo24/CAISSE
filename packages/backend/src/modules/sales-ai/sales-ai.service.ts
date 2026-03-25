@@ -57,13 +57,22 @@ export interface SalesRecommendation {
   suggestedProductName?: string;
 }
 
-// ── Config ──
+// ── Config V2 — Strict thresholds (prefer silence over bad advice) ──
 
-const MIN_TICKETS_FOR_ASSOCIATION = 20;   // Need at least 20 tickets to find patterns
-const MIN_COOCCURRENCE = 3;               // Product pair must appear in 3+ tickets
-const MIN_ATTACHMENT_RATE = 0.15;         // 15% minimum attachment rate
-const MIN_CONFIDENCE = 0.6;              // Below this → silence
+const MIN_TICKETS_FOR_ASSOCIATION = 100;  // Need 100+ tickets for reliable patterns
+const MIN_COOCCURRENCE = 10;              // Product pair must appear in 10+ tickets
+const MIN_ATTACHMENT_RATE = 0.25;         // 25% minimum attachment rate
+const MIN_CONFIDENCE = 0.75;             // Below this → SILENCE
+const MIN_MARGIN_PERCENT = 10;           // Don't recommend products with < 10% margin
+const MIN_STOCK_FOR_RECOMMEND = 3;       // Don't recommend if stock < 3
 const RUSH_THRESHOLD_MULTIPLIER = 1.5;   // 1.5x average = rush hour
+
+// ── V2 Scoring weights ──
+const W_COOCCURRENCE = 0.35;  // How often bought together
+const W_MARGIN = 0.25;        // Profitability of suggested product
+const W_TEMPORAL = 0.15;      // Is this relevant right now (time of day)
+const W_STOCK = 0.15;         // Is stock healthy
+const W_CONSISTENCY = 0.10;   // Is pattern stable over time
 
 @Injectable()
 export class SalesAiService {
@@ -94,10 +103,16 @@ export class SalesAiService {
       return [];
     }
 
+    // Load product catalog for margin + stock data
+    const allProducts = await this.productRepo.find({ where: { storeId } });
+    const productCatalog = new Map(allProducts.map((p) => [p.id, p]));
+
     // Build product co-occurrence matrix
     const productTickets = new Map<string, Set<string>>();  // productId → set of saleIds
     const productNames = new Map<string, string>();
     const productPrices = new Map<string, number>();
+    const productCosts = new Map<string, number>();
+    const productStocks = new Map<string, number>();
 
     for (const sale of sales) {
       for (const item of sale.lineItems) {
@@ -107,6 +122,12 @@ export class SalesAiService {
         productTickets.get(pid)!.add(sale.id);
         productNames.set(pid, item.productName || pid);
         productPrices.set(pid, item.unitPriceMinorUnits || 0);
+        // Enrich with catalog data
+        const catalogProduct = productCatalog.get(pid);
+        if (catalogProduct) {
+          productCosts.set(pid, catalogProduct.costMinorUnits || 0);
+          productStocks.set(pid, catalogProduct.stockQuantity || 0);
+        }
       }
     }
 
@@ -136,10 +157,35 @@ export class SalesAiService {
 
         if (rate < MIN_ATTACHMENT_RATE) continue;
 
-        // Confidence = f(volume, rate, stability)
-        const volumeFactor = Math.min(1, mainTickets / 50); // Caps at 50 tickets
-        const rateFactor = Math.min(1, rate / 0.5);          // Caps at 50% rate
-        const confidence = (volumeFactor * 0.4 + rateFactor * 0.6);
+        // ── V2 Multi-factor scoring ──
+        // 1. Co-occurrence strength (volume + rate)
+        const coOccurrenceScore = Math.min(1, (rate / 0.5) * 0.6 + (mainTickets / 200) * 0.4);
+
+        // 2. Margin weight (from cost data if available)
+        const sugPrice = productPrices.get(sugPid) || 0;
+        const sugCost = productCosts.get(sugPid) || 0;
+        const marginPercent = sugPrice > 0 ? ((sugPrice - sugCost) / sugPrice) * 100 : 50; // default 50% if no cost
+        if (marginPercent < MIN_MARGIN_PERCENT) continue; // Skip low-margin products
+        const marginScore = Math.min(1, marginPercent / 60); // Caps at 60% margin
+
+        // 3. Stock safety
+        const sugStock = productStocks.get(sugPid) || 0;
+        if (sugStock < MIN_STOCK_FOR_RECOMMEND) continue; // Skip out-of-stock
+        const stockScore = Math.min(1, sugStock / 20); // Caps at 20 units
+
+        // 4. Temporal relevance (will be enriched in V3 with hour-of-day)
+        const temporalScore = 0.7; // Default: neutral (no time context yet)
+
+        // 5. Consistency (stable over time — approximated by volume)
+        const consistencyScore = Math.min(1, coOccurrences / 30); // Caps at 30 co-occurrences
+
+        // Final weighted score
+        const confidence =
+          coOccurrenceScore * W_COOCCURRENCE +
+          marginScore * W_MARGIN +
+          temporalScore * W_TEMPORAL +
+          stockScore * W_STOCK +
+          consistencyScore * W_CONSISTENCY;
 
         associations.push({
           productA: mainPid,
@@ -150,7 +196,7 @@ export class SalesAiService {
           totalTicketsA: mainTickets,
           attachmentRate: rate,
           confidence,
-          marginBoost: productPrices.get(sugPid) || 0,
+          marginBoost: sugPrice,
         });
       }
     }

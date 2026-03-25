@@ -41,4 +41,20 @@ export class SalesAiController {
   async getStats(@Request() req: any) {
     return this.aiService.getStoreStats(req.user.storeId);
   }
+
+  @Get('time-context')
+  @ApiOperation({ summary: 'Get current time context with relevant patterns' })
+  async getTimeContext(@Request() req: any) {
+    const patterns = await this.aiService.computeHourlyPatterns(req.user.storeId);
+    const currentHour = new Date().getHours();
+    const currentPattern = patterns.find((p) => p.hour === currentHour);
+
+    return {
+      currentHour,
+      isRush: currentPattern?.isRush || false,
+      currentPattern: currentPattern || null,
+      allPatterns: patterns,
+      dataAvailable: patterns.length > 0,
+    };
+  }
 }
