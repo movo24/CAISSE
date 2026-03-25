@@ -234,4 +234,13 @@ export const stripeTerminalApi = {
   cancelPaymentIntent: (id: string) => api.post(`/stripe-terminal/payment-intent/${id}/cancel`),
 };
 
+// Sales AI (recommendations, associations, patterns)
+export const salesAiApi = {
+  recommendations: (cartProductIds?: string[]) =>
+    api.get('/sales-ai/recommendations', { params: cartProductIds?.length ? { cartProductIds: cartProductIds.join(',') } : {} }),
+  associations: () => api.get('/sales-ai/associations'),
+  hourlyPatterns: () => api.get('/sales-ai/hourly-patterns'),
+  stats: () => api.get('/sales-ai/stats'),
+};
+
 export default api;
