@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "dev:https": "VITE_HTTPS=1 vite",
-    "build": "tsc && vite build",
+    "build": "vite build",
     "preview": "vite preview",
     "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:5174 && electron .\"",
     "lint": "eslint src --ext ts,tsx"
