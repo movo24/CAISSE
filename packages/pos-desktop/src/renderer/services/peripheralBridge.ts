@@ -121,12 +121,10 @@ class PeripheralBridge {
       }
     }
 
-    if (this.platform === 'ipad') {
-      this._status.printer = { type: 'airprint', connected: true, name: 'AirPrint' };
-      return;
-    }
-
-    this._status.printer = { type: 'browser_print', connected: true, name: 'Navigateur' };
+    // iPad/browser: no real printer by default — set to 'none'
+    // A real printer (Bluetooth thermal) will be registered via useBluetoothPrinter
+    // This prevents the browser print dialog from appearing on every sale
+    this._status.printer = { type: 'none', connected: false, name: null };
   }
 
   /** Register Bluetooth printer functions from useBluetoothPrinter hook */
