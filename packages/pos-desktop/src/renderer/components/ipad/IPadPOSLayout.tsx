@@ -137,6 +137,16 @@ export function IPadPOSLayout() {
 
   const isLandscape = device.isLandscape;
 
+  // ── Safety escape: if confirmation overlay gets stuck, auto-dismiss after 30s ──
+  useEffect(() => {
+    if (!payment.confirmation) return;
+    const safetyTimeout = setTimeout(() => {
+      console.warn('[POS] Safety: force-dismissing stuck confirmation overlay after 30s');
+      payment.completeTransaction();
+    }, 30_000);
+    return () => clearTimeout(safetyTimeout);
+  }, [payment.confirmation]);
+
   return (
     <div className={`h-[100dvh] flex flex-col bg-pos-bg safe-area-top safe-area-bottom overflow-x-hidden ${platformClasses(device)}`}>
       {/* ═══ INSTALL PWA BANNER — shown in Safari, hidden in standalone mode ═══ */}
