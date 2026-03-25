@@ -106,16 +106,14 @@ export class SalesAiService {
       return cached.data;
     }
 
-    // Get all completed sales with line items for this store
-    const sales = await this.saleRepo
-      .createQueryBuilder('s')
-      .leftJoinAndSelect('s.lineItems', 'li')
-      .where('s.store_id = :storeId', { storeId })
-      .andWhere('s.status = :status', { status: 'completed' })
-      .andWhere('s.created_at >= NOW() - INTERVAL :days DAY', { days: daysBack })
-      .getMany();
+    // ── Pure SQL: compute co-occurrences in PostgreSQL (fast, no ORM overhead) ──
+    const ticketCountResult = await this.dataSource.query(`
+      SELECT COUNT(DISTINCT id) as cnt FROM sales
+      WHERE store_id = $1 AND status = 'completed'
+        AND created_at >= NOW() - INTERVAL '${daysBack} days'
+    `, [storeId]);
+    const totalTickets = parseInt(ticketCountResult[0]?.cnt || '0', 10);
 
-    const totalTickets = sales.length;
     if (totalTickets < MIN_TICKETS_FOR_ASSOCIATION) {
       this.logger.log(`[AI] Only ${totalTickets} tickets (need ${MIN_TICKETS_FOR_ASSOCIATION}) — associations not reliable yet`);
       return [];
@@ -124,118 +122,105 @@ export class SalesAiService {
     // Load product catalog for margin + stock data
     const allProducts = await this.productRepo.find({ where: { storeId } });
     const productCatalog = new Map(allProducts.map((p) => [p.id, p]));
+    const productNames = new Map(allProducts.map((p) => [p.id, p.name]));
+    const productPrices = new Map(allProducts.map((p) => [p.id, p.priceMinorUnits || 0]));
+    const productCosts = new Map(allProducts.map((p) => [p.id, p.costMinorUnits || 0]));
+    const productStocks = new Map(allProducts.map((p) => [p.id, p.stockQuantity || 0]));
 
-    // Build product co-occurrence matrix
-    const productTickets = new Map<string, Set<string>>();  // productId → set of saleIds
-    const productNames = new Map<string, string>();
-    const productPrices = new Map<string, number>();
-    const productCosts = new Map<string, number>();
-    const productStocks = new Map<string, number>();
+    // SQL-based co-occurrence: join line items with themselves on same sale
+    const coOccRows: any[] = await this.dataSource.query(`
+      SELECT
+        a.product_id as pid_a,
+        b.product_id as pid_b,
+        COUNT(DISTINCT a.sale_id) as co_count,
+        (SELECT COUNT(DISTINCT sale_id) FROM sale_line_items WHERE product_id = a.product_id
+          AND sale_id IN (SELECT id FROM sales WHERE store_id = $1 AND status = 'completed'
+            AND created_at >= NOW() - INTERVAL '${daysBack} days')) as total_a
+      FROM sale_line_items a
+      JOIN sale_line_items b ON a.sale_id = b.sale_id AND a.product_id < b.product_id
+      WHERE a.sale_id IN (
+        SELECT id FROM sales WHERE store_id = $1 AND status = 'completed'
+          AND created_at >= NOW() - INTERVAL '${daysBack} days'
+      )
+      GROUP BY a.product_id, b.product_id
+      HAVING COUNT(DISTINCT a.sale_id) >= ${MIN_COOCCURRENCE}
+      ORDER BY COUNT(DISTINCT a.sale_id) DESC
+      LIMIT 50
+    `, [storeId]);
 
-    for (const sale of sales) {
-      for (const item of sale.lineItems) {
-        const pid = item.productId;
-        if (!pid) continue;
-        if (!productTickets.has(pid)) productTickets.set(pid, new Set());
-        productTickets.get(pid)!.add(sale.id);
-        productNames.set(pid, item.productName || pid);
-        productPrices.set(pid, item.unitPriceMinorUnits || 0);
-        // Enrich with catalog data
-        const catalogProduct = productCatalog.get(pid);
-        if (catalogProduct) {
-          productCosts.set(pid, catalogProduct.costMinorUnits || 0);
-          productStocks.set(pid, catalogProduct.stockQuantity || 0);
-        }
-      }
-    }
-
-    // Find co-occurrences
+    // Build associations from SQL results
     const associations: ProductAssociation[] = [];
-    const productIds = Array.from(productTickets.keys());
 
-    for (let i = 0; i < productIds.length; i++) {
-      for (let j = i + 1; j < productIds.length; j++) {
-        const pidA = productIds[i];
-        const pidB = productIds[j];
-        const ticketsA = productTickets.get(pidA)!;
-        const ticketsB = productTickets.get(pidB)!;
+    for (const row of coOccRows) {
+      const pidA = row.pid_a;
+      const pidB = row.pid_b;
+      const coOccurrences = parseInt(row.co_count, 10);
+      const totalA = parseInt(row.total_a, 10);
 
-        // Count co-occurrences
-        const coOccurrences = [...ticketsA].filter((id) => ticketsB.has(id)).length;
+      const attachmentRateAB = totalA > 0 ? coOccurrences / totalA : 0;
+      const attachmentRateBA = coOccurrences / totalTickets; // approximate
 
-        if (coOccurrences < MIN_COOCCURRENCE) continue;
+      // Use the higher attachment rate (A→B or B→A)
+      const [mainPid, sugPid, rate, mainTickets] = attachmentRateAB >= attachmentRateBA
+        ? [pidA, pidB, attachmentRateAB, totalA]
+        : [pidB, pidA, attachmentRateBA, totalTickets];
 
-        const attachmentRateAB = coOccurrences / ticketsA.size;
-        const attachmentRateBA = coOccurrences / ticketsB.size;
+      if (rate < MIN_ATTACHMENT_RATE) continue;
 
-        // Use the higher attachment rate (A→B or B→A)
-        const [mainPid, sugPid, rate, mainTickets] = attachmentRateAB >= attachmentRateBA
-          ? [pidA, pidB, attachmentRateAB, ticketsA.size]
-          : [pidB, pidA, attachmentRateBA, ticketsB.size];
+      // ── V4 Cash-oriented multi-factor scoring ──
 
-        if (rate < MIN_ATTACHMENT_RATE) continue;
+      // 1. Co-occurrence strength (volume + rate)
+      const coOccurrenceScore = Math.min(1, (rate / 0.5) * 0.6 + (mainTickets / 200) * 0.4);
 
-        // ── V4 Cash-oriented multi-factor scoring ──
+      // 2. MARGIN IS KING — push what makes money
+      const sugPrice = productPrices.get(sugPid) || 0;
+      const sugCost = productCosts.get(sugPid) || 0;
+      const marginPercent = sugPrice > 0 ? ((sugPrice - sugCost) / sugPrice) * 100 : 50;
+      if (marginPercent < MIN_MARGIN_PERCENT) continue;
+      const marginScore = Math.min(1, marginPercent / 70);
 
-        // 1. Co-occurrence strength (volume + rate)
-        const coOccurrenceScore = Math.min(1, (rate / 0.5) * 0.6 + (mainTickets / 200) * 0.4);
+      // 3. Stock pressure
+      const sugStock = productStocks.get(sugPid) || 0;
+      if (sugStock < MIN_STOCK_FOR_RECOMMEND) continue;
+      let stockPressureScore: number;
+      if (sugStock >= OVERSTOCK_THRESHOLD) stockPressureScore = 1.0;
+      else if (sugStock >= 20) stockPressureScore = 0.7;
+      else stockPressureScore = 0.3;
 
-        // 2. MARGIN IS KING — push what makes money
-        const sugPrice = productPrices.get(sugPid) || 0;
-        const sugCost = productCosts.get(sugPid) || 0;
-        const marginPercent = sugPrice > 0 ? ((sugPrice - sugCost) / sugPrice) * 100 : 50;
-        if (marginPercent < MIN_MARGIN_PERCENT) continue; // Hard block: no low-margin reco
-        const marginScore = Math.min(1, marginPercent / 70); // Caps at 70% margin
+      // 4. Temporal relevance
+      const currentHour = new Date().getHours();
+      let temporalScore = 0.5;
+      if (currentHour >= 7 && currentHour <= 9) temporalScore = 0.8;
+      if (currentHour >= 12 && currentHour <= 14) temporalScore = 0.9;
+      if (currentHour >= 17 && currentHour <= 20) temporalScore = 0.7;
 
-        // 3. Stock pressure — push overstock, block low stock
-        const sugStock = productStocks.get(sugPid) || 0;
-        if (sugStock < MIN_STOCK_FOR_RECOMMEND) continue; // Hard block: no reco on empty shelves
-        let stockPressureScore: number;
-        if (sugStock >= OVERSTOCK_THRESHOLD) {
-          stockPressureScore = 1.0; // Overstock → push hard (need to move inventory)
-        } else if (sugStock >= 20) {
-          stockPressureScore = 0.7; // Healthy stock
-        } else {
-          stockPressureScore = 0.3; // Low stock → don't push aggressively
-        }
+      // 5. Consistency
+      const consistencyScore = Math.min(1, coOccurrences / 30);
 
-        // 4. Temporal relevance (hour-of-day awareness)
-        const currentHour = new Date().getHours();
-        let temporalScore = 0.5; // Default neutral
-        // Basic time awareness (will be enriched with actual hourly patterns in V5)
-        if (currentHour >= 7 && currentHour <= 9) temporalScore = 0.8;  // Morning rush
-        if (currentHour >= 12 && currentHour <= 14) temporalScore = 0.9; // Lunch peak
-        if (currentHour >= 17 && currentHour <= 20) temporalScore = 0.7; // Evening traffic
+      // ── FINAL SCORE ──
+      const confidence =
+        coOccurrenceScore * W_COOCCURRENCE +
+        marginScore * W_MARGIN +
+        stockPressureScore * W_STOCK_PRESSURE +
+        temporalScore * W_TEMPORAL +
+        consistencyScore * W_CONSISTENCY;
 
-        // 5. Consistency (stable over time — approximated by volume)
-        const consistencyScore = Math.min(1, coOccurrences / 30);
+      const estimatedCashImpact = Math.round((marginPercent / 100) * sugPrice);
 
-        // ── FINAL SCORE: weighted by cash impact ──
-        const confidence =
-          coOccurrenceScore * W_COOCCURRENCE +
-          marginScore * W_MARGIN +
-          stockPressureScore * W_STOCK_PRESSURE +
-          temporalScore * W_TEMPORAL +
-          consistencyScore * W_CONSISTENCY;
-
-        // Calculate estimated cash impact (margin × price of suggested product)
-        const estimatedCashImpact = Math.round((marginPercent / 100) * sugPrice);
-
-        associations.push({
-          productA: mainPid,
-          productAName: productNames.get(mainPid) || mainPid,
-          productB: sugPid,
-          productBName: productNames.get(sugPid) || sugPid,
-          coOccurrences,
-          totalTicketsA: mainTickets,
-          attachmentRate: rate,
-          confidence,
-          marginBoost: sugPrice,
-          marginPercent: Math.round(marginPercent),
-          estimatedCashImpact,
-          stockPressure: sugStock >= OVERSTOCK_THRESHOLD ? 'overstock' : sugStock >= 20 ? 'healthy' : 'low',
-        });
-      }
+      associations.push({
+        productA: mainPid,
+        productAName: productNames.get(mainPid) || mainPid,
+        productB: sugPid,
+        productBName: productNames.get(sugPid) || sugPid,
+        coOccurrences,
+        totalTicketsA: mainTickets,
+        attachmentRate: rate,
+        confidence,
+        marginBoost: sugPrice,
+        marginPercent: Math.round(marginPercent),
+        estimatedCashImpact,
+        stockPressure: sugStock >= OVERSTOCK_THRESHOLD ? 'overstock' : sugStock >= 20 ? 'healthy' : 'low',
+      });
     }
 
     // V4: Sort by estimated CASH IMPACT (confidence × margin in cents)
