@@ -242,6 +242,14 @@ export const salesAiApi = {
   associations: () => api.get('/sales-ai/associations'),
   hourlyPatterns: () => api.get('/sales-ai/hourly-patterns'),
   stats: () => api.get('/sales-ai/stats'),
+  // Learning endpoints — track reco funnel
+  logDisplay: (data: { triggerProductId: string; triggerProductName: string; suggestedProductId: string; suggestedProductName: string; confidence: number; estimatedCashImpact: number; marginPercent: number }) =>
+    api.post('/sales-ai/log/display', data),
+  logClick: (logId: string) => api.patch(`/sales-ai/log/${logId}/click`),
+  logAddToCart: (logId: string) => api.patch(`/sales-ai/log/${logId}/add-to-cart`),
+  logConversion: (logId: string, data: { saleId: string; revenueGenerated: number; marginGenerated: number }) =>
+    api.patch(`/sales-ai/log/${logId}/convert`, data),
+  kpi: () => api.get('/sales-ai/kpi'),
 };
 
 export default api;

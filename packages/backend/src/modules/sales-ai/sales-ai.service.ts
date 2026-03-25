@@ -1,4 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
+import { AiLearningService } from './ai-learning.service';
+import { ExternalContextService } from './external-context.service';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { SaleEntity } from '../../database/entities/sale.entity';
@@ -87,6 +89,8 @@ export class SalesAiService {
     @InjectRepository(SaleLineItemEntity) private readonly lineRepo: Repository<SaleLineItemEntity>,
     @InjectRepository(ProductEntity) private readonly productRepo: Repository<ProductEntity>,
     private readonly dataSource: DataSource,
+    @Inject(forwardRef(() => AiLearningService)) private readonly learning: AiLearningService,
+    @Inject(forwardRef(() => ExternalContextService)) private readonly externalCtx: ExternalContextService,
   ) {}
 
   // ── 1. PRODUCT ASSOCIATIONS ──
@@ -280,7 +284,6 @@ export class SalesAiService {
     const associations = await this.computeAssociations(storeId);
 
     if (associations.length === 0) {
-      // Not enough data → strategic silence
       return [{
         type: 'silence',
         message: 'Accumulation de données en cours',
@@ -289,8 +292,29 @@ export class SalesAiService {
         impact: 'none',
         scope: storeId,
         actionability: 'info',
-        evidence: ['< 20 tickets analysables'],
+        evidence: [`< ${MIN_TICKETS_FOR_ASSOCIATION} tickets analysables`],
       }];
+    }
+
+    // V5: Get external context (weather + transport) — fail-safe
+    let externalBoost = 0;
+    let externalEvidence: string[] = [];
+    try {
+      const ctx = await this.externalCtx.getFullContext();
+      if (ctx.weather.available) {
+        externalBoost += ctx.weather.impactScore * 0.1; // Max ±0.06 impact on score
+        if (ctx.weather.impactScore !== 0) {
+          externalEvidence.push(`Météo: ${ctx.weather.description} (${ctx.weather.impactReason})`);
+        }
+      }
+      if (ctx.transport.available) {
+        externalBoost += ctx.transport.impactScore * 0.1;
+        if (ctx.transport.hasDisruptions) {
+          externalEvidence.push(`Transport: ${ctx.transport.impactReason}`);
+        }
+      }
+    } catch {
+      // External context unavailable → no boost, no penalty
     }
 
     // If cart has items → find upsell opportunities
@@ -300,12 +324,19 @@ export class SalesAiService {
       for (const assoc of associations) {
         // Product A is in cart, suggest B
         if (cartProductIds.has(assoc.productA) && !cartProductIds.has(assoc.productB)) {
-          if (assoc.confidence >= MIN_CONFIDENCE) {
+          // V5: Skip blacklisted products
+          const blacklisted = await this.learning.isBlacklisted(assoc.productB, storeId);
+          if (blacklisted) continue;
+
+          // Apply external context boost to confidence
+          const adjustedConfidence = Math.min(1, assoc.confidence + externalBoost);
+
+          if (adjustedConfidence >= MIN_CONFIDENCE) {
             recommendations.push({
               type: 'upsell',
               message: `Proposer ${assoc.productBName}`,
               why: `${Math.round(assoc.attachmentRate * 100)}% des clients prennent aussi ${assoc.productBName} (marge ${assoc.marginPercent}%${assoc.stockPressure === 'overstock' ? ' · surstock à écouler' : ''})`,
-              confidence: assoc.confidence,
+              confidence: adjustedConfidence,
               impact: `+${(assoc.estimatedCashImpact / 100).toFixed(2)}€ marge`,
               scope: storeId,
               actionability: 'immediate',
@@ -313,6 +344,7 @@ export class SalesAiService {
                 `${assoc.coOccurrences} co-achats observés`,
                 `taux d'association ${Math.round(assoc.attachmentRate * 100)}%`,
                 `sur ${assoc.totalTicketsA} tickets`,
+                ...externalEvidence,
               ],
               productId: assoc.productA,
               productName: assoc.productAName,

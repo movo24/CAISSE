@@ -17,6 +17,8 @@ interface Recommendation {
   impact: string;
   actionability: 'immediate' | 'watch' | 'info';
   evidence: string[];
+  productId?: string;
+  productName?: string;
   suggestedProductId?: string;
   suggestedProductName?: string;
 }
@@ -36,8 +38,9 @@ export function AiRecommendation() {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastCartRef = useRef('');
-  const lastRecoTimeRef = useRef(0); // Cooldown tracker
-  const shownThisSessionRef = useRef<Set<string>>(new Set()); // Never show same reco twice
+  const lastRecoTimeRef = useRef(0);
+  const shownThisSessionRef = useRef<Set<string>>(new Set());
+  const logIdsRef = useRef<Map<string, string>>(new Map()); // suggestedProductId → logId
 
   // Fetch recommendations when cart changes (debounced)
   useEffect(() => {
@@ -83,7 +86,27 @@ export function AiRecommendation() {
           if (r.suggestedProductId) shownThisSessionRef.current.add(r.suggestedProductId);
         });
 
-        if (limited.length > 0) lastRecoTimeRef.current = Date.now();
+        if (limited.length > 0) {
+          lastRecoTimeRef.current = Date.now();
+          // Log display for learning (fire-and-forget)
+          for (const rec of limited) {
+            if (rec.suggestedProductId && rec.productId) {
+              salesAiApi.logDisplay({
+                triggerProductId: rec.productId,
+                triggerProductName: rec.productName || '',
+                suggestedProductId: rec.suggestedProductId,
+                suggestedProductName: rec.suggestedProductName || '',
+                confidence: rec.confidence,
+                estimatedCashImpact: 0,
+                marginPercent: 0,
+              }).then((res) => {
+                if (res.data?.logId && rec.suggestedProductId) {
+                  logIdsRef.current.set(rec.suggestedProductId, res.data.logId);
+                }
+              }).catch(() => {}); // Never block POS
+            }
+          }
+        }
         setRecommendations(limited);
 
         // Auto-dismiss after 15s
@@ -114,6 +137,13 @@ export function AiRecommendation() {
   // Handle "add to cart" from recommendation
   const handleAddSuggested = async (rec: Recommendation) => {
     if (!rec.suggestedProductId) return;
+
+    // Log click (fire-and-forget)
+    const logId = logIdsRef.current.get(rec.suggestedProductId);
+    if (logId) {
+      salesAiApi.logClick(logId).catch(() => {});
+    }
+
     try {
       const res = await productsApi.get(rec.suggestedProductId);
       const p = res.data;
@@ -124,7 +154,12 @@ export function AiRecommendation() {
           name: p.name,
           unitPriceMinorUnits: p.priceMinorUnits,
         });
-        // Dismiss this recommendation
+
+        // Log add-to-cart (fire-and-forget)
+        if (logId) {
+          salesAiApi.logAddToCart(logId).catch(() => {});
+        }
+
         setDismissed((prev) => new Set(prev).add(rec.suggestedProductId!));
       }
     } catch {
@@ -146,7 +181,7 @@ export function AiRecommendation() {
 
   return (
     <div className="px-2 pb-2">
-      {visible.slice(0, 2).map((rec) => {
+      {visible.slice(0, MAX_RECOS_PER_SESSION).map((rec) => {
         const isUpsell = rec.type === 'upsell';
         const isAlert = rec.type === 'alert';
 
