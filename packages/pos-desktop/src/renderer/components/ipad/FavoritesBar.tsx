@@ -22,7 +22,7 @@ export function FavoritesBar({ favorites, onSelect, onToggleFavorite }: Favorite
   if (favorites.length === 0) return null;
 
   return (
-    <div className="flex items-center gap-1.5 px-3 py-1.5 overflow-x-auto bg-gradient-to-r from-amber-50/30 to-orange-50/30 border-b border-pos-border/10">
+    <div className="flex items-center gap-1.5 px-3 py-1.5 overflow-x-auto overflow-y-hidden bg-gradient-to-r from-amber-50/30 to-orange-50/30 border-b border-pos-border/10 max-w-full scrollbar-hide">
       <Star size={12} className="text-amber-500 flex-shrink-0" />
       {favorites.map((fav) => (
         <button

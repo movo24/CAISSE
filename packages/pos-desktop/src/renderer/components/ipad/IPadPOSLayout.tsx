@@ -365,7 +365,7 @@ export function IPadPOSLayout() {
         />
 
         {/* ── CENTER: Search + Scanner + Favorites + Product Grid ── */}
-        <div className="flex flex-col min-h-0 bg-pos-bg relative">
+        <div className="flex flex-col min-h-0 min-w-0 overflow-x-hidden bg-pos-bg relative">
           {/* Search bar — compact in landscape */}
           <div className={`px-3 ${isLandscape ? 'pt-2 pb-0.5' : 'pt-3 pb-1'}`}>
             <div className="relative">

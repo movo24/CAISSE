@@ -293,6 +293,10 @@ kbd {
   grid-column: 1 / -1;
 }
 
+/* Hide scrollbar but keep scroll functional */
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+
 /* Product card touch feedback */
 .product-card-touch {
   -webkit-tap-highlight-color: transparent;
