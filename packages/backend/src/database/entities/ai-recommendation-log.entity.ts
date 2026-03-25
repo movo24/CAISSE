@@ -14,21 +14,21 @@ export class AiRecommendationLogEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'store_id' })
+  @Column({ name: 'store_id', type: 'uuid' })
   storeId: string;
 
-  @Column({ name: 'employee_id', nullable: true })
+  @Column({ name: 'employee_id', type: 'varchar', nullable: true })
   employeeId: string | null;
 
   // What was in the cart when reco was shown
-  @Column({ name: 'trigger_product_id' })
+  @Column({ name: 'trigger_product_id', type: 'uuid' })
   triggerProductId: string;
 
   @Column({ name: 'trigger_product_name', type: 'varchar' })
   triggerProductName: string;
 
   // What was recommended
-  @Column({ name: 'suggested_product_id' })
+  @Column({ name: 'suggested_product_id', type: 'uuid' })
   suggestedProductId: string;
 
   @Column({ name: 'suggested_product_name', type: 'varchar' })
