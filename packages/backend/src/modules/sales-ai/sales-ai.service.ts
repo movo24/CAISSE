@@ -127,24 +127,34 @@ export class SalesAiService {
     const productCosts = new Map(allProducts.map((p) => [p.id, p.costMinorUnits || 0]));
     const productStocks = new Map(allProducts.map((p) => [p.id, p.stockQuantity || 0]));
 
-    // SQL-based co-occurrence: join line items with themselves on same sale
+    // Step 1: Pre-compute per-product ticket counts (fast, no correlated subquery)
+    const productCountRows: any[] = await this.dataSource.query(`
+      SELECT li.product_id as pid, COUNT(DISTINCT li.sale_id) as cnt
+      FROM sale_line_items li
+      JOIN sales s ON s.id = li.sale_id
+      WHERE s.store_id = $1 AND s.status = 'completed'
+        AND s.created_at >= NOW() - INTERVAL '${daysBack} days'
+      GROUP BY li.product_id
+    `, [storeId]);
+    const productTicketCounts = new Map<string, number>();
+    for (const r of productCountRows) {
+      productTicketCounts.set(r.pid, parseInt(r.cnt, 10));
+    }
+
+    // Step 2: Co-occurrence via self-join (no correlated subquery)
     const coOccRows: any[] = await this.dataSource.query(`
       SELECT
         a.product_id as pid_a,
         b.product_id as pid_b,
-        COUNT(DISTINCT a.sale_id) as co_count,
-        (SELECT COUNT(DISTINCT sale_id) FROM sale_line_items WHERE product_id = a.product_id
-          AND sale_id IN (SELECT id FROM sales WHERE store_id = $1 AND status = 'completed'
-            AND created_at >= NOW() - INTERVAL '${daysBack} days')) as total_a
+        COUNT(DISTINCT a.sale_id) as co_count
       FROM sale_line_items a
       JOIN sale_line_items b ON a.sale_id = b.sale_id AND a.product_id < b.product_id
-      WHERE a.sale_id IN (
-        SELECT id FROM sales WHERE store_id = $1 AND status = 'completed'
-          AND created_at >= NOW() - INTERVAL '${daysBack} days'
-      )
+      JOIN sales s ON s.id = a.sale_id
+      WHERE s.store_id = $1 AND s.status = 'completed'
+        AND s.created_at >= NOW() - INTERVAL '${daysBack} days'
       GROUP BY a.product_id, b.product_id
       HAVING COUNT(DISTINCT a.sale_id) >= ${MIN_COOCCURRENCE}
-      ORDER BY COUNT(DISTINCT a.sale_id) DESC
+      ORDER BY co_count DESC
       LIMIT 50
     `, [storeId]);
 
@@ -155,15 +165,16 @@ export class SalesAiService {
       const pidA = row.pid_a;
       const pidB = row.pid_b;
       const coOccurrences = parseInt(row.co_count, 10);
-      const totalA = parseInt(row.total_a, 10);
+      const totalA = productTicketCounts.get(pidA) || 1;
+      const totalB = productTicketCounts.get(pidB) || 1;
 
-      const attachmentRateAB = totalA > 0 ? coOccurrences / totalA : 0;
-      const attachmentRateBA = coOccurrences / totalTickets; // approximate
+      const attachmentRateAB = coOccurrences / totalA;
+      const attachmentRateBA = coOccurrences / totalB;
 
       // Use the higher attachment rate (A→B or B→A)
       const [mainPid, sugPid, rate, mainTickets] = attachmentRateAB >= attachmentRateBA
         ? [pidA, pidB, attachmentRateAB, totalA]
-        : [pidB, pidA, attachmentRateBA, totalTickets];
+        : [pidB, pidA, attachmentRateBA, totalB];
 
       if (rate < MIN_ATTACHMENT_RATE) continue;
 
