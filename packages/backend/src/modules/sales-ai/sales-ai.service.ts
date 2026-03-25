@@ -22,15 +22,18 @@ import { ProductEntity } from '../../database/entities/product.entity';
 // ── Types ──
 
 export interface ProductAssociation {
-  productA: string;       // productId
+  productA: string;
   productAName: string;
-  productB: string;       // productId
+  productB: string;
   productBName: string;
-  coOccurrences: number;  // How many tickets contain both
-  totalTicketsA: number;  // Total tickets containing A
-  attachmentRate: number; // coOccurrences / totalTicketsA (0-1)
-  confidence: number;     // Overall confidence score (0-1)
-  marginBoost: number;    // Extra margin from B in cents
+  coOccurrences: number;
+  totalTicketsA: number;
+  attachmentRate: number;    // 0-1
+  confidence: number;        // 0-1 (V4 multi-factor)
+  marginBoost: number;       // Price of B in cents
+  marginPercent: number;     // Margin % of product B
+  estimatedCashImpact: number; // Estimated margin in cents per reco accepted
+  stockPressure: 'overstock' | 'healthy' | 'low'; // Stock status of B
 }
 
 export interface HourlyPattern {
@@ -57,22 +60,23 @@ export interface SalesRecommendation {
   suggestedProductName?: string;
 }
 
-// ── Config V2 — Strict thresholds (prefer silence over bad advice) ──
+// ── Config V4 — Cash-oriented scoring ──
 
-const MIN_TICKETS_FOR_ASSOCIATION = 100;  // Need 100+ tickets for reliable patterns
-const MIN_COOCCURRENCE = 10;              // Product pair must appear in 10+ tickets
-const MIN_ATTACHMENT_RATE = 0.25;         // 25% minimum attachment rate
-const MIN_CONFIDENCE = 0.75;             // Below this → SILENCE
-const MIN_MARGIN_PERCENT = 10;           // Don't recommend products with < 10% margin
-const MIN_STOCK_FOR_RECOMMEND = 3;       // Don't recommend if stock < 3
-const RUSH_THRESHOLD_MULTIPLIER = 1.5;   // 1.5x average = rush hour
+const MIN_TICKETS_FOR_ASSOCIATION = 100;
+const MIN_COOCCURRENCE = 10;
+const MIN_ATTACHMENT_RATE = 0.25;
+const MIN_CONFIDENCE = 0.75;
+const MIN_MARGIN_PERCENT = 10;
+const MIN_STOCK_FOR_RECOMMEND = 3;
+const OVERSTOCK_THRESHOLD = 50;          // Stock > 50 = overstock → push harder
+const RUSH_THRESHOLD_MULTIPLIER = 1.5;
 
-// ── V2 Scoring weights ──
-const W_COOCCURRENCE = 0.35;  // How often bought together
-const W_MARGIN = 0.25;        // Profitability of suggested product
-const W_TEMPORAL = 0.15;      // Is this relevant right now (time of day)
-const W_STOCK = 0.15;         // Is stock healthy
-const W_CONSISTENCY = 0.10;   // Is pattern stable over time
+// ── V4 Scoring weights — CASH FIRST ──
+const W_COOCCURRENCE = 0.30;  // Correlation (reduced — no longer king)
+const W_MARGIN = 0.35;        // MARGIN IS KING — push what makes money
+const W_STOCK_PRESSURE = 0.15; // Push overstock, block low stock
+const W_TEMPORAL = 0.10;      // Time-of-day relevance
+const W_CONSISTENCY = 0.10;   // Pattern stability
 
 @Injectable()
 export class SalesAiService {
@@ -157,35 +161,51 @@ export class SalesAiService {
 
         if (rate < MIN_ATTACHMENT_RATE) continue;
 
-        // ── V2 Multi-factor scoring ──
+        // ── V4 Cash-oriented multi-factor scoring ──
+
         // 1. Co-occurrence strength (volume + rate)
         const coOccurrenceScore = Math.min(1, (rate / 0.5) * 0.6 + (mainTickets / 200) * 0.4);
 
-        // 2. Margin weight (from cost data if available)
+        // 2. MARGIN IS KING — push what makes money
         const sugPrice = productPrices.get(sugPid) || 0;
         const sugCost = productCosts.get(sugPid) || 0;
-        const marginPercent = sugPrice > 0 ? ((sugPrice - sugCost) / sugPrice) * 100 : 50; // default 50% if no cost
-        if (marginPercent < MIN_MARGIN_PERCENT) continue; // Skip low-margin products
-        const marginScore = Math.min(1, marginPercent / 60); // Caps at 60% margin
+        const marginPercent = sugPrice > 0 ? ((sugPrice - sugCost) / sugPrice) * 100 : 50;
+        if (marginPercent < MIN_MARGIN_PERCENT) continue; // Hard block: no low-margin reco
+        const marginScore = Math.min(1, marginPercent / 70); // Caps at 70% margin
 
-        // 3. Stock safety
+        // 3. Stock pressure — push overstock, block low stock
         const sugStock = productStocks.get(sugPid) || 0;
-        if (sugStock < MIN_STOCK_FOR_RECOMMEND) continue; // Skip out-of-stock
-        const stockScore = Math.min(1, sugStock / 20); // Caps at 20 units
+        if (sugStock < MIN_STOCK_FOR_RECOMMEND) continue; // Hard block: no reco on empty shelves
+        let stockPressureScore: number;
+        if (sugStock >= OVERSTOCK_THRESHOLD) {
+          stockPressureScore = 1.0; // Overstock → push hard (need to move inventory)
+        } else if (sugStock >= 20) {
+          stockPressureScore = 0.7; // Healthy stock
+        } else {
+          stockPressureScore = 0.3; // Low stock → don't push aggressively
+        }
 
-        // 4. Temporal relevance (will be enriched in V3 with hour-of-day)
-        const temporalScore = 0.7; // Default: neutral (no time context yet)
+        // 4. Temporal relevance (hour-of-day awareness)
+        const currentHour = new Date().getHours();
+        let temporalScore = 0.5; // Default neutral
+        // Basic time awareness (will be enriched with actual hourly patterns in V5)
+        if (currentHour >= 7 && currentHour <= 9) temporalScore = 0.8;  // Morning rush
+        if (currentHour >= 12 && currentHour <= 14) temporalScore = 0.9; // Lunch peak
+        if (currentHour >= 17 && currentHour <= 20) temporalScore = 0.7; // Evening traffic
 
         // 5. Consistency (stable over time — approximated by volume)
-        const consistencyScore = Math.min(1, coOccurrences / 30); // Caps at 30 co-occurrences
+        const consistencyScore = Math.min(1, coOccurrences / 30);
 
-        // Final weighted score
+        // ── FINAL SCORE: weighted by cash impact ──
         const confidence =
           coOccurrenceScore * W_COOCCURRENCE +
           marginScore * W_MARGIN +
+          stockPressureScore * W_STOCK_PRESSURE +
           temporalScore * W_TEMPORAL +
-          stockScore * W_STOCK +
           consistencyScore * W_CONSISTENCY;
+
+        // Calculate estimated cash impact (margin × price of suggested product)
+        const estimatedCashImpact = Math.round((marginPercent / 100) * sugPrice);
 
         associations.push({
           productA: mainPid,
@@ -197,12 +217,16 @@ export class SalesAiService {
           attachmentRate: rate,
           confidence,
           marginBoost: sugPrice,
+          marginPercent: Math.round(marginPercent),
+          estimatedCashImpact,
+          stockPressure: sugStock >= OVERSTOCK_THRESHOLD ? 'overstock' : sugStock >= 20 ? 'healthy' : 'low',
         });
       }
     }
 
-    // Sort by confidence × margin boost
-    associations.sort((a, b) => (b.confidence * b.marginBoost) - (a.confidence * a.marginBoost));
+    // V4: Sort by estimated CASH IMPACT (confidence × margin in cents)
+    // This ensures the AI pushes what makes the most money, not just what correlates
+    associations.sort((a, b) => (b.confidence * b.estimatedCashImpact) - (a.confidence * a.estimatedCashImpact));
 
     this.logger.log(`[AI] Found ${associations.length} product associations from ${totalTickets} tickets`);
     return associations;
@@ -280,9 +304,9 @@ export class SalesAiService {
             recommendations.push({
               type: 'upsell',
               message: `Proposer ${assoc.productBName}`,
-              why: `${Math.round(assoc.attachmentRate * 100)}% des clients qui prennent ${assoc.productAName} prennent aussi ${assoc.productBName}`,
+              why: `${Math.round(assoc.attachmentRate * 100)}% des clients prennent aussi ${assoc.productBName} (marge ${assoc.marginPercent}%${assoc.stockPressure === 'overstock' ? ' · surstock à écouler' : ''})`,
               confidence: assoc.confidence,
-              impact: `+${(assoc.marginBoost / 100).toFixed(2)}€ panier moyen`,
+              impact: `+${(assoc.estimatedCashImpact / 100).toFixed(2)}€ marge`,
               scope: storeId,
               actionability: 'immediate',
               evidence: [
