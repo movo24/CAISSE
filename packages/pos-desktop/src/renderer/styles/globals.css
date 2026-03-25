@@ -285,9 +285,10 @@ kbd {
 /* ── PORTRAIT: categories horizontal top, then products + cart side by side ── */
 .ipad-pos-grid-portrait {
   display: grid;
-  grid-template-columns: 1fr 280px;
+  grid-template-columns: 1fr 240px;
   grid-template-rows: auto 1fr;
   min-height: 0;
+  overflow-x: hidden;
 }
 .ipad-pos-grid-portrait > *:first-child {
   grid-column: 1 / -1;

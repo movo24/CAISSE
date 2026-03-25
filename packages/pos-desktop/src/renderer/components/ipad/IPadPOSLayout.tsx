@@ -449,10 +449,12 @@ export function IPadPOSLayout() {
             </div>
           )}
 
-          {/* Sales Cockpit — shift performance */}
-          <div className="px-2 pt-2">
-            <SalesCockpit />
-          </div>
+          {/* Sales Cockpit — shift performance (landscape only, too wide for portrait) */}
+          {isLandscape && (
+            <div className="px-2 pt-2">
+              <SalesCockpit />
+            </div>
+          )}
 
           {/* Cart items — bigger touch targets in landscape */}
           <div className={`flex-1 overflow-y-auto cart-scroll space-y-1 ${isLandscape ? 'p-2' : 'p-2'}`}>
