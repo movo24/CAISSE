@@ -22,7 +22,9 @@ interface Recommendation {
 }
 
 const FETCH_DEBOUNCE_MS = 2000; // Don't spam API on rapid cart changes
-const DISMISS_DURATION_MS = 15000; // Auto-hide after 15s
+const DISMISS_DURATION_MS = 12000; // Auto-hide after 12s
+const COOLDOWN_MS = 120000; // 2 min cooldown between recommendations
+const MAX_RECOS_PER_SESSION = 1; // Only 1 recommendation at a time
 
 export function AiRecommendation() {
   const cartItems = usePOSStore((s) => s.cartItems);
@@ -34,6 +36,8 @@ export function AiRecommendation() {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastCartRef = useRef('');
+  const lastRecoTimeRef = useRef(0); // Cooldown tracker
+  const shownThisSessionRef = useRef<Set<string>>(new Set()); // Never show same reco twice
 
   // Fetch recommendations when cart changes (debounced)
   useEffect(() => {
@@ -44,10 +48,14 @@ export function AiRecommendation() {
       if (cartItems.length === 0) {
         setRecommendations([]);
         setDismissed(new Set());
+        shownThisSessionRef.current = new Set(); // Reset session on empty cart
       }
       return;
     }
     lastCartRef.current = cartKey;
+
+    // Cooldown: don't fetch if we showed a reco less than 2 min ago
+    if (Date.now() - lastRecoTimeRef.current < COOLDOWN_MS) return;
 
     // Debounce
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -58,11 +66,25 @@ export function AiRecommendation() {
         const res = await salesAiApi.recommendations(productIds);
         const recs: Recommendation[] = Array.isArray(res.data) ? res.data : [];
 
-        // Only show actionable recommendations (not silence)
+        // Only show actionable, not-yet-shown, high-confidence recommendations
         const actionable = recs.filter(
-          (r) => r.type !== 'silence' && r.confidence >= 0.75
+          (r) =>
+            r.type !== 'silence' &&
+            r.confidence >= 0.75 &&
+            r.suggestedProductId &&
+            !shownThisSessionRef.current.has(r.suggestedProductId)
         );
-        setRecommendations(actionable);
+
+        // Max 1 recommendation per transaction
+        const limited = actionable.slice(0, MAX_RECOS_PER_SESSION);
+
+        // Track shown recommendations (never show same one twice in session)
+        limited.forEach((r) => {
+          if (r.suggestedProductId) shownThisSessionRef.current.add(r.suggestedProductId);
+        });
+
+        if (limited.length > 0) lastRecoTimeRef.current = Date.now();
+        setRecommendations(limited);
 
         // Auto-dismiss after 15s
         if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
