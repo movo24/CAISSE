@@ -128,7 +128,7 @@ export const authApi = {
 // Products
 // ---------------------------------------------------------------------------
 export const productsApi = {
-  list: () => api.get('/products'),
+  list: (params?: { storeId?: string }) => api.get('/products', { params }),
   get: (id: string) => api.get(`/products/${id}`),
   create: (data: any) => api.post('/products', data),
   update: (id: string, data: any) => api.put(`/products/${id}`, data),
@@ -144,7 +144,7 @@ export const productsApi = {
 // Sales
 // ---------------------------------------------------------------------------
 export const salesApi = {
-  list: (date?: string) => api.get('/sales', { params: { date } }),
+  list: (date?: string, storeId?: string) => api.get('/sales', { params: { date, storeId } }),
   get: (id: string) => api.get(`/sales/${id}`),
   void: (id: string) => api.post(`/sales/${id}/void`),
 };

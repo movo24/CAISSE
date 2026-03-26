@@ -34,8 +34,12 @@ export class ProductsController {
 
   @Get()
   @ApiOperation({ summary: 'List products for store (paginated)' })
-  findAll(@Request() req: any, @Query() query: PaginationQueryDto) {
-    return this.productsService.findAll(req.user.storeId, query);
+  findAll(@Request() req: any, @Query() query: PaginationQueryDto, @Query('storeId') queryStoreId?: string) {
+    // Admin can query any store via ?storeId=xxx
+    const effectiveStoreId = (req.user.role === 'admin' && queryStoreId)
+      ? queryStoreId
+      : req.user.storeId;
+    return this.productsService.findAll(effectiveStoreId, query);
   }
 
   @Get('scan/:ean')

@@ -43,8 +43,13 @@ export class SalesController {
     @Request() req: any,
     @Query() query: PaginationQueryDto,
     @Query('date') date?: string,
+    @Query('storeId') queryStoreId?: string,
   ) {
-    return this.salesService.findByStore(req.user.storeId, { ...query, date });
+    // Admin can query any store via ?storeId=xxx
+    const effectiveStoreId = (req.user.role === 'admin' && queryStoreId)
+      ? queryStoreId
+      : req.user.storeId;
+    return this.salesService.findByStore(effectiveStoreId, { ...query, date });
   }
 
   @Get(':id')
