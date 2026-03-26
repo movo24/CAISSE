@@ -92,7 +92,8 @@ export function ProductsPage() {
       );
       setError(null);
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors du chargement des produits');
+      const msg = err.response?.data?.message;
+      setError(typeof msg === 'string' ? msg : Array.isArray(msg) ? msg.join(', ') : 'Erreur lors du chargement des produits');
     } finally {
       setLoading(false);
     }
@@ -186,7 +187,8 @@ export function ProductsPage() {
       resetForm();
       await fetchProducts();
     } catch (err: any) {
-      const msg = err.response?.data?.message || 'Erreur lors de la sauvegarde';
+      const rawMsg = err.response?.data?.message;
+      const msg = typeof rawMsg === 'string' ? rawMsg : Array.isArray(rawMsg) ? rawMsg.join(', ') : 'Erreur lors de la sauvegarde';
       alert(typeof msg === 'string' ? msg : JSON.stringify(msg));
     } finally {
       setSaving(false);
@@ -199,7 +201,8 @@ export function ProductsPage() {
       await productsApi.delete(id);
       await fetchProducts();
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Erreur lors de la suppression');
+      const delMsg = err.response?.data?.message;
+      alert(typeof delMsg === 'string' ? delMsg : Array.isArray(delMsg) ? delMsg.join(', ') : 'Erreur lors de la suppression');
     }
   };
 
