@@ -135,11 +135,7 @@ function HBar({ label, value, pct, color }: { label: string; value: string; pct:
 export function DashboardPage() {
   const { employee, currentStoreId } = useAuthStore();
 
-  // Admin without a store selected → show network dashboard instead
-  if (employee?.role === 'admin' && !currentStoreId) {
-    return <Navigate to="/network" replace />;
-  }
-
+  // ALL hooks MUST be called before any conditional return (React rules of hooks)
   const {
     loading,
     perfData, topProducts, flopProducts, productCategories,
@@ -149,13 +145,18 @@ export function DashboardPage() {
     cashierCashControl, cashControlAlertHistory, interStoreComparison,
     stores,
   } = useDashboardData();
-
   const [productView, setProductView] = useState<'top' | 'flop'>('top');
   const [showAllCashiers, setShowAllCashiers] = useState(false);
   const [showZHistory, setShowZHistory] = useState(false);
   const [showAlertHistory, setShowAlertHistory] = useState(false);
   const [dateFilter, setDateFilter] = useState('today');
   const [storeFilter, setStoreFilter] = useState('all');
+
+  // Admin without a store selected → show network dashboard
+  // This MUST come AFTER all hooks (React rules of hooks)
+  if (employee?.role === 'admin' && !currentStoreId) {
+    return <Navigate to="/network" replace />;
+  }
 
   /* ══════════ F. CASH CONTROL — Computed Risk Scores ══════════ */
   const cashControlAnalysis = useMemo(() => {
