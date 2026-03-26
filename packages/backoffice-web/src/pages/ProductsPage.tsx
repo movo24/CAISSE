@@ -82,12 +82,12 @@ export function ProductsPage() {
       setProducts(
         data.map((p: any) => ({
           id: p.id,
-          ean: p.ean || p.barcode || '',
+          ean: p.ean || '',
           name: p.name || '',
-          price: typeof p.price === 'number' ? p.price / 100 : (p.priceHT || p.priceTTC || 0),
-          stock: p.stock ?? p.quantity ?? 0,
-          category: p.category || 'Non classe',
-          image: p.image || null,
+          price: (p.priceMinorUnits || 0) / 100,
+          stock: p.stockQuantity ?? 0,
+          category: typeof p.categoryId === 'string' ? p.categoryId : (typeof p.category === 'string' ? p.category : 'Non classe'),
+          image: p.imageUrl || null,
         })),
       );
       setError(null);
