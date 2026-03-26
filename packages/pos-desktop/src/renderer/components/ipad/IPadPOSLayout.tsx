@@ -99,6 +99,9 @@ export function IPadPOSLayout() {
     }
   }, [btPrinter.status, btPrinter.printer, btPrinter.printTicket, btPrinter.openCashDrawer]);
   const [showInstallBanner, setShowInstallBanner] = useState(false);
+  const [digitalReceipt, setDigitalReceipt] = useState<{
+    ticketNumber: string; total: number; items: number; date: string; cashier: string;
+  } | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Show install banner if on iPad Safari but NOT in PWA standalone mode
@@ -840,20 +843,57 @@ export function IPadPOSLayout() {
             </div>
 
             {/* Ticket choices */}
-            <div className="grid grid-cols-3 gap-3">
-              <button onClick={() => payment.handleTicketChoice('paper')} className="flex flex-col items-center gap-2 p-4 rounded-2xl border-2 border-white/20 bg-white/5 hover:border-white/40 transition-all product-card-touch">
-                <FileText size={24} className="text-white" />
-                <span className="text-sm font-semibold text-white">Papier</span>
-              </button>
-              <button onClick={() => payment.handleTicketChoice('digital')} className="flex flex-col items-center gap-2 p-4 rounded-2xl border-2 border-white/20 bg-white/5 hover:border-white/40 transition-all product-card-touch">
-                <Smartphone size={24} className="text-white" />
-                <span className="text-sm font-semibold text-white">Digital</span>
-              </button>
-              <button onClick={() => payment.handleTicketChoice('none')} className="flex flex-col items-center gap-2 p-4 rounded-2xl border-2 border-white/20 bg-white/5 hover:border-white/40 transition-all product-card-touch">
-                <XCircle size={24} className="text-white" />
-                <span className="text-sm font-semibold text-white">Aucun</span>
-              </button>
-            </div>
+            {!digitalReceipt ? (
+              <div className="grid grid-cols-3 gap-3">
+                <button onClick={() => payment.handleTicketChoice('paper')} className="flex flex-col items-center gap-2 p-4 rounded-2xl border-2 border-white/20 bg-white/5 hover:border-white/40 transition-all product-card-touch">
+                  <FileText size={24} className="text-white" />
+                  <span className="text-sm font-semibold text-white">Papier</span>
+                </button>
+                <button onClick={() => {
+                  setDigitalReceipt({
+                    ticketNumber: payment.confirmation!.ticketNumber,
+                    total: payment.confirmation!.total,
+                    items: payment.confirmation!.itemCount,
+                    date: new Date().toLocaleString('fr-FR'),
+                    cashier: payment.confirmation!.cashierName,
+                  });
+                }} className="flex flex-col items-center gap-2 p-4 rounded-2xl border-2 border-emerald-400/40 bg-emerald-500/10 hover:border-emerald-400/60 transition-all product-card-touch">
+                  <Smartphone size={24} className="text-emerald-300" />
+                  <span className="text-sm font-semibold text-emerald-300">Digital</span>
+                </button>
+                <button onClick={() => payment.handleTicketChoice('none')} className="flex flex-col items-center gap-2 p-4 rounded-2xl border-2 border-white/20 bg-white/5 hover:border-white/40 transition-all product-card-touch">
+                  <XCircle size={24} className="text-white" />
+                  <span className="text-sm font-semibold text-white">Aucun</span>
+                </button>
+              </div>
+            ) : (
+              /* Digital receipt — show ticket summary for customer to photograph */
+              <div className="bg-white rounded-2xl p-5 text-gray-900 space-y-3">
+                <div className="text-center">
+                  <p className="text-xs font-bold text-emerald-600 uppercase tracking-wider">Reçu Digital</p>
+                  <p className="text-2xl font-black mt-1">{formatPrice(digitalReceipt.total)}</p>
+                  <p className="text-xs text-gray-500 mt-1">{digitalReceipt.ticketNumber} • {digitalReceipt.date}</p>
+                  <p className="text-xs text-gray-400">{digitalReceipt.items} article(s) • {digitalReceipt.cashier}</p>
+                </div>
+                <div className="border-t border-gray-200 pt-3 text-center">
+                  <p className="text-[10px] text-gray-400 mb-2">Le client peut photographier ce reçu</p>
+                  <div className="inline-block bg-gray-100 rounded-xl p-3">
+                    <div className="text-center text-xs font-mono text-gray-600">
+                      <p className="font-bold">{store.storeInfo?.storeName || 'CAISSE'}</p>
+                      <p>{digitalReceipt.ticketNumber}</p>
+                      <p className="text-lg font-black text-gray-900">{formatPrice(digitalReceipt.total)}</p>
+                      <p className="text-[9px] text-gray-400">{digitalReceipt.date}</p>
+                    </div>
+                  </div>
+                </div>
+                <button
+                  onClick={() => { setDigitalReceipt(null); payment.handleTicketChoice('digital'); }}
+                  className="w-full py-3 rounded-xl bg-emerald-600 text-white font-bold text-sm"
+                >
+                  Terminé → Nouvelle vente
+                </button>
+              </div>
+            )}
 
             {/* Countdown */}
             <div className="space-y-1">
