@@ -152,11 +152,9 @@ export function DashboardPage() {
   const [dateFilter, setDateFilter] = useState('today');
   const [storeFilter, setStoreFilter] = useState('all');
 
-  // Admin without a store selected → show network dashboard
-  // This MUST come AFTER all hooks (React rules of hooks)
-  if (employee?.role === 'admin' && !currentStoreId) {
-    return <Navigate to="/network" replace />;
-  }
+  // Note: removed auto-redirect to /network.
+  // Admin can use the store dashboard with their home store,
+  // or navigate to /network manually via the store selector.
 
   /* ══════════ F. CASH CONTROL — Computed Risk Scores ══════════ */
   const cashControlAnalysis = useMemo(() => {
