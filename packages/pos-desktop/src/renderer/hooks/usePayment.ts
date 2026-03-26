@@ -30,7 +30,7 @@ export interface ConfirmationData {
   timestamp: Date;
 }
 
-const TICKET_TIMEOUT_MS = 7000;
+const TICKET_TIMEOUT_MS = 30000; // 30s — enough time for customer to scan QR code
 
 export function usePayment() {
   const store = usePOSStore();
