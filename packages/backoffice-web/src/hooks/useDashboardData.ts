@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   productsApi,
-  salesApi,
+  // salesApi removed — using storesApi.networkSummary() instead (aggregated, fast)
   employeesApi,
   storesApi,
   reportsApi,
@@ -224,16 +224,13 @@ export function useDashboardData(): DashboardData {
       const [
         productsRes,
         stockAlertsRes,
-        salesRes,
-        salesYesterdayRes,
+        networkRes,
         storesRes,
       ] = await Promise.allSettled([
         productsApi.list(),
         notificationsApi.stockAlerts(storeId),
-        salesApi.list(),   // all sales (date filtering removed — backend rejects it)
-        salesApi.list(),   // same — will filter client-side
+        storesApi.networkSummary(),  // aggregated KPI — fast SQL, no full sales load
         storesApi.list(),
-        // employeesApi.list() removed — endpoint migrated to TimeWin24
       ]);
 
       // ── Products ──
@@ -257,115 +254,20 @@ export function useDashboardData(): DashboardData {
         setProductStats((prev) => ({ ...prev, rupturesActuelles: ruptureCount }));
       }
 
-      // ── Sales — aggregate today's data ──
-      if (salesRes.status === 'fulfilled') {
-        const sales: any[] = salesRes.value.data || [];
-        const totalCA = sales.reduce((s: number, sale: any) => s + (sale.totalMinorUnits || 0), 0);
-        const nbTickets = sales.length;
-        const avgBasket = nbTickets > 0 ? Math.round(totalCA / nbTickets) : 0;
-
-        // Hourly breakdown
-        const hourlyMap: Record<string, number> = {};
-        for (const sale of sales) {
-          const h = new Date(sale.createdAt).getHours();
-          const key = `${h}h`;
-          hourlyMap[key] = (hourlyMap[key] || 0) + (sale.totalMinorUnits || 0);
-        }
-        const hourlyCA = Object.entries(hourlyMap)
-          .map(([h, ca]) => ({ h, ca }))
-          .sort((a, b) => parseInt(a.h) - parseInt(b.h));
-
-        // Payment breakdown from sale payments
-        let cbTotal = 0, cbCount = 0;
-        let cashTotal = 0, cashCount = 0;
-        let mixteTotal = 0, mixteCount = 0;
-        for (const sale of sales) {
-          const payments = sale.payments || [];
-          const hasCash = payments.some((p: any) => p.method === 'cash');
-          const hasCard = payments.some((p: any) => p.method === 'card');
-          if (hasCash && hasCard) {
-            mixteTotal += sale.totalMinorUnits || 0;
-            mixteCount++;
-          } else if (hasCard) {
-            cbTotal += sale.totalMinorUnits || 0;
-            cbCount++;
-          } else {
-            cashTotal += sale.totalMinorUnits || 0;
-            cashCount++;
-          }
-        }
-        const totalPayments = cbTotal + cashTotal + mixteTotal;
-        setPaymentData({
-          cb: { montant: cbTotal, pct: totalPayments > 0 ? Math.round(cbTotal / totalPayments * 1000) / 10 : 0, count: cbCount },
-          especes: { montant: cashTotal, pct: totalPayments > 0 ? Math.round(cashTotal / totalPayments * 1000) / 10 : 0, count: cashCount },
-          mixte: { montant: mixteTotal, pct: totalPayments > 0 ? Math.round(mixteTotal / totalPayments * 1000) / 10 : 0, count: mixteCount },
-          cbRefuses: 0, ticketsOfferts: 0, montantOffert: 0,
-          reductionsTotales: 0, pctReductions: 0,
-          tvaCollectee: Math.round(totalCA * 0.2 / 1.2),
-          tva20: Math.round(totalCA * 0.2 / 1.2),
-          tva10: 0, tva55: 0,
-        });
-
-        // ── Top/Flop products from today's sales ──
-        const productSalesMap: Record<string, { name: string; ean: string; qty: number; ca: number; stock: number }> = {};
-        const allProducts: any[] = productsRes.status === 'fulfilled'
-          ? (Array.isArray(productsRes.value.data) ? productsRes.value.data : productsRes.value.data?.data || [])
-          : [];
-
-        for (const sale of sales) {
-          const items = sale.lineItems || sale.items || [];
-          for (const item of items) {
-            const key = item.productId || item.ean || item.name;
-            if (!productSalesMap[key]) {
-              const prod = allProducts.find((p: any) => p.id === key || p.ean === item.ean);
-              productSalesMap[key] = {
-                name: item.productName || item.name || prod?.name || 'Produit',
-                ean: item.ean || prod?.ean || '',
-                qty: 0,
-                ca: 0,
-                stock: prod?.stockQuantity ?? 0,
-              };
-            }
-            productSalesMap[key].qty += item.quantity || 1;
-            productSalesMap[key].ca += item.totalMinorUnits || (item.unitPriceMinorUnits || 0) * (item.quantity || 1);
-          }
-        }
-
-        const sortedProducts = Object.values(productSalesMap).sort((a, b) => b.ca - a.ca);
-        setTopProducts(sortedProducts.slice(0, 5).map((p, i) => ({
-          rank: i + 1, name: p.name, ean: p.ean, qty: p.qty,
-          ca: p.ca, marge: 0, stock: p.stock,
-        })));
-        setFlopProducts(
-          sortedProducts.length > 5
-            ? sortedProducts.slice(-5).reverse().map((p, i) => ({
-                rank: i + 1, name: p.name, ean: p.ean, qty: p.qty,
-                ca: p.ca, marge: 0, stock: p.stock,
-              }))
-            : [],
-        );
+      // ── Network Summary (aggregated KPI from SQL — fast, no full sales load) ──
+      if (networkRes.status === 'fulfilled') {
+        const net = networkRes.value.data?.network || {};
+        const todayCA = net.todayRevenue || 0;
+        const todaySales = net.todaySales || 0;
+        const avgBasket = todaySales > 0 ? Math.round(todayCA / todaySales) : 0;
 
         setPerfData((prev) => ({
           ...prev,
-          caJour: totalCA,
-          ticketsJour: nbTickets,
+          caJour: todayCA,
+          ticketsJour: todaySales,
           panierMoyen: avgBasket,
-          hourlyCA,
-        }));
-      }
-
-      // ── N-1 data (yesterday) ──
-      if (salesYesterdayRes.status === 'fulfilled') {
-        const yesterdaySales: any[] = salesYesterdayRes.value.data || [];
-        const yCa = yesterdaySales.reduce((s: number, sale: any) => s + (sale.totalMinorUnits || 0), 0);
-        const yTickets = yesterdaySales.length;
-        const yAvg = yTickets > 0 ? Math.round(yCa / yTickets) : 0;
-
-        setPerfData((prev) => ({
-          ...prev,
-          caJourN1: yCa,
-          ticketsJourN1: yTickets,
-          panierMoyenN1: yAvg,
+          caTotal: net.totalRevenue || 0,
+          ticketsTotal: net.totalSales || 0,
         }));
       }
 
