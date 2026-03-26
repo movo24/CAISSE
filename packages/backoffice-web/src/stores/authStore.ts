@@ -86,9 +86,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         get().loadStores();
       }
     } catch (err: any) {
+      const msg = err.response?.data?.message;
       set({
         isLoading: false,
-        error: err.response?.data?.message || 'Erreur de connexion',
+        error: typeof msg === 'string' ? msg : Array.isArray(msg) ? msg.join(', ') : 'Erreur de connexion',
       });
     }
   },
@@ -102,23 +103,22 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       localStorage.setItem('accessToken', accessToken);
       localStorage.setItem('refreshToken', refreshToken);
       localStorage.setItem('employee', JSON.stringify(employee));
-      // Don't set currentStoreId yet — admin will pick from store selector
       localStorage.removeItem('currentStoreId');
 
       set({
         isAuthenticated: true,
         employee,
         accessToken,
-        currentStoreId: null, // will be set in StoreSelectPage
+        currentStoreId: null,
         isLoading: false,
       });
 
-      // Load accessible stores immediately
       get().loadStores();
     } catch (err: any) {
+      const msg = err.response?.data?.message;
       set({
         isLoading: false,
-        error: err.response?.data?.message || 'Erreur de connexion',
+        error: typeof msg === 'string' ? msg : Array.isArray(msg) ? msg.join(', ') : 'Erreur de connexion',
       });
     }
   },
