@@ -188,7 +188,8 @@ function yesterdayStr() {
 
 export function useDashboardData(): DashboardData {
   const employee = useAuthStore((s) => s.employee);
-  const storeId = employee?.storeId || '';
+  const { currentStoreId } = useAuthStore();
+  const storeId = currentStoreId || employee?.storeId || '';
 
   const [loading, setLoading] = useState(true);
   const [perfData, setPerfData] = useState<PerfData>(emptyPerf);
