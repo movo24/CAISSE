@@ -369,4 +369,33 @@ export const subscriptionsApi = {
     api.post(`/subscriptions/${storeId}/portal`, { returnUrl }),
 };
 
+// ---------------------------------------------------------------------------
+// Stock Locations (multi-warehouse)
+// ---------------------------------------------------------------------------
+export const stockLocationsApi = {
+  // Locations
+  listLocations: () => api.get('/stock-locations/locations'),
+  createLocation: (data: { name: string; code: string; type: string; storeId?: string; address?: string }) =>
+    api.post('/stock-locations/locations', data),
+
+  // Stock views
+  networkStock: () => api.get('/stock-locations/network'),
+  productBalances: (productId: string) => api.get(`/stock-locations/product/${productId}/balances`),
+  locationBalances: (locationId: string) => api.get(`/stock-locations/location/${locationId}/balances`),
+
+  // Operations
+  receive: (data: { productId: string; locationId: string; quantity: number; reference?: string; reason?: string }) =>
+    api.post('/stock-locations/receive', data),
+  transfer: (data: { productId: string; fromLocationId: string; toLocationId: string; quantity: number; reference?: string }) =>
+    api.post('/stock-locations/transfer', data),
+  dispatch: (data: { productId: string; fromLocationId: string; dispatches: { toLocationId: string; quantity: number }[]; reference?: string }) =>
+    api.post('/stock-locations/dispatch', data),
+
+  // History
+  productMovements: (productId: string, limit = 50) =>
+    api.get(`/stock-locations/movements/product/${productId}?limit=${limit}`),
+  locationMovements: (locationId: string, limit = 50) =>
+    api.get(`/stock-locations/movements/location/${locationId}?limit=${limit}`),
+};
+
 export default api;

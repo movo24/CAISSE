@@ -3,7 +3,7 @@ import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Package, FileBarChart, Settings, LogOut, Users,
   ChevronDown, ChevronRight,
-  AlertTriangle, Building2, Store, Network, Plug, CreditCard, Rocket, Tag,
+  AlertTriangle, Building2, Store, Network, Plug, CreditCard, Rocket, Tag, Warehouse,
 } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 import { AppSwitcher } from './AppSwitcher';
@@ -40,6 +40,7 @@ const posNavItems: NavItem[] = [
   { path: '/products', label: 'Produits', icon: Package },
   { path: '/stock-alerts', label: 'Alertes Stock', icon: AlertTriangle },
   { path: '/labels', label: 'Etiquettes', icon: Tag, minRole: 'manager' },
+  { path: '/stock-network', label: 'Stock Réseau', icon: Warehouse, minRole: 'admin' },
 ];
 
 const networkGroup: NavGroup = {
