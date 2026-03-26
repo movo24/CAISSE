@@ -252,7 +252,11 @@ export class AuthService {
     }
 
     if (!employees.length) {
-      throw new UnauthorizedException('Employé introuvable');
+      throw new UnauthorizedException(
+        opts.email
+          ? 'Email administrateur introuvable. Vérifiez l\'adresse email.'
+          : 'Aucun employé trouvé pour ce magasin. Vérifiez le code magasin.',
+      );
     }
 
     // Check PIN against each employee's bcrypt hash
@@ -296,6 +300,6 @@ export class AuthService {
       }
     }
 
-    throw new UnauthorizedException('Invalid PIN');
+    throw new UnauthorizedException('Code PIN incorrect');
   }
 }
