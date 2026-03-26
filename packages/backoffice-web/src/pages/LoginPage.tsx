@@ -90,7 +90,7 @@ export function LoginPage() {
         <form onSubmit={handleSubmit} className="bg-white/5 backdrop-blur-xl rounded-2xl border border-white/10 p-8 space-y-5">
           {error && (
             <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3 text-sm text-red-300">
-              {error}
+              {typeof error === 'string' ? error : 'Erreur de connexion'}
             </div>
           )}
 

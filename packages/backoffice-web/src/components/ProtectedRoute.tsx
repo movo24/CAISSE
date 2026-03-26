@@ -13,12 +13,21 @@ export function ProtectedRoute() {
   const { isAuthenticated, restoreSession } = useAuthStore();
   const [isRestoring, setIsRestoring] = useState(true);
 
-  // Restore session on mount
+  // Restore session on mount — nuclear safety: if ANYTHING crashes, wipe storage
   useEffect(() => {
     try {
       restoreSession();
     } catch (err) {
-      console.error('[ProtectedRoute] restoreSession failed:', err);
+      console.error('[ProtectedRoute] restoreSession CRASHED — wiping corrupt storage:', err);
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('refreshToken');
+      localStorage.removeItem('employee');
+      localStorage.removeItem('currentStoreId');
+      localStorage.removeItem('currentApp');
+      useAuthStore.setState({
+        isAuthenticated: false, employee: null, accessToken: null,
+        currentStoreId: null, stores: [], error: null,
+      });
     }
     setIsRestoring(false);
   }, []);
