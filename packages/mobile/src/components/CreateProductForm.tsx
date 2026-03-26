@@ -144,7 +144,7 @@ export function CreateProductForm({ ean, onCreated, onClose }: CreateProductForm
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
 
       {/* Sheet */}
-      <div className="relative w-full max-w-lg bg-white rounded-t-3xl shadow-elevated sheet-slide-up safe-bottom max-h-[90vh] overflow-y-auto">
+      <div className="relative w-full max-w-lg bg-white rounded-t-3xl shadow-elevated sheet-slide-up safe-bottom overflow-y-auto" style={{ maxHeight: 'calc(100% - 60px)' }}>
         {/* Handle */}
         <div className="flex justify-center pt-3 pb-1">
           <div className="w-10 h-1 rounded-full bg-gray-200" />
@@ -182,7 +182,7 @@ export function CreateProductForm({ ean, onCreated, onClose }: CreateProductForm
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Ex: Coca-Cola 33cl"
-                autoFocus
+                // autoFocus removed — causes iOS keyboard loop
                 className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent"
               />
             </div>
@@ -241,7 +241,7 @@ export function CreateProductForm({ ean, onCreated, onClose }: CreateProductForm
                       onChange={(e) => setCatSearch(e.target.value)}
                       placeholder="Rechercher ou créer..."
                       className="w-full px-3 py-2 rounded-lg border border-gray-200 text-xs focus:outline-none focus:ring-1 focus:ring-violet-500"
-                      autoFocus
+                      // autoFocus removed — causes iOS keyboard loop
                     />
                   </div>
 
