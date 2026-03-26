@@ -32,6 +32,7 @@ import { StripeTerminalModule } from './modules/stripe-terminal/stripe-terminal.
 import { TerminalsModule } from './modules/terminals/terminals.module';
 import { TimewinModule } from './modules/timewin/timewin.module';
 import { SalesAiModule } from './modules/sales-ai/sales-ai.module';
+import { ReceiptsModule } from './modules/receipts/receipts.module';
 // ── RH MODULES REMOVED — All managed by TimeWin24 ──
 // EmployeesModule, PointageModule, PayrollModule, PlanningModule, StaffingModule
 // IaModule, PosAiModule, WeatherModule, TransportModule, FootfallModule, DecisionEngineModule
@@ -101,6 +102,7 @@ const isProd = process.env.NODE_ENV === 'production';
     TerminalsModule,
     TimewinModule,
     SalesAiModule,
+    ReceiptsModule,
   ],
   providers: [
     // Apply rate limiting globally to ALL endpoints

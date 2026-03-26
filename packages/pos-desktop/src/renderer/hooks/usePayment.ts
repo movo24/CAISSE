@@ -162,6 +162,8 @@ export function usePayment() {
         })),
       });
       ticketNumber = res.data.ticketNumber || `T-${Date.now().toString().slice(-6)}`;
+      // Store sale ID for QR receipt generation
+      if (res.data.id) (store as any).lastSaleId = res.data.id;
       if (res.data.jackpotResult) store.setJackpotResult(res.data.jackpotResult);
       // Emit stock alerts if any were returned by the backend
       if (res.data.stockAlerts && res.data.stockAlerts.length > 0) {
