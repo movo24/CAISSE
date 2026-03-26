@@ -226,15 +226,14 @@ export function useDashboardData(): DashboardData {
         stockAlertsRes,
         salesRes,
         salesYesterdayRes,
-        employeesRes,
         storesRes,
       ] = await Promise.allSettled([
         productsApi.list(),
         notificationsApi.stockAlerts(storeId),
-        salesApi.list(todayStr()),
-        salesApi.list(yesterdayStr()),
-        employeesApi.list(),
+        salesApi.list(),   // all sales (date filtering removed — backend rejects it)
+        salesApi.list(),   // same — will filter client-side
         storesApi.list(),
+        // employeesApi.list() removed — endpoint migrated to TimeWin24
       ]);
 
       // ── Products ──
@@ -370,25 +369,7 @@ export function useDashboardData(): DashboardData {
         }));
       }
 
-      // ── Employees ──
-      if (employeesRes.status === 'fulfilled') {
-        const emps: any[] = employeesRes.value.data || [];
-        setPerfData((prev) => ({ ...prev, nbEmployes: emps.length }));
-        // Build empty cashier perf (no perf data from backend yet)
-        setCashierData(emps.map((e: any) => ({
-          name: `${e.firstName} ${e.lastName}`,
-          tickets: 0, ca: 0, vitesseMoy: 0,
-          annulations: 0, remboursements: 0, ecart: 0,
-        })));
-        setCashierCashControl(emps.map((e: any) => ({
-          name: `${e.firstName} ${e.lastName}`,
-          totalCA: 0, especesCA: 0, tauxEspeces: 0,
-          tickets: 0, annulations: 0, remboursements: 0,
-          ticketsSupprimes: 0, ecartCaisse: 0, vitesseMoy: 0,
-          heuresCreuses: false, tendance7j: [0, 0, 0, 0, 0, 0, 0],
-          magasin: '—',
-        })));
-      }
+      // ── Employees — migrated to TimeWin24, skip ──
 
       // ── Stores ──
       if (storesRes.status === 'fulfilled') {
