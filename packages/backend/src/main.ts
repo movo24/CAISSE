@@ -216,20 +216,10 @@ async function bootstrap() {
   });
 
   // --- Security ---
+  // Helmet security headers — CSP disabled for API (APIs don't serve HTML pages).
+  // CSP should be set by the frontend nginx configs, not by the JSON API.
   app.use(helmet({
-    contentSecurityPolicy: {
-      directives: {
-        defaultSrc: ["'self'"],
-        scriptSrc: ["'self'"],
-        styleSrc: ["'self'", "'unsafe-inline'"],
-        imgSrc: ["'self'", "data:"],
-        fontSrc: ["'self'"],
-        connectSrc: ["'self'"],
-        frameAncestors: ["'none'"],
-        baseUri: ["'self'"],
-        formAction: ["'self'"],
-      },
-    },
+    contentSecurityPolicy: false, // API returns JSON, not HTML — CSP not applicable
     hsts: {
       maxAge: 63072000,
       includeSubDomains: true,
