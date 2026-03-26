@@ -1,4 +1,6 @@
 import React, { useState, useMemo } from 'react';
+import { Navigate } from 'react-router-dom';
+import { useAuthStore } from '../stores/authStore';
 import {
   TrendingUp, TrendingDown, ShoppingCart, Target, AlertTriangle,
   ArrowUpRight, ArrowDownRight, CreditCard, Banknote, Clock,
@@ -131,6 +133,13 @@ function HBar({ label, value, pct, color }: { label: string; value: string; pct:
    ═══════════════════════════════════════════════════════════════ */
 
 export function DashboardPage() {
+  const { employee, currentStoreId } = useAuthStore();
+
+  // Admin without a store selected → show network dashboard instead
+  if (employee?.role === 'admin' && !currentStoreId) {
+    return <Navigate to="/network" replace />;
+  }
+
   const {
     loading,
     perfData, topProducts, flopProducts, productCategories,
