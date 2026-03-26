@@ -141,6 +141,7 @@ export function usePayment() {
 
   const finalizePayment = useCallback(async (payments: PartialPayment[], changeMinor: number) => {
     setProcessing(true);
+    try {
     const totalAmount = store.total();
     const itemCount = store.cartItems.reduce((s, i) => s + i.quantity, 0);
     const cashierName = store.employee ? `${store.employee.firstName} ${store.employee.lastName}` : 'Caissier';
@@ -296,8 +297,16 @@ export function usePayment() {
     store.clearCart();
     setPartialPayments([]);
     setSplitAmountInput('');
-    setProcessing(false);
     store.setPaymentModalOpen(false);
+  } catch (fatalErr) {
+    // Safety net: if ANYTHING crashes after setProcessing(true),
+    // we MUST release the lock. Without this, the POS freezes permanently.
+    console.error('[POS] FATAL in finalizePayment:', fatalErr);
+    posEventBus.emit('SALE_ERROR', { message: 'Erreur inattendue. Réessayez.' });
+  } finally {
+    // ALWAYS release processing lock — no matter what happens
+    setProcessing(false);
+  }
   }, [store, transactionStart]);
 
   const commitPartialPayment = useCallback((method: PaymentMethod, amountMinor: number) => {
