@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Tag, Printer, Search, Check, Download, Plus, Minus, X, FileText, History } from 'lucide-react';
 import { productsApi } from '../services/api';
+import { useCurrentStoreId } from '../hooks/useCurrentStoreId';
 import JsBarcode from 'jsbarcode';
 
 /** Generate barcode SVG string for a given EAN */
@@ -52,6 +53,7 @@ function formatPrice(minorUnits: number, currency: string): string {
 }
 
 export function LabelsPage() {
+  const storeId = useCurrentStoreId();
   const [products, setProducts] = useState<Product[]>([]);
   const [search, setSearch] = useState('');
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -64,7 +66,7 @@ export function LabelsPage() {
   });
 
   useEffect(() => {
-    productsApi.list().then((res) => {
+    productsApi.list({ storeId }).then((res) => {
       setProducts(res.data?.data || res.data || []);
       setLoading(false);
     }).catch(() => { setLoading(false); console.error('[Labels] Failed to load products'); });

@@ -9,8 +9,6 @@ import { DashboardPage } from './pages/DashboardPage';
 import { ProductsPage } from './pages/ProductsPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { SettingsPage } from './pages/SettingsPage';
-// ── ALL RH PAGES REMOVED — Managed exclusively by TimeWin24 ──
-// EmployeesPage, RightsPage, PointagePage, PerformancePage, PlanningPage, PayrollPage
 import { StockAlertsPage } from './pages/StockAlertsPage';
 import { StockNetworkPage } from './pages/StockNetworkPage';
 import { LabelsPage } from './pages/LabelsPage';
@@ -24,6 +22,27 @@ import { NetworkDashboardPage } from './pages/NetworkDashboardPage';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import './styles/globals.css';
 
+/* ══════════════════════════════════════════════════════════════
+   ROUTES — Architecture par couches metier
+   ══════════════════════════════════════════════════════════════
+   /login            → Public
+   /select-store     → Store selector (full screen)
+   /                 → Dashboard magasin (scope=store)
+   /network          → Dashboard reseau (scope=global)
+   /products         → Couche 3: Exploitation
+   /stock-alerts     → Couche 3: Exploitation
+   /stock-network    → Couche 6: Stock reseau
+   /labels           → Couche 3: Exploitation
+   /reports          → Couche 5: Analyse
+   /organizations    → Couche 2: Structure
+   /units            → Couche 2: Structure
+   /stores           → Couche 2: Structure
+   /connected-apps   → Couche 2: Structure
+   /billing          → Couche 7: Reglages
+   /settings         → Couche 7: Reglages
+   /timewin24        → Couche 4: Equipes
+   ══════════════════════════════════════════════════════════════ */
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <ErrorBoundary>
@@ -32,30 +51,40 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         {/* Public */}
         <Route path="/login" element={<LoginPage />} />
 
-        {/* Protected — require authentication */}
+        {/* Protected */}
         <Route element={<ProtectedRoute />}>
-          {/* Store selector (full screen, no sidebar) */}
+          {/* Full screen (no sidebar) */}
           <Route path="/select-store" element={<StoreSelectPage />} />
-          <Route path="/network" element={<NetworkDashboardPage />} />
 
-          {/* Main app with sidebar */}
+          {/* Main app with sidebar — ALL pages inside Layout */}
           <Route element={<Layout />}>
-            {/* POS Core */}
+            {/* Couche 1: Pilotage global */}
+            <Route path="/network" element={<NetworkDashboardPage />} />
+
+            {/* Couche 3: Exploitation magasin */}
             <Route path="/" element={<DashboardPage />} />
             <Route path="/products" element={<ProductsPage />} />
             <Route path="/stock-alerts" element={<StockAlertsPage />} />
-            <Route path="/stock-network" element={<StockNetworkPage />} />
             <Route path="/labels" element={<LabelsPage />} />
+
+            {/* Couche 5: Analyse */}
             <Route path="/reports" element={<ReportsPage />} />
-            <Route path="/settings" element={<SettingsPage />} />
-            {/* Network / Admin */}
+
+            {/* Couche 6: Stock / Logistique */}
+            <Route path="/stock-network" element={<StockNetworkPage />} />
+
+            {/* Couche 2: Structure / Administration */}
             <Route path="/organizations" element={<OrganizationsPage />} />
             <Route path="/units" element={<UnitsPage />} />
             <Route path="/stores" element={<StoresManagementPage />} />
             <Route path="/connected-apps" element={<ConnectedAppsPage />} />
-            <Route path="/billing" element={<BillingPage />} />
-            {/* TimeWin24 */}
+
+            {/* Couche 4: Equipes / RH */}
             <Route path="/timewin24" element={<ComingSoonPage />} />
+
+            {/* Couche 7: Reglages */}
+            <Route path="/billing" element={<BillingPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
           </Route>
         </Route>
       </Routes>
@@ -63,4 +92,3 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     </ErrorBoundary>
   </React.StrictMode>,
 );
-// build: 1774484373

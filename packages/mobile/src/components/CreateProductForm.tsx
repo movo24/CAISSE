@@ -48,7 +48,7 @@ export function CreateProductForm({ ean, onCreated, onClose }: CreateProductForm
         const cats = res.data;
         if (Array.isArray(cats)) setCategories(cats.filter((c: any) => c && c.id));
       })
-      .catch(() => {});
+      .catch((err) => console.warn('[Mobile] Failed to load categories:', err?.message || err));
   }, []);
 
   // Close category dropdown on outside click

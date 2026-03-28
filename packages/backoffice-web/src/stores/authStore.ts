@@ -48,7 +48,7 @@ interface AuthState {
   logout: () => void;
   restoreSession: () => void;
   loadStores: () => Promise<void>;
-  setCurrentStore: (storeId: string) => void;
+  setCurrentStore: (storeId: string | null) => void;
   setCurrentApp: (app: AppType) => void;
 }
 
@@ -124,7 +124,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   logout: () => {
-    authApi.logout().catch(() => {});
+    authApi.logout().catch(() => console.warn('[Auth] Server-side logout failed'));
     localStorage.removeItem('accessToken');
     localStorage.removeItem('refreshToken');
     localStorage.removeItem('employee');
@@ -155,12 +155,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         // API interceptor will refresh on first call
         try {
           const employee = JSON.parse(empStr);
+          const cachedStores = (() => { try { return JSON.parse(localStorage.getItem('stores') || '[]'); } catch { return []; } })();
           set({
             isAuthenticated: true,
             employee,
             accessToken: token,
             currentStoreId: savedStoreId || employee.storeId,
             currentApp: savedApp,
+            stores: cachedStores,
           });
           if (employee.role === 'admin') get().loadStores();
         } catch {
@@ -181,12 +183,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     try {
       const employee = JSON.parse(empStr);
+      const cachedStores = (() => { try { return JSON.parse(localStorage.getItem('stores') || '[]'); } catch { return []; } })();
       set({
         isAuthenticated: true,
         employee,
         accessToken: token,
         currentStoreId: savedStoreId || employee.storeId,
         currentApp: savedApp,
+        stores: cachedStores,
       });
       if (employee.role === 'admin') get().loadStores();
     } catch {
@@ -205,16 +209,25 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         name: s.name,
         storeCode: s.storeCode,
         city: s.city,
-        isActive: s.isActive,
+        isActive: s.isActive !== false,
       }));
       set({ stores });
+      localStorage.setItem('stores', JSON.stringify(stores));
     } catch {
-      // Silently fail — stores list is non-critical
+      // Fallback: restore from localStorage cache
+      try {
+        const cached = localStorage.getItem('stores');
+        if (cached) set({ stores: JSON.parse(cached) });
+      } catch { /* ignore */ }
     }
   },
 
-  setCurrentStore: (storeId: string) => {
-    localStorage.setItem('currentStoreId', storeId);
+  setCurrentStore: (storeId: string | null) => {
+    if (storeId) {
+      localStorage.setItem('currentStoreId', storeId);
+    } else {
+      localStorage.removeItem('currentStoreId');
+    }
     set({ currentStoreId: storeId });
   },
 

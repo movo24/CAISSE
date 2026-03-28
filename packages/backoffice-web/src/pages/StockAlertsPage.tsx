@@ -4,7 +4,7 @@ import {
   Search, Filter, ChevronDown, Check, X,
 } from 'lucide-react';
 import { notificationsApi, stockApi } from '../services/api';
-import { useAuthStore } from '../stores/authStore';
+import { useCurrentStoreId } from '../hooks/useCurrentStoreId';
 
 /* ── Types ── */
 
@@ -137,7 +137,7 @@ function AdjustModal({
 /* ── Main Page ── */
 
 export function StockAlertsPage() {
-  const storeId = useAuthStore((s) => s.employee?.storeId) || '';
+  const storeId = useCurrentStoreId();
   const [alerts, setAlerts] = useState<StockNotification[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');

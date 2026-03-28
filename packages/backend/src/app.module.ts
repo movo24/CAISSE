@@ -33,9 +33,9 @@ import { TerminalsModule } from './modules/terminals/terminals.module';
 import { TimewinModule } from './modules/timewin/timewin.module';
 import { SalesAiModule } from './modules/sales-ai/sales-ai.module';
 import { ReceiptsModule } from './modules/receipts/receipts.module';
-// ── RH MODULES REMOVED — All managed by TimeWin24 ──
-// EmployeesModule, PointageModule, PayrollModule, PlanningModule, StaffingModule
-// IaModule, PosAiModule, WeatherModule, TransportModule, FootfallModule, DecisionEngineModule
+import { EmployeesModule } from './modules/employees/employees.module';
+// ── RH MODULES (employees re-activated for local fallback) ──
+// PointageModule, PayrollModule, PlanningModule, StaffingModule → still in TimeWin24
 
 const isProd = process.env.NODE_ENV === 'production';
 
@@ -103,6 +103,7 @@ const isProd = process.env.NODE_ENV === 'production';
     TimewinModule,
     SalesAiModule,
     ReceiptsModule,
+    EmployeesModule,
   ],
   providers: [
     // Apply rate limiting globally to ALL endpoints

@@ -536,15 +536,21 @@ export class SalesService {
     const limit = options?.limit || 50;
     const skip = (page - 1) * limit;
 
+    const where: any = { storeId };
+    if (options?.date) {
+      // Filter by date using raw SQL for DATE() function
+      where.createdAt = undefined; // will use qb below
+    }
+
     const qb = this.saleRepo
       .createQueryBuilder('s')
       .leftJoinAndSelect('s.lineItems', 'li')
       .leftJoinAndSelect('s.payments', 'p')
-      .where('s.store_id = :storeId', { storeId })
-      .orderBy('s.created_at', 'DESC');
+      .where('s.storeId = :storeId', { storeId })
+      .orderBy('s.createdAt', 'DESC');
 
     if (options?.date) {
-      qb.andWhere('DATE(s.created_at) = :date', { date: options.date });
+      qb.andWhere('DATE(s.createdAt) = :date', { date: options.date });
     }
 
     qb.skip(skip).take(limit);

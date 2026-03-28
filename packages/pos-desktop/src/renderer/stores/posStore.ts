@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { authApi } from '../services/api';
 
 export interface CartItem {
   productId: string;
@@ -221,7 +222,9 @@ export const usePOSStore = create<POSState>((set, get) => ({
   },
 
   logout: () => {
+    authApi.logout().catch(() => console.warn('[POS] Server-side logout failed'));
     localStorage.removeItem('accessToken');
+    localStorage.removeItem('refreshToken');
     localStorage.removeItem('pos_employee');
     set({
       employee: null,

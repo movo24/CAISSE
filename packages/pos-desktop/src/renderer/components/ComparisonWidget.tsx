@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Trophy, AlertTriangle, TrendingUp, Sparkles, X } from 'lucide-react';
 import { useComparisonStore } from '../stores/comparisonStore';
+import { API_URL } from '../utils/apiConfig';
 
 /* ═══════════════════════════════════════════════════════════════
    ComparisonWidget — Badge compact + popover détaillé
@@ -61,7 +62,6 @@ export function ComparisonWidget() {
   const fetchInsight = async () => {
     setAiLoading(true);
     try {
-      const API_URL = (import.meta as any).env?.VITE_API_URL || '';
       const token = localStorage.getItem('accessToken');
       const res = await fetch(`${API_URL}/api/live-performance/insight`, {
         headers: { Authorization: `Bearer ${token}` },

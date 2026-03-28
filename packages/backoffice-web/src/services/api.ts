@@ -7,6 +7,7 @@ const API_URL = IS_PROD ? 'https://api.addxintelligence.com' : '';
 
 const api = axios.create({
   baseURL: `${API_URL}/api`,
+  timeout: 15000,
   headers: {
     'Content-Type': 'application/json',
     'Cache-Control': 'no-cache, no-store, must-revalidate',
@@ -17,7 +18,10 @@ const api = axios.create({
 // ── JWT expiry helper ──
 function isTokenExpired(token: string): boolean {
   try {
-    const payload = JSON.parse(atob(token.split('.')[1]));
+    const parts = token.split('.');
+    if (parts.length !== 3) return true;
+    const payload = JSON.parse(atob(parts[1]));
+    if (!payload || typeof payload.exp !== 'number') return true;
     return payload.exp * 1000 < Date.now() + 30000;
   } catch {
     return true;
@@ -26,10 +30,18 @@ function isTokenExpired(token: string): boolean {
 
 // ── Token refresh logic ──
 let isRefreshing = false;
-let refreshSubscribers: ((token: string) => void)[] = [];
+let refreshSubscribers: Array<{
+  resolve: (token: string) => void;
+  reject: (err: Error) => void;
+}> = [];
 
 function onRefreshed(token: string) {
-  refreshSubscribers.forEach((cb) => cb(token));
+  refreshSubscribers.forEach((sub) => sub.resolve(token));
+  refreshSubscribers = [];
+}
+
+function onRefreshFailed(err: Error) {
+  refreshSubscribers.forEach((sub) => sub.reject(err));
   refreshSubscribers = [];
 }
 
@@ -63,17 +75,22 @@ api.interceptors.request.use(async (config) => {
         token = newToken;
         onRefreshed(newToken);
       } else {
-        // Soft logout — clear storage, Zustand state will trigger React redirect
+        onRefreshFailed(new Error('Token refresh failed'));
         localStorage.removeItem('accessToken');
         localStorage.removeItem('refreshToken');
         localStorage.removeItem('employee');
-        // Don't use window.location.href (kills React router → page blanche)
+        delete config.headers.Authorization;
         return Promise.reject(new Error('Session expired'));
       }
     } else {
-      token = await new Promise<string>((resolve) => {
-        refreshSubscribers.push(resolve);
-      });
+      try {
+        token = await new Promise<string>((resolve, reject) => {
+          refreshSubscribers.push({ resolve, reject });
+        });
+      } catch {
+        delete config.headers.Authorization;
+        return Promise.reject(new Error('Session expired'));
+      }
     }
   }
 

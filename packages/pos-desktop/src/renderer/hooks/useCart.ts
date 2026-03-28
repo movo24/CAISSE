@@ -60,7 +60,7 @@ export function useCart() {
           setCategories(raw.map((c: any) => typeof c === 'string' ? c : c.name || c.id || String(c)));
         }
       })
-      .catch(() => {});
+      .catch((err) => console.warn('[CATALOGUE] Failed to load categories:', err?.message || err));
   }, []);
 
   // Refresh immediately after a sale completes (stock changed on backend)

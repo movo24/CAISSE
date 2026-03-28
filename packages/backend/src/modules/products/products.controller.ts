@@ -33,13 +33,22 @@ export class ProductsController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'List products for store (paginated)' })
-  findAll(@Request() req: any, @Query() query: PaginationQueryDto, @Query('storeId') queryStoreId?: string) {
-    // Admin can query any store via ?storeId=xxx
+  @ApiOperation({ summary: 'List products for store (paginated, admin can filter by storeId)' })
+  findAll(
+    @Request() req: any,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+    @Query('storeId') queryStoreId?: string,
+  ) {
     const effectiveStoreId = (req.user.role === 'admin' && queryStoreId)
       ? queryStoreId
       : req.user.storeId;
-    return this.productsService.findAll(effectiveStoreId, query);
+    return this.productsService.findAll(effectiveStoreId, {
+      page: page ? parseInt(page, 10) : 1,
+      limit: limit ? Math.min(parseInt(limit, 10), 100) : 50,
+      search,
+    });
   }
 
   @Get('scan/:ean')

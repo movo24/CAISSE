@@ -6,6 +6,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "start:dev"],
       "port": 3001
+    },
+    {
+      "name": "caisse-backoffice",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev:backoffice"],
+      "port": 5173
     }
   ]
 }

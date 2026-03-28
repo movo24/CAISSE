@@ -33,6 +33,8 @@ export interface DeviceProfile {
   isWindows: boolean;
   /** True if running inside Electron */
   isElectron: boolean;
+  /** True if running inside Capacitor (iPad native) */
+  isCapacitor: boolean;
   /** True if PWA/standalone mode */
   isPWA: boolean;
   /** Viewport width in px */
@@ -161,6 +163,7 @@ export function useDeviceProfile(): DeviceProfile {
       isIPad,
       isWindows,
       isElectron: detectIsElectron(),
+      isCapacitor: typeof (window as any).Capacitor !== 'undefined',
       isPWA: detectIsPWA(),
       viewportWidth,
       viewportHeight,

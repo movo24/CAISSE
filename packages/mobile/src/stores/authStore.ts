@@ -85,7 +85,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   logout: () => {
-    authApi.logout().catch(() => {});
+    authApi.logout().catch(() => console.warn('[Auth] Server-side logout failed'));
     localStorage.removeItem('accessToken');
     localStorage.removeItem('refreshToken');
     localStorage.removeItem('employee');

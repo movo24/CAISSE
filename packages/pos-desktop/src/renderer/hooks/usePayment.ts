@@ -281,13 +281,15 @@ export function usePayment() {
           nifCaisse: storeInfo?.nifCaisse || '',
           softwareVersion: '1.0',
         };
-        peripheralBridge.printTicket(ticketData).catch(() => {});
+        peripheralBridge.printTicket(ticketData).catch((err) =>
+          console.warn('[POS] Ticket print failed:', err?.message || err));
 
         // Auto-open cash drawer on cash payments
         const hasCash = payments.some(p => p.method === 'cash');
         if (hasCash) {
           setTimeout(() => {
-            peripheralBridge.openCashDrawer().catch(() => {});
+            peripheralBridge.openCashDrawer().catch((err) =>
+              console.warn('[POS] Cash drawer failed:', err?.message || err));
           }, 500);
         }
       } catch (e) {

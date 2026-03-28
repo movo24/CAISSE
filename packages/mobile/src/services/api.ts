@@ -16,6 +16,7 @@ const API_URL = IS_PROD ? 'https://api.addxintelligence.com' : '';
 
 const api = axios.create({
   baseURL: `${API_URL}/api`,
+  timeout: 15000,
   headers: {
     'Content-Type': 'application/json',
     'Cache-Control': 'no-cache, no-store, must-revalidate',
@@ -27,8 +28,11 @@ const api = axios.create({
 
 function isTokenExpired(token: string): boolean {
   try {
-    const payload = JSON.parse(atob(token.split('.')[1]));
-    return payload.exp * 1000 < Date.now() + 30000; // 30s buffer
+    const parts = token.split('.');
+    if (parts.length !== 3) return true;
+    const payload = JSON.parse(atob(parts[1]));
+    if (!payload || typeof payload.exp !== 'number') return true;
+    return payload.exp * 1000 < Date.now() + 30000;
   } catch {
     return true;
   }
@@ -97,7 +101,8 @@ api.interceptors.request.use(async (config) => {
       } else {
         onRefreshFailed(new Error('Token refresh failed'));
         redirectToLogin();
-        return config;
+        delete config.headers.Authorization;
+        return Promise.reject(new Error('Session expired'));
       }
     } else {
       // Another refresh is already in flight — wait for it

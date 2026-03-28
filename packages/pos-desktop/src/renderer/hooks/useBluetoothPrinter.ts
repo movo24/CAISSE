@@ -12,6 +12,7 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { TicketData } from '../services/peripheralBridge';
+import * as BLEAdapter from '../services/bluetoothAdapter';
 
 /* ── Types ── */
 
@@ -226,7 +227,7 @@ export function useBluetoothPrinter(): BluetoothPrinterHook {
   const [error, setError] = useState<string | null>(null);
   const printerRef = useRef<BTPrinterDevice | null>(null);
 
-  const isSupported = typeof navigator !== 'undefined' && 'bluetooth' in navigator;
+  const isSupported = BLEAdapter.isBLESupported();
 
   // Keep ref in sync
   useEffect(() => { printerRef.current = printer; }, [printer]);

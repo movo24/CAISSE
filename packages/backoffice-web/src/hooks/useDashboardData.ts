@@ -227,7 +227,7 @@ export function useDashboardData(): DashboardData {
         networkRes,
         storesRes,
       ] = await Promise.allSettled([
-        productsApi.list(),
+        productsApi.list({ storeId }),
         notificationsApi.stockAlerts(storeId),
         storesApi.networkSummary(),  // aggregated KPI — fast SQL, no full sales load
         storesApi.list(),

@@ -36,8 +36,9 @@ export function LoginPage() {
 
     const state = useAuthStore.getState();
     if (state.isAuthenticated) {
-      // Clear PIN from session storage on successful login (security)
-      // PIN never persisted (security)
+      // Persist email/storeId only after successful login (not on every keystroke)
+      if (mode === 'admin') localStorage.setItem('caisse_login_email', email.trim());
+      else localStorage.setItem('caisse_login_storeId', storeId.trim());
       if (state.employee?.role === 'admin') {
         navigate('/select-store', { replace: true });
       } else {
@@ -102,7 +103,7 @@ export function LoginPage() {
               <input
                 type="email"
                 value={email}
-                onChange={(e) => { setEmail(e.target.value); localStorage.setItem('caisse_login_email', e.target.value); }}
+                onChange={(e) => setEmail(e.target.value)}
                 className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/15 text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all text-sm"
                 placeholder="contact@votreentreprise.com"
                 autoFocus
@@ -116,7 +117,7 @@ export function LoginPage() {
               <input
                 type="text"
                 value={storeId}
-                onChange={(e) => { setStoreId(e.target.value); localStorage.setItem('caisse_login_storeId', e.target.value); }}
+                onChange={(e) => setStoreId(e.target.value)}
                 className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/15 text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all text-sm"
                 placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
                 autoFocus

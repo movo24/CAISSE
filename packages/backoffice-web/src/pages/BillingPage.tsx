@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { subscriptionsApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
+import { useCurrentStoreId } from '../hooks/useCurrentStoreId';
 
 interface PlanDef {
   name: string;
@@ -73,7 +74,7 @@ export function BillingPage() {
   const [upgrading, setUpgrading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const employee = useAuthStore((s) => s.employee);
-  const storeId = employee?.storeId;
+  const storeId = useCurrentStoreId();
 
   const loadData = useCallback(async () => {
     if (!storeId) return;

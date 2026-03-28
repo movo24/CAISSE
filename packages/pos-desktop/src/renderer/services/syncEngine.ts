@@ -1,6 +1,7 @@
 import { useOfflineStore, OfflineQueueEntry } from '../stores/offlineStore';
 import { signSyncRequest, markAsSent, isAlreadySent, logSecurityEvent } from './hmacSecurity';
 import { salesApi, timewinApi } from './api';
+import { API_URL } from '../utils/apiConfig';
 
 /* ═══════════════════════════════════════════════════════════════
    SYNC ENGINE — Resynchronisation automatique FIFO
@@ -34,7 +35,7 @@ async function checkNetworkStatus(): Promise<boolean> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 3000);
     const response = await fetch(
-      ((import.meta as any).env?.VITE_API_URL || '') + '/api/health',
+      API_URL + '/api/health',
       { method: 'HEAD', signal: controller.signal },
     );
     clearTimeout(timeout);

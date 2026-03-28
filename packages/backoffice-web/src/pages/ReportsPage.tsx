@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { reportsApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
+import { useCurrentStoreId } from '../hooks/useCurrentStoreId';
 
 interface ZReport {
   date: string;
@@ -68,7 +69,7 @@ export function ReportsPage() {
   const [error, setError] = useState<string | null>(null);
   const [noData, setNoData] = useState(false);
 
-  const storeId = employee?.storeId || '';
+  const storeId = useCurrentStoreId();
 
   const fetchReport = useCallback(async (date: string) => {
     if (!storeId) return;

@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { productsApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
+import { useCurrentStoreId } from '../hooks/useCurrentStoreId';
 import { PriceAnalyticsPanel } from '../components/PriceAnalyticsPanel';
 
 type SortKey = 'name' | 'price' | 'stock' | 'category';
@@ -57,6 +58,7 @@ function stockBadge(stock: number) {
 
 export function ProductsPage() {
   const employee = useAuthStore((s) => s.employee);
+  const storeId = useCurrentStoreId();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -77,7 +79,7 @@ export function ProductsPage() {
   const fetchProducts = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await productsApi.list();
+      const res = await productsApi.list({ storeId });
       const data: any[] = Array.isArray(res.data) ? res.data : (res.data?.data || res.data?.products || []);
       setProducts(
         data.map((p: any) => ({
@@ -97,7 +99,7 @@ export function ProductsPage() {
     } finally {
       setLoading(false);
     }
-  }, [employee?.storeId]);
+  }, [storeId]);
 
   useEffect(() => {
     fetchProducts();
@@ -175,7 +177,7 @@ export function ProductsPage() {
         price: newPrice,
         stock: parseInt(form.stock || '0', 10),
         category: form.category,
-        storeId: employee?.storeId,
+        storeId,
       };
       if (editingId) {
         await productsApi.update(editingId, payload);

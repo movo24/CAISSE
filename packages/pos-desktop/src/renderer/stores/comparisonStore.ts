@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { API_URL } from '../utils/apiConfig';
 
 /* ═══════════════════════════════════════════════════════════════
    COMPARISON STORE — Live Store Performance Comparison
@@ -55,7 +56,6 @@ export const useComparisonStore = create<ComparisonState>((set, get) => ({
   fetch: async () => {
     set({ isLoading: true, error: null });
     try {
-      const API_URL = (import.meta as any).env?.VITE_API_URL || '';
       const token = localStorage.getItem('accessToken');
       const res = await fetch(`${API_URL}/api/live-performance/compact`, {
         headers: {

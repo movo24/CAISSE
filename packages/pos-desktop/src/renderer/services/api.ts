@@ -1,13 +1,10 @@
 import axios from 'axios';
 
-// In dev, Vite proxies /api → http://localhost:3001/api (see vite.config.ts)
-// Production API: hardcoded to avoid Railway env var issues.
-// In dev (localhost), uses Vite proxy (empty = relative URL).
-const IS_PROD = typeof window !== 'undefined' && !window.location.hostname.includes('localhost');
-const API_URL = IS_PROD ? 'https://api.addxintelligence.com' : '';
+import { API_URL } from '../utils/apiConfig';
 
 const api = axios.create({
   baseURL: `${API_URL}/api`,
+  timeout: 15000,
   headers: {
     'Content-Type': 'application/json',
     'Cache-Control': 'no-cache, no-store, must-revalidate',
@@ -18,20 +15,30 @@ const api = axios.create({
 // ── JWT expiry helper ──
 function isTokenExpired(token: string): boolean {
   try {
-    const payload = JSON.parse(atob(token.split('.')[1]));
-    // Add 30s buffer to avoid using a token that's about to expire
+    const parts = token.split('.');
+    if (parts.length !== 3) return true;
+    const payload = JSON.parse(atob(parts[1]));
+    if (!payload || typeof payload.exp !== 'number') return true;
     return payload.exp * 1000 < Date.now() + 30000;
   } catch {
-    return true; // Malformed token = expired
+    return true;
   }
 }
 
 // ── Token refresh logic ──
 let isRefreshing = false;
-let refreshSubscribers: ((token: string) => void)[] = [];
+let refreshSubscribers: Array<{
+  resolve: (token: string) => void;
+  reject: (err: Error) => void;
+}> = [];
 
 function onRefreshed(token: string) {
-  refreshSubscribers.forEach((cb) => cb(token));
+  refreshSubscribers.forEach((sub) => sub.resolve(token));
+  refreshSubscribers = [];
+}
+
+function onRefreshFailed(err: Error) {
+  refreshSubscribers.forEach((sub) => sub.reject(err));
   refreshSubscribers = [];
 }
 
@@ -70,17 +77,22 @@ api.interceptors.request.use(async (config) => {
         token = newToken;
         onRefreshed(newToken);
       } else {
-        // Refresh failed — clear tokens, let ProtectedRoute redirect
+        onRefreshFailed(new Error('Token refresh failed'));
         localStorage.removeItem('accessToken');
         localStorage.removeItem('refreshToken');
         localStorage.removeItem('pos_employee');
+        delete config.headers.Authorization;
         return Promise.reject(new Error('Session expired'));
       }
     } else {
-      // Wait for the ongoing refresh to complete
-      token = await new Promise<string>((resolve) => {
-        refreshSubscribers.push(resolve);
-      });
+      try {
+        token = await new Promise<string>((resolve, reject) => {
+          refreshSubscribers.push({ resolve, reject });
+        });
+      } catch {
+        delete config.headers.Authorization;
+        return Promise.reject(new Error('Session expired'));
+      }
     }
   }
 

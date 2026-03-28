@@ -41,7 +41,8 @@ export class SalesController {
   @ApiOperation({ summary: 'List sales for store (paginated, optionally filter by date)' })
   findAll(
     @Request() req: any,
-    @Query() query: PaginationQueryDto,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
     @Query('date') date?: string,
     @Query('storeId') queryStoreId?: string,
   ) {
@@ -49,7 +50,11 @@ export class SalesController {
     const effectiveStoreId = (req.user.role === 'admin' && queryStoreId)
       ? queryStoreId
       : req.user.storeId;
-    return this.salesService.findByStore(effectiveStoreId, { ...query, date });
+    return this.salesService.findByStore(effectiveStoreId, {
+      page: page ? parseInt(page, 10) : 1,
+      limit: limit ? Math.min(parseInt(limit, 10), 100) : 50,
+      date,
+    });
   }
 
   @Get(':id')

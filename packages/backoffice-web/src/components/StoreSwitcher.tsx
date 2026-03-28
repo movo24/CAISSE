@@ -8,6 +8,18 @@ export function StoreSwitcher() {
   const [search, setSearch] = useState('');
   const ref = useRef<HTMLDivElement>(null);
 
+  // Close on outside click — must be called before any conditional return (React rules of hooks)
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+        setSearch('');
+      }
+    };
+    if (open) document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
   // Only show for admins with multiple stores
   if (employee?.role !== 'admin' || stores.length <= 1) return null;
 
@@ -19,18 +31,6 @@ export function StoreSwitcher() {
         (s.city || '').toLowerCase().includes(search.toLowerCase()) ||
         (s.storeCode || '').toLowerCase().includes(search.toLowerCase())),
   );
-
-  // Close on outside click
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
-        setSearch('');
-      }
-    };
-    if (open) document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [open]);
 
   return (
     <div ref={ref} className="relative px-3 mb-2">
