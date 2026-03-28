@@ -143,11 +143,21 @@ export function Layout() {
     <div className="min-h-screen flex">
       {/* ══════ Sidebar ══════ */}
       <aside className="w-[240px] bg-bo-sidebar flex flex-col fixed inset-y-0 left-0 z-20">
-        {/* Logo */}
-        <div className="px-4 py-4 border-b border-white/10">
-          <h1 className="text-white font-bold text-lg tracking-tight">CAISSE POS</h1>
-          <p className="text-white/30 text-[10px]">Back-Office</p>
-        </div>
+        {/* App Icon — click to return to dashboard */}
+        <button
+          onClick={() => navigate(appScope.isGlobal ? '/network' : '/')}
+          className="flex items-center gap-3 px-4 py-3 border-b border-white/10 hover:bg-white/5 transition-colors w-full"
+        >
+          <img
+            src="/icons/app-icon.png"
+            alt="AddX Intelligence"
+            className="w-9 h-9 rounded-xl"
+          />
+          <div className="text-left">
+            <p className="text-white font-bold text-sm tracking-tight">AddX Intelligence</p>
+            <p className="text-white/30 text-[10px]">Back-Office</p>
+          </div>
+        </button>
 
         {/* ══════ Scope Switcher ══════ */}
         {appScope.isAdmin && appScope.stores.length > 0 && (

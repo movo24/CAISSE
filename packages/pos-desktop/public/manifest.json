@@ -1,14 +1,20 @@
 {
-  "name": "CAISSE POS",
-  "short_name": "POS",
-  "description": "Caisse enregistreuse",
+  "name": "CAISSE POS — AddX Intelligence",
+  "short_name": "CAISSE",
+  "description": "Caisse enregistreuse — AddX Intelligence",
   "start_url": ".",
   "scope": "/",
   "display": "standalone",
   "orientation": "any",
-  "background_color": "#f8fafc",
-  "theme_color": "#ff007a",
+  "background_color": "#0f172a",
+  "theme_color": "#6366f1",
   "icons": [
+    {
+      "src": "/icons/app-icon.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "purpose": "any"
+    },
     {
       "src": "/icons/icon-192.png",
       "sizes": "192x192",
