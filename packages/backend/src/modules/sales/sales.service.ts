@@ -297,6 +297,10 @@ export class SalesService {
         payment.method = p.method;
         payment.amountMinorUnits = p.amountMinorUnits;
         payment.currencyCode = 'EUR';
+        // Link Stripe PaymentIntent to sale for reconciliation
+        if (p.stripePaymentIntentId) {
+          payment.stripePaymentIntentId = p.stripePaymentIntentId;
+        }
         return payment;
       });
 

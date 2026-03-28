@@ -220,16 +220,19 @@ export function useDashboardData(): DashboardData {
     setLoading(true);
 
     try {
-      // Fetch in parallel
+      // Fetch in parallel — use daily-summary for STORE-scoped KPIs (not networkSummary which is global)
+      const today = new Date().toISOString().split('T')[0];
       const [
         productsRes,
         stockAlertsRes,
+        dailySummaryRes,
         networkRes,
         storesRes,
       ] = await Promise.allSettled([
         productsApi.list({ storeId }),
         notificationsApi.stockAlerts(storeId),
-        storesApi.networkSummary(),  // aggregated KPI — fast SQL, no full sales load
+        reportsApi.dailySummary(storeId, today),  // STORE-scoped KPIs (CA jour, tickets, panier moyen)
+        storesApi.networkSummary(),  // aggregated network KPIs (for comparison only)
         storesApi.list(),
       ]);
 
@@ -254,11 +257,11 @@ export function useDashboardData(): DashboardData {
         setProductStats((prev) => ({ ...prev, rupturesActuelles: ruptureCount }));
       }
 
-      // ── Network Summary (aggregated KPI from SQL — fast, no full sales load) ──
-      if (networkRes.status === 'fulfilled') {
-        const net = networkRes.value.data?.network || {};
-        const todayCA = net.todayRevenue || 0;
-        const todaySales = net.todaySales || 0;
+      // ── Store-scoped KPIs from daily-summary (filtered by storeId) ──
+      if (dailySummaryRes.status === 'fulfilled') {
+        const summary = dailySummaryRes.value.data || {};
+        const todayCA = summary.totalRevenueMinorUnits || summary.todayRevenue || 0;
+        const todaySales = summary.transactionCount || summary.todaySales || 0;
         const avgBasket = todaySales > 0 ? Math.round(todayCA / todaySales) : 0;
 
         setPerfData((prev) => ({
@@ -266,6 +269,14 @@ export function useDashboardData(): DashboardData {
           caJour: todayCA,
           ticketsJour: todaySales,
           panierMoyen: avgBasket,
+        }));
+      }
+
+      // ── Network Summary (global aggregation — for comparison/total only) ──
+      if (networkRes.status === 'fulfilled') {
+        const net = networkRes.value.data?.network || {};
+        setPerfData((prev) => ({
+          ...prev,
           caTotal: net.totalRevenue || 0,
           ticketsTotal: net.totalSales || 0,
         }));

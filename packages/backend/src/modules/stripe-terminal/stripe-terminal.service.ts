@@ -36,9 +36,10 @@ export class StripeTerminalService {
     this.assertStripe();
 
     // Idempotency key: prevents double charge on network retry
-    // Uses ticketNumber + storeId + amount + currency + employeeId + ms timestamp
+    // DETERMINISTIC — same inputs always produce the same key
+    // A retry with identical (store, ticket, amount, currency, employee) reuses the same PaymentIntent
     const idempotencyKey = createHash('sha256')
-      .update(`${storeId}:${ticketNumber}:${amount}:${currency}:${employeeId || ''}:${Date.now()}`)
+      .update(`${storeId}:${ticketNumber}:${amount}:${currency}:${employeeId || ''}`)
       .digest('hex');
 
     const pi = await this.stripe.paymentIntents.create(

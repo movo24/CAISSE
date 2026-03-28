@@ -34,6 +34,11 @@ export class SalePaymentDto {
   @IsInt()
   @Min(0)
   amountMinorUnits: number;
+
+  @ApiPropertyOptional({ example: 'pi_3ABC123', description: 'Stripe PaymentIntent ID (for card payments)' })
+  @IsOptional()
+  @IsString()
+  stripePaymentIntentId?: string;
 }
 
 export class CreateSaleDto {
