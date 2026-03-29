@@ -86,7 +86,35 @@ export class StoresService {
     this.logger.log(
       `Store created: ${saved.name} [${saved.storeCode}] (${saved.id})`,
     );
+
+    // Sync to TimeWin24 — POS Caisse is source of truth for stores
+    this.syncStoreToTimewin(saved).catch((err) =>
+      this.logger.warn(`[TW24] Store sync failed for ${saved.name}: ${err?.message}`),
+    );
+
     return saved;
+  }
+
+  /**
+   * Push a store to TimeWin24 after creation/update.
+   * POS Caisse = source of truth for stores.
+   * TimeWin24 creates a local copy to link employees/shifts.
+   */
+  private async syncStoreToTimewin(store: StoreEntity): Promise<void> {
+    try {
+      await this.timewinService.pushEvent(store.id, 'store.created', 'system', {
+        posStoreId: store.id,
+        name: store.name,
+        storeCode: store.storeCode,
+        city: store.city,
+        address: store.address,
+        timezone: store.timezone || 'Europe/Paris',
+        currency: store.currencyCode || 'EUR',
+      });
+      this.logger.log(`[TW24] Store synced: ${store.name} (${store.id})`);
+    } catch (err: any) {
+      this.logger.warn(`[TW24] Store sync failed: ${err?.message}`);
+    }
   }
 
   /** List all stores, optionally filtered by organization or unit */

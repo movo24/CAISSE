@@ -63,12 +63,8 @@ export class AuthService {
       const twResult = await this.timewin.loginEmployee({ pin, storeId });
       return await this.buildSessionFromTimewin(twResult, storeId);
     } catch (err: any) {
-      // TimeWin24 returned a clear auth rejection (401/403) — don't fallback
-      if (err.status === 401 || err.status === 403) {
-        throw new UnauthorizedException(err.response?.error || 'Invalid PIN');
-      }
-      // Any other error (network, timeout, 500, circuit breaker) — try local DB
-      this.logger.warn(`[AUTH] TimeWin24 unavailable (${err.message}), falling back to local DB`);
+      // Always fallback to local DB — POS Caisse is source of truth for employee auth
+      this.logger.warn(`[AUTH] TimeWin24 error (${err.message}), falling back to local DB`);
       return this.offlineFallback(storeId, { pin });
     }
   }
@@ -85,10 +81,8 @@ export class AuthService {
       });
       return await this.buildSessionFromTimewin(twResult, twResult.store_id);
     } catch (err: any) {
-      if (err.status === 401 || err.status === 403) {
-        throw new UnauthorizedException(err.response?.error || 'Invalid email or PIN');
-      }
-      this.logger.warn(`[AUTH] TimeWin24 unavailable (${err.message}), falling back to local DB`);
+      // Always fallback to local DB for admin login — POS Caisse is source of truth for admin auth
+      this.logger.warn(`[AUTH] TimeWin24 error (${err.message}), falling back to local DB`);
       return this.offlineFallback('_admin', { pin, email });
     }
   }

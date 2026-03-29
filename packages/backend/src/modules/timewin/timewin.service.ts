@@ -222,7 +222,7 @@ export class TimewinService implements OnModuleInit {
 
   async pushEvent(
     storeId: string,
-    eventType: 'sale.completed' | 'session.opened' | 'session.closed' | 'stock.alert',
+    eventType: 'sale.completed' | 'session.opened' | 'session.closed' | 'stock.alert' | 'store.created' | 'store.updated',
     employeeId?: string,
     data?: Record<string, unknown>,
   ): Promise<{ received: boolean; eventId: string }> {
