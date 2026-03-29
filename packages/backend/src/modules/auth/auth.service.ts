@@ -239,10 +239,16 @@ export class AuthService {
         where: { email: opts.email, isActive: true },
       });
     } else {
-      // PIN login — search employees in the given store
-      employees = await this.employeeRepo.find({
-        where: { storeId, isActive: true },
-      });
+      // PIN login — search employees authorized for this store
+      // Check both primary storeId AND employee_store_access table
+      employees = await this.employeeRepo
+        .createQueryBuilder('e')
+        .where('e.isActive = true')
+        .andWhere(
+          '(e.storeId = :storeId OR e.id IN (SELECT employee_id FROM employee_store_access WHERE store_id = :storeId))',
+          { storeId },
+        )
+        .getMany();
     }
 
     if (!employees.length) {
