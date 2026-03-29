@@ -18,6 +18,7 @@ import { PromotionsService, CartItem } from '../promotions/promotions.service';
 import { AuditService } from '../audit/audit.service';
 import { StockService } from '../stock/stock.service';
 import { JackpotService, JackpotResult } from '../jackpot/jackpot.service';
+import { TimewinService } from '../timewin/timewin.service';
 import { PaginatedResult } from '../../common/dto/pagination.dto';
 import { logBusinessEvent } from '../../common/business-logger';
 
@@ -28,7 +29,7 @@ function sha256(data: string): string {
 interface CreateSaleDto {
   items: { ean: string; quantity: number }[];
   customerQrCode?: string;
-  payments: { method: string; amountMinorUnits: number }[];
+  payments: { method: string; amountMinorUnits: number; stripePaymentIntentId?: string }[];
 }
 
 export interface SaleStockAlert {
@@ -58,6 +59,7 @@ export class SalesService {
     private auditService: AuditService,
     private stockService: StockService,
     private jackpotService: JackpotService,
+    private timewinService: TimewinService,
   ) {}
 
   /**
@@ -382,6 +384,9 @@ export class SalesService {
         this.logger.warn(`Audit log failed: ${auditErr?.message}`);
       }
 
+      // Push sale event to TimeWin24 (fire-and-forget — NEVER blocks the sale response)
+      this.pushSaleToTimewin(storeId, employeeId, saved.id, ticketNumber, totalAfterDiscount, lineItems.length, saved.completedAt, dto.payments);
+
       // Peripheral events (physical drivers in V1)
       if (dto.payments.some((p) => p.method === 'cash')) {
         this.logger.log(`[PERIPHERAL] Cash drawer opened for ${ticketNumber}`);
@@ -435,6 +440,68 @@ export class SalesService {
     } // end retry loop
     // Should never reach here
     throw new BadRequestException('Sale creation failed after max retries');
+  }
+
+  /**
+   * Push a completed sale to TimeWin24 for analytics.
+   * Fire-and-forget with retry (3 attempts: 0s, 2s, 5s).
+   * On definitive failure, logs a structured [TW24_PUSH_FAILED] entry — grep-able in prod logs.
+   */
+  private pushSaleToTimewin(
+    storeId: string,
+    employeeId: string,
+    saleId: string,
+    ticketNumber: string,
+    totalMinorUnits: number,
+    itemCount: number,
+    completedAt: Date,
+    payments: { method: string; amountMinorUnits: number }[],
+  ): void {
+    const date = completedAt.toISOString().split('T')[0]; // YYYY-MM-DD
+    const hourSlot = completedAt.getHours(); // 0-23
+    const revenue = totalMinorUnits / 100; // minor units → euros
+
+    const cardAmount = payments
+      .filter((p) => p.method === 'card')
+      .reduce((sum, p) => sum + p.amountMinorUnits / 100, 0);
+    const cashAmount = payments
+      .filter((p) => p.method === 'cash')
+      .reduce((sum, p) => sum + p.amountMinorUnits / 100, 0);
+
+    const payload = {
+      saleId,
+      ticketNumber,
+      date,
+      hourSlot,
+      revenue,
+      transactions: 1,
+      itemsSold: itemCount,
+      cardAmount,
+      cashAmount,
+    };
+
+    const RETRY_DELAYS_MS = [0, 2_000, 5_000];
+
+    const attempt = async (n: number): Promise<void> => {
+      try {
+        await this.timewinService.pushEvent(storeId, 'sale.completed', employeeId, payload);
+        this.logger.debug(`[TW24] sale.completed pushed: ${ticketNumber} (€${revenue.toFixed(2)}) attempt=${n + 1}`);
+      } catch (err: any) {
+        if (n + 1 < RETRY_DELAYS_MS.length) {
+          this.logger.warn(`[TW24] push attempt ${n + 1} failed (${err?.message}), retrying in ${RETRY_DELAYS_MS[n + 1]}ms...`);
+          await new Promise((r) => setTimeout(r, RETRY_DELAYS_MS[n + 1]));
+          return attempt(n + 1);
+        }
+        // All retries exhausted — structured failure log for ops/grep
+        this.logger.error(
+          `[TW24_PUSH_FAILED] sale not synced to TimeWin24 ` +
+          `saleId=${saleId} ticket=${ticketNumber} storeId=${storeId} employeeId=${employeeId} ` +
+          `revenue=${revenue} date=${date} hourSlot=${hourSlot} error=${err?.message}`,
+        );
+      }
+    };
+
+    attempt(0).catch(() => void 0); // outer safety net — should never throw
   }
 
   /**

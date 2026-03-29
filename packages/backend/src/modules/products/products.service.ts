@@ -111,6 +111,12 @@ export class ProductsService {
     return product;
   }
 
+  async deactivate(id: string, storeId: string): Promise<{ message: string }> {
+    const product = await this.findOneForStore(id, storeId);
+    await this.productRepo.update(id, { isActive: false });
+    return { message: `${product.name} supprimé du catalogue.` };
+  }
+
   async update(
     id: string,
     data: Partial<ProductEntity>,

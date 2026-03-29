@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Put,
+  Delete,
   Param,
   Body,
   Query,
@@ -123,5 +124,13 @@ export class ProductsController {
   @ApiOperation({ summary: 'Generate internal barcode for a product without one' })
   async generateBarcode(@Param('id') id: string, @Request() req: any) {
     return this.productsService.generateBarcode(id, req.user.storeId);
+  }
+
+  @Delete(':id')
+  @UseGuards(RolesGuard)
+  @Roles('admin')
+  @ApiOperation({ summary: 'Soft-delete a product (deactivate)' })
+  async remove(@Param('id') id: string, @Request() req: any) {
+    return this.productsService.deactivate(id, req.user.storeId);
   }
 }
