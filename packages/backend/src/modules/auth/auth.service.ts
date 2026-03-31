@@ -240,7 +240,7 @@ export class AuthService {
       });
     } else {
       // PIN login — search employees authorized for this store
-      // Try with employee_store_access table first, fallback to simple storeId if table doesn't exist
+      // Checks both primary storeId AND multi-store access table
       try {
         employees = await this.employeeRepo
           .createQueryBuilder('e')
@@ -250,11 +250,14 @@ export class AuthService {
             { storeId },
           )
           .getMany();
-      } catch {
-        // employee_store_access table may not exist yet — fallback to simple store match
-        employees = await this.employeeRepo.find({
-          where: { storeId, isActive: true },
-        });
+      } catch (err: any) {
+        // If employee_store_access doesn't exist yet (migration pending), fallback gracefully
+        if (err?.message?.includes('employee_store_access') || err?.message?.includes('does not exist')) {
+          this.logger.warn('[AUTH] employee_store_access table missing — using simple store match');
+          employees = await this.employeeRepo.find({ where: { storeId, isActive: true } });
+        } else {
+          throw err; // Re-throw real errors — don't mask them
+        }
       }
     }
 
