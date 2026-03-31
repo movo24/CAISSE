@@ -88,7 +88,7 @@ export class StoresService {
     );
 
     // Sync to TimeWin24 — POS Caisse is source of truth for stores
-    this.syncStoreToTimewin(saved).catch((err) =>
+    this.syncStoreToTimewin(saved, 'store.created').catch((err) =>
       this.logger.warn(`[TW24] Store sync failed for ${saved.name}: ${err?.message}`),
     );
 
@@ -100,18 +100,20 @@ export class StoresService {
    * POS Caisse = source of truth for stores.
    * TimeWin24 creates a local copy to link employees/shifts.
    */
-  private async syncStoreToTimewin(store: StoreEntity): Promise<void> {
+  private async syncStoreToTimewin(
+    store: StoreEntity,
+    eventType: 'store.created' | 'store.updated' = 'store.created',
+  ): Promise<void> {
     try {
-      await this.timewinService.pushEvent(store.id, 'store.created', 'system', {
-        posStoreId: store.id,
+      await this.timewinService.pushEvent(store.id, eventType, 'system', {
+        id: store.id,
         name: store.name,
         storeCode: store.storeCode,
         city: store.city,
         address: store.address,
-        timezone: store.timezone || 'Europe/Paris',
-        currency: store.currencyCode || 'EUR',
+        active: store.isActive && !store.isArchived,
       });
-      this.logger.log(`[TW24] Store synced: ${store.name} (${store.id})`);
+      this.logger.log(`[TW24] Store synced (${eventType}): ${store.name} (${store.id})`);
     } catch (err: any) {
       this.logger.warn(`[TW24] Store sync failed: ${err?.message}`);
     }
@@ -167,7 +169,11 @@ export class StoresService {
     }
     await this.findOne(id);
     await this.storeRepo.update(id, data);
-    return this.findOne(id);
+    const updated = await this.findOne(id);
+    this.syncStoreToTimewin(updated, 'store.updated').catch((err) =>
+      this.logger.warn(`[TW24] Store update sync failed: ${err?.message}`),
+    );
+    return updated;
   }
 
   // ─── Archive (soft-delete) ──────────────────────────────────────
@@ -178,6 +184,9 @@ export class StoresService {
     const saved = await this.storeRepo.save(store);
     this.logger.warn(
       `[STORE:ARCHIVE] Store "${saved.name}" (${saved.id}) archived by admin ${adminId} at ${new Date().toISOString()}`,
+    );
+    this.syncStoreToTimewin(saved, 'store.updated').catch((err) =>
+      this.logger.warn(`[TW24] Store archive sync failed: ${err?.message}`),
     );
     return saved;
   }
@@ -193,6 +202,9 @@ export class StoresService {
     const saved = await this.storeRepo.save(store);
     this.logger.warn(
       `[STORE:REACTIVATE] Store "${saved.name}" (${saved.id}) reactivated by admin ${adminId} at ${new Date().toISOString()}`,
+    );
+    this.syncStoreToTimewin(saved, 'store.updated').catch((err) =>
+      this.logger.warn(`[TW24] Store reactivate sync failed: ${err?.message}`),
     );
     return saved;
   }
@@ -266,6 +278,9 @@ export class StoresService {
     store.isActive = false;
     const saved = await this.storeRepo.save(store);
     this.logger.log(`Store deactivated: ${saved.name} (${saved.id})`);
+    this.syncStoreToTimewin(saved, 'store.updated').catch((err) =>
+      this.logger.warn(`[TW24] Store deactivate sync failed: ${err?.message}`),
+    );
     return saved;
   }
 
@@ -277,6 +292,9 @@ export class StoresService {
     store.isActive = true;
     const saved = await this.storeRepo.save(store);
     this.logger.log(`Store activated: ${saved.name} (${saved.id})`);
+    this.syncStoreToTimewin(saved, 'store.updated').catch((err) =>
+      this.logger.warn(`[TW24] Store activate sync failed: ${err?.message}`),
+    );
     return saved;
   }
 

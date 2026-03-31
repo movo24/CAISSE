@@ -67,7 +67,16 @@ export class EmployeesService {
     maxDiscountPercent?: number;
   }): Promise<EmployeeEntity & { qrCodeDataUrl: string }> {
     const pinHash = await bcrypt.hash(data.pin, 12);
-    const qrCode = `EMP-${uuidv4().slice(0, 8).toUpperCase()}`;
+    // Generate random 6-digit employee code (numeric, unique)
+    let employeeCode: string;
+    let attempts = 0;
+    do {
+      employeeCode = String(Math.floor(100000 + Math.random() * 900000)); // 6 digits: 100000-999999
+      const exists = await this.employeeRepo.findOne({ where: { qrCode: employeeCode } });
+      if (!exists) break;
+      attempts++;
+    } while (attempts < 10);
+    const qrCode = employeeCode;
 
     const employee = this.employeeRepo.create({
       firstName: data.firstName,
