@@ -240,15 +240,22 @@ export class AuthService {
       });
     } else {
       // PIN login — search employees authorized for this store
-      // Check both primary storeId AND employee_store_access table
-      employees = await this.employeeRepo
-        .createQueryBuilder('e')
-        .where('e.isActive = true')
-        .andWhere(
-          '(e.storeId = :storeId OR e.id IN (SELECT employee_id FROM employee_store_access WHERE store_id = :storeId))',
-          { storeId },
-        )
-        .getMany();
+      // Try with employee_store_access table first, fallback to simple storeId if table doesn't exist
+      try {
+        employees = await this.employeeRepo
+          .createQueryBuilder('e')
+          .where('e.isActive = true')
+          .andWhere(
+            '(e.storeId = :storeId OR e.id IN (SELECT employee_id FROM employee_store_access WHERE store_id = :storeId))',
+            { storeId },
+          )
+          .getMany();
+      } catch {
+        // employee_store_access table may not exist yet — fallback to simple store match
+        employees = await this.employeeRepo.find({
+          where: { storeId, isActive: true },
+        });
+      }
     }
 
     if (!employees.length) {
