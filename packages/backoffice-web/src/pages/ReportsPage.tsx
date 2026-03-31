@@ -167,7 +167,7 @@ export function ReportsPage() {
               onChange={(e) => setSelectedDate(e.target.value)}
             />
           </div>
-          <button className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors">
+          <button className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-400 cursor-not-allowed opacity-50" disabled title="Impression bientôt disponible">
             <Printer size={16} />
             Imprimer
           </button>

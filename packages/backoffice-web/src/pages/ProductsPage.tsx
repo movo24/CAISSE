@@ -237,7 +237,11 @@ export function ProductsPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <button className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors">
+          <button
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-400 cursor-not-allowed opacity-50"
+            disabled
+            title="Export bientôt disponible"
+          >
             <Download size={16} />
             Exporter
           </button>

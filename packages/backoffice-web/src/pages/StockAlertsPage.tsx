@@ -140,6 +140,7 @@ export function StockAlertsPage() {
   const storeId = useCurrentStoreId();
   const [alerts, setAlerts] = useState<StockNotification[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [levelFilter, setLevelFilter] = useState<LevelFilter>('all');
   const [adjustProduct, setAdjustProduct] = useState<StockNotification | null>(null);
@@ -150,8 +151,10 @@ export function StockAlertsPage() {
     try {
       const res = await notificationsApi.stockAlerts(storeId);
       setAlerts(res.data || []);
-    } catch {
-      // silent
+      setError(null);
+    } catch (err: any) {
+      console.warn('[StockAlerts] Failed to load:', err?.message);
+      setError('Impossible de charger les alertes stock. Réessayez.');
     } finally {
       setLoading(false);
     }
@@ -191,6 +194,13 @@ export function StockAlertsPage() {
 
   return (
     <div className="p-6 space-y-6 max-w-6xl mx-auto">
+      {/* Error banner */}
+      {fetchError && (
+        <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 flex items-center justify-between">
+          <span className="text-sm text-red-600">{fetchError}</span>
+          <button onClick={fetchAlerts} className="text-sm text-red-700 font-semibold hover:underline">Réessayer</button>
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>

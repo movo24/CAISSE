@@ -65,12 +65,19 @@ export function LabelsPage() {
     try { return JSON.parse(localStorage.getItem('caisse_label_history') || '[]'); } catch { return []; }
   });
 
+  const [loadError, setLoadError] = useState<string | null>(null);
+
   useEffect(() => {
     productsApi.list({ storeId }).then((res) => {
       setProducts(res.data?.data || res.data || []);
       setLoading(false);
-    }).catch(() => { setLoading(false); console.error('[Labels] Failed to load products'); });
-  }, []);
+      setLoadError(null);
+    }).catch((err) => {
+      setLoading(false);
+      setLoadError('Impossible de charger les produits.');
+      console.warn('[Labels] Failed to load products:', err?.message);
+    });
+  }, [storeId]);
 
   const filtered = products.filter(
     (p) =>

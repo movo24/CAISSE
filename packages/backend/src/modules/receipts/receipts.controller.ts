@@ -8,6 +8,12 @@ import { SalePaymentEntity } from '../../database/entities/sale-payment.entity';
 import { StoreEntity } from '../../database/entities/store.entity';
 import { SkipTenantCheck } from '../../common/interceptors/tenant.interceptor';
 
+/** Escape HTML to prevent XSS — all user-controlled data must pass through this */
+function esc(str: string | null | undefined): string {
+  if (!str) return '';
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#x27;');
+}
+
 /**
  * Public receipt endpoint — no auth required.
  * Customers scan QR code → see their receipt on a mobile-friendly page.
@@ -81,11 +87,11 @@ export class ReceiptsController {
     const data = await this.getReceipt(saleId);
 
     const itemsHtml = data.items.map((i: any) =>
-      `<tr><td>${i.name}</td><td style="text-align:center">${i.quantity}</td><td style="text-align:right">${i.unitPrice.toFixed(2)} €</td><td style="text-align:right">${i.total.toFixed(2)} €</td></tr>`
+      `<tr><td>${esc(i.name)}</td><td style="text-align:center">${i.quantity}</td><td style="text-align:right">${i.unitPrice.toFixed(2)} €</td><td style="text-align:right">${i.total.toFixed(2)} €</td></tr>`
     ).join('');
 
     const paymentsHtml = data.payments.map((p: any) =>
-      `<div style="display:flex;justify-content:space-between"><span>${p.method}</span><span>${p.amount.toFixed(2)} €</span></div>`
+      `<div style="display:flex;justify-content:space-between"><span>${esc(p.method)}</span><span>${p.amount.toFixed(2)} €</span></div>`
     ).join('');
 
     return `<!DOCTYPE html>
@@ -120,14 +126,14 @@ td{padding:8px 0;font-size:13px;border-bottom:1px solid #f5f5f5}
 <div class="header">
 <h1>Reçu de paiement</h1>
 <div class="total">${data.total.toFixed(2)} €</div>
-<div class="ticket">${data.ticketNumber} • ${new Date(data.date).toLocaleString('fr-FR')}</div>
+<div class="ticket">${esc(data.ticketNumber)} • ${new Date(data.date).toLocaleString('fr-FR')}</div>
 <div class="badge">✓ Payé</div>
 </div>
 <div class="body">
 <div class="store">
-<h2>${data.store.name}</h2>
-<p>${data.store.address}${data.store.city ? ', ' + data.store.city : ''}</p>
-${data.store.siret ? `<p>SIRET: ${data.store.siret}</p>` : ''}
+<h2>${esc(data.store.name)}</h2>
+<p>${esc(data.store.address)}${data.store.city ? ', ' + esc(data.store.city) : ''}</p>
+${data.store.siret ? `<p>SIRET: ${esc(data.store.siret)}</p>` : ''}
 </div>
 <table>
 <thead><tr><th>Article</th><th style="text-align:center">Qté</th><th style="text-align:right">P.U.</th><th style="text-align:right">Total</th></tr></thead>
@@ -140,7 +146,7 @@ ${data.discount > 0 ? `<div style="display:flex;justify-content:space-between;co
 </div>
 <div class="footer">
 <p>Merci de votre visite !</p>
-<p style="margin-top:4px">${data.store.name} • ${new Date(data.date).toLocaleDateString('fr-FR')}</p>
+<p style="margin-top:4px">${esc(data.store.name)} • ${new Date(data.date).toLocaleDateString('fr-FR')}</p>
 </div>
 </div>
 </body>
