@@ -50,4 +50,19 @@ export class ReportsController {
       endDate,
     );
   }
+
+  @Get('store-kpi')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'Get store KPIs for a specific date (admin can query any store)' })
+  async getStoreKpi(
+    @Request() req: any,
+    @Query('storeId') queryStoreId?: string,
+    @Query('date') date?: string,
+  ) {
+    const effectiveStoreId = (req.user.role === 'admin' && queryStoreId)
+      ? queryStoreId
+      : req.user.storeId;
+    const effectiveDate = date || new Date().toISOString().split('T')[0];
+    return this.reportsService.getStoreKpi(effectiveStoreId, effectiveDate);
+  }
 }

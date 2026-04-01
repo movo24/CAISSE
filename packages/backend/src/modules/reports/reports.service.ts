@@ -145,4 +145,33 @@ export class ReportsService {
       .orderBy('z.date', 'ASC')
       .getMany();
   }
+
+  /**
+   * Get real-time store KPIs from sales table (not from Z-reports).
+   * Used by the dashboard to show live data per store.
+   */
+  async getStoreKpi(storeId: string, date: string) {
+    const result = await this.saleRepo
+      .createQueryBuilder('s')
+      .select('COUNT(s.id)', 'transactionCount')
+      .addSelect('COALESCE(SUM(s.totalMinorUnits), 0)', 'totalRevenueMinorUnits')
+      .addSelect('COALESCE(SUM(s.discountTotalMinorUnits), 0)', 'discountTotalMinorUnits')
+      .where('s.storeId = :storeId', { storeId })
+      .andWhere('DATE(s.completedAt) = :date', { date })
+      .andWhere("s.status = 'completed'")
+      .getRawOne();
+
+    const txCount = parseInt(result?.transactionCount || '0', 10);
+    const totalRevenue = parseInt(result?.totalRevenueMinorUnits || '0', 10);
+    const avgBasket = txCount > 0 ? Math.round(totalRevenue / txCount) : 0;
+
+    return {
+      storeId,
+      date,
+      transactionCount: txCount,
+      totalRevenueMinorUnits: totalRevenue,
+      discountTotalMinorUnits: parseInt(result?.discountTotalMinorUnits || '0', 10),
+      averageBasketMinorUnits: avgBasket,
+    };
+  }
 }

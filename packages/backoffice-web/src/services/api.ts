@@ -249,6 +249,8 @@ export const reportsApi = {
     api.get('/reports/z-report', { params: { storeId, date } }),
   dailySummary: (storeId: string, date: string) =>
     api.get('/reports/daily-summary', { params: { storeId, date } }),
+  storeKpi: (storeId: string, date: string) =>
+    api.get('/reports/store-kpi', { params: { storeId, date } }),
 };
 
 // ---------------------------------------------------------------------------

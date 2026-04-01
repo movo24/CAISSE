@@ -231,7 +231,7 @@ export function useDashboardData(): DashboardData {
       ] = await Promise.allSettled([
         productsApi.list({ storeId }),
         notificationsApi.stockAlerts(storeId),
-        reportsApi.dailySummary(storeId, today),  // STORE-scoped KPIs (CA jour, tickets, panier moyen)
+        reportsApi.storeKpi(storeId, today),  // STORE-scoped KPIs (CA jour, tickets, panier moyen)
         storesApi.networkSummary(),  // aggregated network KPIs (for comparison only)
         storesApi.list(),
       ]);
