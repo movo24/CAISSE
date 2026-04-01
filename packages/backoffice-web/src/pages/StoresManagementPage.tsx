@@ -24,6 +24,113 @@ interface StoreItem {
   createdAt: string;
 }
 
+const DAY_NAMES = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
+const DAY_ORDER = [1, 2, 3, 4, 5, 6, 0]; // Mon→Sun
+
+interface ScheduleDay {
+  dayOfWeek: number;
+  closed: boolean;
+  openTime: string;
+  closeTime: string;
+}
+
+function ScheduleEditor({ storeId }: { storeId: string }) {
+  const [schedule, setSchedule] = useState<ScheduleDay[]>(
+    DAY_ORDER.map((d) => ({ dayOfWeek: d, closed: false, openTime: '09:00', closeTime: '20:00' }))
+  );
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    storesApi.getSchedule(storeId).then((res) => {
+      const data = Array.isArray(res.data) ? res.data : [];
+      if (data.length > 0) {
+        setSchedule(DAY_ORDER.map((d) => {
+          const found = data.find((s: any) => s.dayOfWeek === d);
+          return found
+            ? { dayOfWeek: d, closed: found.closed, openTime: found.openTime || '09:00', closeTime: found.closeTime || '20:00' }
+            : { dayOfWeek: d, closed: false, openTime: '09:00', closeTime: '20:00' };
+        }));
+      }
+    }).catch(() => {}).finally(() => setLoading(false));
+  }, [storeId]);
+
+  const handleSaveSchedule = async () => {
+    setSaving(true);
+    try {
+      await storesApi.updateSchedule(storeId, schedule);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch {
+      alert('Erreur sauvegarde horaires');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const updateDay = (dayOfWeek: number, field: string, value: any) => {
+    setSchedule((prev) =>
+      prev.map((d) => d.dayOfWeek === dayOfWeek ? { ...d, [field]: value } : d)
+    );
+  };
+
+  if (loading) return <div className="text-sm text-bo-muted py-2">Chargement horaires...</div>;
+
+  return (
+    <div className="border-t border-gray-100 pt-4 mt-2">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-bold text-bo-text flex items-center gap-2">
+          <Clock size={16} className="text-bo-accent" />
+          Horaires d'ouverture
+        </h3>
+        <button
+          type="button"
+          onClick={handleSaveSchedule}
+          disabled={saving}
+          className="px-3 py-1.5 bg-bo-accent text-white text-xs font-semibold rounded-lg hover:bg-bo-accent/90 transition-colors disabled:opacity-50"
+        >
+          {saving ? 'Sauvegarde...' : saved ? '✓ Sauvegardé' : 'Enregistrer horaires'}
+        </button>
+      </div>
+      <div className="space-y-1.5">
+        {schedule.map((day) => (
+          <div key={day.dayOfWeek} className={`flex items-center gap-3 py-1.5 px-3 rounded-lg ${day.closed ? 'bg-gray-50' : 'bg-white'}`}>
+            <span className="w-24 text-xs font-medium text-bo-text">{DAY_NAMES[day.dayOfWeek]}</span>
+            <label className="flex items-center gap-1.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={!day.closed}
+                onChange={(e) => updateDay(day.dayOfWeek, 'closed', !e.target.checked)}
+                className="rounded border-gray-300 text-bo-accent focus:ring-bo-accent/30"
+              />
+              <span className="text-xs text-bo-muted">Ouvert</span>
+            </label>
+            {!day.closed && (
+              <>
+                <input
+                  type="time"
+                  value={day.openTime}
+                  onChange={(e) => updateDay(day.dayOfWeek, 'openTime', e.target.value)}
+                  className="px-2 py-1 rounded-lg border border-gray-200 text-xs focus:outline-none focus:ring-1 focus:ring-bo-accent/30"
+                />
+                <span className="text-xs text-bo-muted">→</span>
+                <input
+                  type="time"
+                  value={day.closeTime}
+                  onChange={(e) => updateDay(day.dayOfWeek, 'closeTime', e.target.value)}
+                  className="px-2 py-1 rounded-lg border border-gray-200 text-xs focus:outline-none focus:ring-1 focus:ring-bo-accent/30"
+                />
+              </>
+            )}
+            {day.closed && <span className="text-xs text-red-400 italic">Fermé</span>}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function StoresManagementPage() {
   const [stores, setStores] = useState<StoreItem[]>([]);
   const [orgs, setOrgs] = useState<{ id: string; name: string }[]>([]);
@@ -350,6 +457,11 @@ export function StoresManagementPage() {
                     className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-bo-accent/30" />
                 </div>
               </div>
+
+              {/* ── Horaires d'ouverture ── */}
+              {editingStore && (
+                <ScheduleEditor storeId={editingStore.id} />
+              )}
 
               {error && <p className="text-sm text-red-500">{error}</p>}
 

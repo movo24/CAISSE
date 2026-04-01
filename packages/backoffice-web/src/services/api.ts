@@ -223,6 +223,8 @@ export const storesApi = {
   accessible: () => api.get('/stores/accessible'),
   networkSummary: () => api.get('/stores/network-summary'),
   syncFromTimeWin: () => api.post('/stores/sync'),
+  getSchedule: (storeId: string) => api.get(`/stores/${storeId}/schedule`),
+  updateSchedule: (storeId: string, schedules: any[]) => api.put(`/stores/${storeId}/schedule`, { schedules }),
 };
 
 // ---------------------------------------------------------------------------

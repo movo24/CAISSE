@@ -161,4 +161,20 @@ export class StoresController {
     }
     return this.storesService.hardDelete(id, req.user.employeeId);
   }
+
+  // ── Operating Hours (proxy to TimeWin24) ──
+
+  @Get(':id/schedule')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'Get store operating hours (from TimeWin24)' })
+  getSchedule(@Param('id') id: string) {
+    return this.storesService.getStoreSchedule(id);
+  }
+
+  @Put(':id/schedule')
+  @Roles('admin')
+  @ApiOperation({ summary: 'Update store operating hours (synced to TimeWin24)' })
+  updateSchedule(@Param('id') id: string, @Body() body: { schedules: any[] }) {
+    return this.storesService.updateStoreSchedule(id, body.schedules);
+  }
 }

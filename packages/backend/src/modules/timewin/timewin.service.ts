@@ -196,6 +196,19 @@ export class TimewinService implements OnModuleInit {
     return this.fetchWithPosSecret(`/api/pos-feed/today-shifts?storeId=${storeId}`);
   }
 
+  /* ── Store schedule (operating hours) ── */
+
+  async getStoreSchedule(storeId: string): Promise<any> {
+    return this.fetchWithPosSecret(`/api/pos-feed/store-schedules?storeId=${storeId}`);
+  }
+
+  async updateStoreSchedule(storeId: string, schedules: any[]): Promise<any> {
+    return this.fetchWithPosSecret(`/api/pos-feed/store-schedules?storeId=${storeId}`, {
+      method: 'PUT',
+      body: { schedules },
+    });
+  }
+
   /* ── Store config ── */
 
   async getStoreConfig(storeId: string): Promise<any> {

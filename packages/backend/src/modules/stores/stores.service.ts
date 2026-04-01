@@ -353,6 +353,21 @@ export class StoresService {
     return { created, updated, total: twStores.length };
   }
 
+  // ── Operating Hours (proxied to TimeWin24) ──
+
+  async getStoreSchedule(storeId: string): Promise<any> {
+    try {
+      return await this.timewinService.getStoreSchedule(storeId);
+    } catch (err: any) {
+      this.logger.warn(`[Schedule] Failed to fetch from TimeWin24: ${err?.message}`);
+      return []; // Return empty if TimeWin24 is down
+    }
+  }
+
+  async updateStoreSchedule(storeId: string, schedules: any[]): Promise<any> {
+    return this.timewinService.updateStoreSchedule(storeId, schedules);
+  }
+
   /**
    * Get consolidated network summary across all stores with includeInNetwork=true.
    */
