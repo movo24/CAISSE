@@ -39,6 +39,10 @@ export class ReceiptsController {
   @SkipTenantCheck()
   @ApiOperation({ summary: 'Get digital receipt for a sale (public, no auth)' })
   async getReceipt(@Param('saleId') saleId: string) {
+    // Validate UUID format to avoid PostgreSQL error on invalid IDs
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(saleId)) throw new NotFoundException('Reçu introuvable');
+
     const sale = await this.saleRepo.findOne({ where: { id: saleId } });
     if (!sale) throw new NotFoundException('Reçu introuvable');
 

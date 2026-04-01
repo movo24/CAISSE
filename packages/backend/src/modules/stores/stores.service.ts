@@ -365,7 +365,12 @@ export class StoresService {
   }
 
   async updateStoreSchedule(storeId: string, schedules: any[]): Promise<any> {
-    return this.timewinService.updateStoreSchedule(storeId, schedules);
+    try {
+      return await this.timewinService.updateStoreSchedule(storeId, schedules);
+    } catch (err: any) {
+      this.logger.warn(`[Schedule] Failed to save to TimeWin24: ${err?.message}`);
+      throw new Error('TimeWin24 indisponible — impossible de sauvegarder les horaires. Réessayez plus tard.');
+    }
   }
 
   /**
