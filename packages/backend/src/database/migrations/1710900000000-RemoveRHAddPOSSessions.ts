@@ -80,7 +80,8 @@ export class RemoveRHAddPOSSessions1710900000000 implements MigrationInterface {
     `);
 
     // Drop employees table
-    await queryRunner.query(`DROP TABLE IF EXISTS "employees" CASCADE;`);
+    // employees table kept for local auth fallback — no longer dropped
+    // await queryRunner.query(`DROP TABLE IF EXISTS "employees" CASCADE;`);
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
