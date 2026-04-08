@@ -127,49 +127,70 @@ export function Layout() {
       <Link
         key={item.path}
         to={item.path}
-        className={`flex items-center gap-3 ${indent ? 'pl-9 pr-3' : 'px-3'} py-2.5 rounded-xl text-sm font-medium transition-all duration-150 ${
-          isActive
-            ? 'bg-bo-accent text-white shadow-lg shadow-bo-accent/25'
-            : 'text-white/50 hover:text-white hover:bg-bo-sidebar-hover'
-        }`}
+        className={`ai-nav-item ${indent ? 'pl-9 pr-3' : ''} ${isActive ? 'active' : ''}`}
       >
         <Icon size={indent ? 15 : 18} strokeWidth={isActive ? 2 : 1.5} />
-        {item.label}
+        <span>{item.label}</span>
       </Link>
     );
   };
 
   return (
     <div className="min-h-screen flex">
-      {/* ══════ Sidebar ══════ */}
-      <aside className="w-[240px] bg-bo-sidebar flex flex-col fixed inset-y-0 left-0 z-20">
+      {/* ══════ Sidebar — Glass Apple Intelligence ══════ */}
+      <aside
+        className="w-[260px] flex flex-col fixed inset-y-0 left-0 z-20"
+        style={{
+          background: 'var(--bo-sidebar)',
+          backdropFilter: 'var(--blur-lg)',
+          WebkitBackdropFilter: 'var(--blur-lg)',
+          borderRight: '1px solid var(--bo-border)',
+        }}
+      >
         {/* App Icon — click to return to dashboard */}
         <button
           onClick={() => navigate(appScope.isGlobal ? '/network' : '/')}
-          className="flex items-center gap-3 px-4 py-3 border-b border-white/10 hover:bg-white/5 transition-colors w-full"
+          className="flex items-center gap-3 px-5 py-4 w-full transition-all"
+          style={{ borderBottom: '1px solid var(--bo-border)' }}
         >
-          <img
-            src="/icons/app-icon.png"
-            alt="AddX Intelligence"
-            className="w-9 h-9 rounded-xl"
-          />
+          <div className="ai-halo relative">
+            <img
+              src="/icons/app-icon.png"
+              alt="AddX Intelligence"
+              className="w-10 h-10 rounded-2xl relative z-[1]"
+              style={{ boxShadow: 'var(--shadow-sm)' }}
+            />
+          </div>
           <div className="text-left">
-            <p className="text-white font-bold text-sm tracking-tight">AddX Intelligence</p>
-            <p className="text-white/30 text-[10px]">Back-Office</p>
+            <p className="ai-text font-bold text-[15px] tracking-tight">AddX Intelligence</p>
+            <p className="text-[10px] font-medium" style={{ color: 'var(--bo-subtle-text)' }}>
+              Back-Office
+            </p>
           </div>
         </button>
 
         {/* ══════ Scope Switcher ══════ */}
         {appScope.isAdmin && appScope.stores.length > 0 && (
-          <div className="px-3 py-3 border-b border-white/10">
+          <div className="px-3 py-3" style={{ borderBottom: '1px solid var(--bo-border)' }}>
             {/* Global button */}
             <button
               onClick={() => { appScope.switchToGlobal(); navigate('/network'); }}
-              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all mb-1 ${
-                appScope.isGlobal
-                  ? 'bg-bo-accent/20 text-bo-accent border border-bo-accent/30'
-                  : 'text-white/40 hover:text-white/70 hover:bg-white/5'
+              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all mb-1.5 ${
+                appScope.isGlobal ? 'ai-border' : ''
               }`}
+              style={
+                appScope.isGlobal
+                  ? { color: 'var(--bo-text)', background: 'var(--ai-gradient-soft)' }
+                  : { color: 'var(--bo-muted)' }
+              }
+              onMouseEnter={(e) => {
+                if (!appScope.isGlobal)
+                  (e.currentTarget as HTMLElement).style.background = 'rgba(15,15,25,0.04)';
+              }}
+              onMouseLeave={(e) => {
+                if (!appScope.isGlobal)
+                  (e.currentTarget as HTMLElement).style.background = 'transparent';
+              }}
             >
               <Globe size={14} />
               <span>Vue Globale</span>
@@ -177,29 +198,38 @@ export function Layout() {
 
             {/* Store buttons */}
             <div className="space-y-0.5 max-h-32 overflow-y-auto">
-              {appScope.stores.filter(s => (s as any).isActive !== false).map((store) => (
-                <button
-                  key={store.id}
-                  onClick={() => { appScope.switchToStore(store.id); navigate('/'); }}
-                  className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs transition-all ${
-                    appScope.selectedStoreId === store.id
-                      ? 'bg-white/10 text-white font-semibold'
-                      : 'text-white/40 hover:text-white/60 hover:bg-white/5'
-                  }`}
-                >
-                  <div className={`w-1.5 h-1.5 rounded-full ${
-                    appScope.selectedStoreId === store.id ? 'bg-bo-accent' : 'bg-white/20'
-                  }`} />
-                  <span className="truncate">{store.name}</span>
-                </button>
-              ))}
+              {appScope.stores.filter((s) => (s as any).isActive !== false).map((store) => {
+                const selected = appScope.selectedStoreId === store.id;
+                return (
+                  <button
+                    key={store.id}
+                    onClick={() => { appScope.switchToStore(store.id); navigate('/'); }}
+                    className="w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs transition-all"
+                    style={{
+                      color: selected ? 'var(--bo-text)' : 'var(--bo-muted)',
+                      background: selected ? 'rgba(255,255,255,0.8)' : 'transparent',
+                      fontWeight: selected ? 600 : 400,
+                      boxShadow: selected ? 'var(--shadow-sm)' : 'none',
+                    }}
+                  >
+                    <div
+                      className="w-1.5 h-1.5 rounded-full"
+                      style={{
+                        background: selected
+                          ? 'var(--ai-gradient)'
+                          : 'rgba(15,15,25,0.2)',
+                      }}
+                    />
+                    <span className="truncate">{store.name}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
         )}
 
         {/* ══════ Navigation ══════ */}
-        <nav className="flex-1 px-3 py-3 space-y-1 overflow-y-auto">
-          {/* Main nav items (filtered by scope + role) */}
+        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
           {navItems.filter(shouldShowItem).map((item) => renderNavItem(item))}
 
           {/* Administration group — admin only */}
@@ -207,10 +237,8 @@ export function Layout() {
             <div className="pt-2">
               <button
                 onClick={() => setAdminOpen(!adminOpen)}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 ${
-                  adminGroup.items.some((i) => location.pathname === i.path)
-                    ? 'text-white/80'
-                    : 'text-white/50 hover:text-white hover:bg-bo-sidebar-hover'
+                className={`ai-nav-item w-full ${
+                  adminGroup.items.some((i) => location.pathname === i.path) ? 'active' : ''
                 }`}
               >
                 <Network size={18} strokeWidth={1.5} />
@@ -218,58 +246,96 @@ export function Layout() {
                 {adminOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
               </button>
               {adminOpen && (
-                <div className="mt-0.5 space-y-0.5">
-                  {adminGroup.items.filter((i) => hasRole(employee?.role, i.minRole)).map((item) => renderNavItem(item, true))}
+                <div className="mt-0.5 space-y-0.5 ai-fade-in">
+                  {adminGroup.items
+                    .filter((i) => hasRole(employee?.role, i.minRole))
+                    .map((item) => renderNavItem(item, true))}
                 </div>
               )}
             </div>
           )}
 
-          {/* Separator */}
-          <div className="border-t border-white/5 my-2" />
+          <hr className="ai-divider my-2" />
 
           {/* Bottom items */}
           {bottomItems.filter(shouldShowItem).map((item) => renderNavItem(item))}
         </nav>
 
         {/* ══════ Footer ══════ */}
-        <div className="px-3 pb-4 space-y-2">
-          {/* Current scope indicator */}
-          <div className="px-3 py-2 rounded-xl bg-white/5 text-center">
-            <p className="text-[10px] text-white/30 uppercase tracking-widest">
+        <div className="px-3 pb-4 space-y-3">
+          {/* Current scope indicator — glass pill */}
+          <div
+            className="px-3 py-2.5 rounded-2xl text-center"
+            style={{
+              background: 'var(--ai-gradient-soft)',
+              border: '1px solid var(--bo-border)',
+            }}
+          >
+            <p
+              className="text-[9px] uppercase tracking-[0.15em] font-semibold"
+              style={{ color: 'var(--bo-subtle-text)' }}
+            >
               {appScope.isGlobal ? 'Vue Réseau' : 'Magasin'}
             </p>
-            <p className="text-xs text-white/70 font-semibold truncate">
+            <p className="text-xs font-semibold truncate" style={{ color: 'var(--bo-text)' }}>
               {appScope.isGlobal ? 'Tous les magasins' : appScope.selectedStoreName || '—'}
             </p>
           </div>
 
           {/* User */}
-          <div className="border-t border-white/10 pt-3 px-2">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center">
-                <span className="text-white/70 text-xs font-bold">{initials}</span>
+          <div className="pt-2" style={{ borderTop: '1px solid var(--bo-border)' }}>
+            <div className="flex items-center gap-2.5 pt-3">
+              <div className="ai-halo relative">
+                <div
+                  className="w-9 h-9 rounded-full flex items-center justify-center relative z-[1]"
+                  style={{
+                    background: 'var(--ai-gradient)',
+                    boxShadow: 'var(--shadow-sm)',
+                  }}
+                >
+                  <span className="text-white text-xs font-bold">{initials}</span>
+                </div>
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-white/80 text-xs font-semibold truncate">{displayName}</p>
-                <p className="text-white/30 text-[10px]">{employee?.role ?? ''}</p>
+                <p className="text-xs font-semibold truncate" style={{ color: 'var(--bo-text)' }}>
+                  {displayName}
+                </p>
+                <p className="text-[10px] capitalize" style={{ color: 'var(--bo-subtle-text)' }}>
+                  {employee?.role ?? ''}
+                </p>
               </div>
               <button
                 onClick={handleLogout}
                 title="Déconnexion"
-                className="min-w-[44px] min-h-[44px] flex items-center justify-center text-white/30 hover:text-white/70 hover:bg-white/5 rounded-lg transition-colors -mr-2"
+                className="min-w-[40px] min-h-[40px] flex items-center justify-center rounded-xl transition-all"
+                style={{ color: 'var(--bo-muted)' }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'rgba(239,68,68,0.08)';
+                  e.currentTarget.style.color = '#ef4444';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'transparent';
+                  e.currentTarget.style.color = 'var(--bo-muted)';
+                }}
               >
                 <LogOut size={16} />
               </button>
             </div>
           </div>
-          <p className="text-center text-[10px] text-white/20">CAISSE v0.3.0</p>
+          <div className="flex items-center justify-center gap-1.5">
+            <span className="ai-sparkle" />
+            <p className="text-center text-[10px]" style={{ color: 'var(--bo-subtle-text)' }}>
+              CAISSE v0.3.0
+            </p>
+          </div>
         </div>
       </aside>
 
       {/* ══════ Main content ══════ */}
-      <main className="flex-1 ml-[240px] overflow-auto min-h-screen">
-        <Outlet />
+      <main className="flex-1 ml-[260px] overflow-auto min-h-screen">
+        <div className="ai-fade-in">
+          <Outlet />
+        </div>
       </main>
     </div>
   );
