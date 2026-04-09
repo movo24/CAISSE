@@ -10,7 +10,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { RolesGuard } from '../../common/guards/roles.guard';
+import { RolesGuard, Roles } from '../../common/guards/roles.guard';
 import { TerminalsService } from './terminals.service';
 import { BusinessError } from '../../common/errors/business-error';
 
@@ -40,6 +40,7 @@ export class TerminalsController {
    * Create a new terminal for the current store.
    */
   @Post()
+  @Roles('admin', 'manager')
   @ApiOperation({ summary: 'Create a new terminal' })
   async create(
     @Request() req: any,
@@ -63,6 +64,7 @@ export class TerminalsController {
    * Update a terminal (label, isActive).
    */
   @Patch(':id')
+  @Roles('admin', 'manager')
   @ApiOperation({ summary: 'Update a terminal' })
   async update(
     @Param('id') id: string,

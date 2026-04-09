@@ -19,12 +19,13 @@ import { CreateProductDto, UpdateProductDto, PaginationQueryDto } from '../../co
 
 @ApiTags('products')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('products')
 export class ProductsController {
   constructor(private productsService: ProductsService) {}
 
   @Post()
+  @Roles('admin', 'manager')
   @ApiOperation({ summary: 'Create a product' })
   create(@Body() dto: CreateProductDto, @Request() req: any) {
     return this.productsService.create(
@@ -69,6 +70,7 @@ export class ProductsController {
   }
 
   @Post('categories')
+  @Roles('admin', 'manager')
   @ApiOperation({ summary: 'Create a product category' })
   createCategory(@Request() req: any, @Body() body: { name: string }) {
     return this.productsService.createCategory(req.user.storeId, body.name);
@@ -99,6 +101,7 @@ export class ProductsController {
   }
 
   @Put(':id')
+  @Roles('admin', 'manager')
   @ApiOperation({ summary: 'Update a product' })
   update(@Param('id') id: string, @Body() dto: UpdateProductDto, @Request() req: any) {
     const { reason, ...data } = dto;
@@ -119,7 +122,6 @@ export class ProductsController {
   }
 
   @Post(':id/generate-barcode')
-  @UseGuards(RolesGuard)
   @Roles('admin', 'manager')
   @ApiOperation({ summary: 'Generate internal barcode for a product without one' })
   async generateBarcode(@Param('id') id: string, @Request() req: any) {
@@ -127,7 +129,6 @@ export class ProductsController {
   }
 
   @Delete(':id')
-  @UseGuards(RolesGuard)
   @Roles('admin')
   @ApiOperation({ summary: 'Soft-delete a product (deactivate)' })
   async remove(@Param('id') id: string, @Request() req: any) {

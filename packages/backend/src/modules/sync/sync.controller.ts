@@ -4,11 +4,22 @@ import {
   Get,
   Body,
   Query,
+  Request,
   UseGuards,
+  ForbiddenException,
 } from '@nestjs/common';
 import { SyncService, SyncPushPayload } from './sync.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+
+/** Resolve effective storeId: admin can override, others use JWT storeId */
+function resolveStoreId(req: any, queryStoreId?: string): string {
+  if (req.user.role === 'admin' && queryStoreId) return queryStoreId;
+  if (queryStoreId && queryStoreId !== req.user.storeId) {
+    throw new ForbiddenException('Accès interdit à ce magasin.');
+  }
+  return queryStoreId || req.user.storeId;
+}
 
 @ApiTags('sync')
 @ApiBearerAuth()
@@ -35,9 +46,11 @@ export class SyncController {
       'Returns products and customers modified since the given timestamp.',
   })
   async pull(
-    @Query('storeId') storeId: string,
+    @Request() req: any,
+    @Query('storeId') queryStoreId: string,
     @Query('lastSyncAt') lastSyncAt: string,
   ) {
+    const storeId = resolveStoreId(req, queryStoreId);
     return this.syncService.pull(storeId, lastSyncAt);
   }
 
@@ -45,7 +58,8 @@ export class SyncController {
   @ApiOperation({
     summary: 'Get sync health status for a store',
   })
-  async status(@Query('storeId') storeId: string) {
+  async status(@Request() req: any, @Query('storeId') queryStoreId: string) {
+    const storeId = resolveStoreId(req, queryStoreId);
     return this.syncService.getStatus(storeId);
   }
 }

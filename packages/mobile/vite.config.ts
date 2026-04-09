@@ -14,7 +14,7 @@ export default defineConfig(async () => {
   return {
     plugins,
     server: {
-      port: 5175,
+      port: 5176,
       host: true,
       ...(useHttps ? { https: {} } : {}),
       proxy: {

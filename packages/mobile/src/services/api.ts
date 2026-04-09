@@ -9,10 +9,9 @@
 
 import axios from 'axios';
 
-// Production API: hardcoded to avoid Railway env var issues.
-// In dev (localhost), uses Vite proxy (empty = relative URL).
+// API base URL: use VITE_API_URL if set, fallback to prod URL or empty (dev proxy).
 const IS_PROD = typeof window !== 'undefined' && !window.location.hostname.includes('localhost');
-const API_URL = IS_PROD ? 'https://api.addxintelligence.com' : '';
+const API_URL = import.meta.env.VITE_API_URL || (IS_PROD ? 'https://api.addxintelligence.com' : '');
 
 const api = axios.create({
   baseURL: `${API_URL}/api`,

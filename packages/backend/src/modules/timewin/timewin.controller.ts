@@ -29,9 +29,10 @@ export class TimewinController {
 
   constructor(private readonly tw: TimewinService) {}
 
-  /* ── Public endpoints (no auth) ── */
+  /* ── Health (auth required to avoid leaking infra status) ── */
 
   @Get('health')
+  @UseGuards(JwtAuthGuard)
   async health() {
     const ok = await this.tw.isHealthy();
     return { timewin24: ok ? 'connected' : 'unreachable' };

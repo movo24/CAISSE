@@ -28,4 +28,5 @@ export { AiRecommendationLogEntity } from './ai-recommendation-log.entity';
 export { StockLocationEntity } from './stock-location.entity';
 export { StockBalanceEntity } from './stock-balance.entity';
 export { StockMovementEntity } from './stock-movement.entity';
+export { EmployeeStoreAccessEntity } from './employee-store-access.entity';
 // EmployeeEntity kept but not re-exported — transitional (auth fallback only)
