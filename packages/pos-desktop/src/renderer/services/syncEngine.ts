@@ -157,17 +157,31 @@ async function syncEntry(entry: OfflineQueueEntry): Promise<{ success: boolean; 
 
       case 'pointage':
         // Pointage now managed by TimeWin24
-        await timewinApi.pushEvent({ type: 'pointage', ...entry.payload });
-        console.log(`[SYNC] Pointage synced via TimeWin24: ${entry.payload.type} for ${entry.payload.employeeName}`);
+        await timewinApi.pushEvent({
+          eventType: 'pointage',
+          storeId: entry.storeId,
+          employeeId: entry.cashierId,
+          data: entry.payload,
+        });
+        console.log(`[SYNC] Pointage synced via TimeWin24: ${entry.payload.punchType} for ${entry.payload.employeeName}`);
         break;
 
       case 'cashier_metrics':
-        await timewinApi.pushEvent({ type: 'cashier_metrics', ...entry.payload });
+        await timewinApi.pushEvent({
+          eventType: 'cashier_metrics',
+          storeId: entry.storeId,
+          employeeId: entry.cashierId,
+          data: entry.payload,
+        });
         console.log(`[SYNC] Cashier metrics synced via TimeWin24: ${entry.payload.employeeName}`);
         break;
 
       case 'staffing_snapshot':
-        await timewinApi.pushEvent({ type: 'staffing_snapshot', ...entry.payload });
+        await timewinApi.pushEvent({
+          eventType: 'staffing_snapshot',
+          storeId: entry.storeId,
+          data: entry.payload,
+        });
         console.log(`[SYNC] Staffing snapshot synced via TimeWin24: ${entry.payload.activeCashiers} cashiers`);
         break;
 

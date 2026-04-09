@@ -235,7 +235,7 @@ export class TimewinService implements OnModuleInit {
 
   async pushEvent(
     storeId: string,
-    eventType: 'sale.completed' | 'session.opened' | 'session.closed' | 'stock.alert' | 'store.created' | 'store.updated',
+    eventType: 'sale.completed' | 'session.opened' | 'session.closed' | 'stock.alert' | 'store.created' | 'store.updated' | 'pointage' | 'cashier_metrics' | 'staffing_snapshot',
     employeeId?: string,
     data?: Record<string, unknown>,
   ): Promise<{ received: boolean; eventId: string }> {
@@ -377,9 +377,6 @@ export class TimewinService implements OnModuleInit {
       headers['X-POS-Nonce'] = nonce;
       headers['X-POS-Signature'] = signature;
       headers['X-POS-Key-Id'] = this.posKeyId;
-    } else if (this.posSecret) {
-      // Legacy fallback (will be deprecated)
-      headers['X-POS-Secret'] = this.posSecret;
     } else if (this.apiKey) {
       headers['Authorization'] = `Bearer ${this.apiKey}`;
     }

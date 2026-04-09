@@ -105,7 +105,7 @@ export class StoresService {
     eventType: 'store.created' | 'store.updated' = 'store.created',
   ): Promise<void> {
     try {
-      await this.timewinService.pushEvent(store.id, eventType, 'system', {
+      await this.timewinService.pushEvent(store.id, eventType, undefined, {
         id: store.id,
         name: store.name,
         storeCode: store.storeCode,

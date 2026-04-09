@@ -564,9 +564,15 @@ export class SalesService {
     try {
       for (const alert of alerts) {
         const product = [...products.values()].find((p) => p.id === alert.productId);
+        const threshold =
+          alert.level === 'critical' || alert.level === 'out_of_stock'
+            ? product?.stockCriticalThreshold
+            : product?.stockAlertThreshold;
+
         this.logger.warn(
           `${alert.level.toUpperCase()} STOCK: ${alert.productName} (${alert.ean}) ~ ${alert.remainingStock} units`,
         );
+
         await this.auditService.log({
           storeId,
           employeeId,
@@ -578,12 +584,21 @@ export class SalesService {
             productName: alert.productName,
             ean: alert.ean,
             estimatedQuantity: alert.remainingStock,
-            threshold:
-              alert.level === 'critical' || alert.level === 'out_of_stock'
-                ? product?.stockCriticalThreshold
-                : product?.stockAlertThreshold,
+            threshold,
           },
         });
+
+        // Push stock alert to TimeWin24 for manager notifications
+        this.timewinService.pushEvent(storeId, 'stock.alert', employeeId, {
+          productId: alert.productId,
+          productName: alert.productName,
+          ean: alert.ean,
+          currentStock: alert.remainingStock,
+          threshold,
+          level: alert.level,
+        }).catch((err: any) =>
+          this.logger.warn(`[TW24] Stock alert push failed: ${err?.message}`),
+        );
       }
     } catch (err: any) {
       this.logger.warn(`Stock alert logging failed: ${err?.message}`);
