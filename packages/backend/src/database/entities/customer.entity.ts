@@ -42,6 +42,25 @@ export class CustomerEntity {
   @Column({ name: 'store_id' })
   storeId: string;
 
+  // ── Wesley Club extensions ─────────────────────────────────
+  @Column({ name: 'password_hash', length: 100, nullable: true })
+  passwordHash: string | null;
+
+  @Column({ name: 'preferred_store_id', type: 'uuid', nullable: true })
+  preferredStoreId: string | null;
+
+  @Column({ name: 'visit_count', type: 'int', default: 0 })
+  visitCount: number;
+
+  @Column({ name: 'last_visit_at', type: 'timestamp', nullable: true })
+  lastVisitAt: Date | null;
+
+  @Column({ name: 'deleted_at', type: 'timestamp', nullable: true })
+  deletedAt: Date | null;
+
+  @Column({ name: 'anonymized_at', type: 'timestamp', nullable: true })
+  anonymizedAt: Date | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

@@ -34,6 +34,12 @@ import { TimewinModule } from './modules/timewin/timewin.module';
 import { SalesAiModule } from './modules/sales-ai/sales-ai.module';
 import { ReceiptsModule } from './modules/receipts/receipts.module';
 import { EmployeesModule } from './modules/employees/employees.module';
+// ── Wesley Club (loyalty mobile app) ──
+import { MobileAuthModule } from './modules/mobile-auth/mobile-auth.module';
+import { LoyaltyCardModule } from './modules/loyalty-card/loyalty-card.module';
+import { CouponModule } from './modules/coupon/coupon.module';
+import { CustomerVisitsModule } from './modules/customer-visits/customer-visits.module';
+import { PosIntegrationModule } from './modules/pos-integration/pos-integration.module';
 // ── RH MODULES (employees re-activated for local fallback) ──
 // PointageModule, PayrollModule, PlanningModule, StaffingModule → still in TimeWin24
 
@@ -104,6 +110,12 @@ const isProd = process.env.NODE_ENV === 'production';
     SalesAiModule,
     ReceiptsModule,
     EmployeesModule,
+    // Wesley Club
+    MobileAuthModule,
+    LoyaltyCardModule,
+    CouponModule,
+    CustomerVisitsModule,
+    PosIntegrationModule,
   ],
   providers: [
     // Apply rate limiting globally to ALL endpoints

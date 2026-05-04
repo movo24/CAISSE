@@ -30,3 +30,15 @@ export { StockBalanceEntity } from './stock-balance.entity';
 export { StockMovementEntity } from './stock-movement.entity';
 export { EmployeeStoreAccessEntity } from './employee-store-access.entity';
 // EmployeeEntity kept but not re-exported — transitional (auth fallback only)
+
+// ── Wesley Club (loyalty) entities ─────────────────────────────
+export { LoyaltyCardEntity } from './loyalty-card.entity';
+export { CouponEntity } from './coupon.entity';
+export { CustomerVisitEntity } from './customer-visit.entity';
+export { CustomerDeviceEntity } from './customer-device.entity';
+export { NotificationPreferencesEntity } from './notification-preferences.entity';
+export { NotificationsLogEntity } from './notifications-log.entity';
+export { ProductHighlightEntity } from './product-highlight.entity';
+export { ProductStoreAvailabilityEntity } from './product-store-availability.entity';
+export { LoyaltyRewardCycleEntity } from './loyalty-reward-cycle.entity';
+export { IdempotencyKeyEntity } from './idempotency-key.entity';
