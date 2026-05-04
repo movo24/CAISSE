@@ -264,4 +264,38 @@ export const salesAiApi = {
   kpi: () => api.get('/sales-ai/kpi'),
 };
 
+// ── Wesley Club loyalty (POS endpoints) ──
+export const loyaltyApi = {
+  /** Resolve QR token → customer info + available coupon (read-only) */
+  scan: (data: { qrToken: string; storeId: string; terminalId: string; ticketDraftId?: string }) =>
+    api.post('/pos/loyalty/scan', data).then((r) => r.data),
+
+  /** Redeem coupon (transactional, idempotent). MUST pass X-Idempotency-Key. */
+  redeem: (
+    data: {
+      customerId: string;
+      couponId: string;
+      storeId: string;
+      terminalId?: string;
+      ticketId: string;
+      ticketAmountCents: number;
+    },
+    idempotencyKey: string,
+  ) =>
+    api
+      .post('/pos/loyalty/redeem', data, {
+        headers: { 'X-Idempotency-Key': idempotencyKey },
+      })
+      .then((r) => r.data),
+
+  /** Record a visit (no coupon redeemed) */
+  visit: (data: {
+    customerId: string;
+    storeId: string;
+    terminalId?: string;
+    ticketId?: string;
+    purchaseAmountCents?: number;
+  }) => api.post('/pos/loyalty/visit', data).then((r) => r.data),
+};
+
 export default api;

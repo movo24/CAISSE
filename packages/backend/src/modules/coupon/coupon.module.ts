@@ -7,6 +7,7 @@ import { IdempotencyKeyEntity } from '../../database/entities/idempotency-key.en
 import { CustomerEntity } from '../../database/entities/customer.entity';
 import { CouponController } from './coupon.controller';
 import { CouponService } from './coupon.service';
+import { CouponEmitterCron } from './coupon-emitter.cron';
 import { AuditModule } from '../audit/audit.module';
 
 @Module({
@@ -21,7 +22,7 @@ import { AuditModule } from '../audit/audit.module';
     AuditModule,
   ],
   controllers: [CouponController],
-  providers: [CouponService],
+  providers: [CouponService, CouponEmitterCron],
   exports: [CouponService],
 })
 export class CouponModule {}

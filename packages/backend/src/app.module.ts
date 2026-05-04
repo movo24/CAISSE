@@ -40,6 +40,7 @@ import { LoyaltyCardModule } from './modules/loyalty-card/loyalty-card.module';
 import { CouponModule } from './modules/coupon/coupon.module';
 import { CustomerVisitsModule } from './modules/customer-visits/customer-visits.module';
 import { PosIntegrationModule } from './modules/pos-integration/pos-integration.module';
+import { LoyaltyAdminModule } from './modules/loyalty-admin/loyalty-admin.module';
 // ── RH MODULES (employees re-activated for local fallback) ──
 // PointageModule, PayrollModule, PlanningModule, StaffingModule → still in TimeWin24
 
@@ -116,6 +117,7 @@ const isProd = process.env.NODE_ENV === 'production';
     CouponModule,
     CustomerVisitsModule,
     PosIntegrationModule,
+    LoyaltyAdminModule,
   ],
   providers: [
     // Apply rate limiting globally to ALL endpoints

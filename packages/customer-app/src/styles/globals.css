@@ -1,0 +1,158 @@
+/* The Wesley Club — Apple Intelligence iridescent UI */
+
+:root {
+  --bg: #0B0B10;
+  --surface: rgba(255, 255, 255, 0.08);
+  --surface-strong: rgba(255, 255, 255, 0.14);
+  --text: #FFFFFF;
+  --text-muted: rgba(255, 255, 255, 0.65);
+  --text-subtle: rgba(255, 255, 255, 0.40);
+  --border: rgba(255, 255, 255, 0.12);
+
+  --ai-1: #FF6B9D;
+  --ai-2: #C471ED;
+  --ai-3: #6366F1;
+  --ai-4: #12D8FA;
+  --ai-5: #4ADE80;
+  --ai-6: #FFD166;
+
+  --ai-gradient: linear-gradient(120deg, var(--ai-1), var(--ai-2), var(--ai-3), var(--ai-4), var(--ai-5));
+  --ai-gradient-soft: linear-gradient(120deg,
+    rgba(255,107,157,0.15), rgba(196,113,237,0.15),
+    rgba(99,102,241,0.15), rgba(18,216,250,0.15));
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+html, body, #root {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif;
+  letter-spacing: -0.02em;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(circle at 20% 10%, rgba(255,107,157,0.30), transparent 50%),
+    radial-gradient(circle at 80% 20%, rgba(18,216,250,0.25), transparent 50%),
+    radial-gradient(circle at 70% 90%, rgba(196,113,237,0.30), transparent 50%),
+    radial-gradient(circle at 10% 80%, rgba(74,222,128,0.20), transparent 50%);
+  filter: blur(80px) saturate(180%);
+  animation: meshFloat 20s ease-in-out infinite alternate;
+}
+
+#root { position: relative; z-index: 1; min-height: 100vh; }
+
+@keyframes meshFloat {
+  0%   { transform: translate(0, 0) scale(1); }
+  50%  { transform: translate(-3%, 3%) scale(1.1); }
+  100% { transform: translate(3%, -3%) scale(1); }
+}
+
+@keyframes shimmer {
+  0%, 100% { background-position: 0% 50%; }
+  50%      { background-position: 100% 50%; }
+}
+
+/* Components */
+.glass {
+  background: var(--surface);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+}
+
+.glass-card { padding: 20px; }
+
+.btn-ai {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 14px 20px;
+  border-radius: 16px;
+  background: var(--ai-gradient);
+  background-size: 200% 200%;
+  color: white;
+  font-weight: 600;
+  font-size: 15px;
+  border: none;
+  cursor: pointer;
+  width: 100%;
+  box-shadow: 0 8px 24px rgba(99,102,241,0.4);
+  animation: shimmer 6s ease-in-out infinite;
+}
+.btn-ai:active { transform: scale(0.97); }
+
+.btn-ghost {
+  padding: 14px 20px;
+  border-radius: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-weight: 500;
+  font-size: 15px;
+  width: 100%;
+  cursor: pointer;
+}
+
+.input {
+  width: 100%;
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  color: var(--text);
+  font-size: 15px;
+  outline: none;
+}
+.input:focus { border-color: rgba(99,102,241,0.6); }
+.input::placeholder { color: var(--text-subtle); }
+
+.gradient-text {
+  background: var(--ai-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  font-weight: 700;
+}
+
+.tab-bar {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  background: rgba(11, 11, 16, 0.85);
+  backdrop-filter: blur(30px);
+  border-top: 1px solid var(--border);
+  padding: 12px 8px calc(12px + env(safe-area-inset-bottom)) 8px;
+  z-index: 100;
+}
+.tab-item {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 8px; border-radius: 12px; color: var(--text-muted);
+  font-size: 10px; font-weight: 500; cursor: pointer; background: none; border: none;
+}
+.tab-item.active { color: var(--text); }
+.tab-item.active svg { stroke: url(#ai-grad); }
+
+.page {
+  padding: max(24px, env(safe-area-inset-top)) 16px 90px 16px;
+  min-height: 100vh;
+}
+
+.h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.03em; }
+.h2 { font-size: 20px; font-weight: 600; letter-spacing: -0.02em; }
+.muted { color: var(--text-muted); }
+.subtle { color: var(--text-subtle); }
+
+@media (prefers-reduced-motion: reduce) {
+  body::before, .btn-ai { animation: none !important; }
+}
