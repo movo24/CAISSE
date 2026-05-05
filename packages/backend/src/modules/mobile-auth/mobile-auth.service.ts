@@ -56,7 +56,7 @@ export class MobileAuthService {
       email,
       qrCode,
       passwordHash,
-      storeId: input.preferredStoreId || null as any,
+      storeId: input.preferredStoreId ?? null,
       preferredStoreId: input.preferredStoreId ?? null,
       loyaltyPoints: 0,
       isFirstPurchase: true,

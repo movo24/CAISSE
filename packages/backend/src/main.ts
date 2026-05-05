@@ -1,7 +1,9 @@
-// Load .env with override BEFORE anything else
-// (prevents empty shell env vars from shadowing .env values)
+// Load .env BEFORE anything else.
+// On production (Railway / Vercel), env vars come from the platform —
+// no .env file is shipped. dotenv finds nothing → no-op.
+// In dev, .env supplies missing vars but does NOT override shell vars.
 import * as dotenv from 'dotenv';
-dotenv.config({ override: true });
+dotenv.config();
 
 // --- Sentry: must initialize BEFORE other imports ---
 import * as Sentry from '@sentry/node';
