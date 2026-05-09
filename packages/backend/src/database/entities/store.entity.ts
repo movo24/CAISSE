@@ -23,10 +23,10 @@ export class StoreEntity {
 
   // ── Hierarchy: Organization → Unit → Store ──
 
-  @Column({ name: 'organization_id', nullable: true })
+  @Column({ name: 'organization_id', type: 'uuid', nullable: true })
   organizationId: string | null;
 
-  @Column({ name: 'unit_id', nullable: true })
+  @Column({ name: 'unit_id', type: 'uuid', nullable: true })
   unitId: string | null;
 
   @Column({ name: 'store_code', nullable: true })

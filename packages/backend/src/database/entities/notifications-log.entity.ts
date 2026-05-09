@@ -19,7 +19,7 @@ export class NotificationsLogEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'customer_id', nullable: true })
+  @Column({ name: 'customer_id', type: 'uuid', nullable: true })
   customerId: string | null;
 
   @Column({ length: 30 })

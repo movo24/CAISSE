@@ -39,7 +39,7 @@ export class CustomerEntity {
   @Column({ name: 'is_verified', default: false })
   isVerified: boolean;
 
-  @Column({ name: 'store_id', nullable: true })
+  @Column({ name: 'store_id', type: 'uuid', nullable: true })
   storeId: string | null;
 
   // ── Wesley Club extensions ─────────────────────────────────
