@@ -1,6 +1,9 @@
-import { Controller, Get, Head, HttpCode, HttpStatus, Inject, UseGuards } from '@nestjs/common';
+import { Controller, Get, Head, HttpCode, HttpStatus, HttpException, Inject, UseGuards, Res } from '@nestjs/common';
 import { SkipThrottle } from '@nestjs/throttler';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { DataSource } from 'typeorm';
+import type { Response } from 'express';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PosMetrics } from '../../common/middleware/request-logger.middleware';
 import { TimewinService } from '../timewin/timewin.service';
@@ -8,9 +11,15 @@ import { CACHE_STORE } from '../../common/cache/cache.module';
 import { ICacheStore, ResilientCacheStore } from '../../common/cache/cache-store';
 import { AlertService } from '../../common/alert/alert.service';
 
+const HEALTH_DB_TIMEOUT_MS = 2000;
+
 /**
  * Health-check + metrics endpoints.
  * Health is public. Metrics requires auth.
+ *
+ * Behaviour:
+ *  - DB reachable + app responsive  → HTTP 200, status='ok' or 'degraded' (Redis/TW down)
+ *  - DB unreachable                 → HTTP 503, status='down' (Railway / orchestrator must restart)
  */
 @ApiTags('Health')
 @SkipThrottle()
@@ -19,15 +28,35 @@ export class HealthController {
   constructor(
     private readonly timewin: TimewinService,
     @Inject(CACHE_STORE) private readonly cache: ICacheStore,
+    @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
 
   @Get()
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Health check — honest system status' })
-  async check() {
+  @ApiOperation({ summary: 'Health check — honest system status (returns 503 if DB unreachable)' })
+  async check(@Res({ passthrough: true }) res: Response) {
     const mem = process.memoryUsage();
 
-    // Redis status — active probe (not cached state)
+    // ── DB ping (CRITICAL) — strict 2s timeout ────────────────
+    let dbState: 'up' | 'down' = 'down';
+    let dbError: string | null = null;
+    let dbLatencyMs: number | null = null;
+    const dbStart = Date.now();
+    try {
+      await Promise.race([
+        this.dataSource.query('SELECT 1'),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('DB_PING_TIMEOUT')), HEALTH_DB_TIMEOUT_MS),
+        ),
+      ]);
+      dbState = 'up';
+      dbLatencyMs = Date.now() - dbStart;
+    } catch (e: any) {
+      dbState = 'down';
+      dbError = (e?.message || 'unknown').slice(0, 200);
+      dbLatencyMs = Date.now() - dbStart;
+    }
+
+    // ── Redis status — active probe ──────────────────────────
     const resilient = this.cache as ResilientCacheStore;
     let redisState: 'up' | 'down' | 'unknown' = 'unknown';
     if (resilient.probe) {
@@ -37,23 +66,28 @@ export class HealthController {
     const cacheStatus = resilient.getStatus?.()
       ?? { state: 'IN_MEMORY' as const, lastError: null, downSince: null, failCount: 0 };
 
-    // TimeWin24 status (quick, non-blocking)
+    // ── TimeWin24 status (non-blocking, circuit breaker state) ──
     const cbState = this.timewin.getCircuitState();
     const timewinState = cbState === 'CLOSED' ? 'up'
       : cbState === 'OPEN' ? 'down'
       : 'degraded'; // HALF_OPEN
 
-    // Overall status
+    // ── Overall status ───────────────────────────────────────
     let status: 'ok' | 'degraded' | 'down' = 'ok';
-    if (redisState === 'down' || timewinState === 'down') {
+    if (dbState === 'down') {
+      status = 'down';
+    } else if (redisState === 'down' || timewinState === 'down') {
       status = 'degraded';
     }
 
-    return {
+    const body = {
       status,
       version: '1.1.0',
       timestamp: new Date().toISOString(),
       uptime_seconds: Math.floor(process.uptime()),
+      database: dbState,
+      database_latency_ms: dbLatencyMs,
+      database_error: dbError,
       redis: redisState,
       fallback_active: cacheStatus.state === 'FALLBACK',
       redis_error: cacheStatus.lastError,
@@ -67,6 +101,14 @@ export class HealthController {
       },
       recent_alerts: AlertService.instance.getRecent(5),
     };
+
+    // CRITICAL: 503 if DB unreachable so platform health checks restart the pod.
+    if (dbState === 'down') {
+      res.status(HttpStatus.SERVICE_UNAVAILABLE);
+    } else {
+      res.status(HttpStatus.OK);
+    }
+    return body;
   }
 
   @Get('metrics')
