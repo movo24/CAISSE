@@ -11,7 +11,10 @@ import { CACHE_STORE } from '../../common/cache/cache.module';
 import { ICacheStore, ResilientCacheStore } from '../../common/cache/cache-store';
 import { AlertService } from '../../common/alert/alert.service';
 
-const HEALTH_DB_TIMEOUT_MS = 2000;
+// Neon serverless can cold-start a sleeping branch in ~1–2s on first query.
+// 5s gives the DB time to wake up without producing false-positive 503s,
+// while still well under Railway's 30s healthcheckTimeout window.
+const HEALTH_DB_TIMEOUT_MS = 5000;
 
 /**
  * Health-check + metrics endpoints.
