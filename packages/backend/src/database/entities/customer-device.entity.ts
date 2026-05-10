@@ -21,7 +21,7 @@ export class CustomerDeviceEntity {
   @Column({ length: 10, default: 'IOS' })
   platform: 'IOS' | 'ANDROID';
 
-  @Column({ name: 'app_version', length: 20, nullable: true })
+  @Column({ name: 'app_version', type: 'varchar', length: 20, nullable: true })
   appVersion: string | null;
 
   @Column({ name: 'notifications_enabled', default: true })

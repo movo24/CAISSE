@@ -43,6 +43,6 @@ export class NotificationsLogEntity {
   @Column({ name: 'opened_at', type: 'timestamp', nullable: true })
   openedAt: Date | null;
 
-  @Column({ name: 'apns_message_id', length: 64, nullable: true })
+  @Column({ name: 'apns_message_id', type: 'varchar', length: 64, nullable: true })
   apnsMessageId: string | null;
 }

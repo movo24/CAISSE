@@ -47,6 +47,7 @@ export class CouponEntity {
 
   @Column({
     name: 'locked_by_idempotency_key',
+    type: 'varchar',
     length: 64,
     nullable: true,
   })

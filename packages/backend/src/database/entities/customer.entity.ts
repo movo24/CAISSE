@@ -43,7 +43,7 @@ export class CustomerEntity {
   storeId: string | null;
 
   // ── Wesley Club extensions ─────────────────────────────────
-  @Column({ name: 'password_hash', length: 100, nullable: true })
+  @Column({ name: 'password_hash', type: 'varchar', length: 100, nullable: true })
   passwordHash: string | null;
 
   @Column({ name: 'preferred_store_id', type: 'uuid', nullable: true })
