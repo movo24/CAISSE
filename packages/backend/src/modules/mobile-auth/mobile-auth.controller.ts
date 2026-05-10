@@ -14,6 +14,12 @@ import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { MobileAuthGuard } from '../../common/guards/mobile-auth.guard';
 import { MobileAuthService } from './mobile-auth.service';
+import {
+  MobileRegisterDto,
+  MobileLoginDto,
+  MobileRefreshDto,
+  MobileUpdateMeDto,
+} from './mobile-auth.dto';
 
 @ApiTags('mobile/auth')
 @Controller('mobile')
@@ -24,15 +30,7 @@ export class MobileAuthController {
   @HttpCode(HttpStatus.CREATED)
   @Throttle({ default: { ttl: 3600000, limit: 3 } }) // 3/h per IP
   @ApiOperation({ summary: 'Register a customer + issue welcome coupon (-5%)' })
-  async register(
-    @Body()
-    body: {
-      email: string;
-      password: string;
-      firstName?: string;
-      preferredStoreId?: string;
-    },
-  ) {
+  async register(@Body() body: MobileRegisterDto) {
     return this.authService.register(body);
   }
 
@@ -40,14 +38,14 @@ export class MobileAuthController {
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { ttl: 60000, limit: 5 } }) // 5/min per IP
   @ApiOperation({ summary: 'Customer login (email + password)' })
-  async login(@Body() body: { email: string; password: string }) {
+  async login(@Body() body: MobileLoginDto) {
     return this.authService.login(body.email, body.password);
   }
 
   @Post('auth/refresh')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Refresh access token' })
-  async refresh(@Body() body: { refreshToken: string }) {
+  async refresh(@Body() body: MobileRefreshDto) {
     return this.authService.refresh(body.refreshToken);
   }
 
@@ -70,10 +68,7 @@ export class MobileAuthController {
   @ApiBearerAuth()
   @UseGuards(MobileAuthGuard)
   @ApiOperation({ summary: 'Update my profile' })
-  async updateMe(
-    @Request() req: any,
-    @Body() body: { firstName?: string; preferredStoreId?: string },
-  ) {
+  async updateMe(@Request() req: any, @Body() body: MobileUpdateMeDto) {
     return this.authService.updateMe(req.customer.id, body);
   }
 
