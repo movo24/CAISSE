@@ -148,13 +148,16 @@ export class MobileAuthService {
     const accessSecret = process.env.JWT_SECRET!;
     const refreshSecret = process.env.JWT_REFRESH_SECRET || accessSecret;
 
+    // Note: do NOT include `aud` in the payload — jsonwebtoken throws when
+    // the same registered claim is set both in the payload and via options.
+    // The `audience` option below adds `aud: 'mobile-app'` to the issued JWT.
     const accessToken = jwt.sign(
-      { sub: customer.id, email: customer.email, aud: 'mobile-app' },
+      { sub: customer.id, email: customer.email },
       accessSecret,
       { expiresIn: ACCESS_TOKEN_TTL, audience: 'mobile-app' },
     );
     const refreshToken = jwt.sign(
-      { sub: customer.id, aud: 'mobile-app' },
+      { sub: customer.id },
       refreshSecret,
       { expiresIn: REFRESH_TOKEN_TTL, audience: 'mobile-app' },
     );
