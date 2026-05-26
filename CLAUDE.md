@@ -1,4 +1,9 @@
-# CLAUDE.md - Development Guide
+# CLAUDE.md — Development Guide
+
+> Last updated: 2026-05-26 (full audit pass)
+> Rule: **Audit → Plan → Execute**. Each change must be minimal, targeted, testable and reversible.
+
+---
 
 ## Commands
 
@@ -6,73 +11,361 @@
 # Install all dependencies
 npm install
 
-# Start development
+# Development
 npm run dev:backend      # NestJS API on :3001
 npm run dev:pos          # Electron POS app
 npm run dev:backoffice   # React back-office on :5173
 
 # Infrastructure
-npm run docker:up        # Start PostgreSQL
-npm run docker:down      # Stop PostgreSQL
+npm run docker:up        # Start local PostgreSQL
+npm run docker:down      # Stop local PostgreSQL
 
-# Testing
-npm run test             # All tests
-npm run test:backend     # Backend tests only
+# Testing (always run before committing)
+npm run test             # All workspaces
+npm run test:backend     # Backend only (232 tests, 10 spec files)
 
 # Code quality
-npm run lint             # ESLint
+npm run lint             # ESLint (all workspaces)
 npm run format           # Prettier
+
+# Migrations (backend — NEVER use db:push in prod)
+cd packages/backend
+npm run migration:generate -- src/database/migrations/MyChange
+npm run migration:run
+npm run migration:revert
+
+# Build
+npm run build:backend
+npm run build:backoffice
+npm run build:pos
 ```
 
-## Architecture Notes
+---
 
-- **Monorepo**: npm workspaces, 3 packages + shared
-- **All money is integers**: Use `MoneyAmount` type, never floats
-- **Audit entries are append-only**: Never update or delete
-- **Hash chain**: Each audit entry references the previous hash
-- **Shared types**: Import from `@caisse/shared`
-- **Offline-first**: SyncModule handles push/pull between POS and server
-- **QR loyalty**: NotificationsModule generates reminders for inactive customers
+## Architecture
 
-## Backend Modules (14)
+**Monorepo** — npm workspaces with 5 packages + shared:
+
+| Package | Tech | Purpose |
+|---------|------|---------|
+| `packages/backend` | NestJS 10 + TypeORM + PostgreSQL | Central API, all business logic |
+| `packages/pos-desktop` | Electron + React + TypeScript | Desktop POS, offline-first, dual-window |
+| `packages/backoffice-web` | React + TypeScript + Vite | Web management dashboard |
+| `packages/mobile` | React + TypeScript + Vite (Capacitor-ready) | Wesley Club loyalty app |
+| `packages/customer-app` | React + TypeScript | Customer-facing app |
+| `shared/` | TypeScript | Shared types, utils, constants |
+
+### Deployment (current)
+
+| Layer | Where | URL |
+|-------|-------|-----|
+| Backend B (sandbox, Railway) | `vibrant-freedom` workspace | `caisse-backend-production.up.railway.app` |
+| Backend A (canonical prod) | **DO NOT TOUCH** | `api.addxintelligence.com` |
+| Backoffice | Railway static | `app.addxintelligence.com` |
+| Database | Neon serverless PostgreSQL | `ep-square-violet-agqygacb-pooler` |
+
+**Railway deploys are MANUAL** — GitHub App cross-account limitation (repo: `movo24/CAISSE`,
+workspace: `y5ctnxgdc9-hue`). Use `serviceInstanceDeployV2(commitSha: "SHA")` via Railway API
+or the dashboard. See `packages/backend/RUNBOOK.md` for exact curl commands.
+
+---
+
+## Backend Modules (33)
 
 | Module | Purpose |
 |--------|---------|
-| Auth | PIN + QR login, JWT generation |
-| Products | CRUD, EAN scan, price history |
-| Sales | Full POS flow, hash chain, mock peripherals |
-| Employees | CRUD, QR badge generation |
-| Customers | QR loyalty, OTP verification |
-| Stores | Multi-store management |
-| Reports | Z-report generation, daily summaries |
-| Promotions | buy_x_get_discount, percentage, first_purchase |
-| Stock | Decrement, adjust, threshold alerts |
-| Audit | SHA-256 hash chain, append-only log |
-| IA | Rule-based pricing suggestions, revenue forecast |
-| Currency | FX rates, multi-currency conversion |
-| Sync | Offline push/pull, conflict resolution |
-| Notifications | QR loyalty reminders, stock alerts |
+| `auth` | PIN + QR + email login, JWT generation, offline fallback |
+| `mobile-auth` | Wesley Club customer JWT (audience: `mobile-app`) |
+| `products` | CRUD, EAN scan, price history |
+| `sales` | Full POS flow, hash chain, mock peripherals |
+| `sales-ai` | Rule-based pricing suggestions, revenue forecast |
+| `employees` | CRUD, QR badge generation |
+| `customers` | QR loyalty, OTP verification |
+| `customer-visits` | Visit tracking, frequency analytics |
+| `stores` | Multi-store management, TW24 sync |
+| `organizations` | Org hierarchy (org > unit > store) |
+| `units` | Business units inside orgs |
+| `reports` | Z-report generation, daily summaries |
+| `promotions` | buy_x_get_discount, percentage, first_purchase |
+| `stock` | Decrement, adjust, threshold alerts |
+| `stock-locations` | Warehouse location management |
+| `inventory-scan` | Barcode scan for inventory counting |
+| `audit` | SHA-256 hash chain, append-only log |
+| `currency` | FX rates, multi-currency conversion |
+| `sync` | Offline push/pull, conflict resolution |
+| `notifications` | QR loyalty reminders, stock alerts |
+| `subscriptions` | Plan management, billing hooks |
+| `occupancy` | Store occupancy tracking |
+| `jackpot` | Jackpot/lottery game for loyalty |
+| `loyalty-card` | Customer loyalty card CRUD |
+| `loyalty-admin` | Loyalty program admin |
+| `coupon` | Coupon generation, redemption, idempotency |
+| `pos-integration` | POS-to-loyalty bridge |
+| `connected-apps` | OAuth/API key management for 3rd-party apps |
+| `timewin` | TimeWin24 integration (HR source of truth) |
+| `stripe-terminal` | Stripe Terminal hardware payments |
+| `terminals` | Physical payment terminal registry |
+| `receipts` | Receipt generation (PDF/QR) |
+| `health` | DB ping, returns 503 on DB down for Railway healthcheck |
 
-## Key Files
+---
 
-- `shared/types/` - All TypeScript interfaces (12 modules)
-- `shared/utils/money.ts` - Currency formatting/conversion
-- `shared/utils/hash.ts` - Audit hash chain utilities
-- `packages/backend/src/modules/` - NestJS feature modules (14)
-- `packages/backend/src/database/entities/` - TypeORM entities (13)
-- `packages/pos-desktop/src/renderer/` - React POS UI
-- `packages/pos-desktop/src/main/` - Electron main process (dual window)
-- `packages/backoffice-web/src/` - React back-office UI
-- `packages/backoffice-web/src/services/api.ts` - Full API client
-- `packages/backoffice-web/src/stores/authStore.ts` - Zustand auth state
+## TypeORM Entities (38)
 
-## Conventions
+Located in `packages/backend/src/database/entities/`. Key ones:
 
-- Use UUID v4 for all entity IDs
-- Use ISO 8601 for all dates
-- Use snake_case for DB columns, camelCase for TypeScript
-- Prefix shared imports with `@caisse/shared`
-- Each module has: controller, service, module files
-- Entity property `stockCriticalThreshold` (not stockAlertCritical)
-- API base URL: `http://localhost:3001/api`
-- POS desktop dev port: 5174, Back-office dev port: 5173
+- `store.entity.ts` — `organizationId: uuid`, `unitId: uuid` (nullable)
+- `customer.entity.ts` — `storeId: varchar`, `passwordHash: varchar(100)` (nullable)
+- `coupon.entity.ts` — `lockedByIdempotencyKey: varchar(64)` (nullable)
+- `sale.entity.ts` — all amounts are integers (centimes)
+- `audit-entry.entity.ts` — **append-only, NEVER update or delete**
+
+### TypeORM typing rule (CRITICAL)
+
+Every nullable column with a TypeScript union type (`string | null`) **must** have an explicit
+`type:` in `@Column()`. Otherwise TypeORM throws `DataTypeNotSupportedError: Data type "Object"` at boot.
+
+```typescript
+// WRONG — TypeORM reads TS union as "Object" at runtime
+@Column({ nullable: true })
+storeId: string | null;
+
+// CORRECT — explicit type always
+@Column({ name: 'store_id', type: 'uuid', nullable: true })
+storeId: string | null;
+
+@Column({ name: 'store_id', type: 'varchar', nullable: true })
+storeId: string | null;  // use 'varchar' when prod column is character varying
+```
+
+---
+
+## Migrations
+
+- **Dev schema changes**: generate + run a migration, commit both files
+- **Production**: migrations auto-run at boot (`migrationsRun: isProd` in `app.module.ts`)
+- **NEVER** set `TYPEORM_SYNCHRONIZE=true` in production — app crashes at boot if detected
+- **NEVER** use `db:push --accept-data-loss` — destructive and untraceable
+
+Current migrations (run in order):
+```
+1700000000000-InitialSchema
+1710500000000-HardeningIndexes
+1710600000000-MultiEntityHierarchy
+1710700000000-AddStoreIsArchived
+1710800000000-InventoryScansAndStoreCodeUnique
+1710900000000-RemoveRHAddPOSSessions
+1711000000000-AddEmployeeStoreAccess
+1712000000000-AddLoyaltySystem
+```
+
+---
+
+## Security Rules (IMMUTABLE)
+
+1. **Never commit secrets** — no API keys, tokens, passwords, webhook secrets in code
+2. **`.env.example` only** — fictional placeholder values only, never real values
+3. Real `.env` files must be in `.gitignore` — verify before every commit
+4. **JWT_SECRET and JWT_REFRESH_SECRET**: ≥ 32 chars, `openssl rand -hex 32`
+5. **JWT signing — no `aud` in payload** — use only `audience` in options:
+   ```typescript
+   // CORRECT
+   jwt.sign({ sub: id, email }, secret, { audience: 'mobile-app' });
+   // THROWS at runtime (duplicate aud claim)
+   jwt.sign({ sub: id, aud: 'mobile-app' }, secret, { audience: 'mobile-app' });
+   ```
+6. **No DNS cutover** without explicit "GO DNS" from user
+7. **No JWT regeneration** without explicit permission
+8. **No modification to Backend A** (`api.addxintelligence.com`) — production canonical, untouchable
+9. **No Cloudflare/Railway config changes** without explicit GO
+
+---
+
+## Multi-Tenancy (TenantInterceptor)
+
+`TenantInterceptor` is applied globally in `main.ts`. It:
+- Extracts `storeId` from the authenticated JWT payload (`req.user.storeId`)
+- Blocks requests where `params.storeId / query.storeId / body.storeId` ≠ JWT storeId
+- Sets `req.tenantStoreId` for services to use downstream
+- Admins bypass (can access all stores)
+
+Rules:
+- Services must read `req.tenantStoreId` — **not** raw body/query storeId
+- Use `@SkipTenantCheck()` decorator for public endpoints
+- Role hierarchy: `admin (2) > manager (1) > cashier (0)`. Higher role inherits lower permissions.
+
+---
+
+## TimeWin24 Integration
+
+- **TW24 = source of truth for employees and HR**
+- **CAISSE = source of truth for stores** (but imports from TW24 on sync)
+- Auth flow: TW24 first → CAISSE local DB fallback if TW24 unreachable
+- Store sync endpoint: `POST /api/stores/sync` (@Roles('admin'))
+  - Calls TW24 `/api/pos-feed/stores` → upserts stores in CAISSE DB
+  - Auth: HMAC if `TIMEWIN24_POS_SECRET + TIMEWIN24_POS_KEY_ID` set, else Bearer `TIMEWIN24_API_KEY`
+  - Returns `{ created: N, updated: N, total: N }`
+  - **If sync returns `total: 0`**: check env vars `TIMEWIN24_POS_SECRET`/`TIMEWIN24_API_KEY` on Railway
+
+---
+
+## Code Conventions
+
+- **All money is integers**: Use `MoneyAmount` type (centimes). Never floats.
+- **Audit entries are append-only**: Never UPDATE or DELETE `audit_entry` rows
+- **Hash chain**: Each audit entry references the previous SHA-256 hash — never break the chain
+- **UUIDs**: Use UUID v4 for all entity IDs
+- **Dates**: ISO 8601 everywhere
+- **DB columns**: snake_case. TypeScript properties: camelCase
+- **Shared types**: import from `@caisse/shared` (e.g. `@caisse/shared/types/store`)
+- **Module structure**: each NestJS module requires: `*.controller.ts`, `*.service.ts`, `*.module.ts`
+- **API base URL**: `http://localhost:3001/api` (dev). Port controlled by `PORT` env var (Railway injects 8080).
+
+---
+
+## POS / Sales Integrity (NF525)
+
+### Idempotency of sales transactions (CRITICAL)
+
+Any sale creation, payment, or synchronization endpoint **must** use an idempotency key.
+A double network submission, double-click, mobile retry, or offline sync replay must **never** create two sales.
+
+Rules:
+- Every POS transaction that writes money must carry a client-generated idempotency key
+- The backend must **reuse or reject** a transaction with an already-processed key — never create a duplicate
+- The `IdempotencyKey` entity is the central mechanism for all critical write operations, not only coupons
+- Applies to: sale creation, payment capture, ticket emission, offline sync push, coupon redemption, any financial reversal
+- If an idempotency key is reused with **different parameters**, reject with 409 Conflict — do not silently accept
+
+### Sale / ticket immutability (CRITICAL — comptable / NF525)
+
+A validated sale **must never be directly modified**.
+
+Rules:
+- No `UPDATE` on a validated sale row — period
+- Corrections must go through: cancellation, credit note (avoir), counter-entry, or a new append-only audit event
+- The hash chain (`audit-entry`) and the ticket must remain mutually consistent at all times
+- No migration, script, or manual DB query may rewrite validated sale history without an explicit, documented procedure
+- This is not optional: silently modifying a validated sale breaks NF525 compliance and audit trail integrity
+
+### Z-report immutability
+
+- A generated Z-report is **frozen** — it reflects the shift state at the moment of generation
+- Any discrepancy discovered after generation must be recorded as a separate corrective entry, never by editing the Z-report
+- No code path should allow `UPDATE` or `DELETE` on a Z-report record
+
+---
+
+## Environment Variables
+
+Validated at boot in `main.ts`. Missing required vars crash the server with a clear message.
+
+| Var | Required | Notes |
+|-----|----------|-------|
+| `DATABASE_URL` | YES | Neon: `postgresql://...?sslmode=require` |
+| `JWT_SECRET` | YES | ≥ 32 chars, `openssl rand -hex 32` |
+| `JWT_REFRESH_SECRET` | YES | ≥ 32 chars, different from JWT_SECRET |
+| `NODE_ENV` | YES | `development` or `production` |
+| `PORT` | NO | Railway injects 8080. Defaults to 3001. `targetPort` on Railway domain MUST match. |
+| `REDIS_URL` | NO | Without it: in-memory cache (not multi-instance safe) |
+| `TIMEWIN24_URL` | NO | TW24 base URL |
+| `TIMEWIN24_API_KEY` | NO | Bearer auth for TW24 |
+| `TIMEWIN24_POS_SECRET` | NO | HMAC key for TW24 pos-feed routes |
+| `TIMEWIN24_POS_KEY_ID` | NO | Key ID for TW24 HMAC auth |
+| `STRIPE_SECRET_KEY` | NO | `sk_test_...` / `sk_live_...` |
+| `STRIPE_WEBHOOK_SECRET` | NO | `whsec_...` |
+| `SENTRY_DSN` | NO | Error tracking |
+| `CORS_ORIGIN` | NO | Comma-separated list of allowed origins |
+
+---
+
+## Tests
+
+232 tests across 10 spec files in `packages/backend/test/`:
+
+| File | Coverage |
+|------|----------|
+| `audit.spec.ts` | Hash chain integrity, append-only enforcement |
+| `auth-security.spec.ts` | JWT validation, role guards, token revocation |
+| `currency.spec.ts` | FX conversion, rounding rules |
+| `loyalty-flow.spec.ts` | Full loyalty card lifecycle |
+| `money-precision.spec.ts` | Integer money arithmetic, no float drift |
+| `promo.spec.ts` | buy_x_get_y, percentage, first_purchase |
+| `report.spec.ts` | Z-report aggregation |
+| `sale-transaction.spec.ts` | Full POS sale flow, stock decrement |
+| `stock.spec.ts` | Stock movements, threshold alerts |
+| `tenant-isolation.spec.ts` | Cross-store data isolation |
+
+**Run `npm run test:backend` before every commit. If any test fails, stop.**
+
+---
+
+## Pre-Modification Workflow
+
+Before editing any file:
+1. **Read** the file and its related spec
+2. **Grep** all callers: `grep -r "SymbolName" packages/backend/src/`
+3. **Check** migration state if touching entities or DB schema
+4. **Plan** the minimal change (one file / one concern)
+5. **Execute** — targeted edit, not batch rewrites
+6. **Test** — `npm run test:backend` must pass
+7. **Security check** — no secrets in diff, `.gitignore` intact
+
+---
+
+## Key Files Reference
+
+```
+packages/backend/
+  src/main.ts                                   Bootstrap, env validation, Swagger, global pipes
+  src/app.module.ts                             Module registry, TypeORM, rate-limit tiers
+  src/database/typeorm.config.ts                Migration CLI config
+  src/database/entities/                        38 TypeORM entities
+  src/database/migrations/                      8 versioned migrations
+  src/common/guards/roles.guard.ts              Role hierarchy (admin > manager > cashier)
+  src/common/guards/jwt-auth.guard.ts           JWT authentication guard
+  src/common/interceptors/tenant.interceptor.ts Multi-tenant storeId enforcement
+  src/modules/timewin/timewin.service.ts        TW24 API client (HMAC + Bearer)
+  src/modules/stores/stores.service.ts          syncFromTimeWin(), store CRUD
+  src/modules/auth/auth.service.ts              Login flows (TW24 first, local fallback)
+  src/modules/mobile-auth/mobile-auth.service.ts Wesley Club JWT (audience: mobile-app)
+  RUNBOOK.md                                    Railway IDs, curl commands, manual redeploy
+  DNS-CUTOVER-CHECKLIST.md                      DNS flip checklist (NOT to be run yet)
+  MONITORING-PLAYBOOK.md                        UptimeRobot, GO/NO-GO, rollback
+
+packages/backoffice-web/
+  src/stores/authStore.ts                       Zustand: auth + stores state, localStorage cache
+  src/services/api.ts                           Full API client (axios, token refresh interceptor)
+  src/pages/StoresManagementPage.tsx            Magasins admin (calls storesApi.list())
+
+shared/
+  types/                                        12 modules of shared TS interfaces
+  utils/money.ts                                Currency formatting/conversion
+  utils/hash.ts                                 Audit hash chain utilities
+```
+
+---
+
+## Known Issues / Open Items
+
+| Issue | Status | Fix |
+|-------|--------|-----|
+| Admin Magasins shows 0 stores | Open | `POST /api/stores/sync` must succeed. Requires `TIMEWIN24_POS_SECRET` or `TIMEWIN24_API_KEY` on Railway. |
+| Railway deploys not auto-triggered | Structural | Cross-account GitHub limit. Manual via `serviceInstanceDeployV2`. See RUNBOOK. |
+| In-memory cache (no Redis) | Low risk | Set `REDIS_URL` before multi-instance prod. |
+| Backend A untouched | Hard constraint | `api.addxintelligence.com` = prod canonical. Never touch without explicit GO. |
+
+---
+
+## Apple Strategy
+
+3 iOS apps + 1 web backoffice, layered releases — POS first:
+
+| Priority | App | Platform | Bundle ID |
+|----------|-----|----------|-----------|
+| V1 (NOW) | POS Caisse | iPad | `com.addxintelligence.poscaisse` |
+| V2 | Inventaire | iPhone | `com.addxintelligence.inventory` |
+| V3 | TimeWin24 | iPhone | `com.addxintelligence.timewin24` |
+| Web | Backoffice | Web only | — |
+
+**Never submit everything at once. One app at a time.**
