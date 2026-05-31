@@ -41,6 +41,8 @@ import { CouponModule } from './modules/coupon/coupon.module';
 import { CustomerVisitsModule } from './modules/customer-visits/customer-visits.module';
 import { PosIntegrationModule } from './modules/pos-integration/pos-integration.module';
 import { LoyaltyAdminModule } from './modules/loyalty-admin/loyalty-admin.module';
+import { AirtableOpsModule } from './modules/airtable-ops/airtable-ops.module';
+import { SalesGuardsModule } from './modules/sales-guards/sales-guards.module';
 // ── RH MODULES (employees re-activated for local fallback) ──
 // PointageModule, PayrollModule, PlanningModule, StaffingModule → still in TimeWin24
 
@@ -118,6 +120,10 @@ const isProd = process.env.NODE_ENV === 'production';
     CustomerVisitsModule,
     PosIntegrationModule,
     LoyaltyAdminModule,
+    // Airtable Ops Layer (AIRTABLE_ENABLED=false → no-op in prod until configured)
+    AirtableOpsModule,
+    // Sales Guards (anti-error engine — read-only, separate audit table)
+    SalesGuardsModule,
   ],
   providers: [
     // Apply rate limiting globally to ALL endpoints

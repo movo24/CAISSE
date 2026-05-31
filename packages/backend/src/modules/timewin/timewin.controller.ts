@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, Query, HttpException, Logger, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Body, Param, Query, HttpException, Logger, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { TimewinService } from './timewin.service';
 
@@ -35,7 +35,10 @@ export class TimewinController {
   @UseGuards(JwtAuthGuard)
   async health() {
     const ok = await this.tw.isHealthy();
-    return { timewin24: ok ? 'connected' : 'unreachable' };
+    return {
+      timewin24: ok ? 'connected' : 'unreachable',
+      circuit: this.tw.getCircuitState(),
+    };
   }
 
   @Post('login')
@@ -104,6 +107,53 @@ export class TimewinController {
   async storeConfig(@Query('storeId') storeId: string) {
     try {
       return await this.tw.getStoreConfig(storeId);
+    } catch (err: any) {
+      throw new HttpException(
+        err.response || { error: err.message },
+        err.status || 502,
+      );
+    }
+  }
+
+  /* ── Store schedule (operating hours) — relay to TimeWin24 ── */
+
+  @UseGuards(JwtAuthGuard)
+  @Get('store-schedule')
+  async getStoreSchedule(@Query('storeId') storeId: string) {
+    try {
+      return await this.tw.getStoreSchedule(storeId);
+    } catch (err: any) {
+      throw new HttpException(
+        err.response || { error: err.message },
+        err.status || 502,
+      );
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Put('store-schedule')
+  async updateStoreSchedule(
+    @Query('storeId') storeId: string,
+    @Body() body: { schedules: any[] },
+  ) {
+    try {
+      return await this.tw.updateStoreSchedule(storeId, body?.schedules ?? []);
+    } catch (err: any) {
+      throw new HttpException(
+        err.response || { error: err.message },
+        err.status || 502,
+      );
+    }
+  }
+
+  /* ── Stores feed (TimeWin24 is source of truth for stores) ── */
+
+  @UseGuards(JwtAuthGuard)
+  @Get('stores')
+  async stores() {
+    try {
+      const stores = await this.tw.fetchStores();
+      return { count: stores.length, stores };
     } catch (err: any) {
       throw new HttpException(
         err.response || { error: err.message },

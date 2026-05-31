@@ -32,6 +32,7 @@ import { useCloudSyncStore } from '../services/cloudSyncIdentity';
 import { Wifi, WifiOff, CloudOff, Cloud, RefreshCw as SyncIcon, ShieldAlert, Upload, Lock as LockIcon } from 'lucide-react';
 import { IPadPOSLayout } from '../components/ipad/IPadPOSLayout';
 import { StockAlertToast } from '../components/StockAlertToast';
+import { SaleGuardsGate } from '../components/SaleGuardsGate';
 import { SalesCockpit } from '../components/SalesCockpit';
 
 /* ── Helpers ── */
@@ -767,6 +768,7 @@ export function POSPage() {
         <EmployeePinGate onVerified={(name) => console.log(`[POS] Employee verified: ${name}`)} />
         <IPadPOSLayout />
         <StockAlertToast />
+        <SaleGuardsGate />
       </>
     );
   }
@@ -1733,6 +1735,9 @@ export function POSPage() {
 
       {/* ═══════ STOCK ALERT TOAST ═══════ */}
       <StockAlertToast />
+
+      {/* ═══════ SALE GUARDS (anti-error, before payment) ═══════ */}
+      <SaleGuardsGate />
     </div>
   );
 }

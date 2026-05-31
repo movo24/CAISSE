@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Package, FileBarChart, Settings, LogOut,
   ChevronDown, ChevronRight, Globe, Store as StoreIcon,
   AlertTriangle, Building2, Network, Plug, CreditCard, Tag, Warehouse,
-  BarChart3, Users, Rocket,
+  BarChart3, Users, Rocket, ShieldAlert, Database,
 } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 import { useAppScope } from '../hooks/useAppScope';
@@ -59,6 +59,7 @@ const navItems: NavItem[] = [
 
   // Couche 5 — Analyse
   { path: '/reports', label: 'Rapports', icon: FileBarChart, minRole: 'manager', scope: 'store' },
+  { path: '/sales-guards', label: 'Garde-fous', icon: ShieldAlert, minRole: 'manager', scope: 'store' },
 ];
 
 const stockGroup: NavGroup = {
@@ -82,6 +83,7 @@ const adminGroup: NavGroup = {
     { path: '/units', label: 'Unités', icon: Building2 },
     { path: '/stores', label: 'Magasins', icon: StoreIcon },
     { path: '/connected-apps', label: 'Applications', icon: Plug },
+    { path: '/airtable-ops', label: 'Airtable Ops', icon: Database },
   ],
 };
 

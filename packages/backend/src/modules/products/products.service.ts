@@ -11,6 +11,7 @@ import { PriceHistoryEntity } from '../../database/entities/price-history.entity
 import { ProductCategoryEntity } from '../../database/entities/product-category.entity';
 import { AuditService } from '../audit/audit.service';
 import { PaginatedResult } from '../../common/dto/pagination.dto';
+import { computePriceVerdict, PriceVerdict } from './price-verdict';
 
 @Injectable()
 export class ProductsService {
@@ -307,8 +308,14 @@ export class ProductsService {
       }
     }
 
+    // Margin basis — Phase 1 uses the product's CURRENT cost for every period.
+    // (There is no cost-history table yet; past-period margins are therefore an
+    //  approximation. Surfaced to the caller via `costBasis` below.)
+    const cost = product.costMinorUnits ?? 0;
+    const costAvailable = cost > 0;
+
     // For each period, query sales data
-    const analytics = [];
+    const analytics: any[] = [];
     for (let i = 0; i < periods.length; i++) {
       const period = periods[i];
       const daysDuration = Math.max(1, Math.ceil(
@@ -333,18 +340,57 @@ export class ProductsService {
       const unitsSold = parseInt(result[0]?.units_sold || '0', 10);
       const revenue = parseInt(result[0]?.revenue || '0', 10);
       const unitsPerDay = Math.round((unitsSold / daysDuration) * 100) / 100;
-      const revenuePerDay = Math.round((revenue / daysDuration) * 100) / 100;
+      // Keep revenue/day in MINOR units internally for correct delta math…
+      const revenuePerDayMinorUnits = Math.round(revenue / daysDuration);
 
-      // Delta vs previous period
+      // ── Margin (cash signal) — uses current cost as basis (see note above) ──
+      const marginPerUnitMinorUnits = costAvailable
+        ? period.priceMinorUnits - cost
+        : null;
+      const marginPercent =
+        costAvailable && period.priceMinorUnits > 0
+          ? Math.round(((period.priceMinorUnits - cost) / period.priceMinorUnits) * 10000) / 100
+          : null;
+      const totalMarginMinorUnits =
+        marginPerUnitMinorUnits !== null ? marginPerUnitMinorUnits * unitsSold : null;
+      const marginPerDayMinorUnits =
+        totalMarginMinorUnits !== null
+          ? Math.round(totalMarginMinorUnits / daysDuration)
+          : null;
+
+      // Delta vs previous period (all computed from MINOR-unit fields)
       const prev: any = i > 0 ? analytics[i - 1] : null;
-      const priceDeltaPct = prev
-        ? Math.round(((period.priceMinorUnits - prev.priceMinorUnits) / prev.priceMinorUnits) * 10000) / 100
+      const pct = (cur: number, prv: number): number | null =>
+        prv === 0 ? null : Math.round(((cur - prv) / prv) * 10000) / 100;
+
+      const priceDeltaPct = prev ? pct(period.priceMinorUnits, prev.priceMinorUnits) : null;
+      const unitsPerDayDeltaPct = prev ? pct(unitsPerDay, prev.unitsPerDay) : null;
+      const revenuePerDayDeltaPct = prev
+        ? pct(revenuePerDayMinorUnits, prev.revenuePerDayMinorUnits)
         : null;
-      const unitsPerDayDeltaPct = prev && prev.unitsPerDay > 0
-        ? Math.round(((unitsPerDay - prev.unitsPerDay) / prev.unitsPerDay) * 10000) / 100
-        : null;
-      const revenuePerDayDeltaPct = prev && prev.revenuePerDay > 0
-        ? Math.round(((revenuePerDay - prev.revenuePerDay) / prev.revenuePerDay) * 10000) / 100
+      const marginPerDayDeltaPct =
+        prev && marginPerDayMinorUnits !== null && prev.marginPerDayMinorUnits !== null
+          ? pct(marginPerDayMinorUnits, prev.marginPerDayMinorUnits)
+          : null;
+
+      // ── Verdict: judge this price change vs the previous period ──
+      const verdict: PriceVerdict | null = prev
+        ? computePriceVerdict(
+            {
+              priceMinorUnits: prev.priceMinorUnits,
+              unitsPerDay: prev.unitsPerDay,
+              marginPerDayMinorUnits: prev.marginPerDayMinorUnits,
+              daysDuration: prev.daysDuration,
+              unitsSold: prev.unitsSold,
+            },
+            {
+              priceMinorUnits: period.priceMinorUnits,
+              unitsPerDay,
+              marginPerDayMinorUnits,
+              daysDuration,
+              unitsSold,
+            },
+          )
         : null;
 
       analytics.push({
@@ -358,17 +404,32 @@ export class ProductsService {
         revenueMinorUnits: revenue,
         revenueEuros: revenue / 100,
         unitsPerDay,
-        revenuePerDay: revenuePerDay / 100,
+        revenuePerDayMinorUnits,
+        // Kept for backward compatibility (frontend reads euros here)
+        revenuePerDay: revenuePerDayMinorUnits / 100,
+        // ── Margin fields (new) ──
+        costMinorUnits: costAvailable ? cost : null,
+        marginPerUnitMinorUnits,
+        marginPercent,
+        totalMarginMinorUnits,
+        marginPerDayMinorUnits,
+        marginPerDayEuros:
+          marginPerDayMinorUnits !== null ? marginPerDayMinorUnits / 100 : null,
         changedBy: period.changedBy,
         changedByRole: period.changedByRole,
         changeSource: period.changeSource,
         reason: period.reason,
         // Delta vs previous period
-        vs: prev ? {
-          priceDeltaPct,
-          unitsPerDayDeltaPct,
-          revenuePerDayDeltaPct,
-        } : null,
+        vs: prev
+          ? {
+              priceDeltaPct,
+              unitsPerDayDeltaPct,
+              revenuePerDayDeltaPct,
+              marginPerDayDeltaPct,
+            }
+          : null,
+        // ── Verdict (new) ──
+        verdict,
       });
     }
 
@@ -376,6 +437,9 @@ export class ProductsService {
       productId,
       productName: product.name,
       currentPriceMinorUnits: product.priceMinorUnits,
+      currentCostMinorUnits: costAvailable ? cost : null,
+      // How margin was derived — current cost applied to all periods (Phase 1)
+      costBasis: costAvailable ? 'current_cost_approx' : 'no_cost',
       periods: analytics,
     };
   }

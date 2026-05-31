@@ -198,6 +198,10 @@ export const timewinApi = {
   syncEmployees: (storeId: string) => api.get('/timewin/employees/sync', { params: { storeId } }),
   todayShifts: (storeId: string) => api.get('/timewin/today-shifts', { params: { storeId } }),
   storeConfig: (storeId: string) => api.get('/timewin/store-config', { params: { storeId } }),
+  getStoreSchedule: (storeId: string) => api.get('/timewin/store-schedule', { params: { storeId } }),
+  updateStoreSchedule: (storeId: string, schedules: any[]) =>
+    api.put('/timewin/store-schedule', { schedules }, { params: { storeId } }),
+  stores: () => api.get('/timewin/stores'),
   clockIn: (employeeId: string, storeId: string) => api.post('/timewin/clock-in', { employeeId, storeId }),
   clockOut: (employeeId: string, storeId: string) => api.post('/timewin/clock-out', { employeeId, storeId }),
   pushEvent: (data: { storeId: string; eventType: string; employeeId?: string; data?: any }) =>
@@ -415,6 +419,60 @@ export const stockLocationsApi = {
     api.get(`/stock-locations/movements/product/${productId}?limit=${limit}`),
   locationMovements: (locationId: string, limit = 50) =>
     api.get(`/stock-locations/movements/location/${locationId}?limit=${limit}`),
+};
+
+// ---------------------------------------------------------------------------
+// Airtable Ops Layer
+// ---------------------------------------------------------------------------
+export const airtableOpsApi = {
+  // Operations
+  listOperations: (params?: {
+    storeId?: string;
+    status?: string;
+    riskLevel?: string;
+    page?: number;
+    limit?: number;
+  }) => api.get('/airtable-ops/operations', { params }),
+  getOperation: (id: string) => api.get(`/airtable-ops/operations/${id}`),
+  approveOperation: (id: string) => api.post(`/airtable-ops/operations/${id}/approve`),
+  rejectOperation: (id: string, reason: string) =>
+    api.post(`/airtable-ops/operations/${id}/reject`, { reason }),
+  applyOperation: (id: string) => api.post(`/airtable-ops/operations/${id}/apply`),
+
+  // Sync
+  triggerSync: (storeId?: string) => api.post('/airtable-ops/sync', { storeId }),
+
+  // Stats & logs
+  getStats: (storeId?: string) => api.get('/airtable-ops/stats', { params: { storeId } }),
+  getLogs: (storeId?: string, limit?: number) =>
+    api.get('/airtable-ops/logs', { params: { storeId, limit } }),
+};
+
+// ---------------------------------------------------------------------------
+// Sales Guards (anti-error anomalies)
+// ---------------------------------------------------------------------------
+export const salesGuardsApi = {
+  getConfig: () => api.get('/sales-guards/config'),
+  evaluate: (data: {
+    items: unknown[];
+    saleId?: string;
+    freeProductUsageCount?: number;
+    cancellationCount?: number;
+  }) => api.post('/sales-guards/evaluate', data),
+  listAnomalies: (params?: {
+    storeId?: string;
+    sellerId?: string;
+    code?: string;
+    status?: string;
+    severity?: string;
+    from?: string;
+    page?: number;
+    limit?: number;
+  }) => api.get('/sales-guards/anomalies', { params }),
+  summary: (storeId?: string, from?: string) =>
+    api.get('/sales-guards/anomalies/summary', { params: { storeId, from } }),
+  approve: (id: string) => api.post(`/sales-guards/anomalies/${id}/approve`),
+  ignore: (id: string) => api.post(`/sales-guards/anomalies/${id}/ignore`),
 };
 
 export default api;

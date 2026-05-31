@@ -1,9 +1,21 @@
 import { useState, useEffect } from 'react';
 import {
   TrendingUp, TrendingDown, Minus, Clock, User, Smartphone, Monitor,
-  BarChart3, Loader2, ChevronDown, ChevronUp,
+  BarChart3, Loader2, ChevronDown, ChevronUp, CheckCircle2, XCircle, AlertCircle,
 } from 'lucide-react';
 import { productsApi } from '../services/api';
+
+type VerdictKind =
+  | 'favorable' | 'unfavorable' | 'neutral' | 'no_price_change' | 'insufficient_data';
+
+interface PriceVerdict {
+  verdict: VerdictKind;
+  label: string;
+  priceDeltaPct: number | null;
+  volumeDeltaPct: number | null;
+  marginPerDayDeltaPct: number | null;
+  reliability: 'ok' | 'low' | 'no_cost';
+}
 
 interface PricePeriod {
   periodIndex: number;
@@ -17,6 +29,9 @@ interface PricePeriod {
   revenueEuros: number;
   unitsPerDay: number;
   revenuePerDay: number;
+  // Margin fields (null when product has no cost)
+  marginPercent: number | null;
+  marginPerDayEuros: number | null;
   changedBy: string;
   changedByRole: string;
   changeSource: string;
@@ -25,13 +40,17 @@ interface PricePeriod {
     priceDeltaPct: number | null;
     unitsPerDayDeltaPct: number | null;
     revenuePerDayDeltaPct: number | null;
+    marginPerDayDeltaPct: number | null;
   } | null;
+  verdict: PriceVerdict | null;
 }
 
 interface PriceAnalytics {
   productId: string;
   productName: string;
   currentPriceMinorUnits: number;
+  currentCostMinorUnits: number | null;
+  costBasis: 'current_cost_approx' | 'no_cost';
   periods: PricePeriod[];
 }
 
@@ -49,6 +68,31 @@ function DeltaBadge({ value, suffix = '%' }: { value: number | null; suffix?: st
     }`}>
       {isPositive ? <TrendingUp size={11} /> : isNegative ? <TrendingDown size={11} /> : <Minus size={11} />}
       {isPositive ? '+' : ''}{value.toFixed(1)}{suffix}
+    </span>
+  );
+}
+
+function VerdictBadge({ verdict }: { verdict: PriceVerdict | null }) {
+  if (!verdict || verdict.verdict === 'no_price_change') {
+    return <span className="text-bo-muted">—</span>;
+  }
+  const cfg: Record<VerdictKind, { color: string; icon: typeof CheckCircle2; short: string }> = {
+    favorable: { color: 'bg-emerald-50 text-emerald-700', icon: CheckCircle2, short: 'Validée' },
+    unfavorable: { color: 'bg-red-50 text-red-600', icon: XCircle, short: 'Défavorable' },
+    neutral: { color: 'bg-gray-50 text-gray-500', icon: Minus, short: 'Neutre' },
+    no_price_change: { color: 'bg-gray-50 text-gray-400', icon: Minus, short: '—' },
+    insufficient_data: { color: 'bg-amber-50 text-amber-600', icon: AlertCircle, short: 'Données ?' },
+  };
+  const c = cfg[verdict.verdict];
+  const Icon = c.icon;
+  return (
+    <span
+      title={verdict.label}
+      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold cursor-help ${c.color}`}
+    >
+      <Icon size={11} />
+      {c.short}
+      {verdict.reliability === 'low' && <span className="opacity-60">*</span>}
     </span>
   );
 }
@@ -110,6 +154,17 @@ export function PriceAnalyticsPanel({ productId }: { productId: string }) {
         )}
       </div>
 
+      {/* Margin unavailable hint */}
+      {data.costBasis === 'no_cost' && (
+        <div className="flex items-start gap-2 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          <AlertCircle size={13} className="mt-0.5 shrink-0" />
+          <span>
+            Coût d'achat non renseigné — la marge et le verdict ne peuvent pas être calculés.
+            Ajoutez le coût du produit pour activer l'analyse de marge.
+          </span>
+        </div>
+      )}
+
       {/* Table */}
       <div className="overflow-x-auto -mx-1">
         <table className="w-full text-xs">
@@ -120,11 +175,12 @@ export function PriceAnalyticsPanel({ productId }: { productId: string }) {
               <th className="text-right py-2 px-2 font-semibold text-bo-muted">Jours</th>
               <th className="text-right py-2 px-2 font-semibold text-bo-muted">Qté</th>
               <th className="text-right py-2 px-2 font-semibold text-bo-muted">Moy/j</th>
-              <th className="text-right py-2 px-2 font-semibold text-bo-muted">CA</th>
               <th className="text-right py-2 px-2 font-semibold text-bo-muted">CA/j</th>
+              <th className="text-right py-2 px-2 font-semibold text-bo-muted">Marge/j</th>
               <th className="text-center py-2 px-2 font-semibold text-bo-muted">Δ Prix</th>
               <th className="text-center py-2 px-2 font-semibold text-bo-muted">Δ Vol/j</th>
-              <th className="text-center py-2 px-2 font-semibold text-bo-muted">Δ CA/j</th>
+              <th className="text-center py-2 px-2 font-semibold text-bo-muted">Δ Marge/j</th>
+              <th className="text-center py-2 px-2 font-semibold text-bo-muted">Verdict</th>
             </tr>
           </thead>
           <tbody>
@@ -140,11 +196,14 @@ export function PriceAnalyticsPanel({ productId }: { productId: string }) {
                 <td className="text-right py-2.5 px-2 text-bo-muted">{p.daysDuration}j</td>
                 <td className="text-right py-2.5 px-2 font-semibold text-bo-text">{p.unitsSold}</td>
                 <td className="text-right py-2.5 px-2 text-bo-muted">{p.unitsPerDay}</td>
-                <td className="text-right py-2.5 px-2 font-semibold text-bo-text">{p.revenueEuros.toFixed(2)} €</td>
                 <td className="text-right py-2.5 px-2 text-bo-muted">{p.revenuePerDay.toFixed(2)} €</td>
+                <td className="text-right py-2.5 px-2 font-semibold text-bo-text">
+                  {p.marginPerDayEuros !== null ? `${p.marginPerDayEuros.toFixed(2)} €` : '—'}
+                </td>
                 <td className="text-center py-2.5 px-2"><DeltaBadge value={p.vs?.priceDeltaPct ?? null} /></td>
                 <td className="text-center py-2.5 px-2"><DeltaBadge value={p.vs?.unitsPerDayDeltaPct ?? null} /></td>
-                <td className="text-center py-2.5 px-2"><DeltaBadge value={p.vs?.revenuePerDayDeltaPct ?? null} /></td>
+                <td className="text-center py-2.5 px-2"><DeltaBadge value={p.vs?.marginPerDayDeltaPct ?? null} /></td>
+                <td className="text-center py-2.5 px-2"><VerdictBadge verdict={p.verdict} /></td>
               </tr>
             ))}
           </tbody>

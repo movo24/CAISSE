@@ -225,6 +225,11 @@ export const timewinApi = {
   pushEvent: (data: { storeId: string; eventType: string; employeeId?: string; data?: any }) =>
     api.post('/timewin/events', data),
   todayShifts: (storeId: string) => api.get('/timewin/today-shifts', { params: { storeId } }),
+  storeConfig: (storeId: string) => api.get('/timewin/store-config', { params: { storeId } }),
+  getStoreSchedule: (storeId: string) => api.get('/timewin/store-schedule', { params: { storeId } }),
+  updateStoreSchedule: (storeId: string, schedules: any[]) =>
+    api.put('/timewin/store-schedule', { schedules }, { params: { storeId } }),
+  stores: () => api.get('/timewin/stores'),
 };
 
 // Terminals (WisePad 3 / reader management)
@@ -262,6 +267,27 @@ export const salesAiApi = {
   logConversion: (logId: string, data: { saleId: string; revenueGenerated: number; marginGenerated: number }) =>
     api.patch(`/sales-ai/log/${logId}/convert`, data),
   kpi: () => api.get('/sales-ai/kpi'),
+};
+
+// ── Sales Guards (anti-error, evaluated before payment) ──
+export interface SaleGuardItemInput {
+  productId: string;
+  ean?: string;
+  quantity: number;
+  sellPriceMinorUnits?: number;
+  discountMinorUnits?: number;
+}
+export const salesGuardsApi = {
+  /** Evaluate the current cart. Server enriches cost/catalogue. Fail-open on the client. */
+  evaluate: (
+    data: {
+      items: SaleGuardItemInput[];
+      saleId?: string;
+      freeProductUsageCount?: number;
+      cancellationCount?: number;
+    },
+    signal?: AbortSignal,
+  ) => api.post('/sales-guards/evaluate', data, { signal }),
 };
 
 // ── Wesley Club loyalty (POS endpoints) ──
