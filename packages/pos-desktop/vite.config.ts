@@ -6,6 +6,10 @@ import react from '@vitejs/plugin-react';
 // Default: HTTP (works on iPad without certificate issues)
 const useHttps = process.env.VITE_HTTPS === '1';
 
+// Desktop (Electron) build: assets are served via the app:// protocol from a
+// file root, so asset URLs must be RELATIVE. Web/Vercel build keeps absolute.
+const isDesktop = process.env.POS_TARGET === 'desktop';
+
 export default defineConfig(async () => {
   const plugins: any[] = [react()];
 
@@ -16,6 +20,7 @@ export default defineConfig(async () => {
 
   return {
     plugins,
+    base: isDesktop ? './' : '/',
     server: {
       port: 5175,
       host: true,
