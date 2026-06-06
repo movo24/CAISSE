@@ -73,6 +73,32 @@ export class AuthService {
   }
 
   /**
+   * Audit a FAILED admin login attempt (brute-force / unauthorized-access
+   * signal). Written to the global ADMIN_AUDIT_STORE chain so it can be
+   * reviewed via GET /audit?storeId=_admin. No employee is authenticated, so
+   * employeeId is 'unknown'; the PIN is NEVER logged — only the attempted
+   * email and a coarse failure reason.
+   */
+  private async auditAdminLoginFailed(email: string, err: any): Promise<void> {
+    try {
+      await this.auditService.log({
+        storeId: ADMIN_AUDIT_STORE,
+        employeeId: 'unknown',
+        action: 'admin_login_failed',
+        entityType: 'auth',
+        entityId: email || 'unknown',
+        details: {
+          email: email || null,
+          reason: err?.name || 'error',
+          source: 'admin_email_login',
+        },
+      });
+    } catch {
+      /* audit failure must never affect the auth error returned to the client */
+    }
+  }
+
+  /**
    * Login by PIN.
    *
    * AUTHORITY: POS Caisse is the PRIMARY source of truth for cashier codes
@@ -134,10 +160,17 @@ export class AuthService {
    * email not present locally (and only in legacy/transitional mode).
    */
   async loginByEmail(email: string, pin: string) {
-    const { result, via } = await this.resolveAdminLogin(email, pin);
+    let resolved;
+    try {
+      resolved = await this.resolveAdminLogin(email, pin);
+    } catch (err: any) {
+      // Audit the FAILED attempt (non-blocking), then surface the original error.
+      await this.auditAdminLoginFailed(email, err);
+      throw err;
+    }
     // Audit the successful admin access (non-blocking, PIN never logged).
-    await this.auditAdminLogin(result, email, via);
-    return result;
+    await this.auditAdminLogin(resolved.result, email, resolved.via);
+    return resolved.result;
   }
 
   /** Resolve admin login through the authority chain; returns the session + source. */

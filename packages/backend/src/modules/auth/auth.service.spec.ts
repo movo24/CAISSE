@@ -100,10 +100,25 @@ describe('AuthService — code authority (POS Caisse primary)', () => {
     expect(JSON.stringify(entry)).not.toContain('1234'); // PIN never logged
   });
 
-  it('does NOT audit a failed admin login (wrong PIN)', async () => {
+  it('audits a FAILED admin login (wrong PIN) WITHOUT logging the PIN', async () => {
     employeeRepo.find.mockResolvedValue([await makeEmployee('1234')]);
+
     await expect(service.loginByEmail('admin@caisse.dev', '0000')).rejects.toThrow();
-    expect(audit.log).not.toHaveBeenCalled();
+
+    expect(audit.log).toHaveBeenCalledTimes(1);
+    const entry = audit.log.mock.calls[0][0];
+    expect(entry.action).toBe('admin_login_failed');
+    expect(entry.storeId).toBe('_admin'); // global chain, readable via ?storeId=_admin
+    expect(entry.entityType).toBe('auth');
+    expect(entry.details.email).toBe('admin@caisse.dev');
+    expect(JSON.stringify(entry)).not.toContain('0000'); // attempted PIN never logged
+  });
+
+  it('does NOT let an audit failure mask the auth error', async () => {
+    employeeRepo.find.mockResolvedValue([await makeEmployee('1234')]);
+    audit.log.mockRejectedValueOnce(new Error('audit down'));
+    // The original UnauthorizedException must still surface to the client.
+    await expect(service.loginByEmail('admin@caisse.dev', '0000')).rejects.toThrow();
   });
 
   it('rejects a WRONG PIN on an existing local account WITHOUT trying TimeWin24', async () => {
