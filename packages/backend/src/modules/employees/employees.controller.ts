@@ -86,6 +86,17 @@ export class EmployeesController {
     return this.employeesService.update(id, dto, req.user.storeId);
   }
 
+  @Patch(':id/pin')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'Change an employee PIN (validated + unique per store)' })
+  changePin(
+    @Param('id') id: string,
+    @Body() body: { pin: string },
+    @Request() req: any,
+  ) {
+    return this.employeesService.changePin(id, body?.pin, req.user.storeId);
+  }
+
   @Post(':id/deactivate')
   @Roles('admin')
   @ApiOperation({ summary: 'Deactivate employee (soft-delete)' })

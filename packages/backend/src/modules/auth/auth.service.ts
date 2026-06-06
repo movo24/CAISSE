@@ -43,7 +43,14 @@ export class AuthService {
   ) {}
 
   /**
-   * Login by PIN — primary flow via TimeWin24
+   * Login by PIN.
+   *
+   * AUTHORITY: POS Caisse is the PRIMARY source of truth for cashier codes
+   * (product decision). The local employees table is checked FIRST; TimeWin24
+   * is only consulted as a secondary fallback when the local check finds no
+   * matching account AND TimeWin authority is still enabled.
+   *
+   * Set POS_AUTH_AUTHORITY=timewin to restore the legacy TimeWin24-first flow.
    */
   async loginByPin(storeIdOrCode: string, pin: string) {
     // Resolve storeCode to storeId if not a UUID
@@ -58,32 +65,77 @@ export class AuthService {
       this.logger.log(`[AUTH] Resolved storeCode "${storeIdOrCode}" → storeId "${storeId}"`);
     }
 
-    // Try TimeWin24 first, fallback to local DB if unavailable
+    // Legacy mode: TimeWin24 is the authority (opt-in via env).
+    if (this.timewinIsAuthority()) {
+      try {
+        const twResult = await this.timewin.loginEmployee({ pin, storeId });
+        return await this.buildSessionFromTimewin(twResult, storeId);
+      } catch (err: any) {
+        this.logger.warn(`[AUTH] TimeWin24 error (${err.message}), falling back to local DB`);
+        return this.authenticateLocal(storeId, { pin });
+      }
+    }
+
+    // Default: POS Caisse is the authority — check local DB FIRST.
     try {
-      const twResult = await this.timewin.loginEmployee({ pin, storeId });
-      return await this.buildSessionFromTimewin(twResult, storeId);
+      return await this.authenticateLocal(storeId, { pin });
     } catch (err: any) {
-      // Always fallback to local DB — POS Caisse is source of truth for employee auth
-      this.logger.warn(`[AUTH] TimeWin24 error (${err.message}), falling back to local DB`);
-      return this.offlineFallback(storeId, { pin });
+      // Only consult TimeWin24 when the local account was simply NOT FOUND
+      // (transitional support for staff still living only in TimeWin24).
+      // A wrong PIN on an existing local account is a hard failure — never
+      // masked by a TimeWin lookup.
+      if (this.timewinFallbackEnabled() && this.isAccountNotFound(err)) {
+        this.logger.log('[AUTH] Local account not found — trying TimeWin24 as secondary');
+        try {
+          const twResult = await this.timewin.loginEmployee({ pin, storeId });
+          return await this.buildSessionFromTimewin(twResult, storeId);
+        } catch (twErr: any) {
+          this.logger.warn(`[AUTH] TimeWin24 secondary failed (${twErr.message})`);
+          throw err; // surface the original local error
+        }
+      }
+      throw err;
     }
   }
 
   /**
-   * Admin login by email — via TimeWin24
+   * Admin login by email. POS Caisse is the authority: the local employees
+   * table is checked FIRST. TimeWin24 is only a secondary fallback for an
+   * email not present locally (and only in legacy/transitional mode).
    */
   async loginByEmail(email: string, pin: string) {
+    if (this.timewinIsAuthority()) {
+      try {
+        const twResult = await this.timewin.loginEmployee({
+          pin,
+          employeeCode: email,
+          storeId: '_admin',
+        });
+        return await this.buildSessionFromTimewin(twResult, twResult.store_id);
+      } catch (err: any) {
+        this.logger.warn(`[AUTH] TimeWin24 error (${err.message}), falling back to local DB`);
+        return this.authenticateLocal('_admin', { pin, email });
+      }
+    }
+
     try {
-      const twResult = await this.timewin.loginEmployee({
-        pin,
-        employeeCode: email,
-        storeId: '_admin',
-      });
-      return await this.buildSessionFromTimewin(twResult, twResult.store_id);
+      return await this.authenticateLocal('_admin', { pin, email });
     } catch (err: any) {
-      // Always fallback to local DB for admin login — POS Caisse is source of truth for admin auth
-      this.logger.warn(`[AUTH] TimeWin24 error (${err.message}), falling back to local DB`);
-      return this.offlineFallback('_admin', { pin, email });
+      if (this.timewinFallbackEnabled() && this.isAccountNotFound(err)) {
+        this.logger.log('[AUTH] Local admin not found — trying TimeWin24 as secondary');
+        try {
+          const twResult = await this.timewin.loginEmployee({
+            pin,
+            employeeCode: email,
+            storeId: '_admin',
+          });
+          return await this.buildSessionFromTimewin(twResult, twResult.store_id);
+        } catch (twErr: any) {
+          this.logger.warn(`[AUTH] TimeWin24 secondary failed (${twErr.message})`);
+          throw err;
+        }
+      }
+      throw err;
     }
   }
 
@@ -177,6 +229,27 @@ export class AuthService {
     this.logger.log(`Logout: tokens revoked for ${employeeId}`);
   }
 
+  /* ── Authority configuration ── */
+
+  /** Legacy mode: TimeWin24 authenticates first. Opt-in via env. */
+  private timewinIsAuthority(): boolean {
+    return (process.env.POS_AUTH_AUTHORITY || 'caisse').toLowerCase() === 'timewin';
+  }
+
+  /**
+   * Whether TimeWin24 may still be consulted as a SECONDARY source when a
+   * local account is not found. Default true (transitional). Set
+   * POS_AUTH_TIMEWIN_FALLBACK=false to make POS Caisse the sole authority.
+   */
+  private timewinFallbackEnabled(): boolean {
+    return (process.env.POS_AUTH_TIMEWIN_FALLBACK || 'true').toLowerCase() !== 'false';
+  }
+
+  /** Distinguish "no such account" (safe to try TimeWin) from "wrong PIN". */
+  private isAccountNotFound(err: any): boolean {
+    return err instanceof UnauthorizedException && (err as any).accountNotFound === true;
+  }
+
   /* ── Private helpers ── */
 
   private async buildSessionFromTimewin(tw: any, storeId: string) {
@@ -225,11 +298,15 @@ export class AuthService {
   }
 
   /**
-   * Offline fallback — authenticates against local employees table.
-   * Used when TimeWin24 is unreachable (network down, not configured, etc.)
+   * Authenticate against the local POS Caisse employees table — the PRIMARY
+   * authority for cashier/admin codes.
+   *
+   * Throws UnauthorizedException. "Account not found" errors are tagged with
+   * `accountNotFound = true` so the caller may optionally try TimeWin24 as a
+   * secondary source; a WRONG PIN is never tagged and is a hard failure.
    */
-  private async offlineFallback(storeId: string, opts: { pin?: string; email?: string }) {
-    this.logger.warn(`[AUTH] Offline fallback — authenticating against local DB`);
+  private async authenticateLocal(storeId: string, opts: { pin?: string; email?: string }) {
+    this.logger.log(`[AUTH] Authenticating against local POS Caisse DB (primary authority)`);
 
     let employees: EmployeeEntity[];
 
@@ -262,11 +339,13 @@ export class AuthService {
     }
 
     if (!employees.length) {
-      throw new UnauthorizedException(
+      const notFound = new UnauthorizedException(
         opts.email
           ? 'Email administrateur introuvable. Vérifiez l\'adresse email.'
           : 'Aucun employé trouvé pour ce magasin. Vérifiez le code magasin.',
       );
+      (notFound as any).accountNotFound = true; // safe to try TimeWin24 secondary
+      throw notFound;
     }
 
     // Check PIN against each employee's bcrypt hash
@@ -287,7 +366,7 @@ export class AuthService {
 
         const store = await this.storeRepo.findOne({ where: { id: emp.storeId } }).catch(() => null);
 
-        this.logger.log(`[AUTH] Login OK (offline): ${emp.firstName} ${emp.lastName} (${emp.role}) store=${emp.storeId}`);
+        this.logger.log(`[AUTH] Login OK (POS Caisse local): ${emp.firstName} ${emp.lastName} (${emp.role}) store=${emp.storeId}`);
 
         return {
           accessToken: this.jwtService.sign(payload),
