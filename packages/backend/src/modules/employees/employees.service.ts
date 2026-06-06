@@ -12,6 +12,7 @@ import * as QRCode from 'qrcode';
 import * as bcrypt from 'bcrypt';
 import { v4 as uuidv4 } from 'uuid';
 import { EmployeeEntity } from '../../database/entities/employee.entity';
+import { AuditService } from '../audit/audit.service';
 
 // ── Role-based defaults ──
 const ROLE_RIGHTS: Record<string, any> = {
@@ -58,6 +59,7 @@ export class EmployeesService {
   constructor(
     @InjectRepository(EmployeeEntity)
     private employeeRepo: Repository<EmployeeEntity>,
+    private readonly auditService: AuditService,
   ) {}
 
   /**
@@ -176,17 +178,42 @@ export class EmployeesService {
   /**
    * Change an employee's PIN (dedicated endpoint). Validates format and
    * enforces per-store uniqueness, then stores the new bcrypt hash.
+   *
+   * The action is audited (append-only hash chain). The PIN itself is NEVER
+   * logged — only WHO changed WHOSE PIN, in which store.
+   *
+   * @param actorId employeeId of the admin/manager performing the change
    */
   async changePin(
     id: string,
     newPin: string,
     storeId: string,
+    actorId?: string,
   ): Promise<{ message: string }> {
     const emp = await this.findOneForStore(id, storeId);
     this.validatePinFormat(newPin);
     await this.assertPinUniqueInStore(storeId, newPin, id);
     const pinHash = await bcrypt.hash(newPin, 12);
     await this.employeeRepo.update(id, { pinHash });
+
+    // Sensitive-action audit — never blocks the operation, never logs the PIN.
+    try {
+      await this.auditService.log({
+        storeId,
+        employeeId: actorId || id,
+        action: 'pin_changed',
+        entityType: 'employee',
+        entityId: id,
+        details: {
+          targetEmployee: `${emp.firstName} ${emp.lastName}`,
+          targetRole: emp.role,
+          changedBySelf: actorId === id || !actorId,
+        },
+      });
+    } catch {
+      /* audit failure must not break PIN change */
+    }
+
     return { message: `Code PIN mis à jour pour ${emp.firstName} ${emp.lastName}.` };
   }
 

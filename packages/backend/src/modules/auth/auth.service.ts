@@ -16,6 +16,10 @@ import { TimewinService } from '../timewin/timewin.service';
 import { logBusinessEvent } from '../../common/business-logger';
 import { CACHE_STORE } from '../../common/cache/cache.module';
 import { ICacheStore } from '../../common/cache/cache-store';
+import { AuditService } from '../audit/audit.service';
+
+/** Conventional store id for global (store-less) audit events like admin login. */
+const ADMIN_AUDIT_STORE = '_admin';
 
 const TOKEN_REVOKE_TTL = 7 * 24 * 60 * 60; // 7 days in seconds
 
@@ -40,7 +44,33 @@ export class AuthService {
     private jwtService: JwtService,
     private timewin: TimewinService,
     @Inject(CACHE_STORE) private cache: ICacheStore,
+    private readonly auditService: AuditService,
   ) {}
+
+  /**
+   * Audit a successful admin login. Append-only hash chain, store-less events
+   * use the conventional ADMIN_AUDIT_STORE. Never blocks login, never logs the PIN.
+   */
+  private async auditAdminLogin(result: any, email: string, via: string): Promise<void> {
+    try {
+      const empId = result?.employee?.id;
+      if (!empId) return;
+      await this.auditService.log({
+        storeId: result?.employee?.storeId || ADMIN_AUDIT_STORE,
+        employeeId: empId,
+        action: 'admin_login',
+        entityType: 'auth',
+        entityId: empId,
+        details: {
+          email,
+          role: result?.employee?.role,
+          via,
+        },
+      });
+    } catch {
+      /* audit failure must never break authentication */
+    }
+  }
 
   /**
    * Login by PIN.
@@ -104,6 +134,17 @@ export class AuthService {
    * email not present locally (and only in legacy/transitional mode).
    */
   async loginByEmail(email: string, pin: string) {
+    const { result, via } = await this.resolveAdminLogin(email, pin);
+    // Audit the successful admin access (non-blocking, PIN never logged).
+    await this.auditAdminLogin(result, email, via);
+    return result;
+  }
+
+  /** Resolve admin login through the authority chain; returns the session + source. */
+  private async resolveAdminLogin(
+    email: string,
+    pin: string,
+  ): Promise<{ result: any; via: string }> {
     if (this.timewinIsAuthority()) {
       try {
         const twResult = await this.timewin.loginEmployee({
@@ -111,15 +152,15 @@ export class AuthService {
           employeeCode: email,
           storeId: '_admin',
         });
-        return await this.buildSessionFromTimewin(twResult, twResult.store_id);
+        return { result: await this.buildSessionFromTimewin(twResult, twResult.store_id), via: 'timewin24' };
       } catch (err: any) {
         this.logger.warn(`[AUTH] TimeWin24 error (${err.message}), falling back to local DB`);
-        return this.authenticateLocal('_admin', { pin, email });
+        return { result: await this.authenticateLocal('_admin', { pin, email }), via: 'caisse_local' };
       }
     }
 
     try {
-      return await this.authenticateLocal('_admin', { pin, email });
+      return { result: await this.authenticateLocal('_admin', { pin, email }), via: 'caisse_local' };
     } catch (err: any) {
       if (this.timewinFallbackEnabled() && this.isAccountNotFound(err)) {
         this.logger.log('[AUTH] Local admin not found — trying TimeWin24 as secondary');
@@ -129,7 +170,7 @@ export class AuthService {
             employeeCode: email,
             storeId: '_admin',
           });
-          return await this.buildSessionFromTimewin(twResult, twResult.store_id);
+          return { result: await this.buildSessionFromTimewin(twResult, twResult.store_id), via: 'timewin24_secondary' };
         } catch (twErr: any) {
           this.logger.warn(`[AUTH] TimeWin24 secondary failed (${twErr.message})`);
           throw err;

@@ -5,6 +5,7 @@ import * as bcrypt from 'bcrypt';
 
 import { EmployeesService } from './employees.service';
 import { EmployeeEntity } from '../../database/entities/employee.entity';
+import { AuditService } from '../audit/audit.service';
 
 /**
  * C+D: PIN management — per-store uniqueness + format validation.
@@ -15,6 +16,7 @@ import { EmployeeEntity } from '../../database/entities/employee.entity';
 describe('EmployeesService — PIN uniqueness & validation', () => {
   let service: EmployeesService;
   let repo: any;
+  let audit: { log: jest.Mock };
 
   const emp = async (id: string, storeId: string, pin: string): Promise<EmployeeEntity> =>
     ({
@@ -39,10 +41,12 @@ describe('EmployeesService — PIN uniqueness & validation', () => {
       save: jest.fn(async (x) => ({ ...x, id: 'new-id' })),
       update: jest.fn().mockResolvedValue({ affected: 1 }),
     };
+    audit = { log: jest.fn().mockResolvedValue(undefined) };
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         EmployeesService,
         { provide: getRepositoryToken(EmployeeEntity), useValue: repo },
+        { provide: AuditService, useValue: audit },
       ],
     }).compile();
     service = module.get(EmployeesService);
@@ -96,5 +100,28 @@ describe('EmployeesService — PIN uniqueness & validation', () => {
   it('changePin rejects a missing/invalid PIN', async () => {
     repo.findOne.mockResolvedValue(await emp('me', 'store-1', '0000'));
     await expect(service.changePin('me', undefined as any, 'store-1')).rejects.toThrow(BadRequestException);
+  });
+
+  it('changePin audits the action WITHOUT logging the PIN', async () => {
+    repo.findOne.mockResolvedValue(await emp('target', 'store-1', '0000'));
+    repo.find.mockResolvedValue([]);
+    await service.changePin('target', '5678', 'store-1', 'admin-actor');
+
+    expect(audit.log).toHaveBeenCalledTimes(1);
+    const entry = audit.log.mock.calls[0][0];
+    expect(entry.action).toBe('pin_changed');
+    expect(entry.storeId).toBe('store-1');
+    expect(entry.employeeId).toBe('admin-actor'); // actor, not target
+    expect(entry.entityId).toBe('target');
+    // The PIN must NEVER appear anywhere in the audit payload.
+    expect(JSON.stringify(entry)).not.toContain('5678');
+  });
+
+  it('changePin still succeeds if the audit log throws (non-blocking)', async () => {
+    repo.findOne.mockResolvedValue(await emp('t', 'store-1', '0000'));
+    repo.find.mockResolvedValue([]);
+    audit.log.mockRejectedValueOnce(new Error('audit down'));
+    const res = await service.changePin('t', '5678', 'store-1', 'actor');
+    expect(res.message).toContain('mis à jour');
   });
 });

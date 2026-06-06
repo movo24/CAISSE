@@ -9,6 +9,7 @@ import { StoreEntity } from '../../database/entities/store.entity';
 import { EmployeeEntity } from '../../database/entities/employee.entity';
 import { TimewinService } from '../timewin/timewin.service';
 import { CACHE_STORE } from '../../common/cache/cache.module';
+import { AuditService } from '../audit/audit.service';
 
 /**
  * Authority tests: POS Caisse is the PRIMARY authority for codes/PINs.
@@ -23,6 +24,7 @@ describe('AuthService — code authority (POS Caisse primary)', () => {
   let employeeRepo: any;
   let storeRepo: any;
   let timewin: { loginEmployee: jest.Mock };
+  let audit: { log: jest.Mock };
 
   const ADMIN_STORE = '_admin';
 
@@ -68,6 +70,7 @@ describe('AuthService — code authority (POS Caisse primary)', () => {
           provide: CACHE_STORE,
           useValue: { set: jest.fn(), srem: jest.fn(), sadd: jest.fn(), del: jest.fn(), get: jest.fn(), sismember: jest.fn() },
         },
+        { provide: AuditService, useValue: (audit = { log: jest.fn().mockResolvedValue(undefined) }) },
       ],
     }).compile();
 
@@ -82,6 +85,25 @@ describe('AuthService — code authority (POS Caisse primary)', () => {
     expect(res.employee.id).toBe('emp-1');
     expect(res.accessToken).toBeTruthy();
     expect(timewin.loginEmployee).not.toHaveBeenCalled(); // CAISSE is authority
+  });
+
+  it('audits a successful admin login WITHOUT logging the PIN', async () => {
+    employeeRepo.find.mockResolvedValue([await makeEmployee('1234')]);
+
+    await service.loginByEmail('admin@caisse.dev', '1234');
+
+    expect(audit.log).toHaveBeenCalledTimes(1);
+    const entry = audit.log.mock.calls[0][0];
+    expect(entry.action).toBe('admin_login');
+    expect(entry.entityType).toBe('auth');
+    expect(entry.employeeId).toBe('emp-1');
+    expect(JSON.stringify(entry)).not.toContain('1234'); // PIN never logged
+  });
+
+  it('does NOT audit a failed admin login (wrong PIN)', async () => {
+    employeeRepo.find.mockResolvedValue([await makeEmployee('1234')]);
+    await expect(service.loginByEmail('admin@caisse.dev', '0000')).rejects.toThrow();
+    expect(audit.log).not.toHaveBeenCalled();
   });
 
   it('rejects a WRONG PIN on an existing local account WITHOUT trying TimeWin24', async () => {

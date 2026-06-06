@@ -94,7 +94,12 @@ export class EmployeesController {
     @Body() body: { pin: string },
     @Request() req: any,
   ) {
-    return this.employeesService.changePin(id, body?.pin, req.user.storeId);
+    return this.employeesService.changePin(
+      id,
+      body?.pin,
+      req.user.storeId,
+      req.user.employeeId,
+    );
   }
 
   @Post(':id/deactivate')
