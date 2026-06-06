@@ -77,9 +77,12 @@ export class ProductsController {
   }
 
   @Get('stock-alerts')
-  @ApiOperation({ summary: 'Get stock alerts (low + critical)' })
-  stockAlerts(@Request() req: any) {
-    return this.productsService.getStockAlerts(req.user.storeId);
+  @ApiOperation({ summary: 'Get stock alerts (low + critical, paginated)' })
+  stockAlerts(@Request() req: any, @Query() query: PaginationQueryDto) {
+    return this.productsService.getStockAlerts(req.user.storeId, {
+      page: query.page,
+      limit: query.limit,
+    });
   }
 
   @Get(':id')

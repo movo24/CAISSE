@@ -208,28 +208,44 @@ export class ProductsService {
     });
   }
 
-  async getStockAlerts(storeId: string): Promise<{
+  async getStockAlerts(
+    storeId: string,
+    options: { page?: number; limit?: number } = {},
+  ): Promise<{
     alert: ProductEntity[];
     critical: ProductEntity[];
+    alertTotal: number;
+    criticalTotal: number;
+    page: number;
+    limit: number;
   }> {
-    const alert = await this.productRepo
+    // Paginate to avoid loading an unbounded set on large catalogues.
+    const limit = Math.min(Math.max(options.limit ?? 50, 1), 100);
+    const page = Math.max(options.page ?? 1, 1);
+    const skip = (page - 1) * limit;
+
+    const [alert, alertTotal] = await this.productRepo
       .createQueryBuilder('p')
       .where('p.store_id = :storeId', { storeId })
       .andWhere('p.is_active = true')
       .andWhere('p.stock_quantity <= p.stock_alert_threshold')
       .andWhere('p.stock_quantity > p.stock_critical_threshold')
       .orderBy('p.stock_quantity', 'ASC')
-      .getMany();
+      .skip(skip)
+      .take(limit)
+      .getManyAndCount();
 
-    const critical = await this.productRepo
+    const [critical, criticalTotal] = await this.productRepo
       .createQueryBuilder('p')
       .where('p.store_id = :storeId', { storeId })
       .andWhere('p.is_active = true')
       .andWhere('p.stock_quantity <= p.stock_critical_threshold')
       .orderBy('p.stock_quantity', 'ASC')
-      .getMany();
+      .skip(skip)
+      .take(limit)
+      .getManyAndCount();
 
-    return { alert, critical };
+    return { alert, critical, alertTotal, criticalTotal, page, limit };
   }
 
   async getPriceHistory(
