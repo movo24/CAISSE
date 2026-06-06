@@ -139,6 +139,27 @@ export function ReportsPage() {
     }
   };
 
+  const handleExportCsv = () => {
+    if (zReport.topProducts.length === 0) return;
+    const header = ['Rang', 'Produit', 'Quantite', "Chiffre d'affaires (EUR)", 'Part (%)'];
+    const rows = zReport.topProducts.map((p, i) => {
+      const share = zReport.totalRevenue > 0 ? Math.round((p.revenue / zReport.totalRevenue) * 100) : 0;
+      return [String(i + 1), p.name, String(p.qty), p.revenue.toFixed(2), String(share)];
+    });
+    const escapeCell = (v: string) => `"${v.replace(/"/g, '""')}"`;
+    const csv = [header, ...rows].map((r) => r.map(escapeCell).join(',')).join('\r\n');
+    // Prepend BOM so Excel detects UTF-8
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `top-produits-${zReport.date || selectedDate}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   const maxCount = zReport.peakHours.length > 0
     ? Math.max(...zReport.peakHours.map((h) => h.count))
     : 1;
@@ -167,7 +188,11 @@ export function ReportsPage() {
               onChange={(e) => setSelectedDate(e.target.value)}
             />
           </div>
-          <button className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-400 cursor-not-allowed opacity-50" disabled title="Impression bientôt disponible">
+          <button
+            onClick={() => window.print()}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+            title="Imprimer le rapport"
+          >
             <Printer size={16} />
             Imprimer
           </button>
@@ -405,7 +430,12 @@ export function ReportsPage() {
                   <Trophy size={16} className="text-amber-500" />
                   Top produits de la journee
                 </h3>
-                <button className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-bo-accent transition-colors">
+                <button
+                  onClick={handleExportCsv}
+                  disabled={zReport.topProducts.length === 0}
+                  className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-bo-accent transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-gray-400"
+                  title="Exporter les top produits en CSV"
+                >
                   <Download size={13} />
                   Exporter CSV
                 </button>
@@ -472,8 +502,12 @@ export function ReportsPage() {
             Connectez le backend pour acceder aux analyses avancees : tendances mensuelles,
             comparaisons inter-magasins, predictions de ventes et rapports personnalises.
           </p>
-          <button className="mt-6 px-6 py-2.5 rounded-xl bg-bo-accent text-white text-sm font-medium hover:bg-bo-accent/90 transition-colors shadow-lg shadow-bo-accent/25">
-            Configurer la connexion
+          <button
+            disabled
+            title="Bientôt disponible"
+            className="mt-6 px-6 py-2.5 rounded-xl bg-gray-100 text-gray-400 text-sm font-medium cursor-not-allowed"
+          >
+            Bientôt disponible
           </button>
         </div>
       )}
