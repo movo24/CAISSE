@@ -67,13 +67,18 @@ export class SalesController {
   @Roles('admin', 'manager')
   @UseGuards(RolesGuard)
   @ApiOperation({ summary: 'Void a sale (restores stock, logs audit)' })
-  voidSale(@Param('id', ParseUUIDPipe) id: string, @Request() req: any) {
+  voidSale(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+    @Body() body?: { reason?: string },
+  ) {
     return this.salesService.voidSale(
       id,
       req.user.employeeId,
       req.user.storeId,
       req.user.role,
       req.user.maxDiscount,
+      body?.reason,
     );
   }
 }

@@ -384,12 +384,61 @@ export class SalesService {
         this.logger.warn(`Audit log failed: ${auditErr?.message}`);
       }
 
+      // ── Sensitive-action audit: discount applied (only when a discount exists) ──
+      // Non-blocking — never fails the sale. No sensitive data, metadata only.
+      if (totalDiscount > 0) {
+        try {
+          const subtotalForPct = subtotal > 0 ? subtotal : 0;
+          await this.auditService.log({
+            storeId,
+            employeeId,
+            action: 'discount_applied',
+            entityType: 'sale',
+            entityId: saved.id,
+            details: {
+              ticketNumber,
+              discountMinorUnits: totalDiscount,
+              subtotalMinorUnits: subtotalForPct,
+              discountPct: subtotalForPct > 0
+                ? Math.round((totalDiscount / subtotalForPct) * 10000) / 100
+                : null,
+              employeeRole: employeeSnapshot?.employeeRole ?? null,
+              source: 'pos_sale',
+            },
+          });
+        } catch (auditErr: any) {
+          this.logger.warn(`Audit (discount_applied) failed: ${auditErr?.message}`);
+        }
+      }
+
       // Push sale event to TimeWin24 (fire-and-forget — NEVER blocks the sale response)
       this.pushSaleToTimewin(storeId, employeeId, saved.id, ticketNumber, totalAfterDiscount, lineItems.length, saved.completedAt, dto.payments);
 
       // Peripheral events (physical drivers in V1)
       if (dto.payments.some((p) => p.method === 'cash')) {
         this.logger.log(`[PERIPHERAL] Cash drawer opened for ${ticketNumber}`);
+
+        // ── Sensitive-action audit: cash drawer opened ── (non-blocking)
+        const cashTotal = dto.payments
+          .filter((p) => p.method === 'cash')
+          .reduce((sum, p) => sum + (p.amountMinorUnits ?? 0), 0);
+        this.auditService
+          .log({
+            storeId,
+            employeeId,
+            action: 'drawer_opened',
+            entityType: 'sale',
+            entityId: saved.id,
+            details: {
+              ticketNumber,
+              reason: 'cash_payment',
+              cashAmountMinorUnits: cashTotal,
+              source: 'pos_sale',
+            },
+          })
+          .catch((auditErr: any) =>
+            this.logger.warn(`Audit (drawer_opened) failed: ${auditErr?.message}`),
+          );
       }
       this.logger.log(`[PERIPHERAL] Printing ticket ${ticketNumber}`);
       this.printTicketMock(saved);
@@ -660,6 +709,7 @@ export class SalesService {
     storeId: string,
     employeeRole?: string,
     maxDiscountPercent?: number,
+    reason?: string,
   ): Promise<SaleEntity> {
     const sale = await this.findOne(id, storeId);
     if (sale.status === 'voided') {
@@ -712,18 +762,30 @@ export class SalesService {
         },
       });
 
-      // Audit (post-transaction)
-      await this.auditService.log({
-        storeId: sale.storeId,
-        employeeId,
-        action: 'sale_voided',
-        entityType: 'sale',
-        entityId: id,
-        details: {
-          ticketNumber: sale.ticketNumber,
-          total: sale.totalMinorUnits,
-        },
-      });
+      // ── Sensitive-action audit (post-commit, NON-BLOCKING) ──
+      // The void is already committed; auditing must never undo or block it.
+      // Enriched metadata: amount, reason, role, source, timestamp (auto).
+      // NOTE: there is no dedicated `refund` action in the codebase yet — the
+      // closest real operation is this void (annulation). A true refund must be
+      // a separate feature (route, business/NF525 rules, permissions, audit).
+      try {
+        await this.auditService.log({
+          storeId: sale.storeId,
+          employeeId,
+          action: 'sale_voided',
+          entityType: 'sale',
+          entityId: id,
+          details: {
+            ticketNumber: sale.ticketNumber,
+            totalMinorUnits: sale.totalMinorUnits,
+            employeeRole: employeeRole ?? null,
+            reason: reason ?? null,
+            source: 'pos_void',
+          },
+        });
+      } catch (auditErr: any) {
+        this.logger.warn(`Audit (sale_voided) failed: ${auditErr?.message}`);
+      }
 
       return saved;
     } catch (error) {
