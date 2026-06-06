@@ -206,7 +206,7 @@ export class StockLocationsService {
 
     return this.dataSource.transaction(async (manager) => {
       // Lock source balance
-      let fromBalance = await manager.findOne(StockBalanceEntity, {
+      const fromBalance = await manager.findOne(StockBalanceEntity, {
         where: { productId: data.productId, locationId: data.fromLocationId },
         lock: { mode: 'pessimistic_write' },
       });

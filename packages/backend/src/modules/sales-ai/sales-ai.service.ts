@@ -316,7 +316,7 @@ export class SalesAiService {
 
     // V5: Get external context (weather + transport) — fail-safe
     let externalBoost = 0;
-    let externalEvidence: string[] = [];
+    const externalEvidence: string[] = [];
     try {
       const ctx = await this.externalCtx.getFullContext();
       if (ctx.weather.available) {
