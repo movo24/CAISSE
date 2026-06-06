@@ -2,3 +2,8 @@
 .env
 .env.local
 .env.production
+
+# Desktop build output
+release/
+dist/
+build/*.ico
