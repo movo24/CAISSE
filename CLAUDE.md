@@ -22,7 +22,7 @@ npm run docker:down      # Stop local PostgreSQL
 
 # Testing (always run before committing)
 npm run test             # All workspaces
-npm run test:backend     # Backend only (232 tests, 10 spec files)
+npm run test:backend     # Backend only (323 tests, 33 spec files)
 
 # Code quality
 npm run lint             # ESLint (all workspaces)
@@ -70,7 +70,7 @@ or the dashboard. See `packages/backend/RUNBOOK.md` for exact curl commands.
 
 ---
 
-## Backend Modules (33)
+## Backend Modules (35)
 
 | Module | Purpose |
 |--------|---------|
@@ -107,10 +107,12 @@ or the dashboard. See `packages/backend/RUNBOOK.md` for exact curl commands.
 | `terminals` | Physical payment terminal registry |
 | `receipts` | Receipt generation (PDF/QR) |
 | `health` | DB ping, returns 503 on DB down for Railway healthcheck |
+| `sales-guards` | Pre-sale guard evaluation (limits, blocking rules) |
+| `airtable-ops` | Airtable linked-record sync operations |
 
 ---
 
-## TypeORM Entities (38)
+## TypeORM Entities (42)
 
 Located in `packages/backend/src/database/entities/`. Key ones:
 
@@ -157,6 +159,7 @@ Current migrations (run in order):
 1710900000000-RemoveRHAddPOSSessions
 1711000000000-AddEmployeeStoreAccess
 1712000000000-AddLoyaltySystem
+1713000000000-AddAirtableOpsAndSalesGuards
 ```
 
 ---
@@ -281,7 +284,7 @@ Validated at boot in `main.ts`. Missing required vars crash the server with a cl
 
 ## Tests
 
-232 tests across 10 spec files in `packages/backend/test/`:
+323 tests across 33 spec files (`packages/backend/test/` + colocated `*.spec.ts`). Key suites:
 
 | File | Coverage |
 |------|----------|
@@ -320,8 +323,8 @@ packages/backend/
   src/main.ts                                   Bootstrap, env validation, Swagger, global pipes
   src/app.module.ts                             Module registry, TypeORM, rate-limit tiers
   src/database/typeorm.config.ts                Migration CLI config
-  src/database/entities/                        38 TypeORM entities
-  src/database/migrations/                      8 versioned migrations
+  src/database/entities/                        42 TypeORM entities
+  src/database/migrations/                      9 versioned migrations
   src/common/guards/roles.guard.ts              Role hierarchy (admin > manager > cashier)
   src/common/guards/jwt-auth.guard.ts           JWT authentication guard
   src/common/interceptors/tenant.interceptor.ts Multi-tenant storeId enforcement
