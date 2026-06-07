@@ -123,7 +123,7 @@ export function buildSaleSummaryRows(input: SaleDuplicataInput): SummaryRow[] {
 
 /** WinAnsi-safe : remplace les caractères non encodables par '?'. */
 function safe(s: unknown): string {
-  return String(s ?? '').replace(/[^\x20-\x7E -ÿ€]/g, '?');
+  return String(s ?? '').replace(/[^\x20-\x7E\xA0-\xFF\u20AC]/g, '?');
 }
 
 /* ── Service ─────────────────────────────────────────────────────────────── */
