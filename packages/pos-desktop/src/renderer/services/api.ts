@@ -177,6 +177,21 @@ export const receiptsApi = {
     api.post(`/receipts/${saleId}/email`, { email }),
 };
 
+// Returns / credit notes (avoirs) — online only (needs the server-side sale)
+export const returnsApi = {
+  listSales: (date: string) => api.get('/sales', { params: { date } }),
+  returnable: (saleId: string) => api.get(`/returns/sale/${saleId}/returnable`),
+  create: (
+    data: {
+      originalSaleId: string;
+      items: { lineItemId: string; quantity: number }[];
+      reason?: string;
+      refundMethod: 'cash' | 'card' | 'store_credit';
+    },
+    idempotencyKey: string,
+  ) => api.post('/returns', data, { headers: { 'Idempotency-Key': idempotencyKey } }),
+};
+
 // Customers
 export const customersApi = {
   create: (data: any) => api.post('/customers', data),

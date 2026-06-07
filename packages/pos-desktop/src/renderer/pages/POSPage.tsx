@@ -27,6 +27,7 @@ import { useComparisonStore } from '../stores/comparisonStore';
 import { useDeviceProfile, platformClasses } from '../hooks/useDeviceProfile';
 import { useTicketHistory } from '../hooks/useTicketHistory';
 import { TicketHistoryModal } from '../components/pos/TicketHistoryModal';
+import { ReturnModal } from '../components/pos/ReturnModal';
 import { peripheralBridge } from '../services/peripheralBridge';
 import { useCloudSyncStore } from '../services/cloudSyncIdentity';
 import { Wifi, WifiOff, CloudOff, Cloud, RefreshCw as SyncIcon, ShieldAlert, Upload, Lock as LockIcon } from 'lucide-react';
@@ -139,6 +140,9 @@ export function POSPage() {
   const [emailModal, setEmailModal] = useState(false);
   const [emailValue, setEmailValue] = useState('');
   const [emailStatus, setEmailStatus] = useState<'idle' | 'sending' | 'sent' | 'error' | 'disabled'>('idle');
+
+  // Return / credit-note modal (online only)
+  const [returnOpen, setReturnOpen] = useState(false);
   const [ticketCountdown, setTicketCountdown] = useState(TICKET_TIMEOUT_MS / 1000);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -940,6 +944,16 @@ export function POSPage() {
             <span className="hidden compact:inline">Historique</span>
             <kbd className="text-[9px] bg-indigo-100 px-1 py-0.5 rounded font-mono">F9</kbd>
           </button>
+          {rights.canRefund && !offlineMode.isOffline && (
+            <button
+              onClick={() => setReturnOpen(true)}
+              title="Retour / Avoir"
+              className={`flex items-center gap-1.5 font-semibold rounded-full bg-amber-50 text-amber-600 hover:bg-amber-100 transition-colors border border-amber-100 ${device.isCompact ? 'text-xs px-2.5 py-2' : 'text-[11px] px-3 py-1.5'}`}
+            >
+              <RotateCcw size={device.isCompact ? 14 : 12} />
+              <span className="hidden compact:inline">Retour</span>
+            </button>
+          )}
         </div>
 
         <div className="relative">
@@ -1773,6 +1787,9 @@ export function POSPage() {
           </div>
         </div>
       )}
+
+      {/* ═══════ RETURN / CREDIT-NOTE MODAL ═══════ */}
+      {returnOpen && <ReturnModal onClose={() => setReturnOpen(false)} />}
 
       {/* ═══════ CAMERA BARCODE SCANNER OVERLAY (iPad/Tablet) ═══════ */}
       {cameraOpen && (
