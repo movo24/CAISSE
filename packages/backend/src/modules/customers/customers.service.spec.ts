@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { CustomersService } from './customers.service';
+import { NotificationService } from '../../common/messaging/notification.service';
 import { CustomerEntity } from '../../database/entities/customer.entity';
 
 describe('CustomersService', () => {
@@ -48,6 +49,10 @@ describe('CustomersService', () => {
         {
           provide: getRepositoryToken(CustomerEntity),
           useValue: customerRepo,
+        },
+        {
+          provide: NotificationService,
+          useValue: { notify: jest.fn().mockResolvedValue({ ok: false, skipped: true, provider: 'none' }) },
         },
       ],
     }).compile();
