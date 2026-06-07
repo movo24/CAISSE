@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useRealtimeSales } from './useRealtimeSales';
 import {
   productsApi,
   // salesApi removed — using storesApi.networkSummary() instead (aggregated, fast)
@@ -311,10 +312,17 @@ export function useDashboardData(): DashboardData {
 
   useEffect(() => {
     fetchAll();
-    // Auto-refresh dashboard every 30 seconds for near real-time data
-    const interval = setInterval(fetchAll, 30_000);
+    // Slow fallback refresh — real-time SSE below drives freshness now (was 30s).
+    const interval = setInterval(fetchAll, 120_000);
     return () => clearInterval(interval);
   }, [fetchAll]);
+
+  // Real-time: refresh on live sale events (debounced to coalesce bursts).
+  const rtTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useRealtimeSales(storeId, () => {
+    if (rtTimer.current) clearTimeout(rtTimer.current);
+    rtTimer.current = setTimeout(() => fetchAll(), 800);
+  });
 
   return {
     loading,

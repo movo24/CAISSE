@@ -22,6 +22,7 @@ import { JackpotService, JackpotResult } from '../jackpot/jackpot.service';
 import { TimewinService } from '../timewin/timewin.service';
 import { PaginatedResult } from '../../common/dto/pagination.dto';
 import { logBusinessEvent } from '../../common/business-logger';
+import { RealtimeService } from '../../common/realtime/realtime.service';
 
 function sha256(data: string): string {
   return createHash('sha256').update(data).digest('hex');
@@ -69,6 +70,7 @@ export class SalesService {
     private stockService: StockService,
     private jackpotService: JackpotService,
     private timewinService: TimewinService,
+    private realtime: RealtimeService,
   ) {}
 
   /** Serialize an entity to a plain JSON object for jsonb storage (dates → ISO strings). */
@@ -544,6 +546,17 @@ export class SalesService {
           this.logger.warn(`Audit (discount_applied) failed: ${auditErr?.message}`);
         }
       }
+
+      // Real-time dashboard push (SSE) — fire-and-forget, never blocks the sale.
+      try {
+        this.realtime.emit(storeId, 'sale.completed', {
+          saleId: saved.id,
+          ticketNumber,
+          totalMinorUnits: totalAfterDiscount,
+          itemCount: lineItems.length,
+          at: (saved.completedAt ?? new Date()).toISOString(),
+        });
+      } catch { /* never block the sale */ }
 
       // Push sale event to TimeWin24 (fire-and-forget — NEVER blocks the sale response)
       this.pushSaleToTimewin(storeId, employeeId, saved.id, ticketNumber, totalAfterDiscount, lineItems.length, saved.completedAt, dto.payments);
