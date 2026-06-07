@@ -5,6 +5,7 @@ import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { ScheduleModule } from '@nestjs/schedule';
 import { APP_GUARD } from '@nestjs/core';
 import { RequestLoggerMiddleware } from './common/middleware/request-logger.middleware';
+import { MessagingModule } from './common/messaging/messaging.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { ProductsModule } from './modules/products/products.module';
 import { SalesModule } from './modules/sales/sales.module';
@@ -52,6 +53,7 @@ const isProd = process.env.NODE_ENV === 'production';
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     ScheduleModule.forRoot(),
+    MessagingModule,
 
     // --- Database ---
     TypeOrmModule.forRoot({
