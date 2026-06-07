@@ -202,6 +202,8 @@ export const timewinApi = {
   getContext: (employeeId: string) => api.get(`/timewin/employees/${employeeId}/context`),
   syncEmployees: (storeId: string) => api.get('/timewin/employees/sync', { params: { storeId } }),
   todayShifts: (storeId: string) => api.get('/timewin/today-shifts', { params: { storeId } }),
+  payroll: (storeId: string, month: string) =>
+    api.get('/timewin/payroll', { params: { storeId, month } }),
   storeConfig: (storeId: string) => api.get('/timewin/store-config', { params: { storeId } }),
   getStoreSchedule: (storeId: string) => api.get('/timewin/store-schedule', { params: { storeId } }),
   updateStoreSchedule: (storeId: string, schedules: any[]) =>

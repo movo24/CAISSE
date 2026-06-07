@@ -102,6 +102,17 @@ export class TimewinController {
     }
   }
 
+  // Monthly payroll / worked hours for a store (TimeWin24 feed). Auth required (HR data).
+  @UseGuards(JwtAuthGuard)
+  @Get('payroll')
+  async payroll(@Query('storeId') storeId: string, @Query('month') month: string) {
+    try {
+      return await this.tw.getMonthlyPayroll(storeId, month);
+    } catch (err: any) {
+      throw new HttpException(err.response || { error: err.message }, err.status || 502);
+    }
+  }
+
   @UseGuards(JwtAuthGuard)
   @Get('store-config')
   async storeConfig(@Query('storeId') storeId: string) {
