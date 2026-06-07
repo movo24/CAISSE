@@ -8,13 +8,13 @@ import { v4 as uuidv4 } from 'uuid';
 const ENT_DIR = path.join(__dirname, '../../src/database/entities');
 
 /** Load every TypeORM entity class (synchronize needs the full related graph). */
-export function loadAllEntities(): Function[] {
+export function loadAllEntities(): any[] {
   return fs
     .readdirSync(ENT_DIR)
     .filter((f) => f.endsWith('.entity.ts'))
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     .flatMap((f) => Object.values(require(path.join(ENT_DIR, f))))
-    .filter((v): v is Function => typeof v === 'function');
+    .filter((v) => typeof v === 'function');
 }
 
 /**
