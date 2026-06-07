@@ -22,7 +22,7 @@ npm run docker:down      # Stop local PostgreSQL
 
 # Testing (always run before committing)
 npm run test             # All workspaces
-npm run test:backend     # Backend only (366 tests, 42 spec files)
+npm run test:backend     # Backend only (397 tests, 48 spec files)
 
 # Code quality
 npm run lint             # ESLint (all workspaces)
@@ -163,6 +163,7 @@ Current migrations (run in order):
 1712000000000-AddLoyaltySystem
 1713000000000-AddAirtableOpsAndSalesGuards
 1714000000000-AddCreditNotes
+1715000000000-AddGiftCards
 ```
 
 ---
@@ -287,7 +288,7 @@ Validated at boot in `main.ts`. Missing required vars crash the server with a cl
 
 ## Tests
 
-366 tests across 42 spec files (`packages/backend/test/` + colocated `*.spec.ts`). Key suites:
+397 tests across 48 spec files (`packages/backend/test/` + colocated `*.spec.ts`). Key suites:
 
 | File | Coverage |
 |------|----------|
@@ -327,7 +328,7 @@ packages/backend/
   src/app.module.ts                             Module registry, TypeORM, rate-limit tiers
   src/database/typeorm.config.ts                Migration CLI config
   src/database/entities/                        45 TypeORM entities
-  src/database/migrations/                      10 versioned migrations
+  src/database/migrations/                      11 versioned migrations
   src/common/guards/roles.guard.ts              Role hierarchy (admin > manager > cashier)
   src/common/guards/jwt-auth.guard.ts           JWT authentication guard
   src/common/interceptors/tenant.interceptor.ts Multi-tenant storeId enforcement
