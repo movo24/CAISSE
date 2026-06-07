@@ -8,7 +8,8 @@
   "scripts": {
     "dev": "vite",
     "dev:https": "VITE_HTTPS=1 vite",
-    "build": "vite build",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
     "build:ios": "vite build && npx cap sync ios",
     "open:ios": "npx cap open ios",
     "preview": "vite preview",
