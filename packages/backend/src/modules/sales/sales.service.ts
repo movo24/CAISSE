@@ -11,6 +11,7 @@ import { createHash } from 'crypto';
 import { SaleEntity } from '../../database/entities/sale.entity';
 import { SaleLineItemEntity } from '../../database/entities/sale-line-item.entity';
 import { SalePaymentEntity } from '../../database/entities/sale-payment.entity';
+import { IdempotencyKeyEntity } from '../../database/entities/idempotency-key.entity';
 import { ProductEntity } from '../../database/entities/product.entity';
 import { ProductsService } from '../products/products.service';
 import { CustomersService } from '../customers/customers.service';
@@ -52,6 +53,8 @@ export class SalesService {
     private lineItemRepo: Repository<SaleLineItemEntity>,
     @InjectRepository(SalePaymentEntity)
     private paymentRepo: Repository<SalePaymentEntity>,
+    @InjectRepository(IdempotencyKeyEntity)
+    private idempotencyRepo: Repository<IdempotencyKeyEntity>,
     private dataSource: DataSource,
     private productsService: ProductsService,
     private customersService: CustomersService,
@@ -61,6 +64,43 @@ export class SalesService {
     private jackpotService: JackpotService,
     private timewinService: TimewinService,
   ) {}
+
+  /** Serialize an entity to a plain JSON object for jsonb storage (dates → ISO strings). */
+  private toJsonBody(entity: unknown): Record<string, unknown> {
+    return JSON.parse(JSON.stringify(entity));
+  }
+
+  /** Idempotency keys live 7 days — long enough to cover extended offline sync replays. */
+  private idempotencyExpiry(): Date {
+    const d = new Date();
+    d.setDate(d.getDate() + 7);
+    return d;
+  }
+
+  /**
+   * Validate/normalize an incoming idempotency key. Returns undefined when absent
+   * (idempotency is opt-in for backward compatibility). The PK column is 64 chars.
+   */
+  private normalizeIdempotencyKey(key?: string): string | undefined {
+    if (!key) return undefined;
+    const trimmed = key.trim();
+    if (!trimmed) return undefined;
+    if (trimmed.length > 64) {
+      throw new BadRequestException('Idempotency-Key too long (max 64 chars)');
+    }
+    return trimmed;
+  }
+
+  /** Build the createSale replay response from a cached idempotency record. */
+  private replaySaleResponse(
+    cached: IdempotencyKeyEntity,
+  ): SaleEntity & { jackpotResult: JackpotResult | null; stockAlerts: SaleStockAlert[] } {
+    return {
+      ...(cached.responseBody as unknown as SaleEntity),
+      jackpotResult: null,
+      stockAlerts: [],
+    };
+  }
 
   /**
    * Create a sale — the core POS transaction.
@@ -75,7 +115,20 @@ export class SalesService {
     employeeId: string,
     dto: CreateSaleDto,
     employeeSnapshot?: { employeeName?: string; employeeRole?: string; maxDiscount?: number },
+    idempotencyKey?: string,
   ): Promise<SaleEntity> {
+    // --- Idempotency (NF525): a replayed offline-sync POST must NEVER create a
+    // second sale. Fast path BEFORE validation so a replay does not falsely fail
+    // on "insufficient stock" if the catalogue moved on since the original sale.
+    const idemKey = this.normalizeIdempotencyKey(idempotencyKey);
+    if (idemKey) {
+      const cached = await this.idempotencyRepo.findOne({ where: { key: idemKey } });
+      if (cached) {
+        this.logger.log(`[IDEMPOTENT] /sales replay for key ${idemKey} — returning cached sale`);
+        return this.replaySaleResponse(cached);
+      }
+    }
+
     // --- Input validation ---
     if (!dto.items || dto.items.length === 0) {
       throw new BadRequestException('Sale must have at least one item');
@@ -221,6 +274,18 @@ export class SalesService {
     await queryRunner.startTransaction();
 
     try {
+      // --- Idempotency re-check inside the transaction (handles concurrent
+      // duplicates that both passed the pre-transaction fast path) ---
+      if (idemKey) {
+        const cachedInTx = await queryRunner.manager.findOne(IdempotencyKeyEntity, {
+          where: { key: idemKey },
+        });
+        if (cachedInTx) {
+          await queryRunner.commitTransaction();
+          return this.replaySaleResponse(cachedInTx);
+        }
+      }
+
       // --- Ticket number: atomic increment using store row lock ---
       // Lock the store row to serialize ticket number generation
       await queryRunner.query(
@@ -344,6 +409,20 @@ export class SalesService {
             [pointsEarned, customerId, storeId],
           );
         }
+      }
+
+      // --- Persist idempotency key in the SAME transaction as the sale, so the
+      // sale and its dedup record commit (or roll back) atomically. A concurrent
+      // duplicate hits the PK unique constraint → 23505 → retried → cache hit. ---
+      if (idemKey) {
+        await queryRunner.manager.insert(IdempotencyKeyEntity, {
+          key: idemKey,
+          endpoint: '/sales',
+          customerId: customerId ?? null,
+          responseStatus: 201,
+          responseBody: this.toJsonBody(saved) as any,
+          expiresAt: this.idempotencyExpiry(),
+        });
       }
 
       // --- COMMIT ---
@@ -710,7 +789,19 @@ export class SalesService {
     employeeRole?: string,
     maxDiscountPercent?: number,
     reason?: string,
+    idempotencyKey?: string,
   ): Promise<SaleEntity> {
+    // --- Idempotency: a replayed void must return the cached result, NOT throw
+    // "already voided" (which a naive network retry would otherwise hit). ---
+    const idemKey = this.normalizeIdempotencyKey(idempotencyKey);
+    if (idemKey) {
+      const cached = await this.idempotencyRepo.findOne({ where: { key: idemKey } });
+      if (cached) {
+        this.logger.log(`[IDEMPOTENT] /sales/void replay for key ${idemKey} — returning cached result`);
+        return cached.responseBody as unknown as SaleEntity;
+      }
+    }
+
     const sale = await this.findOne(id, storeId);
     if (sale.status === 'voided') {
       throw new BadRequestException('Sale already voided');
@@ -747,6 +838,18 @@ export class SalesService {
            WHERE id = $2 AND store_id = $3`,
           [item.quantity, item.productId, storeId],
         );
+      }
+
+      // Persist idempotency key atomically with the void.
+      if (idemKey) {
+        await queryRunner.manager.insert(IdempotencyKeyEntity, {
+          key: idemKey,
+          endpoint: '/sales/void',
+          customerId: null,
+          responseStatus: 200,
+          responseBody: this.toJsonBody(saved) as any,
+          expiresAt: this.idempotencyExpiry(),
+        });
       }
 
       await queryRunner.commitTransaction();

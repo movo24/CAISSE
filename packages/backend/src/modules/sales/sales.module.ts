@@ -5,6 +5,7 @@ import { SalesController } from './sales.controller';
 import { SaleEntity } from '../../database/entities/sale.entity';
 import { SaleLineItemEntity } from '../../database/entities/sale-line-item.entity';
 import { SalePaymentEntity } from '../../database/entities/sale-payment.entity';
+import { IdempotencyKeyEntity } from '../../database/entities/idempotency-key.entity';
 import { ProductsModule } from '../products/products.module';
 import { CustomersModule } from '../customers/customers.module';
 import { PromotionsModule } from '../promotions/promotions.module';
@@ -14,7 +15,12 @@ import { JackpotModule } from '../jackpot/jackpot.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([SaleEntity, SaleLineItemEntity, SalePaymentEntity]),
+    TypeOrmModule.forFeature([
+      SaleEntity,
+      SaleLineItemEntity,
+      SalePaymentEntity,
+      IdempotencyKeyEntity,
+    ]),
     ProductsModule,
     CustomersModule,
     PromotionsModule,

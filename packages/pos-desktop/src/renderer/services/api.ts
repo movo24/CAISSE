@@ -162,10 +162,13 @@ export const productsApi = {
 
 // Sales
 export const salesApi = {
-  create: (data: any) => api.post('/sales', data),
+  // idempotencyKey: stable per offline-queue entry, so a sync replay is deduped server-side
+  create: (data: any, idempotencyKey?: string) =>
+    api.post('/sales', data, idempotencyKey ? { headers: { 'Idempotency-Key': idempotencyKey } } : undefined),
   list: (date?: string) => api.get('/sales', { params: { date } }),
   get: (id: string) => api.get(`/sales/${id}`),
-  void: (id: string) => api.post(`/sales/${id}/void`),
+  void: (id: string, idempotencyKey?: string) =>
+    api.post(`/sales/${id}/void`, undefined, idempotencyKey ? { headers: { 'Idempotency-Key': idempotencyKey } } : undefined),
 };
 
 // Customers

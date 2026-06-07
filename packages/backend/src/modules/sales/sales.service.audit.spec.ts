@@ -6,6 +6,7 @@ import { SalesService } from './sales.service';
 import { SaleEntity } from '../../database/entities/sale.entity';
 import { SaleLineItemEntity } from '../../database/entities/sale-line-item.entity';
 import { SalePaymentEntity } from '../../database/entities/sale-payment.entity';
+import { IdempotencyKeyEntity } from '../../database/entities/idempotency-key.entity';
 import { AuditService } from '../audit/audit.service';
 import { ProductsService } from '../products/products.service';
 import { CustomersService } from '../customers/customers.service';
@@ -56,6 +57,7 @@ describe('SalesService — voidSale audit (Option 2)', () => {
         { provide: getRepositoryToken(SaleEntity), useValue: { findOne: jest.fn() } },
         { provide: getRepositoryToken(SaleLineItemEntity), useValue: noop },
         { provide: getRepositoryToken(SalePaymentEntity), useValue: noop },
+        { provide: getRepositoryToken(IdempotencyKeyEntity), useValue: { findOne: jest.fn() } },
         { provide: DataSource, useValue: dataSource },
         { provide: ProductsService, useValue: noop },
         { provide: CustomersService, useValue: noop },

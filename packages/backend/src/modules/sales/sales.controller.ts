@@ -5,6 +5,7 @@ import {
   Param,
   Body,
   Query,
+  Headers,
   UseGuards,
   Request,
   ParseUUIDPipe,
@@ -23,8 +24,12 @@ export class SalesController {
   constructor(private salesService: SalesService) {}
 
   @Post()
-  @ApiOperation({ summary: 'Create and complete a sale (full POS flow)' })
-  create(@Body() dto: CreateSaleDto, @Request() req: any) {
+  @ApiOperation({ summary: 'Create and complete a sale (full POS flow). Send Idempotency-Key to dedupe offline-sync replays.' })
+  create(
+    @Body() dto: CreateSaleDto,
+    @Request() req: any,
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ) {
     return this.salesService.createSale(
       req.user.storeId,
       req.user.employeeId,
@@ -34,6 +39,7 @@ export class SalesController {
         employeeRole: req.user.role,
         maxDiscount: req.user.maxDiscount,
       },
+      idempotencyKey,
     );
   }
 
@@ -71,6 +77,7 @@ export class SalesController {
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
     @Body() body?: { reason?: string },
+    @Headers('idempotency-key') idempotencyKey?: string,
   ) {
     return this.salesService.voidSale(
       id,
@@ -79,6 +86,7 @@ export class SalesController {
       req.user.role,
       req.user.maxDiscount,
       body?.reason,
+      idempotencyKey,
     );
   }
 }
