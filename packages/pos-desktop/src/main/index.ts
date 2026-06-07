@@ -71,6 +71,7 @@ function createPOSWindow(): void {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      sandbox: true,
       preload: path.join(__dirname, 'preload.js'),
     },
   });
@@ -123,6 +124,7 @@ function createClientWindow(): void {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      sandbox: true,
       preload: path.join(__dirname, 'preload.js'),
     },
   });
