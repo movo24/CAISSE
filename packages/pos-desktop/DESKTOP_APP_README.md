@@ -97,6 +97,22 @@ VITE_API_URL=https://api.example.com
 Trois environnements possibles (dev / staging / prod) en changeant cette seule
 variable. **Aucune clé API n'est stockée dans le code ni dans le bundle.**
 
+> ⚠️ **IMPORTANT — par défaut, le build pointe vers la PROD.**
+> `desktop:build:mac` / `:win` (sans `VITE_API_URL`) produisent une app qui
+> parle à l'**API de production**. Ne **jamais** faire de tests transactionnels
+> (vente, retour, avoir, clôture) avec ce build : ce sont de **vraies données**.
+>
+> Pour la QA, builder une app **staging** dédiée :
+> ```bash
+> # macOS
+> STAGING_API_URL="https://staging.api.example.com" npm run desktop:build:staging:mac
+> # Windows (CI/Windows)
+> STAGING_API_URL="https://staging.api.example.com" npm run desktop:build:staging:win
+> ```
+> Le script échoue volontairement si `STAGING_API_URL` n'est pas défini (pas
+> d'URL en dur, pas de secret). Vérifier l'environnement ciblé **avant** toute
+> vente d'essai.
+
 ---
 
 ## 6. Version portable

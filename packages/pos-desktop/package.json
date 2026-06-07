@@ -22,6 +22,8 @@
     "desktop:build": "POS_TARGET=desktop vite build && npm run build:main && electron-builder --config electron-builder.yml",
     "desktop:build:win": "POS_TARGET=desktop vite build && npm run build:main && electron-builder --config electron-builder.yml --win",
     "desktop:build:mac": "POS_TARGET=desktop vite build && npm run build:main && electron-builder --config electron-builder.yml --mac",
+    "desktop:build:staging:mac": "POS_TARGET=desktop VITE_API_URL=\"${STAGING_API_URL:?set STAGING_API_URL to your staging API base URL}\" vite build && npm run build:main && electron-builder --config electron-builder.yml --mac",
+    "desktop:build:staging:win": "POS_TARGET=desktop VITE_API_URL=\"${STAGING_API_URL:?set STAGING_API_URL to your staging API base URL}\" vite build && npm run build:main && electron-builder --config electron-builder.yml --win",
     "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:5175 && npm run build:main && electron .\"",
     "lint": "eslint src --ext ts,tsx"
   },
