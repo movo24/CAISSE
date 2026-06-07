@@ -6,10 +6,10 @@ import {
   ScanBarcode, UserCircle, Weight, Tag, ArrowRight,
   FileText, Smartphone, XCircle, Clock, Trash2, Coins, Split,
   History, RotateCcw, Printer, Receipt, AlertTriangle,
-  Camera, Monitor, Tablet,
+  Camera, Monitor, Tablet, Mail, Loader2,
 } from 'lucide-react';
 import { usePOSStore } from '../stores/posStore';
-import { productsApi, salesApi, customersApi, occupancyApi } from '../services/api';
+import { productsApi, salesApi, customersApi, occupancyApi, receiptsApi } from '../services/api';
 import { FluxWidget } from '../components/FluxWidget';
 import { useOfflineMode } from '../hooks/useOfflineMode';
 import { useWakeLock } from '../hooks/useWakeLock';
@@ -134,6 +134,11 @@ export function POSPage() {
   // Fullscreen confirmation overlay
   const [confirmation, setConfirmation] = useState<ConfirmationData | null>(null);
   const confirmationRef = useRef<ConfirmationData | null>(null); // mirror to avoid stale closures
+
+  // Email-receipt modal (shown from the confirmation overlay when a server saleId exists)
+  const [emailModal, setEmailModal] = useState(false);
+  const [emailValue, setEmailValue] = useState('');
+  const [emailStatus, setEmailStatus] = useState<'idle' | 'sending' | 'sent' | 'error' | 'disabled'>('idle');
   const [ticketCountdown, setTicketCountdown] = useState(TICKET_TIMEOUT_MS / 1000);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -284,14 +289,35 @@ export function POSPage() {
     completeTransaction(choice);
   }, [completeTransaction]);
 
+  /** Email the just-completed receipt. Requires a server saleId (online sale). */
+  const sendReceiptEmail = useCallback(async () => {
+    const saleId = (store as any).lastSaleId as string | undefined;
+    if (!saleId) return;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailValue.trim())) {
+      setEmailStatus('error');
+      return;
+    }
+    setEmailStatus('sending');
+    try {
+      const res = await receiptsApi.email(saleId, emailValue.trim());
+      if (res.data?.skipped) setEmailStatus('disabled');
+      else if (res.data?.sent) setEmailStatus('sent');
+      else setEmailStatus('error');
+    } catch {
+      setEmailStatus('error');
+    }
+  }, [store, emailValue]);
+
   /** dismissConfirmation: alias for "skip" — used by Escape key and the "Passer" link */
   const dismissConfirmation = useCallback(() => {
     completeTransaction();
   }, [completeTransaction]);
 
-  // Auto-dismiss countdown — STABLE deps (no stale closure issue)
+  // Auto-dismiss countdown — STABLE deps (no stale closure issue).
+  // Paused while the email-receipt modal is open so the overlay does not vanish
+  // under the cashier; closing the modal restarts a fresh countdown.
   useEffect(() => {
-    if (!confirmation) return;
+    if (!confirmation || emailModal) return;
 
     // Keep the ref in sync
     confirmationRef.current = confirmation;
@@ -320,7 +346,7 @@ export function POSPage() {
       countdownRef.current = null;
       timeoutRef.current = null;
     };
-  }, [confirmation]); // ✅ Only depends on confirmation, NOT on handleTicketChoice
+  }, [confirmation, emailModal]); // restart/pause with the email modal too
 
   // Redirect if not logged in
   useEffect(() => {
@@ -1664,6 +1690,16 @@ export function POSPage() {
                   )}
                 </button>
               </div>
+
+              {/* Email receipt — only when the sale reached the server (has a saleId) */}
+              {(store as any).lastSaleId && (
+                <button
+                  onClick={() => { setEmailValue(''); setEmailStatus('idle'); setEmailModal(true); }}
+                  className="mt-3 w-full flex items-center justify-center gap-2 py-3 rounded-2xl border-2 border-white/20 bg-white/5 hover:border-white/40 transition-all text-sm font-semibold text-white"
+                >
+                  <Mail size={18} /> Envoyer le reçu par email
+                </button>
+              )}
             </div>
 
             {/* Countdown + auto-dismiss */}
@@ -1690,6 +1726,50 @@ export function POSPage() {
               <ArrowRight size={22} className="text-emerald-300" />
               Nouvelle Vente
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════ EMAIL RECEIPT MODAL ═══════ */}
+      {emailModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setEmailModal(false)}>
+          <div className="w-full max-w-sm bg-white rounded-3xl shadow-2xl p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2 mb-4">
+              <Mail size={20} className="text-emerald-600" />
+              <h3 className="text-lg font-bold text-gray-900">Reçu par email</h3>
+            </div>
+            {emailStatus === 'sent' ? (
+              <div className="text-center py-6">
+                <CheckCircle2 size={40} className="mx-auto text-emerald-500 mb-2" />
+                <p className="text-sm font-semibold text-gray-800">Reçu envoyé à {emailValue}</p>
+                <button onClick={() => setEmailModal(false)} className="mt-5 w-full py-3 rounded-2xl bg-emerald-600 text-white font-semibold">Fermer</button>
+              </div>
+            ) : (
+              <>
+                <input
+                  type="email"
+                  value={emailValue}
+                  onChange={(e) => { setEmailValue(e.target.value); if (emailStatus !== 'idle') setEmailStatus('idle'); }}
+                  placeholder="client@email.com"
+                  autoFocus
+                  className="w-full px-4 py-3 rounded-2xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400/40"
+                  onKeyDown={(e) => { if (e.key === 'Enter') sendReceiptEmail(); }}
+                />
+                {emailStatus === 'error' && <p className="text-xs text-red-500 mt-2">Adresse invalide ou échec de l'envoi.</p>}
+                {emailStatus === 'disabled' && <p className="text-xs text-amber-600 mt-2">Service email non configuré sur le serveur.</p>}
+                <div className="flex gap-3 mt-5">
+                  <button onClick={() => setEmailModal(false)} className="flex-1 py-3 rounded-2xl border border-gray-200 text-sm font-semibold text-gray-500">Annuler</button>
+                  <button
+                    onClick={sendReceiptEmail}
+                    disabled={emailStatus === 'sending'}
+                    className="flex-1 py-3 rounded-2xl bg-emerald-600 text-white text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {emailStatus === 'sending' && <Loader2 size={15} className="animate-spin" />}
+                    Envoyer
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

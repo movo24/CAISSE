@@ -1,5 +1,15 @@
-import { Controller, Get, Param, NotFoundException, Logger } from '@nestjs/common';
-import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import {
+  Controller,
+  Get,
+  Post,
+  Param,
+  Body,
+  UseGuards,
+  BadRequestException,
+  NotFoundException,
+  Logger,
+} from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { SaleEntity } from '../../database/entities/sale.entity';
@@ -7,6 +17,8 @@ import { SaleLineItemEntity } from '../../database/entities/sale-line-item.entit
 import { SalePaymentEntity } from '../../database/entities/sale-payment.entity';
 import { StoreEntity } from '../../database/entities/store.entity';
 import { SkipTenantCheck } from '../../common/interceptors/tenant.interceptor';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { MailService } from '../../common/messaging/mail.service';
 
 /** Escape HTML to prevent XSS — all user-controlled data must pass through this */
 function esc(str: string | null | undefined): string {
@@ -29,6 +41,7 @@ export class ReceiptsController {
     @InjectRepository(SaleLineItemEntity) private lineRepo: Repository<SaleLineItemEntity>,
     @InjectRepository(SalePaymentEntity) private payRepo: Repository<SalePaymentEntity>,
     @InjectRepository(StoreEntity) private storeRepo: Repository<StoreEntity>,
+    private readonly mail: MailService,
   ) {}
 
   /**
@@ -88,6 +101,50 @@ export class ReceiptsController {
   @SkipTenantCheck()
   @ApiOperation({ summary: 'Get digital receipt as HTML page (public)' })
   async getReceiptHtml(@Param('saleId') saleId: string) {
+    return this.buildReceiptHtml(saleId);
+  }
+
+  /**
+   * POST /api/receipts/:saleId/email
+   * Email a dematerialized receipt. Authenticated (POS action) to avoid an open
+   * email relay. Degrades gracefully: if no mail provider is configured, returns
+   * { sent: false, skipped: true } instead of failing.
+   */
+  @Post(':saleId/email')
+  @UseGuards(JwtAuthGuard)
+  @SkipTenantCheck()
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Email a digital receipt (auth required)' })
+  async emailReceipt(
+    @Param('saleId') saleId: string,
+    @Body() body: { email?: string },
+  ): Promise<{ sent: boolean; skipped?: boolean; error?: string }> {
+    const email = (body?.email || '').trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      throw new BadRequestException('Adresse email invalide');
+    }
+    const data = await this.getReceipt(saleId); // throws 404 if the sale is unknown
+    const html = await this.buildReceiptHtml(saleId);
+
+    const result = await this.mail.send({
+      to: email,
+      subject: `Votre reçu ${data.ticketNumber} — ${data.store.name}`,
+      html,
+    });
+
+    if (result.skipped) {
+      this.logger.warn(`[RECEIPT_EMAIL skipped] mail provider disabled (ticket ${data.ticketNumber})`);
+      return { sent: false, skipped: true };
+    }
+    if (!result.ok) {
+      return { sent: false, error: result.error };
+    }
+    this.logger.log(`[RECEIPT_EMAIL] ${data.ticketNumber} → ${email}`);
+    return { sent: true };
+  }
+
+  /** Build the self-contained HTML receipt page for a sale. */
+  private async buildReceiptHtml(saleId: string): Promise<string> {
     const data = await this.getReceipt(saleId);
 
     const itemsHtml = data.items.map((i: any) =>

@@ -171,6 +171,12 @@ export const salesApi = {
     api.post(`/sales/${id}/void`, undefined, idempotencyKey ? { headers: { 'Idempotency-Key': idempotencyKey } } : undefined),
 };
 
+// Receipts (digital ticket)
+export const receiptsApi = {
+  email: (saleId: string, email: string) =>
+    api.post(`/receipts/${saleId}/email`, { email }),
+};
+
 // Customers
 export const customersApi = {
   create: (data: any) => api.post('/customers', data),
