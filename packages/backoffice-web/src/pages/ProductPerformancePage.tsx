@@ -30,6 +30,21 @@ interface Report {
   generatedAt: string;
 }
 
+interface Baseline { date: string; caMinorUnits: number; deltaPct: number | null; }
+interface SalesTrend {
+  comparisons: {
+    today: { date: string; caMinorUnits: number };
+    jMinus1: Baseline; sMinus1: Baseline; mMinus1: Baseline; nMinus1: Baseline;
+  };
+  forecast: { date: string; predictedMinorUnits: number; method: string; sampleSize: number };
+}
+
+const FORECAST_LABEL: Record<string, string> = {
+  'weekday-average': 'moyenne même jour de semaine',
+  'moving-average-7': 'moyenne mobile 7j',
+  'insufficient-data': 'données insuffisantes',
+};
+
 function eur(minor: number): string {
   return `${(minor / 100).toFixed(2)} €`;
 }
@@ -46,18 +61,42 @@ function Trend({ pct }: { pct: number | null }) {
   );
 }
 
+function CaCompareCard({ label, base, today }: { label: string; base: Baseline; today: number }) {
+  const up = (base.deltaPct ?? 0) >= 0;
+  return (
+    <div className="bg-gray-50 rounded-xl p-3">
+      <div className="text-[11px] text-gray-500">{label}</div>
+      <div className="text-sm font-semibold text-gray-800">{eur(base.caMinorUnits)}</div>
+      {base.deltaPct === null ? (
+        <div className="text-[11px] text-gray-400">pas de base</div>
+      ) : (
+        <div className={`inline-flex items-center gap-1 text-[11px] font-semibold ${up ? 'text-emerald-600' : 'text-red-600'}`}>
+          {up ? <TrendingUp size={11} /> : <TrendingDown size={11} />}{base.deltaPct > 0 ? '+' : ''}{base.deltaPct}%
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ProductPerformancePage() {
   const storeId = useCurrentStoreId();
   const [report, setReport] = useState<Report | null>(null);
+  const [trend, setTrend] = useState<SalesTrend | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!storeId) return;
     setLoading(true);
-    reportsApi.productAnalytics(storeId)
-      .then((res) => { setReport(res.data); setError(null); })
-      .catch((err) => { setError('Impossible de charger l\'analyse produit.'); console.warn('[Performance]', err?.message); })
+    Promise.allSettled([
+      reportsApi.productAnalytics(storeId),
+      reportsApi.salesTrend(storeId),
+    ])
+      .then(([analyticsRes, trendRes]) => {
+        if (analyticsRes.status === 'fulfilled') { setReport(analyticsRes.value.data); setError(null); }
+        else { setError('Impossible de charger l\'analyse produit.'); }
+        if (trendRes.status === 'fulfilled') setTrend(trendRes.value.data);
+      })
       .finally(() => setLoading(false));
   }, [storeId]);
 
@@ -73,6 +112,29 @@ export function ProductPerformancePage() {
 
       {loading && <p className="text-gray-500 text-sm">Chargement…</p>}
       {error && <p className="text-red-600 text-sm">{error}</p>}
+
+      {/* ── Tendance CA & prévision (comparaisons + extrapolation simple) ── */}
+      {trend && (
+        <section className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
+          <h2 className="font-semibold text-gray-800 mb-4 flex items-center gap-2"><TrendingUp size={16} className="text-indigo-500" /> Tendance CA & prévision</h2>
+          <div className="grid grid-cols-2 md:grid-cols-6 gap-3 items-stretch">
+            <div className="bg-indigo-600 text-white rounded-xl p-3">
+              <div className="text-[11px] opacity-80">Aujourd'hui</div>
+              <div className="text-lg font-bold">{eur(trend.comparisons.today.caMinorUnits)}</div>
+            </div>
+            <CaCompareCard label="vs hier (J-1)" base={trend.comparisons.jMinus1} today={trend.comparisons.today.caMinorUnits} />
+            <CaCompareCard label="vs S-1" base={trend.comparisons.sMinus1} today={trend.comparisons.today.caMinorUnits} />
+            <CaCompareCard label="vs M-1" base={trend.comparisons.mMinus1} today={trend.comparisons.today.caMinorUnits} />
+            <CaCompareCard label="vs N-1" base={trend.comparisons.nMinus1} today={trend.comparisons.today.caMinorUnits} />
+            <div className="bg-emerald-50 rounded-xl p-3 border border-emerald-100">
+              <div className="text-[11px] text-emerald-700">Prévision demain</div>
+              <div className="text-lg font-bold text-emerald-800">{eur(trend.forecast.predictedMinorUnits)}</div>
+              <div className="text-[10px] text-emerald-600">{FORECAST_LABEL[trend.forecast.method] || trend.forecast.method} · n={trend.forecast.sampleSize}</div>
+            </div>
+          </div>
+          <p className="text-[11px] text-gray-400 mt-2">Extrapolation simple (pas d'IA) — fiabilité limitée tant que l'historique est court.</p>
+        </section>
+      )}
 
       {report && (
         <>
