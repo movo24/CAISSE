@@ -80,4 +80,15 @@ export class ReportsController {
       req.user.role === 'admin' && queryStoreId ? queryStoreId : req.user.storeId;
     return this.productAnalytics.getReport(effectiveStoreId);
   }
+
+  @Get('sales-trend')
+  @Roles('admin', 'manager')
+  @ApiOperation({
+    summary: 'CA comparisons (J-1/S-1/M-1/N-1) + simple next-day forecast (read-only, sales-derived)',
+  })
+  async getSalesTrend(@Request() req: any, @Query('storeId') queryStoreId?: string) {
+    const effectiveStoreId =
+      req.user.role === 'admin' && queryStoreId ? queryStoreId : req.user.storeId;
+    return this.productAnalytics.getSalesTrend(effectiveStoreId);
+  }
 }
