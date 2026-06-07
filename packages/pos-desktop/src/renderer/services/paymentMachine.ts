@@ -9,7 +9,7 @@
  * on any non-cash tender (card / meal voucher / gift card) is NOT returned as
  * cash — meal-voucher excess in particular is forfeited by law.
  */
-export type PaymentMethod = 'cash' | 'card' | 'mixed' | 'voucher' | 'gift_card';
+export type PaymentMethod = 'cash' | 'card' | 'mixed' | 'voucher' | 'gift_card' | 'store_credit';
 
 /** Tenders from which the customer can receive cash change back. */
 export const CHANGE_ELIGIBLE_METHODS: PaymentMethod[] = ['cash'];
@@ -20,6 +20,7 @@ export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   mixed: 'Mixte',
   voucher: 'Titre-resto',
   gift_card: 'Carte cadeau',
+  store_credit: 'Avoir',
 };
 
 export interface Tender {

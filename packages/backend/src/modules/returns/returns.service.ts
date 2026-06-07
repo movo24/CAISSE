@@ -261,6 +261,29 @@ export class ReturnsService {
     return cn;
   }
 
+  /**
+   * Look up a store-credit avoir by code for POS redemption (validate + show
+   * balance before adding it as a tender). Returns a lean, spendable view.
+   */
+  async lookupSpendable(
+    code: string,
+    storeId: string,
+  ): Promise<{ code: string; type: string; status: string; remainingMinorUnits: number; spendable: boolean }> {
+    const cn = await this.cnRepo.findOne({ where: { code: code.trim().toUpperCase(), storeId } });
+    if (!cn) throw new NotFoundException('Avoir introuvable');
+    const spendable =
+      cn.type === 'store_credit' &&
+      (cn.status === 'active' || cn.status === 'partially_redeemed') &&
+      cn.remainingMinorUnits > 0;
+    return {
+      code: cn.code,
+      type: cn.type,
+      status: cn.status,
+      remainingMinorUnits: cn.remainingMinorUnits,
+      spendable,
+    };
+  }
+
   /** Returns the returnable quantity per line for a sale (for the POS return UI). */
   async getReturnableForSale(saleId: string, storeId: string): Promise<{
     sale: SaleEntity;

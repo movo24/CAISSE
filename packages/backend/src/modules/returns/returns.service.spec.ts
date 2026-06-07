@@ -117,4 +117,25 @@ describe('ReturnsService', () => {
     expect((res as any).code).toBe('AV-CACHED');
     expect(qr.startTransaction).not.toHaveBeenCalled();
   });
+
+  describe('lookupSpendable', () => {
+    it('returns spendable=true for an active store_credit with balance', async () => {
+      cnRepo.findOne.mockResolvedValue({ code: 'AV-X', type: 'store_credit', status: 'active', remainingMinorUnits: 500 });
+      const res = await service.lookupSpendable('av-x', 'store-1');
+      expect(res.spendable).toBe(true);
+      expect(res.remainingMinorUnits).toBe(500);
+    });
+
+    it('spendable=false for a refund-type or zero-balance note', async () => {
+      cnRepo.findOne.mockResolvedValue({ code: 'AV-Y', type: 'refund', status: 'refunded', remainingMinorUnits: 0 });
+      expect((await service.lookupSpendable('AV-Y', 'store-1')).spendable).toBe(false);
+      cnRepo.findOne.mockResolvedValue({ code: 'AV-Z', type: 'store_credit', status: 'redeemed', remainingMinorUnits: 0 });
+      expect((await service.lookupSpendable('AV-Z', 'store-1')).spendable).toBe(false);
+    });
+
+    it('404 when the code is unknown', async () => {
+      cnRepo.findOne.mockResolvedValue(null);
+      await expect(service.lookupSpendable('NOPE', 'store-1')).rejects.toThrow(NotFoundException);
+    });
+  });
 });

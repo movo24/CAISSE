@@ -59,6 +59,12 @@ export class ReturnsController {
     return this.returns.getReturnableForSale(saleId, req.user.storeId);
   }
 
+  @Get('credit-note/:code')
+  @ApiOperation({ summary: 'Look up a store-credit avoir by code (POS redemption: validate + balance)' })
+  lookup(@Param('code') code: string, @Request() req: any) {
+    return this.returns.lookupSpendable(code, req.user.storeId);
+  }
+
   @Get(':id')
   @Roles('admin', 'manager')
   @ApiOperation({ summary: 'Get a credit note by id' })

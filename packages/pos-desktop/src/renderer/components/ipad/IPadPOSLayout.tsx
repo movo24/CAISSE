@@ -30,6 +30,7 @@ import { ScannerTool } from './ScannerTool';
 import { PrinterSettings } from './PrinterSettings';
 import { useTicketHistory } from '../../hooks/useTicketHistory';
 import { TicketHistoryModal } from '../pos/TicketHistoryModal';
+import { AvoirTenderModal } from '../pos/AvoirTenderModal';
 import { useBluetoothPrinter } from '../../hooks/useBluetoothPrinter';
 import { peripheralBridge } from '../../services/peripheralBridge';
 import { usePerformanceStore } from '../../stores/performanceStore';
@@ -87,6 +88,7 @@ export function IPadPOSLayout() {
   const [suspendedOpen, setSuspendedOpen] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [printerSettingsOpen, setPrinterSettingsOpen] = useState(false);
+  const [avoirOpen, setAvoirOpen] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const btPrinter = useBluetoothPrinter();
 
@@ -729,6 +731,13 @@ export function IPadPOSLayout() {
                     <Gift size={20} className="text-violet-500" /> Carte cadeau
                   </button>
                 </div>
+                <button
+                  className="w-full mt-2 flex items-center justify-center gap-2 px-4 py-4 rounded-2xl border-2 border-pos-border/40 hover:border-emerald-400 hover:bg-emerald-50 transition-all font-semibold text-base product-card-touch"
+                  onClick={() => setAvoirOpen(true)}
+                  title="Payer avec un avoir"
+                >
+                  <Ticket size={20} className="text-emerald-500" /> Payer par avoir
+                </button>
               </>
             )}
 
@@ -964,6 +973,14 @@ export function IPadPOSLayout() {
         onReprint={ticketHistory.handleReprint}
         compact
       />
+
+      {avoirOpen && (
+        <AvoirTenderModal
+          amountDueMinor={payment.remaining}
+          onApply={(code, amt) => { payment.commitPartialPayment('store_credit', amt, code); setAvoirOpen(false); }}
+          onClose={() => setAvoirOpen(false)}
+        />
+      )}
     </div>
   );
 }

@@ -18,6 +18,8 @@ export interface PartialPayment {
   stripePaymentIntentId?: string;
   stripeReaderId?: string;
   terminalId?: string;
+  /** For method === 'store_credit': the avoir code being redeemed. */
+  creditNoteCode?: string;
 }
 
 export interface ConfirmationData {
@@ -160,6 +162,7 @@ export function usePayment() {
           stripePaymentIntentId: p.stripePaymentIntentId,
           stripeReaderId: p.stripeReaderId,
           terminalId: p.terminalId,
+          creditNoteCode: p.creditNoteCode,
         })),
       });
       ticketNumber = res.data.ticketNumber || `T-${Date.now().toString().slice(-6)}`;
@@ -314,8 +317,8 @@ export function usePayment() {
   }
   }, [store, transactionStart]);
 
-  const commitPartialPayment = useCallback((method: PaymentMethod, amountMinor: number) => {
-    const payment: PartialPayment = { id: `pay-${Date.now()}`, method, amountMinorUnits: amountMinor };
+  const commitPartialPayment = useCallback((method: PaymentMethod, amountMinor: number, creditNoteCode?: string) => {
+    const payment: PartialPayment = { id: `pay-${Date.now()}`, method, amountMinorUnits: amountMinor, creditNoteCode };
     const newPayments = [...partialPayments, payment];
     const ticketTotal = store.total();
     // Tender state machine: cash change only; voucher/gift-card overpay is forfeited.

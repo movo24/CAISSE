@@ -29,6 +29,7 @@ import { useDeviceProfile, platformClasses } from '../hooks/useDeviceProfile';
 import { useTicketHistory } from '../hooks/useTicketHistory';
 import { TicketHistoryModal } from '../components/pos/TicketHistoryModal';
 import { ReturnModal } from '../components/pos/ReturnModal';
+import { AvoirTenderModal } from '../components/pos/AvoirTenderModal';
 import { peripheralBridge } from '../services/peripheralBridge';
 import { useCloudSyncStore } from '../services/cloudSyncIdentity';
 import { Wifi, WifiOff, CloudOff, Cloud, RefreshCw as SyncIcon, ShieldAlert, Upload, Lock as LockIcon } from 'lucide-react';
@@ -88,6 +89,7 @@ interface PartialPayment {
   id: string;
   method: PaymentMethod;
   amountMinorUnits: number;
+  creditNoteCode?: string;
 }
 
 /* ── Confirmation overlay types ── */
@@ -144,6 +146,8 @@ export function POSPage() {
 
   // Return / credit-note modal (online only)
   const [returnOpen, setReturnOpen] = useState(false);
+  // Pay-by-avoir tender modal
+  const [avoirOpen, setAvoirOpen] = useState(false);
   const [ticketCountdown, setTicketCountdown] = useState(TICKET_TIMEOUT_MS / 1000);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -618,11 +622,12 @@ export function POSPage() {
 
   /* ── Commit partial payment (after TPE approval for card) ── */
 
-  const commitPartialPayment = (method: PaymentMethod, amountMinor: number) => {
+  const commitPartialPayment = (method: PaymentMethod, amountMinor: number, creditNoteCode?: string) => {
     const payment: PartialPayment = {
       id: `pay-${Date.now()}`,
       method,
       amountMinorUnits: amountMinor,
+      creditNoteCode,
     };
 
     const newPayments = [...partialPayments, payment];
@@ -682,7 +687,7 @@ export function POSPage() {
       const res = await salesApi.create({
         items: store.cartItems.map((i) => ({ ean: i.ean, quantity: i.quantity })),
         customerQrCode: store.customerQrCode || undefined,
-        payments: payments.map((p) => ({ method: p.method, amountMinorUnits: p.amountMinorUnits })),
+        payments: payments.map((p) => ({ method: p.method, amountMinorUnits: p.amountMinorUnits, creditNoteCode: p.creditNoteCode })),
       });
       ticketNumber = res.data.ticketNumber || `T-${Date.now().toString().slice(-6)}`;
       if (res.data.jackpotResult) store.setJackpotResult(res.data.jackpotResult);
@@ -779,6 +784,7 @@ export function POSPage() {
     if (m === 'cash') return 'Especes';
     if (m === 'voucher') return 'Titre-resto';
     if (m === 'gift_card') return 'Carte cadeau';
+    if (m === 'store_credit') return 'Avoir';
     return 'Paiement Mixte';
   };
 
@@ -787,6 +793,7 @@ export function POSPage() {
     if (m === 'cash') return <Banknote size={18} />;
     if (m === 'voucher') return <Ticket size={18} />;
     if (m === 'gift_card') return <Gift size={18} />;
+    if (m === 'store_credit') return <Ticket size={18} />;
     return <Layers size={18} />;
   };
 
@@ -795,6 +802,7 @@ export function POSPage() {
     if (m === 'cash') return <Banknote size={14} className="text-pos-success" />;
     if (m === 'voucher') return <Ticket size={14} className="text-amber-500" />;
     if (m === 'gift_card') return <Gift size={14} className="text-violet-500" />;
+    if (m === 'store_credit') return <Ticket size={14} className="text-emerald-500" />;
     return <Layers size={14} className="text-pos-muted" />;
   };
 
@@ -1371,6 +1379,14 @@ export function POSPage() {
                       <Gift size={18} className="text-violet-500" /> Carte cadeau
                     </button>
                   </div>
+                  <button
+                    className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-2xl border-2 border-pos-border/40 hover:border-emerald-400 hover:bg-emerald-50 transition-all font-semibold text-sm"
+                    onClick={() => setAvoirOpen(true)}
+                    disabled={processing}
+                    title="Payer avec un avoir"
+                  >
+                    <Ticket size={18} className="text-emerald-500" /> Payer par avoir
+                  </button>
                   {/* Offline payment warning */}
                   {offlineMode.isOffline && (
                     <div className="mt-2 flex items-start gap-2 bg-amber-50 rounded-xl px-3 py-2 border border-amber-200">
@@ -1817,6 +1833,15 @@ export function POSPage() {
 
       {/* ═══════ RETURN / CREDIT-NOTE MODAL ═══════ */}
       {returnOpen && <ReturnModal onClose={() => setReturnOpen(false)} />}
+
+      {/* ═══════ PAY-BY-AVOIR TENDER MODAL ═══════ */}
+      {avoirOpen && (
+        <AvoirTenderModal
+          amountDueMinor={remaining}
+          onApply={(code, amt) => { commitPartialPayment('store_credit', amt, code); setAvoirOpen(false); }}
+          onClose={() => setAvoirOpen(false)}
+        />
+      )}
 
       {/* ═══════ CAMERA BARCODE SCANNER OVERLAY (iPad/Tablet) ═══════ */}
       {cameraOpen && (

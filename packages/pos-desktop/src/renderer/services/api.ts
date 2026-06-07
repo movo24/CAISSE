@@ -181,6 +181,7 @@ export const receiptsApi = {
 export const returnsApi = {
   listSales: (date: string) => api.get('/sales', { params: { date } }),
   returnable: (saleId: string) => api.get(`/returns/sale/${saleId}/returnable`),
+  lookupCreditNote: (code: string) => api.get(`/returns/credit-note/${encodeURIComponent(code)}`),
   create: (
     data: {
       originalSaleId: string;
