@@ -165,6 +165,24 @@ export const salesApi = {
 };
 
 // ---------------------------------------------------------------------------
+// Returns / Credit notes (avoirs)
+// ---------------------------------------------------------------------------
+export const returnsApi = {
+  list: (page = 1, limit = 50) => api.get('/returns', { params: { page, limit } }),
+  get: (id: string) => api.get(`/returns/${id}`),
+  returnable: (saleId: string) => api.get(`/returns/sale/${saleId}/returnable`),
+  create: (
+    data: {
+      originalSaleId: string;
+      items: { lineItemId: string; quantity: number }[];
+      reason?: string;
+      refundMethod: 'cash' | 'card' | 'store_credit';
+    },
+    idempotencyKey: string,
+  ) => api.post('/returns', data, { headers: { 'Idempotency-Key': idempotencyKey } }),
+};
+
+// ---------------------------------------------------------------------------
 // Customers
 // ---------------------------------------------------------------------------
 export const customersApi = {
