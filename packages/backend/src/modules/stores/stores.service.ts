@@ -385,43 +385,41 @@ export class StoresService {
     const includedStores = stores.filter((s) => s.includeInNetwork);
     const excludedStores = stores.filter((s) => !s.includeInNetwork);
 
-    // Get sales data per store
-    const storeStats = await Promise.all(
-      includedStores.map(async (store) => {
-        const result = await this.dataSource.query(
+    // Get sales data for ALL included stores in a SINGLE aggregated query
+    // (previously 2 queries per store → 2N). All-time + today via FILTER.
+    const includedIds = includedStores.map((s) => s.id);
+    const aggRows = includedIds.length
+      ? await this.dataSource.query(
           `SELECT
-            COALESCE(COUNT(*), 0) as sale_count,
-            COALESCE(SUM(total_minor_units), 0) as total_revenue,
-            COALESCE(AVG(total_minor_units), 0) as avg_ticket
-          FROM sales
-          WHERE store_id = $1 AND status = 'completed'`,
-          [store.id],
-        );
+             store_id,
+             COUNT(*) AS sale_count,
+             COALESCE(SUM(total_minor_units), 0) AS total_revenue,
+             COALESCE(AVG(total_minor_units), 0) AS avg_ticket,
+             COUNT(*) FILTER (WHERE created_at >= CURRENT_DATE) AS today_count,
+             COALESCE(SUM(total_minor_units) FILTER (WHERE created_at >= CURRENT_DATE), 0) AS today_revenue
+           FROM sales
+           WHERE status = 'completed' AND store_id = ANY($1)
+           GROUP BY store_id`,
+          [includedIds],
+        )
+      : [];
+    const statsByStore = new Map<string, any>(aggRows.map((r: any) => [r.store_id, r]));
 
-        const todayResult = await this.dataSource.query(
-          `SELECT
-            COALESCE(COUNT(*), 0) as sale_count,
-            COALESCE(SUM(total_minor_units), 0) as total_revenue
-          FROM sales
-          WHERE store_id = $1 AND status = 'completed'
-            AND created_at >= CURRENT_DATE`,
-          [store.id],
-        );
-
-        return {
-          id: store.id,
-          name: store.name,
-          storeCode: store.storeCode,
-          city: store.city,
-          includeInNetwork: store.includeInNetwork,
-          totalSales: parseInt(result[0]?.sale_count || '0'),
-          totalRevenue: parseInt(result[0]?.total_revenue || '0'),
-          avgTicket: Math.round(parseFloat(result[0]?.avg_ticket || '0')),
-          todaySales: parseInt(todayResult[0]?.sale_count || '0'),
-          todayRevenue: parseInt(todayResult[0]?.total_revenue || '0'),
-        };
-      }),
-    );
+    const storeStats = includedStores.map((store) => {
+      const r = statsByStore.get(store.id);
+      return {
+        id: store.id,
+        name: store.name,
+        storeCode: store.storeCode,
+        city: store.city,
+        includeInNetwork: store.includeInNetwork,
+        totalSales: parseInt(r?.sale_count || '0'),
+        totalRevenue: parseInt(r?.total_revenue || '0'),
+        avgTicket: Math.round(parseFloat(r?.avg_ticket || '0')),
+        todaySales: parseInt(r?.today_count || '0'),
+        todayRevenue: parseInt(r?.today_revenue || '0'),
+      };
+    });
 
     // Network totals
     const networkTotalRevenue = storeStats.reduce((s, st) => s + st.totalRevenue, 0);

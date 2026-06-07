@@ -330,7 +330,23 @@ export class ProductsService {
     const cost = product.costMinorUnits ?? 0;
     const costAvailable = cost > 0;
 
-    // For each period, query sales data
+    // Fetch ALL completed sale lines for this product ONCE, then bucket per period
+    // in memory (previously one SQL query per period → N+1).
+    const allLines: { ts: number; quantity: number; revenue: number }[] = (
+      await this.productRepo.manager.query(
+        `SELECT s.created_at AS created_at, li.quantity AS quantity, li.line_total_minor_units AS revenue
+           FROM sale_line_items li
+           JOIN sales s ON s.id = li.sale_id
+          WHERE li.product_id = $1 AND s.store_id = $2 AND s.status = 'completed'`,
+        [productId, storeId],
+      )
+    ).map((r: any) => ({
+      ts: new Date(r.created_at).getTime(),
+      quantity: parseInt(r.quantity || '0', 10),
+      revenue: parseInt(r.revenue || '0', 10),
+    }));
+
+    // For each period, aggregate the in-memory lines
     const analytics: any[] = [];
     for (let i = 0; i < periods.length; i++) {
       const period = periods[i];
@@ -338,23 +354,17 @@ export class ProductsService {
         (period.to.getTime() - period.from.getTime()) / (1000 * 60 * 60 * 24),
       ));
 
-      // Query: sum quantities and revenue for this product in this period
-      const result = await this.productRepo.manager.query(
-        `SELECT
-           COALESCE(SUM(li.quantity), 0) AS units_sold,
-           COALESCE(SUM(li.line_total_minor_units), 0) AS revenue
-         FROM sale_line_items li
-         JOIN sales s ON s.id = li.sale_id
-         WHERE li.product_id = $1
-           AND s.store_id = $2
-           AND s.status = 'completed'
-           AND s.created_at >= $3
-           AND s.created_at < $4`,
-        [productId, storeId, period.from.toISOString(), period.to.toISOString()],
-      );
-
-      const unitsSold = parseInt(result[0]?.units_sold || '0', 10);
-      const revenue = parseInt(result[0]?.revenue || '0', 10);
+      // Aggregate in-memory lines falling in [from, to) for this period.
+      const fromTs = period.from.getTime();
+      const toTs = period.to.getTime();
+      let unitsSold = 0;
+      let revenue = 0;
+      for (const line of allLines) {
+        if (line.ts >= fromTs && line.ts < toTs) {
+          unitsSold += line.quantity;
+          revenue += line.revenue;
+        }
+      }
       const unitsPerDay = Math.round((unitsSold / daysDuration) * 100) / 100;
       // Keep revenue/day in MINOR units internally for correct delta math…
       const revenuePerDayMinorUnits = Math.round(revenue / daysDuration);
