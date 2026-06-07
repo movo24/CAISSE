@@ -5,6 +5,7 @@
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { ScanBarcode, ClipboardList, PackageCheck, Search } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
+import { OfflineIndicator } from './OfflineIndicator';
 
 const tabs = [
   { path: '/scan', label: 'Scan', icon: ScanBarcode, requiresStock: false },
@@ -23,6 +24,9 @@ export function AppShell() {
 
   return (
     <div className="flex flex-col min-h-[100dvh] bg-mobile-bg">
+      {/* ── Offline/sync status bar ── */}
+      <OfflineIndicator />
+
       {/* ── Content area ── */}
       <main className="flex-1 overflow-y-auto hide-scrollbar">
         <Outlet />
