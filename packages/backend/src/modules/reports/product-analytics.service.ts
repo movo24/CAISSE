@@ -35,6 +35,19 @@ export class ProductAnalyticsService {
     @InjectRepository(StoreEntity) private readonly storeRepo: Repository<StoreEntity>,
   ) {}
 
+  // Cache mémoire simple (TTL court) — évite de re-agréger à chaque visite du
+  // dashboard. Clé = méthode+store+jour. Fail-safe : aucune persistance.
+  private readonly cache = new Map<string, { at: number; data: unknown }>();
+  private static readonly TTL_MS = 60_000;
+
+  private async cached<T>(key: string, build: () => Promise<T>): Promise<T> {
+    const hit = this.cache.get(key);
+    if (hit && Date.now() - hit.at < ProductAnalyticsService.TTL_MS) return hit.data as T;
+    const data = await build();
+    this.cache.set(key, { at: Date.now(), data });
+    return data;
+  }
+
   /** Somme des unités vendues par produit sur [from, to) (ventes complétées). */
   private async unitsByProduct(storeId: string, from: Date, to: Date): Promise<Map<string, number>> {
     const rows = await this.lineRepo
@@ -50,6 +63,23 @@ export class ProductAnalyticsService {
       .groupBy('li.product_id')
       .getRawMany<{ productId: string; units: string }>();
     return new Map(rows.map((r) => [r.productId, Number(r.units) || 0]));
+  }
+
+  /** CA par produit (somme des totaux de lignes) sur [from, to). */
+  private async revenueByProduct(storeId: string, from: Date, to: Date): Promise<Map<string, number>> {
+    const rows = await this.lineRepo
+      .createQueryBuilder('li')
+      .innerJoin(SaleEntity, 's', 's.id = li.sale_id')
+      .select('li.product_id', 'productId')
+      .addSelect('SUM(li.line_total_minor_units)', 'revenue')
+      .where('s.store_id = :storeId', { storeId })
+      .andWhere("s.status = 'completed'")
+      .andWhere('s.created_at >= :from', { from })
+      .andWhere('s.created_at < :to', { to })
+      .andWhere('li.product_id IS NOT NULL')
+      .groupBy('li.product_id')
+      .getRawMany<{ productId: string; revenue: string }>();
+    return new Map(rows.map((r) => [r.productId, Number(r.revenue) || 0]));
   }
 
   /** Dernière vente par produit (toutes périodes). */
@@ -70,11 +100,16 @@ export class ProductAnalyticsService {
   }
 
   async getReport(storeId: string, now: Date = new Date()): Promise<ProductAnalyticsReport> {
+    return this.cached(`report:${storeId}:${now.toISOString().slice(0, 10)}`, () => this.buildReport(storeId, now));
+  }
+
+  private async buildReport(storeId: string, now: Date): Promise<ProductAnalyticsReport> {
     const d = (days: number) => new Date(now.getTime() - days * 86_400_000);
-    const [u7, u30, uPrev30, lastSold, products] = await Promise.all([
+    const [u7, u30, uPrev30, rev30, lastSold, products] = await Promise.all([
       this.unitsByProduct(storeId, d(7), now),
       this.unitsByProduct(storeId, d(30), now),
       this.unitsByProduct(storeId, d(60), d(30)),
+      this.revenueByProduct(storeId, d(30), now),
       this.lastSoldByProduct(storeId),
       this.productRepo.find({ where: { storeId } }),
     ]);
@@ -85,10 +120,12 @@ export class ProductAnalyticsService {
       ean: p.ean,
       stockQuantity: p.stockQuantity,
       priceMinorUnits: p.priceMinorUnits,
+      costMinorUnits: p.costMinorUnits ?? null,
       isActive: p.isActive,
       unitsSold7d: u7.get(p.id) ?? 0,
       unitsSold30d: u30.get(p.id) ?? 0,
       unitsSoldPrev30d: uPrev30.get(p.id) ?? 0,
+      revenue30dMinorUnits: rev30.get(p.id) ?? 0,
       lastSoldAt: lastSold.get(p.id) ?? null,
     }));
 
@@ -122,6 +159,13 @@ export class ProductAnalyticsService {
   async getSalesTrend(
     storeId: string,
     now: Date = new Date(),
+  ): Promise<{ comparisons: TrendComparisons; forecast: CaForecast; timeZone: string; generatedAt: string }> {
+    return this.cached(`trend:${storeId}:${now.toISOString().slice(0, 10)}`, () => this.buildSalesTrend(storeId, now));
+  }
+
+  private async buildSalesTrend(
+    storeId: string,
+    now: Date,
   ): Promise<{ comparisons: TrendComparisons; forecast: CaForecast; timeZone: string; generatedAt: string }> {
     const store = await this.storeRepo.findOne({ where: { id: storeId } });
     const timeZone = store?.timezone || DEFAULT_TZ;

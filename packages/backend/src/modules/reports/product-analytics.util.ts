@@ -17,9 +17,13 @@ export interface ProductSalesRow {
   ean?: string | null;
   stockQuantity: number;
   priceMinorUnits: number;
+  /** Coût d'achat unitaire (centimes) — null si inconnu → marge non calculable. */
+  costMinorUnits?: number | null;
   isActive: boolean;
   unitsSold7d: number;
   unitsSold30d: number;
+  /** CA des 30 derniers jours (somme des totaux de lignes figés, centimes). */
+  revenue30dMinorUnits?: number;
   /** Unités vendues entre J-60 et J-30 (fenêtre précédente, pour la tendance). */
   unitsSoldPrev30d?: number;
   /** Dernière vente (ISO) ou null si jamais vendu. */
@@ -36,6 +40,9 @@ export interface ProductAnalytics {
   valeurStockMinorUnits: number;
   unitsSold7d: number;
   unitsSold30d: number;
+  /** CA 30j (centimes) et marge brute % (null si coût inconnu). */
+  revenue30dMinorUnits: number;
+  marginPct: number | null;
   /** Unités/jour sur 30 jours. */
   dailyVelocity: number;
   lastSoldAt: string | null;
@@ -86,7 +93,18 @@ export function analyzeProduct(row: ProductSalesRow, opts: AnalyticsOptions): Pr
   const reorderThresholdDays = opts.reorderThresholdDays ?? 7;
 
   const dailyVelocity = row.unitsSold30d / 30;
+  // Pour la rupture : on prend le rythme le plus rapide (30j vs 7j) afin de
+  // capter une accélération récente et ne pas sous-estimer une rupture.
+  const velocity7 = row.unitsSold7d / 7;
+  const effectiveVelocity = Math.max(dailyVelocity, velocity7);
   const daysSinceLastSale = row.lastSoldAt ? Math.max(0, daysBetween(row.lastSoldAt, opts.now)) : null;
+
+  const revenue30dMinorUnits = row.revenue30dMinorUnits ?? 0;
+  let marginPct: number | null = null;
+  if (row.costMinorUnits != null && row.costMinorUnits > 0 && revenue30dMinorUnits > 0) {
+    const cogs = row.costMinorUnits * row.unitsSold30d;
+    marginPct = Math.round(((revenue30dMinorUnits - cogs) / revenue30dMinorUnits) * 100);
+  }
 
   const prev = row.unitsSoldPrev30d;
   let trendPct: number | null = null;
@@ -96,10 +114,10 @@ export function analyzeProduct(row: ProductSalesRow, opts: AnalyticsOptions): Pr
     else trendPct = 0;
   }
 
-  const daysUntilStockout = dailyVelocity > 0 ? Math.floor(row.stockQuantity / dailyVelocity) : null;
+  const daysUntilStockout = effectiveVelocity > 0 ? Math.floor(row.stockQuantity / effectiveVelocity) : null;
   const needsReorder = daysUntilStockout !== null && daysUntilStockout <= reorderThresholdDays;
   const suggestedReorderQty = needsReorder
-    ? Math.max(0, Math.ceil(dailyVelocity * (leadDays + coverDays)) - row.stockQuantity)
+    ? Math.max(0, Math.ceil(effectiveVelocity * (leadDays + coverDays)) - row.stockQuantity)
     : 0;
 
   const declining = (trendPct !== null && trendPct <= -40) && row.unitsSold30d > 0;
@@ -125,6 +143,8 @@ export function analyzeProduct(row: ProductSalesRow, opts: AnalyticsOptions): Pr
     valeurStockMinorUnits: row.stockQuantity * row.priceMinorUnits,
     unitsSold7d: row.unitsSold7d,
     unitsSold30d: row.unitsSold30d,
+    revenue30dMinorUnits,
+    marginPct,
     dailyVelocity: Math.round(dailyVelocity * 100) / 100,
     lastSoldAt: row.lastSoldAt ?? null,
     daysSinceLastSale,
@@ -149,9 +169,9 @@ export function computeProductAnalytics(
     .sort((a, b) => b.unitsSold30d - a.unitsSold30d)
     .slice(0, 10);
 
-  // Flop : a vendu mais ralentit/faible (slow ou en déclin) — exclut les dormants.
+  // Flop : a vendu mais ralentit (déclin ≥ 15%) ou rotation faible — hors dormants.
   const flop = [...items]
-    .filter((i) => i.unitsSold30d > 0 && (i.classification === 'slow' || i.declining))
+    .filter((i) => i.unitsSold30d > 0 && (i.classification === 'slow' || (i.trendPct !== null && i.trendPct <= -15)))
     .sort((a, b) => (a.trendPct ?? 0) - (b.trendPct ?? 0) || a.dailyVelocity - b.dailyVelocity)
     .slice(0, 10);
 
