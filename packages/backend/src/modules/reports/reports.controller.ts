@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { ReportsService } from './reports.service';
+import { ProductAnalyticsService } from './product-analytics.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard, Roles } from '../../common/guards/roles.guard';
 
@@ -16,7 +17,10 @@ import { RolesGuard, Roles } from '../../common/guards/roles.guard';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('reports')
 export class ReportsController {
-  constructor(private reportsService: ReportsService) {}
+  constructor(
+    private reportsService: ReportsService,
+    private productAnalytics: ProductAnalyticsService,
+  ) {}
 
   @Post('z-report')
   @Roles('admin', 'manager')
@@ -64,5 +68,16 @@ export class ReportsController {
       : req.user.storeId;
     const effectiveDate = date || new Date().toISOString().split('T')[0];
     return this.reportsService.getStoreKpi(effectiveStoreId, effectiveDate);
+  }
+
+  @Get('product-analytics')
+  @Roles('admin', 'manager')
+  @ApiOperation({
+    summary: 'Top / flop / dormant products + stockout & reorder suggestions (read-only, sales-derived)',
+  })
+  async getProductAnalytics(@Request() req: any, @Query('storeId') queryStoreId?: string) {
+    const effectiveStoreId =
+      req.user.role === 'admin' && queryStoreId ? queryStoreId : req.user.storeId;
+    return this.productAnalytics.getReport(effectiveStoreId);
   }
 }
