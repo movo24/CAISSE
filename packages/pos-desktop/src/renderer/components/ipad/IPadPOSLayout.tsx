@@ -5,7 +5,7 @@ import {
   ScanBarcode, UserCircle, Weight, Tag, ArrowRight,
   FileText, Smartphone, XCircle, Clock, Trash2, Coins, Split,
   History, RotateCcw, Printer, Receipt, AlertTriangle,
-  Camera, Pause, Maximize2, Minimize2, Share, Download, QrCode,
+  Camera, Pause, Maximize2, Minimize2, Share, Download, QrCode, Ticket, Gift,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { usePOSStore } from '../../stores/posStore';
@@ -710,6 +710,23 @@ export function IPadPOSLayout() {
                     onClick={() => payment.addPartialPayment('cash')}
                   >
                     <Banknote size={20} className="text-pos-success" /> Especes
+                  </button>
+                </div>
+                {/* Additional tenders — no PSP, work offline; no cash change on these */}
+                <div className="grid grid-cols-2 gap-2 mt-2">
+                  <button
+                    className="flex items-center justify-center gap-2 px-4 py-4 rounded-2xl border-2 border-pos-border/40 hover:border-amber-400 hover:bg-amber-50 transition-all font-semibold text-base product-card-touch"
+                    onClick={() => payment.addPartialPayment('voucher')}
+                    title="Titre-resto (aucune monnaie rendue)"
+                  >
+                    <Ticket size={20} className="text-amber-500" /> Titre-resto
+                  </button>
+                  <button
+                    className="flex items-center justify-center gap-2 px-4 py-4 rounded-2xl border-2 border-pos-border/40 hover:border-violet-400 hover:bg-violet-50 transition-all font-semibold text-base product-card-touch"
+                    onClick={() => payment.addPartialPayment('gift_card')}
+                    title="Carte cadeau (aucune monnaie rendue)"
+                  >
+                    <Gift size={20} className="text-violet-500" /> Carte cadeau
                   </button>
                 </div>
               </>

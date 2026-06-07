@@ -20,6 +20,16 @@ import { SkipTenantCheck } from '../../common/interceptors/tenant.interceptor';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { MailService } from '../../common/messaging/mail.service';
 
+/** Human labels for payment methods on the receipt. */
+const PAYMENT_LABELS: Record<string, string> = {
+  card: 'Carte bancaire',
+  cash: 'Espèces',
+  voucher: 'Titre-resto',
+  gift_card: 'Carte cadeau',
+  store_credit: 'Avoir',
+  mixed: 'Mixte',
+};
+
 /** Escape HTML to prevent XSS — all user-controlled data must pass through this */
 function esc(str: string | null | undefined): string {
   if (!str) return '';
@@ -82,7 +92,7 @@ export class ReceiptsController {
         total: li.lineTotalMinorUnits / 100,
       })),
       payments: payments.map((p) => ({
-        method: p.method === 'card' ? 'Carte bancaire' : p.method === 'cash' ? 'Espèces' : 'Mixte',
+        method: PAYMENT_LABELS[p.method] ?? 'Mixte',
         amount: p.amountMinorUnits / 100,
       })),
       subtotal: sale.subtotalMinorUnits / 100,

@@ -6,10 +6,11 @@ import {
   ScanBarcode, UserCircle, Weight, Tag, ArrowRight,
   FileText, Smartphone, XCircle, Clock, Trash2, Coins, Split,
   History, RotateCcw, Printer, Receipt, AlertTriangle,
-  Camera, Monitor, Tablet, Mail, Loader2,
+  Camera, Monitor, Tablet, Mail, Loader2, Ticket, Gift,
 } from 'lucide-react';
 import { usePOSStore } from '../stores/posStore';
 import { productsApi, salesApi, customersApi, occupancyApi, receiptsApi } from '../services/api';
+import { computePaymentState, type PaymentMethod } from '../services/paymentMachine';
 import { FluxWidget } from '../components/FluxWidget';
 import { useOfflineMode } from '../hooks/useOfflineMode';
 import { useWakeLock } from '../hooks/useWakeLock';
@@ -81,7 +82,7 @@ interface CatalogueProduct {
 
 /* ── Payment types ── */
 
-type PaymentMethod = 'cash' | 'card' | 'mixed';
+// PaymentMethod is the canonical union from paymentMachine (cash/card/mixed/voucher/gift_card/store_credit)
 
 interface PartialPayment {
   id: string;
@@ -625,11 +626,12 @@ export function POSPage() {
     };
 
     const newPayments = [...partialPayments, payment];
-    const newTotalPaid = newPayments.reduce((s, p) => s + p.amountMinorUnits, 0);
     const ticketTotal = store.total();
+    // Tender state machine: cash change only; voucher/gift-card overpay forfeited.
+    const state = computePaymentState(ticketTotal, newPayments);
 
-    if (newTotalPaid >= ticketTotal) {
-      finalizePayment(newPayments, newTotalPaid - ticketTotal);
+    if (state.isCovered) {
+      finalizePayment(newPayments, state.changeDue);
     } else {
       setPartialPayments(newPayments);
       setSplitAmountInput('');
@@ -775,18 +777,24 @@ export function POSPage() {
   const methodLabel = (m: string) => {
     if (m === 'card') return 'Carte Bancaire';
     if (m === 'cash') return 'Especes';
+    if (m === 'voucher') return 'Titre-resto';
+    if (m === 'gift_card') return 'Carte cadeau';
     return 'Paiement Mixte';
   };
 
   const methodIcon = (m: string) => {
     if (m === 'card') return <CreditCard size={18} />;
     if (m === 'cash') return <Banknote size={18} />;
+    if (m === 'voucher') return <Ticket size={18} />;
+    if (m === 'gift_card') return <Gift size={18} />;
     return <Layers size={18} />;
   };
 
   const methodIconSmall = (m: string) => {
     if (m === 'card') return <CreditCard size={14} className="text-pos-accent" />;
     if (m === 'cash') return <Banknote size={14} className="text-pos-success" />;
+    if (m === 'voucher') return <Ticket size={14} className="text-amber-500" />;
+    if (m === 'gift_card') return <Gift size={14} className="text-violet-500" />;
     return <Layers size={14} className="text-pos-muted" />;
   };
 
@@ -1342,6 +1350,25 @@ export function POSPage() {
                       disabled={processing}
                     >
                       <Banknote size={18} className="text-pos-success" /> Especes
+                    </button>
+                  </div>
+                  {/* Additional tenders — no PSP, available offline. No cash change on these. */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      className="flex items-center justify-center gap-2 px-4 py-3.5 rounded-2xl border-2 border-pos-border/40 hover:border-amber-400 hover:bg-amber-50 transition-all font-semibold text-sm"
+                      onClick={() => addPartialPayment('voucher')}
+                      disabled={processing}
+                      title="Titre-resto (aucune monnaie rendue)"
+                    >
+                      <Ticket size={18} className="text-amber-500" /> Titre-resto
+                    </button>
+                    <button
+                      className="flex items-center justify-center gap-2 px-4 py-3.5 rounded-2xl border-2 border-pos-border/40 hover:border-violet-400 hover:bg-violet-50 transition-all font-semibold text-sm"
+                      onClick={() => addPartialPayment('gift_card')}
+                      disabled={processing}
+                      title="Carte cadeau (aucune monnaie rendue)"
+                    >
+                      <Gift size={18} className="text-violet-500" /> Carte cadeau
                     </button>
                   </div>
                   {/* Offline payment warning */}

@@ -5,10 +5,11 @@ import { usePerformanceStore } from '../stores/performanceStore';
 import { posEventBus } from '../services/posEventBus';
 import { peripheralBridge, TicketData } from '../services/peripheralBridge';
 import { useOfflineStore } from '../stores/offlineStore';
+import { computePaymentState, PaymentMethod } from '../services/paymentMachine';
 
 /* ── Types ── */
 
-export type PaymentMethod = 'cash' | 'card' | 'mixed';
+export type { PaymentMethod } from '../services/paymentMachine';
 
 export interface PartialPayment {
   id: string;
@@ -316,10 +317,11 @@ export function usePayment() {
   const commitPartialPayment = useCallback((method: PaymentMethod, amountMinor: number) => {
     const payment: PartialPayment = { id: `pay-${Date.now()}`, method, amountMinorUnits: amountMinor };
     const newPayments = [...partialPayments, payment];
-    const newTotalPaid = newPayments.reduce((s, p) => s + p.amountMinorUnits, 0);
     const ticketTotal = store.total();
-    if (newTotalPaid >= ticketTotal) {
-      finalizePayment(newPayments, newTotalPaid - ticketTotal);
+    // Tender state machine: cash change only; voucher/gift-card overpay is forfeited.
+    const state = computePaymentState(ticketTotal, newPayments);
+    if (state.isCovered) {
+      finalizePayment(newPayments, state.changeDue);
     } else {
       setPartialPayments(newPayments);
       setSplitAmountInput('');
