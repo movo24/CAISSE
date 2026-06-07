@@ -184,7 +184,12 @@ export const employeesApi = {
   get: (id: string) => api.get(`/employees/${id}`),
   create: (data: any) => api.post('/employees', data),
   update: (id: string, data: any) => api.put(`/employees/${id}`, data),
-  deactivate: (id: string) => api.put(`/employees/${id}/deactivate`),
+  // Backend exposes POST (not PUT) for (de)activation.
+  deactivate: (id: string) => api.post(`/employees/${id}/deactivate`),
+  reactivate: (id: string) => api.post(`/employees/${id}/reactivate`),
+  changePin: (id: string, pin: string) => api.patch(`/employees/${id}/pin`, { pin }),
+  getQr: (id: string) => api.get(`/employees/${id}/qr`),
+  roleDefaults: () => api.get('/employees/rights/defaults'),
 };
 
 // ---------------------------------------------------------------------------
