@@ -32,6 +32,7 @@ import { StripeModule } from './common/stripe/stripe.module';
 import { StripeTerminalModule } from './modules/stripe-terminal/stripe-terminal.module';
 import { TerminalsModule } from './modules/terminals/terminals.module';
 import { TimewinModule } from './modules/timewin/timewin.module';
+import { ShiftRemindersModule } from './modules/shift-reminders/shift-reminders.module';
 import { SalesAiModule } from './modules/sales-ai/sales-ai.module';
 import { ReceiptsModule } from './modules/receipts/receipts.module';
 import { EmployeesModule } from './modules/employees/employees.module';
@@ -112,6 +113,7 @@ const isProd = process.env.NODE_ENV === 'production';
     StripeTerminalModule,
     TerminalsModule,
     TimewinModule,
+    ShiftRemindersModule,
     SalesAiModule,
     ReceiptsModule,
     EmployeesModule,
