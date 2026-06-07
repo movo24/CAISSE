@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, MoreThan, IsNull, Or } from 'typeorm';
+import { Repository, MoreThan } from 'typeorm';
 import axios, { AxiosInstance } from 'axios';
 
 import { ProductEntity } from '../../database/entities/product.entity';

@@ -1,4 +1,4 @@
-import { Controller, Get, Head, HttpCode, HttpStatus, HttpException, Inject, UseGuards, Res } from '@nestjs/common';
+import { Controller, Get, Head, HttpCode, HttpStatus, Inject, UseGuards, Res } from '@nestjs/common';
 import { SkipThrottle } from '@nestjs/throttler';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { InjectDataSource } from '@nestjs/typeorm';

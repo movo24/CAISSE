@@ -14,7 +14,7 @@ import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { SalesService } from './sales.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard, Roles } from '../../common/guards/roles.guard';
-import { CreateSaleDto, PaginationQueryDto } from '../../common/dto';
+import { CreateSaleDto } from '../../common/dto';
 
 @ApiTags('sales')
 @ApiBearerAuth()

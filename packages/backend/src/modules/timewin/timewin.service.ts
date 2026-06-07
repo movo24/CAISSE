@@ -1,6 +1,5 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import * as bcrypt from 'bcrypt';
 import { createHmac, randomUUID } from 'crypto';
 import { AlertService } from '../../common/alert/alert.service';
 
