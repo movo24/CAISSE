@@ -36,6 +36,12 @@ const profiles: Record<string, { profile: Profile; setStock?: number }> = {
 };
 
 async function run() {
+  // ── Garde-fou : fixture DEV/DEMO uniquement, JAMAIS en production ──
+  if (process.env.NODE_ENV === 'production' || process.env.ALLOW_SEED === undefined && /prod/i.test(process.env.DATABASE_URL || '')) {
+    console.error('REFUSÉ : seed analytics = fixture DEV/local uniquement (NODE_ENV=production ou DATABASE_URL prod détecté).');
+    process.exit(1);
+  }
+
   const ds = new DataSource({
     type: 'postgres',
     url: process.env.DATABASE_URL,
@@ -80,11 +86,11 @@ async function run() {
   for (const p of products) {
     const cfg = profiles[p.name];
     if (!cfg) continue;
-    for (let dayAgo = 1; dayAgo <= 366; dayAgo++) {
+    for (let dayAgo = 0; dayAgo <= 366; dayAgo++) {
       const qty = cfg.profile(dayAgo);
       if (qty <= 0) continue;
       const when = new Date(Date.now() - dayAgo * 86_400_000);
-      when.setUTCHours(13, 30, 0, 0); // ~14h30 Paris, journée bien locale
+      when.setUTCHours(9, 30, 0, 0); // ~11h30 Paris — inclut le jour courant (CA jour)
       const total = qty * p.priceMinorUnits;
       const sale = await saleRepo.save({
         storeId, employeeId: 'seed-history', employeeNameSnapshot: 'Seed History',
