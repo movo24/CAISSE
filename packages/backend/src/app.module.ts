@@ -9,6 +9,7 @@ import { MessagingModule } from './common/messaging/messaging.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { ProductsModule } from './modules/products/products.module';
 import { SalesModule } from './modules/sales/sales.module';
+import { ReturnsModule } from './modules/returns/returns.module';
 import { CustomersModule } from './modules/customers/customers.module';
 import { StoresModule } from './modules/stores/stores.module';
 import { ReportsModule } from './modules/reports/reports.module';
@@ -128,6 +129,7 @@ const isProd = process.env.NODE_ENV === 'production';
     AirtableOpsModule,
     // Sales Guards (anti-error engine — read-only, separate audit table)
     SalesGuardsModule,
+    ReturnsModule,
   ],
   providers: [
     // Apply rate limiting globally to ALL endpoints
