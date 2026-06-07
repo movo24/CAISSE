@@ -17,6 +17,7 @@ import { UnitsPage } from './pages/UnitsPage';
 import { StoresManagementPage } from './pages/StoresManagementPage';
 import { EmployeesPage } from './pages/EmployeesPage';
 import { PayrollPage } from './pages/PayrollPage';
+import { PlanningPage } from './pages/PlanningPage';
 import { ConnectedAppsPage } from './pages/ConnectedAppsPage';
 import { AirtableOpsPage } from './pages/AirtableOpsPage';
 import { SalesGuardsPage } from './pages/SalesGuardsPage';
@@ -88,6 +89,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             {/* Couche 4: Equipes / RH */}
             <Route path="/employees" element={<EmployeesPage />} />
             <Route path="/payroll" element={<PayrollPage />} />
+            <Route path="/planning" element={<PlanningPage />} />
             <Route path="/timewin24" element={<ComingSoonPage />} />
 
             {/* Couche 7: Reglages */}

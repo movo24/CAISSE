@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Package, FileBarChart, Settings, LogOut,
   ChevronDown, ChevronRight, Globe, Store as StoreIcon,
   AlertTriangle, Building2, Network, Plug, CreditCard, Tag, Warehouse,
-  BarChart3, Users, Rocket, ShieldAlert, Database, Wallet,
+  BarChart3, Users, ShieldAlert, Database, Wallet, CalendarClock,
 } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 import { useAppScope } from '../hooks/useAppScope';
@@ -64,6 +64,7 @@ const navItems: NavItem[] = [
   // Couche 4 — Équipes / RH
   { path: '/employees', label: 'Employés', icon: Users, minRole: 'manager', scope: 'store' },
   { path: '/payroll', label: 'Paie & heures', icon: Wallet, minRole: 'manager', scope: 'store' },
+  { path: '/planning', label: 'Planning', icon: CalendarClock, minRole: 'manager', scope: 'store' },
 ];
 
 const stockGroup: NavGroup = {
@@ -94,7 +95,6 @@ const adminGroup: NavGroup = {
 const bottomItems: NavItem[] = [
   { path: '/billing', label: 'Abonnement', icon: CreditCard, minRole: 'admin', scope: 'both' },
   { path: '/settings', label: 'Réglages', icon: Settings, scope: 'store' },
-  { path: '/timewin24', label: 'TimeWin24', icon: Rocket, scope: 'both' },
 ];
 
 // ════════════════════════════════════════════════════════════════
