@@ -8,6 +8,18 @@ import { MonthPayroll, formatCurrency, formatHours } from './payroll-calculator'
 // ── CSV Export ──
 
 /**
+ * Build a French-Excel-friendly CSV string (UTF-8 BOM, ';' separator, quoted +
+ * escaped cells). Pure — unit-testable independently of the DOM download.
+ */
+export function buildCsv(headers: string[], rows: string[][]): string {
+  const separator = ';';
+  const esc = (cell: unknown) => `"${String(cell).replace(/"/g, '""')}"`;
+  const headerLine = headers.join(separator);
+  const dataLines = rows.map((row) => row.map(esc).join(separator));
+  return '﻿' + [headerLine, ...dataLines].join('\n');
+}
+
+/**
  * Génère un fichier CSV et déclenche le téléchargement
  */
 export function downloadCSV(filename: string, headers: string[], rows: string[][]): void {
