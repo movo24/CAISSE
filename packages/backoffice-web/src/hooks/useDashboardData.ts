@@ -229,12 +229,14 @@ export function useDashboardData(): DashboardData {
         dailySummaryRes,
         networkRes,
         storesRes,
+        analyticsRes,
       ] = await Promise.allSettled([
         productsApi.list({ storeId }),
         notificationsApi.stockAlerts(storeId),
         reportsApi.storeKpi(storeId, today),  // STORE-scoped KPIs (CA jour, tickets, panier moyen)
         storesApi.networkSummary(),  // aggregated network KPIs (for comparison only)
         storesApi.list(),
+        reportsApi.productAnalytics(storeId),  // top/flop/dormant + réassort (dérivé des ventes)
       ]);
 
       // ── Products ──
@@ -293,12 +295,21 @@ export function useDashboardData(): DashboardData {
           ...prev,
           surfaceM2: storeList.find((s: any) => s.id === storeId)?.surfaceM2 || 0,
         }));
-        setInterStoreComparison(storeList.map((s: any) => ({
-          magasin: s.name || s.storeName || 'Magasin',
-          tauxEspeces: 0,
-          ecartMoyen: 0,
-          annulationsPct: 0,
-        })));
+        // Comparaison inter-magasins : pas encore alimentée par de vraies
+        // métriques → on n'affiche PAS de valeurs factices (zéros trompeurs).
+        setInterStoreComparison([]);
+      }
+
+      // ── Analyse produit (top/flop/dormant/réassort) dérivée des ventes ──
+      if (analyticsRes.status === 'fulfilled') {
+        const a = analyticsRes.value.data || {};
+        const dormantList = (a.dormant || []).map((d: any) => ({
+          name: d.name,
+          lastSale: d.lastSoldAt ? new Date(d.lastSoldAt).toLocaleDateString('fr-FR') : 'Jamais vendu',
+          stock: d.stockQuantity,
+          valeurStock: d.valeurStockMinorUnits,
+        }));
+        setDormants(dormantList);
       }
 
       // Network / Live performance → migrated to TimeWin24
