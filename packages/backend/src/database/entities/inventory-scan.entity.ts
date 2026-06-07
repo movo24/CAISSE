@@ -21,6 +21,7 @@ import { ProductEntity } from './product.entity';
 @Index(['storeId', 'createdAt'])
 @Index(['storeId', 'barcode'])
 @Index(['storeId', 'status'])
+@Index(['storeId', 'clientEntryId'])
 export class InventoryScanEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -74,6 +75,14 @@ export class InventoryScanEntity {
 
   @Column({ name: 'session_id', type: 'uuid', nullable: true })
   sessionId: string | null;
+
+  /**
+   * Référence d'idempotence fournie par le client offline (= id local de la
+   * file). Permet de dé-dupliquer un scan rejoué après une réponse perdue
+   * (réseau coupé après commit serveur). Nullable : scans online classiques.
+   */
+  @Column({ name: 'client_entry_id', type: 'varchar', length: 64, nullable: true })
+  clientEntryId: string | null;
 
   // ── Timestamps ──
 

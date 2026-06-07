@@ -24,6 +24,7 @@ const poster = (p: CountPayload & { clientEntryId: string }) =>
     scanType: p.scanType,
     sessionId: p.sessionId,
     notes: p.notes,
+    clientEntryId: p.clientEntryId, // idempotence serveur (dédup sur rejeu)
   });
 
 interface OfflineState {

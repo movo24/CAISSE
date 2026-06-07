@@ -39,6 +39,15 @@ export class CreateInventoryScanDto {
   @IsOptional()
   @IsUUID()
   sessionId?: string;
+
+  @ApiProperty({
+    description: 'Client-side idempotency key (offline queue entry id). Same key = same scan, not duplicated.',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  clientEntryId?: string;
 }
 
 export class ApplyScansDto {
