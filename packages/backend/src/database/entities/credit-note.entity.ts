@@ -32,8 +32,12 @@ export class CreditNoteEntity {
   @Column({ name: 'store_id' })
   storeId: string;
 
-  @Column({ name: 'original_sale_id', type: 'uuid' })
-  originalSaleId: string;
+  @Column({ name: 'original_sale_id', type: 'uuid', nullable: true })
+  originalSaleId: string | null;
+
+  /** 'return' (issued from a return) or 'gift_card' (sold/loaded as a gift card). */
+  @Column({ default: 'return' })
+  origin: 'return' | 'gift_card';
 
   @Column({ name: 'original_ticket_number', type: 'varchar', nullable: true })
   originalTicketNumber: string | null;

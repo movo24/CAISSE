@@ -39,6 +39,23 @@ export class ReturnsController {
     );
   }
 
+  @Post('gift-card')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'Issue / load a gift card (store-credit avoir). Send Idempotency-Key.' })
+  issueGiftCard(
+    @Body() dto: { amountMinorUnits: number; code?: string; saleId?: string },
+    @Request() req: any,
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ) {
+    return this.returns.issueGiftCard(
+      req.user.storeId,
+      req.user.employeeId,
+      dto,
+      req.user.employeeName,
+      idempotencyKey,
+    );
+  }
+
   @Get()
   @Roles('admin', 'manager')
   @ApiOperation({ summary: 'List credit notes for the store (paginated)' })

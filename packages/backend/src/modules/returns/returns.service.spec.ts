@@ -118,6 +118,36 @@ describe('ReturnsService', () => {
     expect(qr.startTransaction).not.toHaveBeenCalled();
   });
 
+  describe('issueGiftCard', () => {
+    it('issues a store_credit gift card with full balance and a generated code', async () => {
+      const res = await service.issueGiftCard('store-1', 'e1', { amountMinorUnits: 5000 }, 'Alice');
+      expect(res.type).toBe('store_credit');
+      expect(res.origin).toBe('gift_card');
+      expect(res.status).toBe('active');
+      expect(res.totalMinorUnits).toBe(5000);
+      expect(res.remainingMinorUnits).toBe(5000);
+      expect(res.code).toMatch(/^GC-/);
+      expect(res.originalSaleId).toBeNull();
+      expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'gift_card_issued' }));
+    });
+
+    it('uses a provided code (e.g. physical card serial), uppercased', async () => {
+      const res = await service.issueGiftCard('store-1', 'e1', { amountMinorUnits: 2000, code: 'card-123' });
+      expect(res.code).toBe('CARD-123');
+    });
+
+    it('rejects a non-positive amount', async () => {
+      await expect(service.issueGiftCard('store-1', 'e1', { amountMinorUnits: 0 })).rejects.toThrow(BadRequestException);
+    });
+
+    it('replays the cached gift card on idempotency reuse', async () => {
+      idemRepo.findOne.mockResolvedValue({ key: 'g1', responseBody: { id: 'gc-cached', code: 'GC-CACHED' } });
+      const res = await service.issueGiftCard('store-1', 'e1', { amountMinorUnits: 1000 }, 'Alice', 'g1');
+      expect((res as any).code).toBe('GC-CACHED');
+      expect(qr.startTransaction).not.toHaveBeenCalled();
+    });
+  });
+
   describe('lookupSpendable', () => {
     it('returns spendable=true for an active store_credit with balance', async () => {
       cnRepo.findOne.mockResolvedValue({ code: 'AV-X', type: 'store_credit', status: 'active', remainingMinorUnits: 500 });

@@ -159,6 +159,7 @@ export class ReturnsService {
         cn.id = uuidv4();
         cn.code = code;
         cn.storeId = storeId;
+        cn.origin = 'return';
         cn.originalSaleId = sale.id;
         cn.originalTicketNumber = sale.ticketNumber;
         cn.type = isStoreCredit ? 'store_credit' : 'refund';
@@ -238,6 +239,108 @@ export class ReturnsService {
       }
     }
     throw new BadRequestException('Return failed after max retries');
+  }
+
+  private genGiftCode(): string {
+    return 'GC-' + randomBytes(5).toString('hex').toUpperCase().slice(0, 10);
+  }
+
+  /**
+   * Issue / load a gift card — a store_credit avoir not tied to a return.
+   * Reuses the credit_notes mechanism (so it is redeemed exactly like an avoir).
+   * Idempotent. The chain payload mirrors createReturn for consistency.
+   */
+  async issueGiftCard(
+    storeId: string,
+    employeeId: string,
+    data: { amountMinorUnits: number; code?: string; saleId?: string },
+    employeeName?: string,
+    idempotencyKey?: string,
+  ): Promise<CreditNoteEntity> {
+    const idemKey = this.normalizeIdempotencyKey(idempotencyKey);
+    if (idemKey) {
+      const cached = await this.idemRepo.findOne({ where: { key: idemKey } });
+      if (cached) return cached.responseBody as unknown as CreditNoteEntity;
+    }
+    const amount = Math.round(data.amountMinorUnits);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new BadRequestException('Montant de carte cadeau invalide');
+    }
+
+    const MAX_RETRIES = 3;
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      const qr = this.dataSource.createQueryRunner();
+      await qr.connect();
+      await qr.startTransaction();
+      try {
+        if (idemKey) {
+          const cachedTx = await qr.manager.findOne(IdempotencyKeyEntity, { where: { key: idemKey } });
+          if (cachedTx) {
+            await qr.commitTransaction();
+            return cachedTx.responseBody as unknown as CreditNoteEntity;
+          }
+        }
+        const lastCn = await qr.query(
+          `SELECT hash_chain_current FROM credit_notes WHERE store_id = $1 ORDER BY created_at DESC LIMIT 1`,
+          [storeId],
+        );
+        const prevHash = lastCn.length > 0 ? lastCn[0].hash_chain_current : GENESIS;
+        const code = (data.code?.trim().toUpperCase()) || this.genGiftCode();
+        const currentHash = sha256(prevHash + JSON.stringify({ code, storeId, amount, origin: 'gift_card' }));
+
+        const cn = new CreditNoteEntity();
+        cn.id = uuidv4();
+        cn.code = code;
+        cn.storeId = storeId;
+        cn.origin = 'gift_card';
+        cn.originalSaleId = data.saleId ?? null;
+        cn.originalTicketNumber = null;
+        cn.type = 'store_credit';
+        cn.refundMethod = null;
+        cn.status = 'active';
+        cn.reason = 'Émission carte cadeau';
+        cn.employeeId = employeeId;
+        cn.employeeNameSnapshot = employeeName ?? null;
+        cn.totalMinorUnits = amount;
+        cn.remainingMinorUnits = amount;
+        cn.currencyCode = 'EUR';
+        cn.hashChainPrev = prevHash;
+        cn.hashChainCurrent = currentHash;
+        cn.lines = [];
+
+        const saved = await qr.manager.save(CreditNoteEntity, cn);
+
+        if (idemKey) {
+          const expiresAt = new Date();
+          expiresAt.setDate(expiresAt.getDate() + 7);
+          await qr.manager.insert(IdempotencyKeyEntity, {
+            key: idemKey, endpoint: '/returns/gift-card', customerId: null,
+            responseStatus: 201, responseBody: JSON.parse(JSON.stringify(saved)), expiresAt,
+          });
+        }
+
+        await qr.commitTransaction();
+
+        this.auditService
+          .log({
+            storeId, employeeId, action: 'gift_card_issued', entityType: 'credit_note', entityId: saved.id,
+            details: { code: saved.code, amountMinorUnits: amount, saleId: data.saleId ?? null, hash: currentHash, source: 'gift_card' },
+          })
+          .catch((e: any) => this.logger.warn(`Audit (gift_card_issued) failed: ${e?.message}`));
+
+        return saved;
+      } catch (err: any) {
+        await qr.rollbackTransaction();
+        const retryable =
+          err?.code === '23505' || err?.code === '40001' ||
+          err?.message?.includes('duplicate key') || err?.message?.includes('could not serialize');
+        if (retryable && attempt < MAX_RETRIES) continue;
+        throw err;
+      } finally {
+        if (!qr.isReleased) await qr.release();
+      }
+    }
+    throw new BadRequestException('Gift card issuance failed after max retries');
   }
 
   async listForStore(

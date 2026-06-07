@@ -180,6 +180,10 @@ export const returnsApi = {
     },
     idempotencyKey: string,
   ) => api.post('/returns', data, { headers: { 'Idempotency-Key': idempotencyKey } }),
+  issueGiftCard: (
+    data: { amountMinorUnits: number; code?: string },
+    idempotencyKey: string,
+  ) => api.post('/returns/gift-card', data, { headers: { 'Idempotency-Key': idempotencyKey } }),
 };
 
 // ---------------------------------------------------------------------------
