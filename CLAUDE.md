@@ -22,7 +22,7 @@ npm run docker:down      # Stop local PostgreSQL
 
 # Testing (always run before committing)
 npm run test             # All workspaces
-npm run test:backend     # Backend only (397 tests, 48 spec files)
+npm run test:backend     # Backend only (405 tests, 49 spec files)
 
 # Code quality
 npm run lint             # ESLint (all workspaces)
@@ -288,7 +288,7 @@ Validated at boot in `main.ts`. Missing required vars crash the server with a cl
 
 ## Tests
 
-397 tests across 48 spec files (`packages/backend/test/` + colocated `*.spec.ts`). Key suites:
+405 tests across 49 spec files (`packages/backend/test/` + colocated `*.spec.ts`). Key suites:
 
 | File | Coverage |
 |------|----------|
