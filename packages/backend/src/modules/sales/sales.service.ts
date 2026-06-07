@@ -5,7 +5,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, QueryRunner } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
 import { createHash } from 'crypto';
 import { SaleEntity } from '../../database/entities/sale.entity';
@@ -30,7 +30,13 @@ function sha256(data: string): string {
 interface CreateSaleDto {
   items: { ean: string; quantity: number }[];
   customerQrCode?: string;
-  payments: { method: string; amountMinorUnits: number; stripePaymentIntentId?: string }[];
+  payments: {
+    method: string;
+    amountMinorUnits: number;
+    stripePaymentIntentId?: string;
+    /** Required when method === 'store_credit': the avoir code to redeem. */
+    creditNoteCode?: string;
+  }[];
 }
 
 export interface SaleStockAlert {
@@ -68,6 +74,52 @@ export class SalesService {
   /** Serialize an entity to a plain JSON object for jsonb storage (dates → ISO strings). */
   private toJsonBody(entity: unknown): Record<string, unknown> {
     return JSON.parse(JSON.stringify(entity));
+  }
+
+  /**
+   * Redeem any `store_credit` payments against their avoir, atomically within the
+   * sale transaction: lock the credit note FOR UPDATE, validate the balance,
+   * decrement it, record a redemption row. Throws (→ rollback) on any problem so
+   * a sale can never consume more than an avoir holds.
+   */
+  async applyStoreCreditRedemptions(
+    qr: QueryRunner,
+    storeId: string,
+    saleId: string,
+    payments: { method: string; amountMinorUnits: number; creditNoteCode?: string }[],
+  ): Promise<void> {
+    for (const p of payments) {
+      if (p.method !== 'store_credit') continue;
+      if (!p.creditNoteCode) {
+        throw new BadRequestException('creditNoteCode requis pour un paiement par avoir');
+      }
+      const rows = await qr.query(
+        `SELECT id, remaining_minor_units, status, type FROM credit_notes
+          WHERE code = $1 AND store_id = $2 FOR UPDATE`,
+        [p.creditNoteCode, storeId],
+      );
+      if (rows.length === 0) throw new BadRequestException(`Avoir introuvable: ${p.creditNoteCode}`);
+      const cn = rows[0];
+      if (cn.type !== 'store_credit') throw new BadRequestException("Cet avoir n'est pas utilisable en caisse");
+      if (cn.status === 'redeemed' || cn.status === 'cancelled') {
+        throw new BadRequestException('Avoir déjà utilisé ou annulé');
+      }
+      if (p.amountMinorUnits <= 0 || p.amountMinorUnits > cn.remaining_minor_units) {
+        throw new BadRequestException("Solde de l'avoir insuffisant");
+      }
+      const newRemaining = cn.remaining_minor_units - p.amountMinorUnits;
+      const newStatus = newRemaining === 0 ? 'redeemed' : 'partially_redeemed';
+      await qr.query(`UPDATE credit_notes SET remaining_minor_units = $1, status = $2 WHERE id = $3`, [
+        newRemaining,
+        newStatus,
+        cn.id,
+      ]);
+      await qr.query(
+        `INSERT INTO credit_note_redemptions (id, credit_note_id, sale_id, store_id, amount_minor_units, created_at)
+         VALUES ($1, $2, $3, $4, $5, NOW())`,
+        [uuidv4(), cn.id, saleId, storeId, p.amountMinorUnits],
+      );
+    }
   }
 
   /** Idempotency keys live 7 days — long enough to cover extended offline sync replays. */
@@ -410,6 +462,9 @@ export class SalesService {
           );
         }
       }
+
+      // --- Redeem store-credit avoirs as tender, atomically with the sale ---
+      await this.applyStoreCreditRedemptions(queryRunner, storeId, saved.id, dto.payments);
 
       // --- Persist idempotency key in the SAME transaction as the sale, so the
       // sale and its dedup record commit (or roll back) atomically. A concurrent
