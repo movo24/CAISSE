@@ -1281,7 +1281,9 @@ export function DashboardPage() {
               Comparaison reseau
             </h4>
             <div className="space-y-3">
-              {interStoreComparison.map((store) => (
+              {interStoreComparison.length === 0 ? (
+                <p className="text-xs text-gray-400 py-2">Comparaison réseau non disponible pour le moment.</p>
+              ) : interStoreComparison.map((store) => (
                 <div key={store.magasin} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
                   <div>
                     <p className="text-sm font-medium text-bo-text">{store.magasin}</p>

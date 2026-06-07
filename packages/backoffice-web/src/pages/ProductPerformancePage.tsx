@@ -119,8 +119,9 @@ export function ProductPerformancePage() {
           <h2 className="font-semibold text-gray-800 mb-4 flex items-center gap-2"><TrendingUp size={16} className="text-indigo-500" /> Tendance CA & prévision</h2>
           <div className="grid grid-cols-2 md:grid-cols-6 gap-3 items-stretch">
             <div className="bg-indigo-600 text-white rounded-xl p-3">
-              <div className="text-[11px] opacity-80">Aujourd'hui</div>
+              <div className="text-[11px] opacity-80">Aujourd'hui (en cours)</div>
               <div className="text-lg font-bold">{eur(trend.comparisons.today.caMinorUnits)}</div>
+              <div className="text-[10px] opacity-70">journée partielle vs jours complets</div>
             </div>
             <CaCompareCard label="vs hier (J-1)" base={trend.comparisons.jMinus1} today={trend.comparisons.today.caMinorUnits} />
             <CaCompareCard label="vs S-1" base={trend.comparisons.sMinus1} today={trend.comparisons.today.caMinorUnits} />

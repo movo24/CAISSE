@@ -9,14 +9,17 @@ import {
   ProductSalesRow,
   ProductAnalyticsReport,
 } from './product-analytics.util';
+import { StoreEntity } from '../../database/entities/store.entity';
 import {
   compareBaselines,
   forecastNextDay,
-  dateKey,
+  localDateKey,
   DailyCaMap,
   TrendComparisons,
   CaForecast,
 } from './sales-trend.util';
+
+const DEFAULT_TZ = 'Europe/Paris';
 
 /**
  * ProductAnalyticsService — agrège les ventes FIGÉES (lecture seule) en signaux
@@ -29,6 +32,7 @@ export class ProductAnalyticsService {
     @InjectRepository(SaleEntity) private readonly saleRepo: Repository<SaleEntity>,
     @InjectRepository(SaleLineItemEntity) private readonly lineRepo: Repository<SaleLineItemEntity>,
     @InjectRepository(ProductEntity) private readonly productRepo: Repository<ProductEntity>,
+    @InjectRepository(StoreEntity) private readonly storeRepo: Repository<StoreEntity>,
   ) {}
 
   /** Somme des unités vendues par produit sur [from, to) (ventes complétées). */
@@ -91,22 +95,25 @@ export class ProductAnalyticsService {
     return computeProductAnalytics(rows, { now: now.toISOString() });
   }
 
-  /** Série CA quotidien (ventes complétées) sur N jours, en unités mineures. */
-  private async dailyCaMap(storeId: string, sinceDays: number): Promise<DailyCaMap> {
+  /**
+   * Série CA quotidien (ventes complétées) bucketée par JOUR COMMERCIAL LOCAL
+   * du magasin (pas UTC) — cohérent avec le Z-report. On agrège en JS pour
+   * éviter les fonctions SQL de fuseau (compatibilité pg-mem) et rester exact.
+   */
+  private async dailyCaMap(storeId: string, sinceDays: number, timeZone: string): Promise<DailyCaMap> {
     const since = new Date(Date.now() - sinceDays * 86_400_000);
     const rows = await this.saleRepo
       .createQueryBuilder('s')
-      .select('DATE(s.created_at)', 'd')
-      .addSelect('SUM(s.total_minor_units)', 'ca')
+      .select('s.created_at', 'createdAt')
+      .addSelect('s.total_minor_units', 'total')
       .where('s.store_id = :storeId', { storeId })
       .andWhere("s.status = 'completed'")
       .andWhere('s.created_at >= :since', { since })
-      .groupBy('DATE(s.created_at)')
-      .getRawMany<{ d: string | Date; ca: string }>();
+      .getRawMany<{ createdAt: string | Date; total: string | number }>();
     const map: DailyCaMap = {};
     for (const r of rows) {
-      const key = typeof r.d === 'string' ? r.d.slice(0, 10) : dateKey(new Date(r.d));
-      map[key] = Number(r.ca) || 0;
+      const key = localDateKey(r.createdAt instanceof Date ? r.createdAt : new Date(r.createdAt), timeZone);
+      map[key] = (map[key] ?? 0) + (Number(r.total) || 0);
     }
     return map;
   }
@@ -115,12 +122,15 @@ export class ProductAnalyticsService {
   async getSalesTrend(
     storeId: string,
     now: Date = new Date(),
-  ): Promise<{ comparisons: TrendComparisons; forecast: CaForecast; generatedAt: string }> {
-    const map = await this.dailyCaMap(storeId, 400); // couvre N-1
-    const todayKey = dateKey(now);
+  ): Promise<{ comparisons: TrendComparisons; forecast: CaForecast; timeZone: string; generatedAt: string }> {
+    const store = await this.storeRepo.findOne({ where: { id: storeId } });
+    const timeZone = store?.timezone || DEFAULT_TZ;
+    const map = await this.dailyCaMap(storeId, 400, timeZone); // couvre N-1
+    const todayKey = localDateKey(now, timeZone);
     return {
       comparisons: compareBaselines(map, todayKey),
       forecast: forecastNextDay(map, todayKey),
+      timeZone,
       generatedAt: now.toISOString(),
     };
   }

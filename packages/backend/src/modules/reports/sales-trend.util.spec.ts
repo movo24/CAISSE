@@ -1,4 +1,17 @@
-import { compareBaselines, forecastNextDay, DailyCaMap } from './sales-trend.util';
+import { compareBaselines, forecastNextDay, localDateKey, DailyCaMap } from './sales-trend.util';
+
+describe('sales-trend.util — jour commercial local', () => {
+  it('range une vente nocturne sur le bon jour local (pas UTC)', () => {
+    // 2026-06-07 23:30 UTC = 2026-06-08 01:30 Europe/Paris (CEST) → jour local 06-08
+    expect(localDateKey('2026-06-07T23:30:00.000Z', 'Europe/Paris')).toBe('2026-06-08');
+    // 2026-06-08 00:30 UTC = 02:30 Paris → 06-08
+    expect(localDateKey('2026-06-08T00:30:00.000Z', 'Europe/Paris')).toBe('2026-06-08');
+  });
+  it('diffère de la clé UTC près de minuit', () => {
+    expect(localDateKey('2026-06-07T22:30:00.000Z', 'Europe/Paris')).toBe('2026-06-08'); // local
+    expect('2026-06-07T22:30:00.000Z'.slice(0, 10)).toBe('2026-06-07'); // UTC (ancien comportement)
+  });
+});
 
 describe('sales-trend.util — comparaisons baselines', () => {
   // Référence : mardi 2026-06-09

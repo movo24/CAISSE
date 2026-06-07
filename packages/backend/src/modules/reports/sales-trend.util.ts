@@ -34,9 +34,28 @@ export interface CaForecast {
   sampleSize: number;
 }
 
-/* ── Helpers de date (sur clés 'YYYY-MM-DD', UTC, déterministes) ──────────── */
+/* ── Helpers de date (sur clés 'YYYY-MM-DD', déterministes) ──────────────── */
 export function dateKey(d: Date): string {
   return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Clé de JOUR COMMERCIAL dans le fuseau du magasin (pas UTC).
+ *
+ * Indispensable pour que les comparaisons J-1/S-1… et la prévision tombent sur
+ * la BONNE journée locale et restent cohérentes avec le Z-report (qui raisonne
+ * en date locale). Ex. une vente à 01:00 Europe/Paris (23:00 UTC la veille)
+ * doit compter sur le jour local, pas le jour UTC précédent.
+ */
+export function localDateKey(instant: string | Date, timeZone = 'Europe/Paris'): string {
+  const d = instant instanceof Date ? instant : new Date(instant);
+  // en-CA → 'YYYY-MM-DD'
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(d);
 }
 function parseKey(key: string): Date {
   return new Date(`${key}T00:00:00.000Z`);

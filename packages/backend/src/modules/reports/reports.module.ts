@@ -8,6 +8,7 @@ import { SaleLineItemEntity } from '../../database/entities/sale-line-item.entit
 import { SalePaymentEntity } from '../../database/entities/sale-payment.entity';
 import { ZReportEntity } from '../../database/entities/z-report.entity';
 import { ProductEntity } from '../../database/entities/product.entity';
+import { StoreEntity } from '../../database/entities/store.entity';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { ProductEntity } from '../../database/entities/product.entity';
       SalePaymentEntity,
       ZReportEntity,
       ProductEntity,
+      StoreEntity,
     ]),
   ],
   controllers: [ReportsController],
