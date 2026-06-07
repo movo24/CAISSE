@@ -182,6 +182,10 @@ export const returnsApi = {
   listSales: (date: string) => api.get('/sales', { params: { date } }),
   returnable: (saleId: string) => api.get(`/returns/sale/${saleId}/returnable`),
   lookupCreditNote: (code: string) => api.get(`/returns/credit-note/${encodeURIComponent(code)}`),
+  createByTicket: (
+    data: { ticketNumber: string; items: { ean: string; quantity: number }[]; reason?: string; refundMethod: 'cash' | 'card' | 'store_credit' },
+    idempotencyKey: string,
+  ) => api.post('/returns/by-ticket', data, { headers: { 'Idempotency-Key': idempotencyKey } }),
   create: (
     data: {
       originalSaleId: string;

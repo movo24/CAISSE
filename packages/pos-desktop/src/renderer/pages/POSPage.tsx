@@ -960,7 +960,7 @@ export function POSPage() {
             <span className="hidden compact:inline">Historique</span>
             <kbd className="text-[9px] bg-indigo-100 px-1 py-0.5 rounded font-mono">F9</kbd>
           </button>
-          {rights.canRefund && !offlineMode.isOffline && (
+          {rights.canRefund && (
             <button
               onClick={() => setReturnOpen(true)}
               title="Retour / Avoir"

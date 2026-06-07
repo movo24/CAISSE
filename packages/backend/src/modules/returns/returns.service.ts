@@ -343,6 +343,37 @@ export class ReturnsService {
     throw new BadRequestException('Gift card issuance failed after max retries');
   }
 
+  /**
+   * Create a return identified by the original TICKET NUMBER and EAN-based items.
+   * Used by the offline POS sync path (the offline client knows the ticket number
+   * and product EANs, not server line-item ids). Resolution + returnable-quantity
+   * validation happen here (deferred), so a stale offline return that conflicts
+   * with a return made meanwhile is rejected cleanly (BadRequest) at sync time.
+   */
+  async createReturnByTicket(
+    storeId: string,
+    employeeId: string,
+    dto: { ticketNumber: string; items: { ean: string; quantity: number }[]; reason?: string; refundMethod: 'cash' | 'card' | 'store_credit' },
+    employeeName?: string,
+    idempotencyKey?: string,
+  ): Promise<CreditNoteEntity> {
+    const sale = await this.saleRepo.findOne({ where: { ticketNumber: dto.ticketNumber, storeId } });
+    if (!sale) throw new NotFoundException(`Vente introuvable pour le ticket ${dto.ticketNumber}`);
+    const items = (dto.items || []).map((it) => {
+      const li = (sale.lineItems || []).find((l) => l.ean === it.ean);
+      if (!li) throw new BadRequestException(`Article absent du ticket: ${it.ean}`);
+      return { lineItemId: li.id, quantity: it.quantity };
+    });
+    // Delegates to the canonical path (validation, hash chain, stock, idempotency, audit).
+    return this.createReturn(
+      storeId,
+      employeeId,
+      { originalSaleId: sale.id, items, reason: dto.reason, refundMethod: dto.refundMethod },
+      employeeName,
+      idempotencyKey,
+    );
+  }
+
   async listForStore(
     storeId: string,
     opts: { page?: number; limit?: number } = {},

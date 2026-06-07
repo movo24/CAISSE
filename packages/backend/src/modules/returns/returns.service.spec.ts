@@ -118,6 +118,31 @@ describe('ReturnsService', () => {
     expect(qr.startTransaction).not.toHaveBeenCalled();
   });
 
+  describe('createReturnByTicket (offline-sync path)', () => {
+    it('resolves the ticket + maps EAN to line items and creates the return', async () => {
+      const res = await service.createReturnByTicket(
+        'store-1', 'e1',
+        { ticketNumber: 'T-000001', items: [{ ean: '111', quantity: 1 }], refundMethod: 'store_credit' },
+        'Alice',
+      );
+      expect(res.type).toBe('store_credit');
+      expect(res.totalMinorUnits).toBe(500); // 1 of 3 units of the 1500 line
+    });
+
+    it('404 when the ticket number is unknown', async () => {
+      saleRepo.findOne.mockResolvedValue(null);
+      await expect(
+        service.createReturnByTicket('store-1', 'e1', { ticketNumber: 'T-NOPE', items: [{ ean: '111', quantity: 1 }], refundMethod: 'cash' }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('rejects an EAN that is not on the ticket', async () => {
+      await expect(
+        service.createReturnByTicket('store-1', 'e1', { ticketNumber: 'T-000001', items: [{ ean: 'ZZZ', quantity: 1 }], refundMethod: 'cash' }),
+      ).rejects.toThrow(/absent du ticket/);
+    });
+  });
+
   describe('issueGiftCard', () => {
     it('issues a store_credit gift card with full balance and a generated code', async () => {
       const res = await service.issueGiftCard('store-1', 'e1', { amountMinorUnits: 5000 }, 'Alice');

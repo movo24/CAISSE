@@ -39,6 +39,23 @@ export class ReturnsController {
     );
   }
 
+  @Post('by-ticket')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'Create a return by original ticket number (offline-sync path). Send Idempotency-Key.' })
+  createByTicket(
+    @Body() dto: { ticketNumber: string; items: { ean: string; quantity: number }[]; reason?: string; refundMethod: 'cash' | 'card' | 'store_credit' },
+    @Request() req: any,
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ) {
+    return this.returns.createReturnByTicket(
+      req.user.storeId,
+      req.user.employeeId,
+      dto,
+      req.user.employeeName,
+      idempotencyKey,
+    );
+  }
+
   @Post('gift-card')
   @Roles('admin', 'manager')
   @ApiOperation({ summary: 'Issue / load a gift card (store-credit avoir). Send Idempotency-Key.' })
