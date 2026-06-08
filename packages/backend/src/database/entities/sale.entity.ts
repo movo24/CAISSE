@@ -67,6 +67,15 @@ export class SaleEntity {
   @Column({ name: 'hash_chain_current', nullable: true })
   hashChainCurrent: string;
 
+  /**
+   * Hash-chain fingerprint version. 1 = legacy (ticketNumber, storeId,
+   * employeeId, total, items only). 2 = full fiscal binding (adds TVA, remise,
+   * subtotal, payments, horodatage, client). Recorded so a verifier picks the
+   * right formula; existing v1 rows are never rehashed.
+   */
+  @Column({ name: 'hash_version', type: 'smallint', default: 1 })
+  hashVersion: number;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

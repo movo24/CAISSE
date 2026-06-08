@@ -138,6 +138,12 @@ export class ReturnsService {
           }
         }
 
+        // M5 — serialize the per-store credit-note hash chain: take the same
+        // pessimistic lock the sales path uses (stores FOR UPDATE) BEFORE reading
+        // prevHash, so two concurrent returns/gift-cards cannot read the same
+        // prevHash and fork the chain.
+        await qr.query(`SELECT id FROM stores WHERE id = $1 FOR UPDATE`, [storeId]);
+
         // Per-store hash chain over credit notes.
         const lastCn = await qr.query(
           `SELECT hash_chain_current FROM credit_notes WHERE store_id = $1 ORDER BY created_at DESC LIMIT 1`,
@@ -280,6 +286,9 @@ export class ReturnsService {
             return cachedTx.responseBody as unknown as CreditNoteEntity;
           }
         }
+        // M5 — serialize the per-store credit-note hash chain (see issueRefund).
+        await qr.query(`SELECT id FROM stores WHERE id = $1 FOR UPDATE`, [storeId]);
+
         const lastCn = await qr.query(
           `SELECT hash_chain_current FROM credit_notes WHERE store_id = $1 ORDER BY created_at DESC LIMIT 1`,
           [storeId],

@@ -13,6 +13,7 @@ import { SaleLineItemEntity } from '../../database/entities/sale-line-item.entit
 import { SalePaymentEntity } from '../../database/entities/sale-payment.entity';
 import { IdempotencyKeyEntity } from '../../database/entities/idempotency-key.entity';
 import { ProductEntity } from '../../database/entities/product.entity';
+import { FiscalJournalEntity } from '../../database/entities/fiscal-journal.entity';
 import { ProductsService } from '../products/products.service';
 import { CustomersService } from '../customers/customers.service';
 import { PromotionsService, CartItem } from '../promotions/promotions.service';
@@ -387,11 +388,25 @@ export class SalesService {
           ? prevHashResult[0].hash_chain_current
           : '0000000000000000000000000000000000000000000000000000000000000000';
 
+      // --- M2: hash fingerprint v2. v1 covered only {ticketNumber, storeId,
+      // employeeId, total, items}, leaving TVA, remise, paiements, horodatage and
+      // client alterable WITHOUT breaking the chain. v2 binds every fiscal field.
+      // Existing v1 rows are NEVER rehashed (immutability); `hashVersion` records
+      // which formula a row used so a verifier can pick the right one. The
+      // timestamp is computed here so the exact value is what gets hashed. ---
+      const completedAt = new Date();
       const saleDataForHash = JSON.stringify({
+        v: 2,
         ticketNumber,
         storeId,
         employeeId,
+        customerId: customerId ?? null,
+        subtotalMinorUnits: subtotal,
+        discountTotalMinorUnits: totalDiscount,
+        taxTotalMinorUnits: taxTotal,
         totalAfterDiscount,
+        payments: dto.payments.map((p) => ({ method: p.method, amount: p.amountMinorUnits })),
+        completedAt: completedAt.toISOString(),
         items: lineItems.map((li) => ({
           ean: li.ean,
           qty: li.quantity,
@@ -418,7 +433,8 @@ export class SalesService {
       sale.ticketNumber = ticketNumber;
       sale.hashChainPrev = prevHash;
       sale.hashChainCurrent = currentHash;
-      sale.completedAt = new Date();
+      sale.hashVersion = 2;
+      sale.completedAt = completedAt;
 
       for (const li of lineItems) {
         li.saleId = sale.id;
@@ -910,6 +926,10 @@ export class SalesService {
 
     let avoirRestoredMinorUnits = 0;
     try {
+      // M4 — serialize the per-store fiscal-journal chain with the same
+      // pessimistic lock the sales chain uses, so the void link cannot fork.
+      await queryRunner.query(`SELECT id FROM stores WHERE id = $1 FOR UPDATE`, [storeId]);
+
       sale.status = 'voided';
       const saved = await queryRunner.manager.save(SaleEntity, sale);
 
@@ -945,6 +965,46 @@ export class SalesService {
         );
         avoirRestoredMinorUnits += amt;
       }
+
+      // --- M4: append an immutable, hash-chained void event to the fiscal
+      // journal. NF525: an annulation must be a chained, tamper-evident event,
+      // not just a status flip + audit line. Chained per store on the previous
+      // journal hash (genesis otherwise); the payload is hashed and stored
+      // verbatim. Inside the tx → rolls back atomically with the void. The
+      // void-once guard + idempotency replay make this run exactly once. ---
+      const GENESIS_HASH = '0'.repeat(64);
+      const lastJournal = await queryRunner.query(
+        `SELECT hash_chain_current FROM fiscal_journal
+          WHERE store_id = $1 ORDER BY created_at DESC LIMIT 1`,
+        [storeId],
+      );
+      const journalPrevHash =
+        Array.isArray(lastJournal) && lastJournal.length > 0
+          ? lastJournal[0].hash_chain_current
+          : GENESIS_HASH;
+      const voidPayload = JSON.stringify({
+        type: 'void',
+        saleId: sale.id,
+        ticketNumber: sale.ticketNumber,
+        saleHashChainCurrent: sale.hashChainCurrent,
+        totalMinorUnits: sale.totalMinorUnits,
+        taxTotalMinorUnits: sale.taxTotalMinorUnits,
+        discountTotalMinorUnits: sale.discountTotalMinorUnits,
+        avoirRestoredMinorUnits,
+        employeeId,
+        reason: reason ?? null,
+        voidedAt: new Date().toISOString(),
+      });
+      const journalCurrentHash = sha256(journalPrevHash + voidPayload);
+      await queryRunner.manager.insert(FiscalJournalEntity, {
+        storeId,
+        eventType: 'void',
+        refId: sale.id,
+        ticketNumber: sale.ticketNumber,
+        payload: voidPayload,
+        hashChainPrev: journalPrevHash,
+        hashChainCurrent: journalCurrentHash,
+      });
 
       // Persist idempotency key atomically with the void.
       if (idemKey) {
