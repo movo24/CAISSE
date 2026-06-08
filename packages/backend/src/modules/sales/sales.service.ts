@@ -388,11 +388,25 @@ export class SalesService {
           ? prevHashResult[0].hash_chain_current
           : '0000000000000000000000000000000000000000000000000000000000000000';
 
+      // --- M2: hash fingerprint v2. v1 covered only {ticketNumber, storeId,
+      // employeeId, total, items}, leaving TVA, remise, paiements, horodatage and
+      // client alterable WITHOUT breaking the chain. v2 binds every fiscal field.
+      // Existing v1 rows are NEVER rehashed (immutability); `hashVersion` records
+      // which formula a row used so a verifier can pick the right one. The
+      // timestamp is computed here so the exact value is what gets hashed. ---
+      const completedAt = new Date();
       const saleDataForHash = JSON.stringify({
+        v: 2,
         ticketNumber,
         storeId,
         employeeId,
+        customerId: customerId ?? null,
+        subtotalMinorUnits: subtotal,
+        discountTotalMinorUnits: totalDiscount,
+        taxTotalMinorUnits: taxTotal,
         totalAfterDiscount,
+        payments: dto.payments.map((p) => ({ method: p.method, amount: p.amountMinorUnits })),
+        completedAt: completedAt.toISOString(),
         items: lineItems.map((li) => ({
           ean: li.ean,
           qty: li.quantity,
@@ -419,7 +433,8 @@ export class SalesService {
       sale.ticketNumber = ticketNumber;
       sale.hashChainPrev = prevHash;
       sale.hashChainCurrent = currentHash;
-      sale.completedAt = new Date();
+      sale.hashVersion = 2;
+      sale.completedAt = completedAt;
 
       for (const li of lineItems) {
         li.saleId = sale.id;
