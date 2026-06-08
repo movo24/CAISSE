@@ -229,16 +229,19 @@ export function useDashboardData(): DashboardData {
         dailySummaryRes,
         networkRes,
         storesRes,
+        analyticsRes,
       ] = await Promise.allSettled([
         productsApi.list({ storeId }),
         notificationsApi.stockAlerts(storeId),
         reportsApi.storeKpi(storeId, today),  // STORE-scoped KPIs (CA jour, tickets, panier moyen)
         storesApi.networkSummary(),  // aggregated network KPIs (for comparison only)
         storesApi.list(),
+        reportsApi.productAnalytics(storeId),  // top/flop/dormant + réassort (dérivé des ventes)
       ]);
 
-      // ── Products ──
-      const products = productsRes.status === 'fulfilled' ? productsRes.value.data : [];
+      // ── Products ── (la réponse peut être un tableau OU {data:[...]})
+      const productsRaw = productsRes.status === 'fulfilled' ? productsRes.value.data : [];
+      const products = Array.isArray(productsRaw) ? productsRaw : (productsRaw?.data ?? []);
       setProductStats((prev) => ({ ...prev, nbReferences: products.length }));
 
       // Derive stock alerts from notifications API
@@ -293,12 +296,52 @@ export function useDashboardData(): DashboardData {
           ...prev,
           surfaceM2: storeList.find((s: any) => s.id === storeId)?.surfaceM2 || 0,
         }));
-        setInterStoreComparison(storeList.map((s: any) => ({
-          magasin: s.name || s.storeName || 'Magasin',
-          tauxEspeces: 0,
-          ecartMoyen: 0,
-          annulationsPct: 0,
-        })));
+        // Comparaison inter-magasins : pas encore alimentée par de vraies
+        // métriques → on n'affiche PAS de valeurs factices (zéros trompeurs).
+        setInterStoreComparison([]);
+      }
+
+      // ── Analyse produit (top/flop/dormant/réassort) dérivée des ventes ──
+      if (analyticsRes.status === 'fulfilled') {
+        const a = analyticsRes.value.data || {};
+        const toProduct = (i: any, idx: number) => ({
+          rank: idx + 1,
+          name: i.name,
+          ean: i.ean || '',
+          qty: i.unitsSold30d,
+          ca: i.revenue30dMinorUnits ?? 0,
+          marge: i.marginPct ?? 0,
+          stock: i.stockQuantity,
+          lastSale: i.lastSoldAt ? new Date(i.lastSoldAt).toLocaleDateString('fr-FR') : '—',
+        });
+        setTopProducts((a.top || []).map(toProduct));
+        setFlopProducts((a.flop || []).map(toProduct));
+
+        const dormantList = (a.dormant || []).map((d: any) => ({
+          name: d.name,
+          lastSale: d.lastSoldAt ? new Date(d.lastSoldAt).toLocaleDateString('fr-FR') : 'Jamais vendu',
+          stock: d.stockQuantity,
+          valeurStock: d.valeurStockMinorUnits,
+        }));
+        setDormants(dormantList);
+
+        // Stats produit réelles (fin des champs undefined / 0 figés)
+        const items: any[] = a.items || [];
+        const withMargin = items.filter((i) => i.marginPct != null && i.revenue30dMinorUnits > 0);
+        const totRev = withMargin.reduce((s, i) => s + i.revenue30dMinorUnits, 0);
+        const margeBrute = totRev > 0
+          ? Math.round(withMargin.reduce((s, i) => s + i.revenue30dMinorUnits * i.marginPct, 0) / totRev)
+          : 0;
+        const totUnits = items.reduce((s, i) => s + i.unitsSold30d, 0);
+        const totStock = items.reduce((s, i) => s + i.stockQuantity, 0);
+        const rotation = totStock > 0 ? Math.round((totUnits / totStock) * 10) / 10 : 0;
+        setProductStats((prev) => ({
+          ...prev,
+          produitsDormants: dormantList.length,
+          margeBruteGlobale: margeBrute,
+          margeBruteN1: margeBrute,
+          rotationStock: rotation,
+        }));
       }
 
       // Network / Live performance → migrated to TimeWin24

@@ -12,6 +12,7 @@ import { SettingsPage } from './pages/SettingsPage';
 import { StockAlertsPage } from './pages/StockAlertsPage';
 import { StockNetworkPage } from './pages/StockNetworkPage';
 import { LabelsPage } from './pages/LabelsPage';
+import { ProductPerformancePage } from './pages/ProductPerformancePage';
 import { OrganizationsPage } from './pages/OrganizationsPage';
 import { UnitsPage } from './pages/UnitsPage';
 import { StoresManagementPage } from './pages/StoresManagementPage';
@@ -72,6 +73,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             <Route path="/products" element={<ProductsPage />} />
             <Route path="/stock-alerts" element={<StockAlertsPage />} />
             <Route path="/labels" element={<LabelsPage />} />
+            <Route path="/performance" element={<ProductPerformancePage />} />
 
             {/* Couche 5: Analyse */}
             <Route path="/reports" element={<ReportsPage />} />

@@ -284,6 +284,12 @@ export const reportsApi = {
     api.get('/reports/daily-summary', { params: { storeId, date } }),
   storeKpi: (storeId: string, date: string) =>
     api.get('/reports/store-kpi', { params: { storeId, date } }),
+  /** Top / flop / dormant + rupture & réassort (lecture seule, dérivé des ventes). */
+  productAnalytics: (storeId: string) =>
+    api.get('/reports/product-analytics', { params: { storeId } }),
+  /** Comparaisons CA J-1/S-1/M-1/N-1 + prévision simple (lecture seule). */
+  salesTrend: (storeId: string) =>
+    api.get('/reports/sales-trend', { params: { storeId } }),
 };
 
 // ---------------------------------------------------------------------------
