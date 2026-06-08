@@ -95,6 +95,8 @@ function KpiCard({ label, value, sub, icon: Icon, color, trend }: {
   color: string;
   trend?: { current: number; previous: number };
 }) {
+  // Garde-fou : jamais 'undefined' / 'NaN' / 'null' affiché → '—'.
+  const safeValue = value == null || /undefined|NaN|null/i.test(String(value)) ? '—' : value;
   return (
     <div className="bg-white rounded-2xl p-4 shadow-soft border border-gray-100/50 hover:shadow-card transition-shadow">
       <div className="flex items-start justify-between mb-2">
@@ -103,7 +105,7 @@ function KpiCard({ label, value, sub, icon: Icon, color, trend }: {
         </div>
         {trend && <VariationBadge current={trend.current} previous={trend.previous} />}
       </div>
-      <p className="text-xl font-black text-bo-text mt-1">{value}</p>
+      <p className="text-xl font-black text-bo-text mt-1">{safeValue}</p>
       <p className="text-[11px] text-gray-400 font-medium mt-0.5">{label}</p>
       {sub && <p className="text-[10px] text-gray-300 mt-0.5">{sub}</p>}
     </div>
@@ -1281,7 +1283,9 @@ export function DashboardPage() {
               Comparaison reseau
             </h4>
             <div className="space-y-3">
-              {interStoreComparison.map((store) => (
+              {interStoreComparison.length === 0 ? (
+                <p className="text-xs text-gray-400 py-2">Comparaison réseau non disponible pour le moment.</p>
+              ) : interStoreComparison.map((store) => (
                 <div key={store.magasin} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
                   <div>
                     <p className="text-sm font-medium text-bo-text">{store.magasin}</p>

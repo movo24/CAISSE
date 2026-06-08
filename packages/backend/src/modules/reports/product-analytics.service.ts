@@ -1,0 +1,181 @@
+import { Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { SaleEntity } from '../../database/entities/sale.entity';
+import { SaleLineItemEntity } from '../../database/entities/sale-line-item.entity';
+import { ProductEntity } from '../../database/entities/product.entity';
+import {
+  computeProductAnalytics,
+  ProductSalesRow,
+  ProductAnalyticsReport,
+} from './product-analytics.util';
+import { StoreEntity } from '../../database/entities/store.entity';
+import {
+  compareBaselines,
+  forecastNextDay,
+  localDateKey,
+  DailyCaMap,
+  TrendComparisons,
+  CaForecast,
+} from './sales-trend.util';
+
+const DEFAULT_TZ = 'Europe/Paris';
+
+/**
+ * ProductAnalyticsService — agrège les ventes FIGÉES (lecture seule) en signaux
+ * d'aide à la décision (top/flop/dormant/réassort). Aucun recalcul fiscal,
+ * aucune écriture. Toute la logique de classification vit dans le .util (testé).
+ */
+@Injectable()
+export class ProductAnalyticsService {
+  constructor(
+    @InjectRepository(SaleEntity) private readonly saleRepo: Repository<SaleEntity>,
+    @InjectRepository(SaleLineItemEntity) private readonly lineRepo: Repository<SaleLineItemEntity>,
+    @InjectRepository(ProductEntity) private readonly productRepo: Repository<ProductEntity>,
+    @InjectRepository(StoreEntity) private readonly storeRepo: Repository<StoreEntity>,
+  ) {}
+
+  // Cache mémoire simple (TTL court) — évite de re-agréger à chaque visite du
+  // dashboard. Clé = méthode+store+jour. Fail-safe : aucune persistance.
+  private readonly cache = new Map<string, { at: number; data: unknown }>();
+  private static readonly TTL_MS = 60_000;
+
+  private async cached<T>(key: string, build: () => Promise<T>): Promise<T> {
+    const hit = this.cache.get(key);
+    if (hit && Date.now() - hit.at < ProductAnalyticsService.TTL_MS) return hit.data as T;
+    const data = await build();
+    this.cache.set(key, { at: Date.now(), data });
+    return data;
+  }
+
+  /** Somme des unités vendues par produit sur [from, to) (ventes complétées). */
+  private async unitsByProduct(storeId: string, from: Date, to: Date): Promise<Map<string, number>> {
+    const rows = await this.lineRepo
+      .createQueryBuilder('li')
+      .innerJoin(SaleEntity, 's', 's.id = li.sale_id')
+      .select('li.product_id', 'productId')
+      .addSelect('SUM(li.quantity)', 'units')
+      .where('s.store_id = :storeId', { storeId })
+      .andWhere("s.status = 'completed'")
+      .andWhere('s.created_at >= :from', { from })
+      .andWhere('s.created_at < :to', { to })
+      .andWhere('li.product_id IS NOT NULL')
+      .groupBy('li.product_id')
+      .getRawMany<{ productId: string; units: string }>();
+    return new Map(rows.map((r) => [r.productId, Number(r.units) || 0]));
+  }
+
+  /** CA par produit (somme des totaux de lignes) sur [from, to). */
+  private async revenueByProduct(storeId: string, from: Date, to: Date): Promise<Map<string, number>> {
+    const rows = await this.lineRepo
+      .createQueryBuilder('li')
+      .innerJoin(SaleEntity, 's', 's.id = li.sale_id')
+      .select('li.product_id', 'productId')
+      .addSelect('SUM(li.line_total_minor_units)', 'revenue')
+      .where('s.store_id = :storeId', { storeId })
+      .andWhere("s.status = 'completed'")
+      .andWhere('s.created_at >= :from', { from })
+      .andWhere('s.created_at < :to', { to })
+      .andWhere('li.product_id IS NOT NULL')
+      .groupBy('li.product_id')
+      .getRawMany<{ productId: string; revenue: string }>();
+    return new Map(rows.map((r) => [r.productId, Number(r.revenue) || 0]));
+  }
+
+  /** Dernière vente par produit (toutes périodes). */
+  private async lastSoldByProduct(storeId: string): Promise<Map<string, string>> {
+    const rows = await this.lineRepo
+      .createQueryBuilder('li')
+      .innerJoin(SaleEntity, 's', 's.id = li.sale_id')
+      .select('li.product_id', 'productId')
+      .addSelect('MAX(s.created_at)', 'lastSoldAt')
+      .where('s.store_id = :storeId', { storeId })
+      .andWhere("s.status = 'completed'")
+      .andWhere('li.product_id IS NOT NULL')
+      .groupBy('li.product_id')
+      .getRawMany<{ productId: string; lastSoldAt: string | Date }>();
+    return new Map(
+      rows.map((r) => [r.productId, new Date(r.lastSoldAt).toISOString()]),
+    );
+  }
+
+  async getReport(storeId: string, now: Date = new Date()): Promise<ProductAnalyticsReport> {
+    return this.cached(`report:${storeId}:${now.toISOString().slice(0, 10)}`, () => this.buildReport(storeId, now));
+  }
+
+  private async buildReport(storeId: string, now: Date): Promise<ProductAnalyticsReport> {
+    const d = (days: number) => new Date(now.getTime() - days * 86_400_000);
+    const [u7, u30, uPrev30, rev30, lastSold, products] = await Promise.all([
+      this.unitsByProduct(storeId, d(7), now),
+      this.unitsByProduct(storeId, d(30), now),
+      this.unitsByProduct(storeId, d(60), d(30)),
+      this.revenueByProduct(storeId, d(30), now),
+      this.lastSoldByProduct(storeId),
+      this.productRepo.find({ where: { storeId } }),
+    ]);
+
+    const rows: ProductSalesRow[] = products.map((p) => ({
+      productId: p.id,
+      name: p.name,
+      ean: p.ean,
+      stockQuantity: p.stockQuantity,
+      priceMinorUnits: p.priceMinorUnits,
+      costMinorUnits: p.costMinorUnits ?? null,
+      isActive: p.isActive,
+      unitsSold7d: u7.get(p.id) ?? 0,
+      unitsSold30d: u30.get(p.id) ?? 0,
+      unitsSoldPrev30d: uPrev30.get(p.id) ?? 0,
+      revenue30dMinorUnits: rev30.get(p.id) ?? 0,
+      lastSoldAt: lastSold.get(p.id) ?? null,
+    }));
+
+    return computeProductAnalytics(rows, { now: now.toISOString() });
+  }
+
+  /**
+   * Série CA quotidien (ventes complétées) bucketée par JOUR COMMERCIAL LOCAL
+   * du magasin (pas UTC) — cohérent avec le Z-report. On agrège en JS pour
+   * éviter les fonctions SQL de fuseau (compatibilité pg-mem) et rester exact.
+   */
+  private async dailyCaMap(storeId: string, sinceDays: number, timeZone: string): Promise<DailyCaMap> {
+    const since = new Date(Date.now() - sinceDays * 86_400_000);
+    const rows = await this.saleRepo
+      .createQueryBuilder('s')
+      .select('s.created_at', 'createdAt')
+      .addSelect('s.total_minor_units', 'total')
+      .where('s.store_id = :storeId', { storeId })
+      .andWhere("s.status = 'completed'")
+      .andWhere('s.created_at >= :since', { since })
+      .getRawMany<{ createdAt: string | Date; total: string | number }>();
+    const map: DailyCaMap = {};
+    for (const r of rows) {
+      const key = localDateKey(r.createdAt instanceof Date ? r.createdAt : new Date(r.createdAt), timeZone);
+      map[key] = (map[key] ?? 0) + (Number(r.total) || 0);
+    }
+    return map;
+  }
+
+  /** Comparaisons J-1/S-1/M-1/N-1 + prévision simple du CA du lendemain. */
+  async getSalesTrend(
+    storeId: string,
+    now: Date = new Date(),
+  ): Promise<{ comparisons: TrendComparisons; forecast: CaForecast; timeZone: string; generatedAt: string }> {
+    return this.cached(`trend:${storeId}:${now.toISOString().slice(0, 10)}`, () => this.buildSalesTrend(storeId, now));
+  }
+
+  private async buildSalesTrend(
+    storeId: string,
+    now: Date,
+  ): Promise<{ comparisons: TrendComparisons; forecast: CaForecast; timeZone: string; generatedAt: string }> {
+    const store = await this.storeRepo.findOne({ where: { id: storeId } });
+    const timeZone = store?.timezone || DEFAULT_TZ;
+    const map = await this.dailyCaMap(storeId, 400, timeZone); // couvre N-1
+    const todayKey = localDateKey(now, timeZone);
+    return {
+      comparisons: compareBaselines(map, todayKey),
+      forecast: forecastNextDay(map, todayKey),
+      timeZone,
+      generatedAt: now.toISOString(),
+    };
+  }
+}
