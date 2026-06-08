@@ -46,6 +46,21 @@ export class InventoryScanService {
       );
     }
 
+    // 1b. Idempotence : un scan rejoué (même clientEntryId) ne crée pas de
+    // doublon — on renvoie l'enregistrement déjà persisté. Couvre le cas
+    // « réponse 2xx perdue » de la sync offline mobile.
+    if (dto.clientEntryId) {
+      const existing = await this.scanRepo.findOne({
+        where: { storeId, clientEntryId: dto.clientEntryId },
+      });
+      if (existing) {
+        this.logger.log(
+          `Scan idempotent: clientEntryId=${dto.clientEntryId} déjà enregistré (${existing.id})`,
+        );
+        return existing;
+      }
+    }
+
     // 2. Lookup product by barcode in this store
     const product = await this.productRepo.findOne({
       where: { ean: dto.barcode, storeId, isActive: true },
@@ -66,6 +81,7 @@ export class InventoryScanService {
       status: status as any,
       notes: dto.notes ?? undefined,
       sessionId: dto.sessionId ?? undefined,
+      clientEntryId: dto.clientEntryId ?? undefined,
     });
 
     const saved = await this.scanRepo.save(scan);

@@ -210,4 +210,16 @@ export const stockApi = {
     }),
 };
 
+/** Inventaire — enregistrement d'un scan/comptage (POST /api/inventory-scans). */
+export const inventoryScanApi = {
+  record: (data: {
+    barcode: string;
+    quantity: number;
+    scanType?: string;
+    sessionId?: string;
+    notes?: string;
+    clientEntryId?: string;
+  }) => api.post('/inventory-scans', data),
+};
+
 export default api;

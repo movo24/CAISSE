@@ -25,9 +25,12 @@ export function createPgMemDataSource(): { db: IMemoryDb; dataSource: DataSource
   const db = newDb();
   db.public.registerFunction({ name: 'version', returns: DataType.text, implementation: () => 'PostgreSQL 14.0 (pg-mem)' });
   db.public.registerFunction({ name: 'current_database', returns: DataType.text, implementation: () => 'test' });
-  db.public.registerFunction({ name: 'uuid_generate_v4', returns: DataType.uuid, implementation: () => uuidv4() });
+  // impure: true → pg-mem ne met PAS le résultat en cache (chaque appel génère
+  // un UUID frais). Sans ça, un DEFAULT uuid_generate_v4() réutilise la même
+  // valeur et provoque une collision de clé primaire au 2e INSERT.
+  db.public.registerFunction({ name: 'uuid_generate_v4', returns: DataType.uuid, impure: true, implementation: () => uuidv4() });
   db.registerExtension('uuid-ossp', (schema) =>
-    schema.registerFunction({ name: 'uuid_generate_v4', returns: DataType.uuid, implementation: () => uuidv4() }),
+    schema.registerFunction({ name: 'uuid_generate_v4', returns: DataType.uuid, impure: true, implementation: () => uuidv4() }),
   );
   // Functions pg-mem doesn't ship that our SQL uses.
   db.public.registerFunction({
