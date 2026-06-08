@@ -77,7 +77,10 @@ Le push `main` n'a **pas** auto-déployé Vercel (déploiements manuels, pas d'i
 - **M4** (annulation hors chaîne) — **corrigé** (`6b48e9b`) : table append-only `fiscal_journal`, le void écrit un maillon immuable chaîné par magasin.
 - **M5** (chaîne avoir non sérialisée → fork concurrent) — **corrigé** (`5f8ca6e`) : verrou `stores FOR UPDATE` avant lecture du prevHash dans les 2 chemins avoir.
 - **Statut** : les 3 sont sur la **branche** `fix/fiscal-hash-chain-2026-06` (PAS encore dans `main`). Suite backend complète **59 suites / 450 tests verts**. 2 migrations **additives** ajoutées (`1717` CREATE TABLE IF NOT EXISTS `fiscal_journal`, `1718` ADD COLUMN IF NOT EXISTS `sales.hash_version`) → forward-safe, sans perte.
-- ⚠️ Reste **non couvert** : aucun **vérificateur de chaîne** automatique (relecture/recalcul) ni **E2E sur vrai Postgres** (pg-mem ne teste pas la concurrence réelle). À prévoir avant de communiquer « NF525 ».
+- ✅ **Vérificateur de chaîne** livré (branche `feat/fiscal-verify-2026-06`, `f5eb4d7`) : `npm run fiscal:verify` — read-only, linkage par suivi de pointeurs + recalcul de hash (autoritatif pour `fiscal_journal`, best-effort pour sales/credit_notes). Détecte fork/orphan/suppression + tamper de champ.
+- ✅ **E2E vrai Postgres** livré (gated `TEST_DATABASE_URL`) : flux réels + vérificateur **verts sur PG 16 / Europe-Paris** → le hash v2 (M2) **se re-vérifie après round-trip timestamp réel**. Suite : 453 verts + 1 skip.
+- ⚠️ Reste pour une vraie démarche NF525 : recompute **autoritatif** pour sales/credit_notes (stocker le payload canonique verbatim comme le journal), audit externe, doc d'exploitation/clôture/archivage. Toujours **pas « NF525 validé »**.
+- 🐛 Nit constaté : le script npm `migration:run` pointe `./node_modules/typeorm/cli.js` (inexistant en monorepo hoisté) → à corriger pour les migrations manuelles locales (la prod utilise `migrationsRun` au boot, non affectée).
 
 > ⚠️ Ne jamais annoncer « NF525 validé ». M2/M4/M5 ouverts = conformité non garantie.
 
