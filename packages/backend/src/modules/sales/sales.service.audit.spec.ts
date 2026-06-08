@@ -45,7 +45,10 @@ describe('SalesService — voidSale audit (Option 2)', () => {
       commitTransaction: jest.fn(),
       rollbackTransaction: jest.fn(),
       release: jest.fn(),
-      manager: { save: jest.fn(async (_e: any, s: any) => s) },
+      manager: {
+        save: jest.fn(async (_e: any, s: any) => s),
+        insert: jest.fn(async () => ({})), // M4 — void now appends a fiscal_journal link
+      },
       query: jest.fn(),
     };
     const dataSource = { createQueryRunner: () => queryRunner } as unknown as DataSource;
