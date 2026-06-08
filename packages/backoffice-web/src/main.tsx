@@ -15,7 +15,13 @@ import { LabelsPage } from './pages/LabelsPage';
 import { OrganizationsPage } from './pages/OrganizationsPage';
 import { UnitsPage } from './pages/UnitsPage';
 import { StoresManagementPage } from './pages/StoresManagementPage';
+import { EmployeesPage } from './pages/EmployeesPage';
+import { PayrollPage } from './pages/PayrollPage';
+import { PlanningPage } from './pages/PlanningPage';
+import { ReturnsPage } from './pages/ReturnsPage';
 import { ConnectedAppsPage } from './pages/ConnectedAppsPage';
+import { AirtableOpsPage } from './pages/AirtableOpsPage';
+import { SalesGuardsPage } from './pages/SalesGuardsPage';
 import { BillingPage } from './pages/BillingPage';
 import { ComingSoonPage } from './pages/ComingSoonPage';
 import { NetworkDashboardPage } from './pages/NetworkDashboardPage';
@@ -69,6 +75,8 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
 
             {/* Couche 5: Analyse */}
             <Route path="/reports" element={<ReportsPage />} />
+            <Route path="/sales-guards" element={<SalesGuardsPage />} />
+            <Route path="/returns" element={<ReturnsPage />} />
 
             {/* Couche 6: Stock / Logistique */}
             <Route path="/stock-network" element={<StockNetworkPage />} />
@@ -78,8 +86,12 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             <Route path="/units" element={<UnitsPage />} />
             <Route path="/stores" element={<StoresManagementPage />} />
             <Route path="/connected-apps" element={<ConnectedAppsPage />} />
+            <Route path="/airtable-ops" element={<AirtableOpsPage />} />
 
             {/* Couche 4: Equipes / RH */}
+            <Route path="/employees" element={<EmployeesPage />} />
+            <Route path="/payroll" element={<PayrollPage />} />
+            <Route path="/planning" element={<PlanningPage />} />
             <Route path="/timewin24" element={<ComingSoonPage />} />
 
             {/* Couche 7: Reglages */}

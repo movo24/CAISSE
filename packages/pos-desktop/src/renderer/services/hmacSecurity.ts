@@ -140,6 +140,23 @@ export function markAsSent(type: string, entryId: string): void {
   addSentKey(key);
 }
 
+/** Roll back a `markAsSent` when the network call failed, so the entry retries. */
+export function unmarkSent(type: string, entryId: string): void {
+  const key = generateIdempotencyKey(type, entryId);
+  const keys = getSentKeys();
+  if (!keys.delete(key)) return;
+  try {
+    localStorage.setItem(LS_SENT_IDEMPOTENCY, JSON.stringify(Array.from(keys)));
+  } catch {
+    /* quota */
+  }
+}
+
+/** Stable idempotency key for a queue entry — sent to the backend as `Idempotency-Key`. */
+export function idempotencyKeyFor(type: string, entryId: string): string {
+  return generateIdempotencyKey(type, entryId);
+}
+
 // ── Sign a sync request ──
 
 export async function signSyncRequest(

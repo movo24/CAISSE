@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { Cron } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, IsNull, Not, LessThanOrEqual } from 'typeorm';
+import { Repository } from 'typeorm';
 import { CustomerEntity } from '../../database/entities/customer.entity';
 import { CouponEntity } from '../../database/entities/coupon.entity';
 import { CouponService } from './coupon.service';

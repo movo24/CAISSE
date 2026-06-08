@@ -165,6 +165,28 @@ export const salesApi = {
 };
 
 // ---------------------------------------------------------------------------
+// Returns / Credit notes (avoirs)
+// ---------------------------------------------------------------------------
+export const returnsApi = {
+  list: (page = 1, limit = 50) => api.get('/returns', { params: { page, limit } }),
+  get: (id: string) => api.get(`/returns/${id}`),
+  returnable: (saleId: string) => api.get(`/returns/sale/${saleId}/returnable`),
+  create: (
+    data: {
+      originalSaleId: string;
+      items: { lineItemId: string; quantity: number }[];
+      reason?: string;
+      refundMethod: 'cash' | 'card' | 'store_credit';
+    },
+    idempotencyKey: string,
+  ) => api.post('/returns', data, { headers: { 'Idempotency-Key': idempotencyKey } }),
+  issueGiftCard: (
+    data: { amountMinorUnits: number; code?: string },
+    idempotencyKey: string,
+  ) => api.post('/returns/gift-card', data, { headers: { 'Idempotency-Key': idempotencyKey } }),
+};
+
+// ---------------------------------------------------------------------------
 // Customers
 // ---------------------------------------------------------------------------
 export const customersApi = {
@@ -184,7 +206,12 @@ export const employeesApi = {
   get: (id: string) => api.get(`/employees/${id}`),
   create: (data: any) => api.post('/employees', data),
   update: (id: string, data: any) => api.put(`/employees/${id}`, data),
-  deactivate: (id: string) => api.put(`/employees/${id}/deactivate`),
+  // Backend exposes POST (not PUT) for (de)activation.
+  deactivate: (id: string) => api.post(`/employees/${id}/deactivate`),
+  reactivate: (id: string) => api.post(`/employees/${id}/reactivate`),
+  changePin: (id: string, pin: string) => api.patch(`/employees/${id}/pin`, { pin }),
+  getQr: (id: string) => api.get(`/employees/${id}/qr`),
+  roleDefaults: () => api.get('/employees/rights/defaults'),
 };
 
 // ---------------------------------------------------------------------------
@@ -197,7 +224,13 @@ export const timewinApi = {
   getContext: (employeeId: string) => api.get(`/timewin/employees/${employeeId}/context`),
   syncEmployees: (storeId: string) => api.get('/timewin/employees/sync', { params: { storeId } }),
   todayShifts: (storeId: string) => api.get('/timewin/today-shifts', { params: { storeId } }),
+  payroll: (storeId: string, month: string) =>
+    api.get('/timewin/payroll', { params: { storeId, month } }),
   storeConfig: (storeId: string) => api.get('/timewin/store-config', { params: { storeId } }),
+  getStoreSchedule: (storeId: string) => api.get('/timewin/store-schedule', { params: { storeId } }),
+  updateStoreSchedule: (storeId: string, schedules: any[]) =>
+    api.put('/timewin/store-schedule', { schedules }, { params: { storeId } }),
+  stores: () => api.get('/timewin/stores'),
   clockIn: (employeeId: string, storeId: string) => api.post('/timewin/clock-in', { employeeId, storeId }),
   clockOut: (employeeId: string, storeId: string) => api.post('/timewin/clock-out', { employeeId, storeId }),
   pushEvent: (data: { storeId: string; eventType: string; employeeId?: string; data?: any }) =>
@@ -415,6 +448,60 @@ export const stockLocationsApi = {
     api.get(`/stock-locations/movements/product/${productId}?limit=${limit}`),
   locationMovements: (locationId: string, limit = 50) =>
     api.get(`/stock-locations/movements/location/${locationId}?limit=${limit}`),
+};
+
+// ---------------------------------------------------------------------------
+// Airtable Ops Layer
+// ---------------------------------------------------------------------------
+export const airtableOpsApi = {
+  // Operations
+  listOperations: (params?: {
+    storeId?: string;
+    status?: string;
+    riskLevel?: string;
+    page?: number;
+    limit?: number;
+  }) => api.get('/airtable-ops/operations', { params }),
+  getOperation: (id: string) => api.get(`/airtable-ops/operations/${id}`),
+  approveOperation: (id: string) => api.post(`/airtable-ops/operations/${id}/approve`),
+  rejectOperation: (id: string, reason: string) =>
+    api.post(`/airtable-ops/operations/${id}/reject`, { reason }),
+  applyOperation: (id: string) => api.post(`/airtable-ops/operations/${id}/apply`),
+
+  // Sync
+  triggerSync: (storeId?: string) => api.post('/airtable-ops/sync', { storeId }),
+
+  // Stats & logs
+  getStats: (storeId?: string) => api.get('/airtable-ops/stats', { params: { storeId } }),
+  getLogs: (storeId?: string, limit?: number) =>
+    api.get('/airtable-ops/logs', { params: { storeId, limit } }),
+};
+
+// ---------------------------------------------------------------------------
+// Sales Guards (anti-error anomalies)
+// ---------------------------------------------------------------------------
+export const salesGuardsApi = {
+  getConfig: () => api.get('/sales-guards/config'),
+  evaluate: (data: {
+    items: unknown[];
+    saleId?: string;
+    freeProductUsageCount?: number;
+    cancellationCount?: number;
+  }) => api.post('/sales-guards/evaluate', data),
+  listAnomalies: (params?: {
+    storeId?: string;
+    sellerId?: string;
+    code?: string;
+    status?: string;
+    severity?: string;
+    from?: string;
+    page?: number;
+    limit?: number;
+  }) => api.get('/sales-guards/anomalies', { params }),
+  summary: (storeId?: string, from?: string) =>
+    api.get('/sales-guards/anomalies/summary', { params: { storeId, from } }),
+  approve: (id: string) => api.post(`/sales-guards/anomalies/${id}/approve`),
+  ignore: (id: string) => api.post(`/sales-guards/anomalies/${id}/ignore`),
 };
 
 export default api;

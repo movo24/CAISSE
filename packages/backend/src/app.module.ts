@@ -5,9 +5,12 @@ import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { ScheduleModule } from '@nestjs/schedule';
 import { APP_GUARD } from '@nestjs/core';
 import { RequestLoggerMiddleware } from './common/middleware/request-logger.middleware';
+import { MessagingModule } from './common/messaging/messaging.module';
+import { RealtimeModule } from './common/realtime/realtime.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { ProductsModule } from './modules/products/products.module';
 import { SalesModule } from './modules/sales/sales.module';
+import { ReturnsModule } from './modules/returns/returns.module';
 import { CustomersModule } from './modules/customers/customers.module';
 import { StoresModule } from './modules/stores/stores.module';
 import { ReportsModule } from './modules/reports/reports.module';
@@ -31,6 +34,7 @@ import { StripeModule } from './common/stripe/stripe.module';
 import { StripeTerminalModule } from './modules/stripe-terminal/stripe-terminal.module';
 import { TerminalsModule } from './modules/terminals/terminals.module';
 import { TimewinModule } from './modules/timewin/timewin.module';
+import { ShiftRemindersModule } from './modules/shift-reminders/shift-reminders.module';
 import { SalesAiModule } from './modules/sales-ai/sales-ai.module';
 import { ReceiptsModule } from './modules/receipts/receipts.module';
 import { EmployeesModule } from './modules/employees/employees.module';
@@ -41,6 +45,8 @@ import { CouponModule } from './modules/coupon/coupon.module';
 import { CustomerVisitsModule } from './modules/customer-visits/customer-visits.module';
 import { PosIntegrationModule } from './modules/pos-integration/pos-integration.module';
 import { LoyaltyAdminModule } from './modules/loyalty-admin/loyalty-admin.module';
+import { AirtableOpsModule } from './modules/airtable-ops/airtable-ops.module';
+import { SalesGuardsModule } from './modules/sales-guards/sales-guards.module';
 // ── RH MODULES (employees re-activated for local fallback) ──
 // PointageModule, PayrollModule, PlanningModule, StaffingModule → still in TimeWin24
 
@@ -50,6 +56,8 @@ const isProd = process.env.NODE_ENV === 'production';
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     ScheduleModule.forRoot(),
+    MessagingModule,
+    RealtimeModule,
 
     // --- Database ---
     TypeOrmModule.forRoot({
@@ -108,6 +116,7 @@ const isProd = process.env.NODE_ENV === 'production';
     StripeTerminalModule,
     TerminalsModule,
     TimewinModule,
+    ShiftRemindersModule,
     SalesAiModule,
     ReceiptsModule,
     EmployeesModule,
@@ -118,6 +127,11 @@ const isProd = process.env.NODE_ENV === 'production';
     CustomerVisitsModule,
     PosIntegrationModule,
     LoyaltyAdminModule,
+    // Airtable Ops Layer (AIRTABLE_ENABLED=false → no-op in prod until configured)
+    AirtableOpsModule,
+    // Sales Guards (anti-error engine — read-only, separate audit table)
+    SalesGuardsModule,
+    ReturnsModule,
   ],
   providers: [
     // Apply rate limiting globally to ALL endpoints

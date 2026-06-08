@@ -12,6 +12,7 @@ import { randomBytes } from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { CustomerEntity } from '../../database/entities/customer.entity';
 import { PaginatedResult } from '../../common/dto/pagination.dto';
+import { NotificationService } from '../../common/messaging/notification.service';
 
 @Injectable()
 export class CustomersService {
@@ -31,6 +32,7 @@ export class CustomersService {
   constructor(
     @InjectRepository(CustomerEntity)
     private customerRepo: Repository<CustomerEntity>,
+    private readonly notifications: NotificationService,
   ) {}
 
   async create(data: {
@@ -66,13 +68,45 @@ export class CustomersService {
       attempts: 0,
     });
 
-    // TODO V1: Send OTP via SMS/email (Twilio, SendGrid, etc.)
+    // Deliver the OTP via SMS (preferred) or email. Graceful: if no provider is
+    // configured, this is a no-op and the dev fallback below still applies.
+    await this.dispatchOtp(saved, otpCode);
+
     // Do NOT log OTP codes in production
     if (process.env.NODE_ENV !== 'production') {
       this.logger.debug(`[DEV OTP] Customer ${saved.firstName}: ${otpCode}`);
     }
 
     return { customer: saved, qrCodeDataUrl, otpCode };
+  }
+
+  /**
+   * Send the loyalty verification OTP to the customer via the configured channel.
+   * Never throws — delivery failure must not block customer creation.
+   */
+  private async dispatchOtp(customer: CustomerEntity, code: string): Promise<void> {
+    if (!customer.phone && !customer.email) return;
+    const body = `Votre code de vérification Wesley Club : ${code} (valable 10 min).`;
+    try {
+      const res = await this.notifications.notify({
+        prefer: 'sms',
+        sms: customer.phone ? { to: customer.phone, body } : undefined,
+        email: customer.email
+          ? {
+              to: customer.email,
+              subject: 'Votre code de vérification',
+              html: `<p>Bonjour ${customer.firstName},</p><p>${body}</p>`,
+            }
+          : undefined,
+      });
+      if (res.ok) {
+        this.logger.log(`[OTP] sent to customer ${customer.id.slice(0, 8)} via ${res.provider}`);
+      } else if (!res.skipped) {
+        this.logger.warn(`[OTP] delivery failed for ${customer.id.slice(0, 8)}: ${res.error}`);
+      }
+    } catch (err: any) {
+      this.logger.warn(`[OTP] dispatch error for ${customer.id.slice(0, 8)}: ${err?.message}`);
+    }
   }
 
   /** Find customer by QR code scoped to the caller's store */

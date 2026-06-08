@@ -1,0 +1,57 @@
+{
+  "root": true,
+  "parser": "@typescript-eslint/parser",
+  "parserOptions": {
+    "ecmaVersion": 2022,
+    "sourceType": "module",
+    "ecmaFeatures": { "jsx": true }
+  },
+  "plugins": ["@typescript-eslint", "react-hooks"],
+  "extends": ["eslint:recommended", "plugin:@typescript-eslint/recommended"],
+  "env": {
+    "node": true,
+    "browser": true,
+    "es2022": true
+  },
+  "ignorePatterns": [
+    "node_modules",
+    "dist",
+    "build",
+    "release",
+    "coverage",
+    "*.config.js",
+    "*.config.ts",
+    "*.config.cjs",
+    "*.config.mjs",
+    "vite.config.*",
+    "**/*.d.ts"
+  ],
+  "rules": {
+    "no-unused-vars": "off",
+    "@typescript-eslint/no-unused-vars": [
+      "warn",
+      { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_", "ignoreRestSiblings": true }
+    ],
+    "@typescript-eslint/no-explicit-any": "off",
+    "@typescript-eslint/no-empty-function": "off",
+    "@typescript-eslint/no-empty-interface": "off",
+    "@typescript-eslint/ban-ts-comment": "warn",
+    "@typescript-eslint/no-non-null-assertion": "off",
+    "no-empty": ["warn", { "allowEmptyCatch": true }],
+    "no-constant-condition": ["error", { "checkLoops": false }],
+    "prefer-const": "warn",
+    "no-case-declarations": "off",
+    "react-hooks/rules-of-hooks": "error",
+    "react-hooks/exhaustive-deps": "warn"
+  },
+  "overrides": [
+    {
+      "files": ["**/*.spec.ts", "**/*.test.ts", "**/test/**/*.ts"],
+      "env": { "jest": true, "node": true },
+      "rules": {
+        "@typescript-eslint/no-non-null-assertion": "off",
+        "@typescript-eslint/no-unused-vars": "off"
+      }
+    }
+  ]
+}

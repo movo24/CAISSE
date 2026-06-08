@@ -1,6 +1,6 @@
 import { CurrencyCode } from './currency';
 
-export type PaymentMethod = 'cash' | 'card' | 'mixed';
+export type PaymentMethod = 'cash' | 'card' | 'mixed' | 'voucher' | 'gift_card' | 'store_credit';
 export type SaleStatus = 'pending' | 'completed' | 'voided' | 'suspended';
 
 export interface SaleLineItem {

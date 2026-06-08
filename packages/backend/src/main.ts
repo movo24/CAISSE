@@ -160,17 +160,33 @@ function validateEnvironment() {
     if (process.env.TYPEORM_SYNCHRONIZE === 'true') {
       throw new Error('FATAL: TYPEORM_SYNCHRONIZE=true is forbidden in production');
     }
-    // Warn about missing optional services (don't crash — POS can work without them)
+    // REDIS_URL is required in production (token revocation / OTP / rate-limit must
+    // be shared across instances). A single-pod deployment can consciously opt out
+    // of Redis with ALLOW_INMEMORY_CACHE=true — otherwise we fail fast.
     if (!process.env.REDIS_URL) {
-      logger.warn('REDIS_URL not set in production — using in-memory cache (not multi-instance safe)');
+      if (process.env.ALLOW_INMEMORY_CACHE === 'true') {
+        logger.warn('REDIS_URL not set — in-memory cache (ALLOW_INMEMORY_CACHE=true). NOT multi-instance safe.');
+      } else {
+        throw new Error(
+          'REDIS_URL must be set in production (shared cache for token revocation / OTP / rate-limit). ' +
+            'For a single-pod deployment only, set ALLOW_INMEMORY_CACHE=true to opt out.',
+        );
+      }
     }
     if (!process.env.TIMEWIN24_API_KEY) {
       logger.warn('TIMEWIN24_API_KEY not set — TimeWin24 integration disabled');
     }
+    // CORS is strict in production: credentials are enabled, so a wildcard or an
+    // unset origin is a security hole — fail fast rather than ship it.
     if (!process.env.CORS_ORIGIN) {
-      logger.warn('CORS_ORIGIN not set — using permissive defaults');
-    } else if (process.env.CORS_ORIGIN === '*') {
-      logger.warn('CORS_ORIGIN is wildcard (*) — restrict for production');
+      throw new Error(
+        'CORS_ORIGIN must be set to an explicit, comma-separated origin list in production (credentials are enabled)',
+      );
+    }
+    if (process.env.CORS_ORIGIN.trim() === '*') {
+      throw new Error(
+        'CORS_ORIGIN cannot be "*" in production — a wildcard with credentials is unsafe',
+      );
     }
   }
 
@@ -190,8 +206,12 @@ function validateEnvironment() {
 function parseCorsOrigin(): string[] | boolean {
   const raw = process.env.CORS_ORIGIN;
   if (!raw) {
-    // In dev without explicit CORS, allow common local origins
+    // Dev only (production requires an explicit CORS_ORIGIN — enforced at boot).
     return ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:3001'];
+  }
+  if (raw.trim() === '*') {
+    // Dev convenience only — reflect any origin. Production rejects '*' at boot.
+    return true;
   }
   return raw.split(',').map((o) => o.trim()).filter(Boolean);
 }

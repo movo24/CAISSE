@@ -162,10 +162,39 @@ export const productsApi = {
 
 // Sales
 export const salesApi = {
-  create: (data: any) => api.post('/sales', data),
+  // idempotencyKey: stable per offline-queue entry, so a sync replay is deduped server-side
+  create: (data: any, idempotencyKey?: string) =>
+    api.post('/sales', data, idempotencyKey ? { headers: { 'Idempotency-Key': idempotencyKey } } : undefined),
   list: (date?: string) => api.get('/sales', { params: { date } }),
   get: (id: string) => api.get(`/sales/${id}`),
-  void: (id: string) => api.post(`/sales/${id}/void`),
+  void: (id: string, idempotencyKey?: string) =>
+    api.post(`/sales/${id}/void`, undefined, idempotencyKey ? { headers: { 'Idempotency-Key': idempotencyKey } } : undefined),
+};
+
+// Receipts (digital ticket)
+export const receiptsApi = {
+  email: (saleId: string, email: string) =>
+    api.post(`/receipts/${saleId}/email`, { email }),
+};
+
+// Returns / credit notes (avoirs) — online only (needs the server-side sale)
+export const returnsApi = {
+  listSales: (date: string) => api.get('/sales', { params: { date } }),
+  returnable: (saleId: string) => api.get(`/returns/sale/${saleId}/returnable`),
+  lookupCreditNote: (code: string) => api.get(`/returns/credit-note/${encodeURIComponent(code)}`),
+  createByTicket: (
+    data: { ticketNumber: string; items: { ean: string; quantity: number }[]; reason?: string; refundMethod: 'cash' | 'card' | 'store_credit' },
+    idempotencyKey: string,
+  ) => api.post('/returns/by-ticket', data, { headers: { 'Idempotency-Key': idempotencyKey } }),
+  create: (
+    data: {
+      originalSaleId: string;
+      items: { lineItemId: string; quantity: number }[];
+      reason?: string;
+      refundMethod: 'cash' | 'card' | 'store_credit';
+    },
+    idempotencyKey: string,
+  ) => api.post('/returns', data, { headers: { 'Idempotency-Key': idempotencyKey } }),
 };
 
 // Customers
@@ -225,6 +254,11 @@ export const timewinApi = {
   pushEvent: (data: { storeId: string; eventType: string; employeeId?: string; data?: any }) =>
     api.post('/timewin/events', data),
   todayShifts: (storeId: string) => api.get('/timewin/today-shifts', { params: { storeId } }),
+  storeConfig: (storeId: string) => api.get('/timewin/store-config', { params: { storeId } }),
+  getStoreSchedule: (storeId: string) => api.get('/timewin/store-schedule', { params: { storeId } }),
+  updateStoreSchedule: (storeId: string, schedules: any[]) =>
+    api.put('/timewin/store-schedule', { schedules }, { params: { storeId } }),
+  stores: () => api.get('/timewin/stores'),
 };
 
 // Terminals (WisePad 3 / reader management)
@@ -262,6 +296,27 @@ export const salesAiApi = {
   logConversion: (logId: string, data: { saleId: string; revenueGenerated: number; marginGenerated: number }) =>
     api.patch(`/sales-ai/log/${logId}/convert`, data),
   kpi: () => api.get('/sales-ai/kpi'),
+};
+
+// ── Sales Guards (anti-error, evaluated before payment) ──
+export interface SaleGuardItemInput {
+  productId: string;
+  ean?: string;
+  quantity: number;
+  sellPriceMinorUnits?: number;
+  discountMinorUnits?: number;
+}
+export const salesGuardsApi = {
+  /** Evaluate the current cart. Server enriches cost/catalogue. Fail-open on the client. */
+  evaluate: (
+    data: {
+      items: SaleGuardItemInput[];
+      saleId?: string;
+      freeProductUsageCount?: number;
+      cancellationCount?: number;
+    },
+    signal?: AbortSignal,
+  ) => api.post('/sales-guards/evaluate', data, { signal }),
 };
 
 // ── Wesley Club loyalty (POS endpoints) ──

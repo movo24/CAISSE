@@ -1,5 +1,5 @@
 import {
-  Injectable, Logger, BadRequestException, NotFoundException, ForbiddenException,
+  Injectable, Logger, BadRequestException, NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
@@ -206,7 +206,7 @@ export class StockLocationsService {
 
     return this.dataSource.transaction(async (manager) => {
       // Lock source balance
-      let fromBalance = await manager.findOne(StockBalanceEntity, {
+      const fromBalance = await manager.findOne(StockBalanceEntity, {
         where: { productId: data.productId, locationId: data.fromLocationId },
         lock: { mode: 'pessimistic_write' },
       });

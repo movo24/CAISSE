@@ -2,3 +2,15 @@
 .env
 .env.local
 .env.production
+
+# Desktop build output
+release/
+dist/
+
+# Keep branded packaging resources committed.
+# (root .gitignore excludes `build/` and `*.png`; re-include the icons so the
+#  electron-builder pipeline is reproducible on CI / a fresh clone.)
+!build/
+build/*.ico
+!build/icon.png
+!build/icon.icns

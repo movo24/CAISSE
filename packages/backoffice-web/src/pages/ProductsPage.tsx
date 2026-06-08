@@ -132,6 +132,24 @@ export function ProductsPage() {
   const lowStock = products.filter((p) => p.stock <= 15).length;
   const avgPrice = products.length > 0 ? products.reduce((s, p) => s + p.price, 0) / products.length : 0;
 
+  const handleExportCsv = () => {
+    if (filtered.length === 0) return;
+    const header = ['Nom', 'EAN', 'Categorie', 'Prix (EUR)', 'Stock'];
+    const rows = filtered.map((p) => [p.name, p.ean, p.category, p.price.toFixed(2), String(p.stock)]);
+    const escapeCell = (v: string) => `"${v.replace(/"/g, '""')}"`;
+    const csv = [header, ...rows].map((r) => r.map(escapeCell).join(',')).join('\r\n');
+    // Prepend BOM so Excel detects UTF-8
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `produits-${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   const resetForm = () => {
     setForm({ name: '', ean: '', price: '', stock: '', category: '' });
     setEditingId(null);
@@ -238,9 +256,10 @@ export function ProductsPage() {
         </div>
         <div className="flex items-center gap-2">
           <button
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-400 cursor-not-allowed opacity-50"
-            disabled
-            title="Export bientôt disponible"
+            onClick={handleExportCsv}
+            disabled={filtered.length === 0}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+            title="Exporter les produits filtrés en CSV"
           >
             <Download size={16} />
             Exporter

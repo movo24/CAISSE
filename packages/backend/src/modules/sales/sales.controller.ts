@@ -5,6 +5,7 @@ import {
   Param,
   Body,
   Query,
+  Headers,
   UseGuards,
   Request,
   ParseUUIDPipe,
@@ -13,7 +14,7 @@ import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { SalesService } from './sales.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard, Roles } from '../../common/guards/roles.guard';
-import { CreateSaleDto, PaginationQueryDto } from '../../common/dto';
+import { CreateSaleDto } from '../../common/dto';
 
 @ApiTags('sales')
 @ApiBearerAuth()
@@ -23,8 +24,12 @@ export class SalesController {
   constructor(private salesService: SalesService) {}
 
   @Post()
-  @ApiOperation({ summary: 'Create and complete a sale (full POS flow)' })
-  create(@Body() dto: CreateSaleDto, @Request() req: any) {
+  @ApiOperation({ summary: 'Create and complete a sale (full POS flow). Send Idempotency-Key to dedupe offline-sync replays.' })
+  create(
+    @Body() dto: CreateSaleDto,
+    @Request() req: any,
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ) {
     return this.salesService.createSale(
       req.user.storeId,
       req.user.employeeId,
@@ -34,6 +39,7 @@ export class SalesController {
         employeeRole: req.user.role,
         maxDiscount: req.user.maxDiscount,
       },
+      idempotencyKey,
     );
   }
 
@@ -67,13 +73,20 @@ export class SalesController {
   @Roles('admin', 'manager')
   @UseGuards(RolesGuard)
   @ApiOperation({ summary: 'Void a sale (restores stock, logs audit)' })
-  voidSale(@Param('id', ParseUUIDPipe) id: string, @Request() req: any) {
+  voidSale(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+    @Body() body?: { reason?: string },
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ) {
     return this.salesService.voidSale(
       id,
       req.user.employeeId,
       req.user.storeId,
       req.user.role,
       req.user.maxDiscount,
+      body?.reason,
+      idempotencyKey,
     );
   }
 }

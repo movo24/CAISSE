@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Package, FileBarChart, Settings, LogOut,
   ChevronDown, ChevronRight, Globe, Store as StoreIcon,
   AlertTriangle, Building2, Network, Plug, CreditCard, Tag, Warehouse,
-  BarChart3, Users, Rocket,
+  BarChart3, Users, ShieldAlert, Database, Wallet, CalendarClock, Undo2,
 } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 import { useAppScope } from '../hooks/useAppScope';
@@ -59,6 +59,13 @@ const navItems: NavItem[] = [
 
   // Couche 5 — Analyse
   { path: '/reports', label: 'Rapports', icon: FileBarChart, minRole: 'manager', scope: 'store' },
+  { path: '/sales-guards', label: 'Garde-fous', icon: ShieldAlert, minRole: 'manager', scope: 'store' },
+  { path: '/returns', label: 'Retours & Avoirs', icon: Undo2, minRole: 'manager', scope: 'store' },
+
+  // Couche 4 — Équipes / RH
+  { path: '/employees', label: 'Employés', icon: Users, minRole: 'manager', scope: 'store' },
+  { path: '/payroll', label: 'Paie & heures', icon: Wallet, minRole: 'manager', scope: 'store' },
+  { path: '/planning', label: 'Planning', icon: CalendarClock, minRole: 'manager', scope: 'store' },
 ];
 
 const stockGroup: NavGroup = {
@@ -82,13 +89,13 @@ const adminGroup: NavGroup = {
     { path: '/units', label: 'Unités', icon: Building2 },
     { path: '/stores', label: 'Magasins', icon: StoreIcon },
     { path: '/connected-apps', label: 'Applications', icon: Plug },
+    { path: '/airtable-ops', label: 'Airtable Ops', icon: Database },
   ],
 };
 
 const bottomItems: NavItem[] = [
   { path: '/billing', label: 'Abonnement', icon: CreditCard, minRole: 'admin', scope: 'both' },
   { path: '/settings', label: 'Réglages', icon: Settings, scope: 'store' },
-  { path: '/timewin24', label: 'TimeWin24', icon: Rocket, scope: 'both' },
 ];
 
 // ════════════════════════════════════════════════════════════════

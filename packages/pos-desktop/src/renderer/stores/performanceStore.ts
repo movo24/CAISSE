@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { useOfflineStore } from './offlineStore';
+import type { PaymentMethod } from '../services/paymentMachine';
 
 /* ═══════════════════════════════════════════════════════════════
    PERFORMANCE STORE — Métriques session caissier
@@ -15,7 +16,7 @@ export interface TransactionRecord {
   totalMinorUnits: number;
   itemCount: number;
   durationSeconds: number;    // Temps entre 1er scan et paiement validé
-  paymentMethod: 'cash' | 'card' | 'mixed';
+  paymentMethod: PaymentMethod;
   discountMinorUnits: number;
   wasVoided: boolean;
 }

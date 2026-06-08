@@ -5,12 +5,13 @@ import {
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, QueryRunner } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
 import { createHash } from 'crypto';
 import { SaleEntity } from '../../database/entities/sale.entity';
 import { SaleLineItemEntity } from '../../database/entities/sale-line-item.entity';
 import { SalePaymentEntity } from '../../database/entities/sale-payment.entity';
+import { IdempotencyKeyEntity } from '../../database/entities/idempotency-key.entity';
 import { ProductEntity } from '../../database/entities/product.entity';
 import { ProductsService } from '../products/products.service';
 import { CustomersService } from '../customers/customers.service';
@@ -21,6 +22,7 @@ import { JackpotService, JackpotResult } from '../jackpot/jackpot.service';
 import { TimewinService } from '../timewin/timewin.service';
 import { PaginatedResult } from '../../common/dto/pagination.dto';
 import { logBusinessEvent } from '../../common/business-logger';
+import { RealtimeService } from '../../common/realtime/realtime.service';
 
 function sha256(data: string): string {
   return createHash('sha256').update(data).digest('hex');
@@ -29,7 +31,13 @@ function sha256(data: string): string {
 interface CreateSaleDto {
   items: { ean: string; quantity: number }[];
   customerQrCode?: string;
-  payments: { method: string; amountMinorUnits: number; stripePaymentIntentId?: string }[];
+  payments: {
+    method: string;
+    amountMinorUnits: number;
+    stripePaymentIntentId?: string;
+    /** Required when method === 'store_credit': the avoir code to redeem. */
+    creditNoteCode?: string;
+  }[];
 }
 
 export interface SaleStockAlert {
@@ -52,6 +60,8 @@ export class SalesService {
     private lineItemRepo: Repository<SaleLineItemEntity>,
     @InjectRepository(SalePaymentEntity)
     private paymentRepo: Repository<SalePaymentEntity>,
+    @InjectRepository(IdempotencyKeyEntity)
+    private idempotencyRepo: Repository<IdempotencyKeyEntity>,
     private dataSource: DataSource,
     private productsService: ProductsService,
     private customersService: CustomersService,
@@ -60,7 +70,91 @@ export class SalesService {
     private stockService: StockService,
     private jackpotService: JackpotService,
     private timewinService: TimewinService,
+    private realtime: RealtimeService,
   ) {}
+
+  /** Serialize an entity to a plain JSON object for jsonb storage (dates → ISO strings). */
+  private toJsonBody(entity: unknown): Record<string, unknown> {
+    return JSON.parse(JSON.stringify(entity));
+  }
+
+  /**
+   * Redeem any `store_credit` payments against their avoir, atomically within the
+   * sale transaction: lock the credit note FOR UPDATE, validate the balance,
+   * decrement it, record a redemption row. Throws (→ rollback) on any problem so
+   * a sale can never consume more than an avoir holds.
+   */
+  async applyStoreCreditRedemptions(
+    qr: QueryRunner,
+    storeId: string,
+    saleId: string,
+    payments: { method: string; amountMinorUnits: number; creditNoteCode?: string }[],
+  ): Promise<void> {
+    for (const p of payments) {
+      if (p.method !== 'store_credit') continue;
+      if (!p.creditNoteCode) {
+        throw new BadRequestException('creditNoteCode requis pour un paiement par avoir');
+      }
+      const rows = await qr.query(
+        `SELECT id, remaining_minor_units, status, type FROM credit_notes
+          WHERE code = $1 AND store_id = $2 FOR UPDATE`,
+        [p.creditNoteCode, storeId],
+      );
+      if (rows.length === 0) throw new BadRequestException(`Avoir introuvable: ${p.creditNoteCode}`);
+      const cn = rows[0];
+      if (cn.type !== 'store_credit') throw new BadRequestException("Cet avoir n'est pas utilisable en caisse");
+      if (cn.status === 'redeemed' || cn.status === 'cancelled') {
+        throw new BadRequestException('Avoir déjà utilisé ou annulé');
+      }
+      if (p.amountMinorUnits <= 0 || p.amountMinorUnits > cn.remaining_minor_units) {
+        throw new BadRequestException("Solde de l'avoir insuffisant");
+      }
+      const newRemaining = cn.remaining_minor_units - p.amountMinorUnits;
+      const newStatus = newRemaining === 0 ? 'redeemed' : 'partially_redeemed';
+      await qr.query(`UPDATE credit_notes SET remaining_minor_units = $1, status = $2 WHERE id = $3`, [
+        newRemaining,
+        newStatus,
+        cn.id,
+      ]);
+      await qr.query(
+        `INSERT INTO credit_note_redemptions (id, credit_note_id, sale_id, store_id, amount_minor_units, created_at)
+         VALUES ($1, $2, $3, $4, $5, NOW())`,
+        [uuidv4(), cn.id, saleId, storeId, p.amountMinorUnits],
+      );
+    }
+  }
+
+  /** Idempotency keys live 7 days — long enough to cover extended offline sync replays. */
+  private idempotencyExpiry(): Date {
+    const d = new Date();
+    d.setDate(d.getDate() + 7);
+    return d;
+  }
+
+  /**
+   * Validate/normalize an incoming idempotency key. Returns undefined when absent
+   * (idempotency is opt-in for backward compatibility). The PK column is 64 chars.
+   */
+  private normalizeIdempotencyKey(key?: string): string | undefined {
+    if (!key) return undefined;
+    const trimmed = key.trim();
+    if (!trimmed) return undefined;
+    if (trimmed.length > 64) {
+      throw new BadRequestException('Idempotency-Key too long (max 64 chars)');
+    }
+    return trimmed;
+  }
+
+  /** Build the createSale replay response from a cached idempotency record. */
+  private replaySaleResponse(
+    cached: IdempotencyKeyEntity,
+  ): SaleEntity & { jackpotResult: JackpotResult | null; stockAlerts: SaleStockAlert[] } {
+    return {
+      ...(cached.responseBody as unknown as SaleEntity),
+      jackpotResult: null,
+      stockAlerts: [],
+    };
+  }
 
   /**
    * Create a sale — the core POS transaction.
@@ -75,7 +169,20 @@ export class SalesService {
     employeeId: string,
     dto: CreateSaleDto,
     employeeSnapshot?: { employeeName?: string; employeeRole?: string; maxDiscount?: number },
+    idempotencyKey?: string,
   ): Promise<SaleEntity> {
+    // --- Idempotency (NF525): a replayed offline-sync POST must NEVER create a
+    // second sale. Fast path BEFORE validation so a replay does not falsely fail
+    // on "insufficient stock" if the catalogue moved on since the original sale.
+    const idemKey = this.normalizeIdempotencyKey(idempotencyKey);
+    if (idemKey) {
+      const cached = await this.idempotencyRepo.findOne({ where: { key: idemKey } });
+      if (cached) {
+        this.logger.log(`[IDEMPOTENT] /sales replay for key ${idemKey} — returning cached sale`);
+        return this.replaySaleResponse(cached);
+      }
+    }
+
     // --- Input validation ---
     if (!dto.items || dto.items.length === 0) {
       throw new BadRequestException('Sale must have at least one item');
@@ -210,6 +317,20 @@ export class SalesService {
       );
     }
 
+    // --- M1: an avoir (store_credit) can only cover the RESIDUAL due, never more.
+    // Never trust the client's split: cap server-side so a sale can never debit an
+    // avoir beyond what cash/card/other tenders left to pay (no value destruction). ---
+    const storeCreditRequested = dto.payments
+      .filter((p) => p.method === 'store_credit')
+      .reduce((sum, p) => sum + p.amountMinorUnits, 0);
+    const nonStoreCreditPaid = paymentTotal - storeCreditRequested;
+    const storeCreditAllowed = Math.max(0, totalAfterDiscount - nonStoreCreditPaid);
+    if (storeCreditRequested > storeCreditAllowed) {
+      throw new BadRequestException(
+        `Montant d'avoir (${storeCreditRequested}) dépasse le reste dû (${storeCreditAllowed})`,
+      );
+    }
+
     // =====================================================================
     // TRANSACTION BOUNDARY — everything below is atomic
     // Retry up to 3 times on serialization/unique constraint failures
@@ -221,6 +342,18 @@ export class SalesService {
     await queryRunner.startTransaction();
 
     try {
+      // --- Idempotency re-check inside the transaction (handles concurrent
+      // duplicates that both passed the pre-transaction fast path) ---
+      if (idemKey) {
+        const cachedInTx = await queryRunner.manager.findOne(IdempotencyKeyEntity, {
+          where: { key: idemKey },
+        });
+        if (cachedInTx) {
+          await queryRunner.commitTransaction();
+          return this.replaySaleResponse(cachedInTx);
+        }
+      }
+
       // --- Ticket number: atomic increment using store row lock ---
       // Lock the store row to serialize ticket number generation
       await queryRunner.query(
@@ -346,6 +479,23 @@ export class SalesService {
         }
       }
 
+      // --- Redeem store-credit avoirs as tender, atomically with the sale ---
+      await this.applyStoreCreditRedemptions(queryRunner, storeId, saved.id, dto.payments);
+
+      // --- Persist idempotency key in the SAME transaction as the sale, so the
+      // sale and its dedup record commit (or roll back) atomically. A concurrent
+      // duplicate hits the PK unique constraint → 23505 → retried → cache hit. ---
+      if (idemKey) {
+        await queryRunner.manager.insert(IdempotencyKeyEntity, {
+          key: idemKey,
+          endpoint: '/sales',
+          customerId: customerId ?? null,
+          responseStatus: 201,
+          responseBody: this.toJsonBody(saved) as any,
+          expiresAt: this.idempotencyExpiry(),
+        });
+      }
+
       // --- COMMIT ---
       await queryRunner.commitTransaction();
 
@@ -384,12 +534,72 @@ export class SalesService {
         this.logger.warn(`Audit log failed: ${auditErr?.message}`);
       }
 
+      // ── Sensitive-action audit: discount applied (only when a discount exists) ──
+      // Non-blocking — never fails the sale. No sensitive data, metadata only.
+      if (totalDiscount > 0) {
+        try {
+          const subtotalForPct = subtotal > 0 ? subtotal : 0;
+          await this.auditService.log({
+            storeId,
+            employeeId,
+            action: 'discount_applied',
+            entityType: 'sale',
+            entityId: saved.id,
+            details: {
+              ticketNumber,
+              discountMinorUnits: totalDiscount,
+              subtotalMinorUnits: subtotalForPct,
+              discountPct: subtotalForPct > 0
+                ? Math.round((totalDiscount / subtotalForPct) * 10000) / 100
+                : null,
+              employeeRole: employeeSnapshot?.employeeRole ?? null,
+              source: 'pos_sale',
+            },
+          });
+        } catch (auditErr: any) {
+          this.logger.warn(`Audit (discount_applied) failed: ${auditErr?.message}`);
+        }
+      }
+
+      // Real-time dashboard push (SSE) — fire-and-forget, never blocks the sale.
+      try {
+        this.realtime.emit(storeId, 'sale.completed', {
+          saleId: saved.id,
+          ticketNumber,
+          totalMinorUnits: totalAfterDiscount,
+          itemCount: lineItems.length,
+          at: (saved.completedAt ?? new Date()).toISOString(),
+        });
+      } catch { /* never block the sale */ }
+
       // Push sale event to TimeWin24 (fire-and-forget — NEVER blocks the sale response)
       this.pushSaleToTimewin(storeId, employeeId, saved.id, ticketNumber, totalAfterDiscount, lineItems.length, saved.completedAt, dto.payments);
 
       // Peripheral events (physical drivers in V1)
       if (dto.payments.some((p) => p.method === 'cash')) {
         this.logger.log(`[PERIPHERAL] Cash drawer opened for ${ticketNumber}`);
+
+        // ── Sensitive-action audit: cash drawer opened ── (non-blocking)
+        const cashTotal = dto.payments
+          .filter((p) => p.method === 'cash')
+          .reduce((sum, p) => sum + (p.amountMinorUnits ?? 0), 0);
+        this.auditService
+          .log({
+            storeId,
+            employeeId,
+            action: 'drawer_opened',
+            entityType: 'sale',
+            entityId: saved.id,
+            details: {
+              ticketNumber,
+              reason: 'cash_payment',
+              cashAmountMinorUnits: cashTotal,
+              source: 'pos_sale',
+            },
+          })
+          .catch((auditErr: any) =>
+            this.logger.warn(`Audit (drawer_opened) failed: ${auditErr?.message}`),
+          );
       }
       this.logger.log(`[PERIPHERAL] Printing ticket ${ticketNumber}`);
       this.printTicketMock(saved);
@@ -660,7 +870,20 @@ export class SalesService {
     storeId: string,
     employeeRole?: string,
     maxDiscountPercent?: number,
+    reason?: string,
+    idempotencyKey?: string,
   ): Promise<SaleEntity> {
+    // --- Idempotency: a replayed void must return the cached result, NOT throw
+    // "already voided" (which a naive network retry would otherwise hit). ---
+    const idemKey = this.normalizeIdempotencyKey(idempotencyKey);
+    if (idemKey) {
+      const cached = await this.idempotencyRepo.findOne({ where: { key: idemKey } });
+      if (cached) {
+        this.logger.log(`[IDEMPOTENT] /sales/void replay for key ${idemKey} — returning cached result`);
+        return cached.responseBody as unknown as SaleEntity;
+      }
+    }
+
     const sale = await this.findOne(id, storeId);
     if (sale.status === 'voided') {
       throw new BadRequestException('Sale already voided');
@@ -685,6 +908,7 @@ export class SalesService {
     await queryRunner.connect();
     await queryRunner.startTransaction();
 
+    let avoirRestoredMinorUnits = 0;
     try {
       sale.status = 'voided';
       const saved = await queryRunner.manager.save(SaleEntity, sale);
@@ -697,6 +921,41 @@ export class SalesService {
            WHERE id = $2 AND store_id = $3`,
           [item.quantity, item.productId, storeId],
         );
+      }
+
+      // --- M3: restore store-credit avoirs consumed by this sale. Voiding must NOT
+      // destroy the customer's credit. Runs exactly once: the void-once guard
+      // (status='voided' throws) + idempotency replay prevent any double-restore. ---
+      const redemptionRows = await queryRunner.query(
+        `SELECT credit_note_id, amount_minor_units FROM credit_note_redemptions
+          WHERE sale_id = $1 AND store_id = $2`,
+        [sale.id, storeId],
+      );
+      const redemptions: { credit_note_id: string; amount_minor_units: number | string }[] =
+        Array.isArray(redemptionRows) ? redemptionRows : [];
+      for (const r of redemptions) {
+        const amt = Number(r.amount_minor_units) || 0;
+        await queryRunner.query(
+          `UPDATE credit_notes
+              SET remaining_minor_units = remaining_minor_units + $1,
+                  status = CASE WHEN remaining_minor_units + $1 >= total_minor_units
+                                THEN 'active' ELSE 'partially_redeemed' END
+            WHERE id = $2 AND store_id = $3`,
+          [amt, r.credit_note_id, storeId],
+        );
+        avoirRestoredMinorUnits += amt;
+      }
+
+      // Persist idempotency key atomically with the void.
+      if (idemKey) {
+        await queryRunner.manager.insert(IdempotencyKeyEntity, {
+          key: idemKey,
+          endpoint: '/sales/void',
+          customerId: null,
+          responseStatus: 200,
+          responseBody: this.toJsonBody(saved) as any,
+          expiresAt: this.idempotencyExpiry(),
+        });
       }
 
       await queryRunner.commitTransaction();
@@ -712,18 +971,31 @@ export class SalesService {
         },
       });
 
-      // Audit (post-transaction)
-      await this.auditService.log({
-        storeId: sale.storeId,
-        employeeId,
-        action: 'sale_voided',
-        entityType: 'sale',
-        entityId: id,
-        details: {
-          ticketNumber: sale.ticketNumber,
-          total: sale.totalMinorUnits,
-        },
-      });
+      // ── Sensitive-action audit (post-commit, NON-BLOCKING) ──
+      // The void is already committed; auditing must never undo or block it.
+      // Enriched metadata: amount, reason, role, source, timestamp (auto).
+      // NOTE: there is no dedicated `refund` action in the codebase yet — the
+      // closest real operation is this void (annulation). A true refund must be
+      // a separate feature (route, business/NF525 rules, permissions, audit).
+      try {
+        await this.auditService.log({
+          storeId: sale.storeId,
+          employeeId,
+          action: 'sale_voided',
+          entityType: 'sale',
+          entityId: id,
+          details: {
+            ticketNumber: sale.ticketNumber,
+            totalMinorUnits: sale.totalMinorUnits,
+            employeeRole: employeeRole ?? null,
+            reason: reason ?? null,
+            avoirRestoredMinorUnits,
+            source: 'pos_void',
+          },
+        });
+      } catch (auditErr: any) {
+        this.logger.warn(`Audit (sale_voided) failed: ${auditErr?.message}`);
+      }
 
       return saved;
     } catch (error) {

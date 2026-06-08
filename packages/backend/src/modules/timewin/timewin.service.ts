@@ -1,6 +1,5 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import * as bcrypt from 'bcrypt';
 import { createHmac, randomUUID } from 'crypto';
 import { AlertService } from '../../common/alert/alert.service';
 
@@ -194,6 +193,17 @@ export class TimewinService implements OnModuleInit {
 
   async getTodayShifts(storeId: string): Promise<any> {
     return this.fetchWithPosSecret(`/api/pos-feed/today-shifts?storeId=${storeId}`);
+  }
+
+  /**
+   * Monthly payroll / worked-hours feed for a store (TimeWin24 = source of truth).
+   * `month` is ISO `YYYY-MM`. Returns whatever the TW24 feed provides; the
+   * back-office maps it to the export rows. 502/empty if TW24 is unreachable.
+   */
+  async getMonthlyPayroll(storeId: string, month: string): Promise<any> {
+    return this.fetchWithPosSecret(
+      `/api/pos-feed/payroll?storeId=${encodeURIComponent(storeId)}&month=${encodeURIComponent(month)}`,
+    );
   }
 
   /* ── Store schedule (operating hours) ── */

@@ -1,0 +1,42 @@
+name: CI
+
+# Lint, typecheck (via builds) and backend tests on every push / PR.
+# Builds now run `tsc --noEmit` before bundling, so type errors fail CI.
+# Note: all `run:` steps are static — no untrusted event input is interpolated.
+
+on:
+  push:
+    branches:
+      - main
+      - "feat/**"
+      - "fix/**"
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Backend tests
+        run: npm run test:backend
+
+      - name: Build backend (tsc + nest)
+        run: npm run build:backend
+
+      - name: Build backoffice (tsc --noEmit + vite)
+        run: npm run build:backoffice
+
+      - name: Build POS desktop renderer (tsc --noEmit + vite)
+        run: npm run build:pos

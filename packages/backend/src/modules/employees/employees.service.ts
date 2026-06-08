@@ -2,13 +2,17 @@ import {
   Injectable,
   NotFoundException,
   ForbiddenException,
+  ConflictException,
+  BadRequestException,
 } from '@nestjs/common';
+import { Not } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as QRCode from 'qrcode';
 import * as bcrypt from 'bcrypt';
 import { v4 as uuidv4 } from 'uuid';
 import { EmployeeEntity } from '../../database/entities/employee.entity';
+import { AuditService } from '../audit/audit.service';
 
 // ── Role-based defaults ──
 const ROLE_RIGHTS: Record<string, any> = {
@@ -55,7 +59,46 @@ export class EmployeesService {
   constructor(
     @InjectRepository(EmployeeEntity)
     private employeeRepo: Repository<EmployeeEntity>,
+    private readonly auditService: AuditService,
   ) {}
+
+  /**
+   * Basic PIN format validation. PINs are short numeric secrets; we require
+   * 4–8 digits so they remain usable on the POS keypad while avoiding trivial
+   * single-digit values.
+   */
+  private validatePinFormat(pin: string): void {
+    if (typeof pin !== 'string' || !/^\d{4,8}$/.test(pin)) {
+      throw new BadRequestException('Le code PIN doit comporter de 4 à 8 chiffres.');
+    }
+  }
+
+  /**
+   * Ensure no other ACTIVE employee in the same store already uses this PIN.
+   *
+   * PINs are stored as bcrypt hashes, so uniqueness cannot be a SQL constraint:
+   * we load the store's active employees and bcrypt-compare the candidate
+   * against each. `excludeId` skips the employee being updated.
+   *
+   * Scope = per store: the same PIN may legitimately exist in different stores.
+   */
+  private async assertPinUniqueInStore(
+    storeId: string,
+    pin: string,
+    excludeId?: string,
+  ): Promise<void> {
+    const where: any = { storeId, isActive: true };
+    if (excludeId) where.id = Not(excludeId);
+    const peers = await this.employeeRepo.find({ where });
+
+    for (const peer of peers) {
+      if (peer.pinHash && (await bcrypt.compare(pin, peer.pinHash))) {
+        throw new ConflictException(
+          'Ce code PIN est déjà utilisé par un employé de ce magasin. Choisissez-en un autre.',
+        );
+      }
+    }
+  }
 
   async create(data: {
     firstName: string;
@@ -66,6 +109,9 @@ export class EmployeesService {
     storeId: string;
     maxDiscountPercent?: number;
   }): Promise<EmployeeEntity & { qrCodeDataUrl: string }> {
+    this.validatePinFormat(data.pin);
+    await this.assertPinUniqueInStore(data.storeId, data.pin);
+
     const pinHash = await bcrypt.hash(data.pin, 12);
     const qrCode = `EMP-${uuidv4().slice(0, 8).toUpperCase()}`;
 
@@ -120,11 +166,55 @@ export class EmployeesService {
   ): Promise<EmployeeEntity> {
     await this.findOneForStore(id, storeId);
     if (data.pin) {
+      this.validatePinFormat(data.pin);
+      await this.assertPinUniqueInStore(storeId, data.pin, id);
       (data as any).pinHash = await bcrypt.hash(data.pin, 12);
       delete data.pin;
     }
     await this.employeeRepo.update(id, data as any);
     return this.findOneForStore(id, storeId);
+  }
+
+  /**
+   * Change an employee's PIN (dedicated endpoint). Validates format and
+   * enforces per-store uniqueness, then stores the new bcrypt hash.
+   *
+   * The action is audited (append-only hash chain). The PIN itself is NEVER
+   * logged — only WHO changed WHOSE PIN, in which store.
+   *
+   * @param actorId employeeId of the admin/manager performing the change
+   */
+  async changePin(
+    id: string,
+    newPin: string,
+    storeId: string,
+    actorId?: string,
+  ): Promise<{ message: string }> {
+    const emp = await this.findOneForStore(id, storeId);
+    this.validatePinFormat(newPin);
+    await this.assertPinUniqueInStore(storeId, newPin, id);
+    const pinHash = await bcrypt.hash(newPin, 12);
+    await this.employeeRepo.update(id, { pinHash });
+
+    // Sensitive-action audit — never blocks the operation, never logs the PIN.
+    try {
+      await this.auditService.log({
+        storeId,
+        employeeId: actorId || id,
+        action: 'pin_changed',
+        entityType: 'employee',
+        entityId: id,
+        details: {
+          targetEmployee: `${emp.firstName} ${emp.lastName}`,
+          targetRole: emp.role,
+          changedBySelf: actorId === id || !actorId,
+        },
+      });
+    } catch {
+      /* audit failure must not break PIN change */
+    }
+
+    return { message: `Code PIN mis à jour pour ${emp.firstName} ${emp.lastName}.` };
   }
 
   async deactivate(id: string, storeId: string): Promise<{ message: string }> {

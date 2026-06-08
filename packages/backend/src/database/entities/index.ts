@@ -42,3 +42,11 @@ export { ProductHighlightEntity } from './product-highlight.entity';
 export { ProductStoreAvailabilityEntity } from './product-store-availability.entity';
 export { LoyaltyRewardCycleEntity } from './loyalty-reward-cycle.entity';
 export { IdempotencyKeyEntity } from './idempotency-key.entity';
+
+// ── Airtable Ops Layer (visual ops cockpit — PostgreSQL stays source of truth) ─
+export { AirtableLinkedRecordEntity } from './airtable-linked-record.entity';
+export { AirtableSyncLogEntity } from './airtable-sync-log.entity';
+export { AirtableOperationEntity } from './airtable-operation.entity';
+
+// ── Sales Guards (anti-error cockpit) ──────────────────────────────
+export { SaleAnomalyLogEntity } from './sale-anomaly-log.entity';

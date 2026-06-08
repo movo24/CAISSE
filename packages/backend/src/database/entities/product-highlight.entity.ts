@@ -32,7 +32,7 @@ export class ProductHighlightEntity {
   @Column({ name: 'image_url', type: 'text', nullable: true })
   imageUrl: string | null;
 
-  @Column({ length: 30, nullable: true })
+  @Column({ type: 'varchar', length: 30, nullable: true })
   category: HighlightCategory | null;
 
   @Column({ name: 'is_new', default: true })

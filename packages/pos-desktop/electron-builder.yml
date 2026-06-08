@@ -1,0 +1,57 @@
+# electron-builder configuration — POS Caisse desktop pack.
+# Produces: POS-Caisse-Setup-<version>.exe (NSIS installer) + a portable .exe.
+# Build with: npm run desktop:build  (Windows targets build on Windows/CI).
+appId: com.addxintelligence.poscaisse
+productName: POS Caisse
+copyright: © AddX Intelligence
+# Pinned because electron is hoisted to the monorepo root node_modules and
+# electron-builder (run from the package dir) cannot auto-resolve the version.
+# Keep in sync with devDependencies.electron.
+electronVersion: 28.3.3
+
+directories:
+  # Compiled main (dist/main) + bundled renderer (dist/) are packaged.
+  output: release
+  buildResources: build
+
+# What goes inside the app bundle. Renderer is the Vite `dist/` output.
+files:
+  - dist/**/*
+  - package.json
+
+# Renderer assets that must sit next to index.html (already in dist via Vite).
+asar: true
+
+win:
+  icon: build/icon.png
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: POS Caisse
+  artifactName: POS-Caisse-Setup-${version}.${ext}
+
+portable:
+  artifactName: POS-Caisse-Portable-${version}.${ext}
+
+# macOS target (secondary priority) — lets the chain be proven on a Mac.
+mac:
+  icon: build/icon.png
+  category: public.app-category.business
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+
+# Linux (optional, future)
+linux:
+  icon: build/icon.png
+  target: [AppImage]
+  category: Office

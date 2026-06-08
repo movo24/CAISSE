@@ -1,6 +1,6 @@
 import { useOfflineStore, OfflineQueueEntry } from '../stores/offlineStore';
-import { signSyncRequest, markAsSent, isAlreadySent, logSecurityEvent } from './hmacSecurity';
-import { salesApi, timewinApi } from './api';
+import { signSyncRequest, markAsSent, unmarkSent, isAlreadySent, idempotencyKeyFor, logSecurityEvent } from './hmacSecurity';
+import { salesApi, timewinApi, returnsApi } from './api';
 import { API_URL } from '../utils/apiConfig';
 
 /* ═══════════════════════════════════════════════════════════════
@@ -123,10 +123,20 @@ async function syncEntry(entry: OfflineQueueEntry): Promise<{ success: boolean; 
       }
     }
 
+    // Stable idempotency key (durable: derived from the persisted queue entry id).
+    // Sent to the backend so a replayed write is deduped server-side (NF525).
+    const idemKey = idempotencyKeyFor(entry.type, entry.id);
+
+    // Persist the dedup marker BEFORE the network call (closes the crash-after-
+    // success window). On failure we roll it back below so the entry retries —
+    // and the backend dedupes on idemKey, so a retried-but-already-applied write
+    // never creates a duplicate.
+    markAsSent(entry.type, entry.id);
+
     // Sync by type — actual API calls
     switch (entry.type) {
       case 'ticket':
-        await salesApi.create(entry.payload);
+        await salesApi.create(entry.payload, idemKey);
         console.log(`[SYNC] Ticket ${entry.payload.ticketNumber} synced to server`);
         break;
 
@@ -141,13 +151,20 @@ async function syncEntry(entry: OfflineQueueEntry): Promise<{ success: boolean; 
         break;
 
       case 'return':
-        await salesApi.void(entry.payload.ticketId);
+        await salesApi.void(entry.payload.ticketId, idemKey);
         console.log(`[SYNC] Return synced: ${entry.payload.ticketNumber}`);
         break;
 
       case 'void':
-        await salesApi.void(entry.payload.ticketId);
+        await salesApi.void(entry.payload.ticketId, idemKey);
         console.log(`[SYNC] Void synced: ${entry.payload.ticketNumber}`);
+        break;
+
+      case 'credit_note_return':
+        // Deferred return: resolved + validated server-side by ticket number.
+        // A conflict (qty already returned) → 4xx → permanent fail + notification.
+        await returnsApi.createByTicket(entry.payload, idemKey);
+        console.log(`[SYNC] Offline return synced (avoir): ${entry.payload.ticketNumber}`);
         break;
 
       case 'antifraude_log':
@@ -189,14 +206,27 @@ async function syncEntry(entry: OfflineQueueEntry): Promise<{ success: boolean; 
         console.warn(`[SYNC] Unknown entry type: ${entry.type}`);
     }
 
-    // Mark as sent for anti-double sync
-    markAsSent(entry.type, entry.id);
-
     store.updateEntryStatus(entry.id, 'synced');
     return { success: true };
 
   } catch (error: any) {
     const errorMsg = error?.message || 'Erreur de synchronisation';
+
+    // Roll back the pre-call dedup marker so this entry is retried. The backend
+    // is idempotent on idemKey, so a retry of a write that actually succeeded
+    // (lost response) returns the cached result instead of duplicating it.
+    unmarkSent(entry.type, entry.id);
+
+    // A 4xx is a deterministic business rejection (e.g. a deferred offline return
+    // whose quantity was already returned meanwhile) — retrying will never succeed.
+    // Fail permanently and surface a notification so staff can reconcile.
+    const httpStatus = error?.response?.status;
+    if (typeof httpStatus === 'number' && httpStatus >= 400 && httpStatus < 500) {
+      const serverMsg = error?.response?.data?.message || errorMsg;
+      store.updateEntryStatus(entry.id, 'failed', `Rejeté par le serveur: ${serverMsg}`);
+      store.addSyncError(`Refusé au sync: ${entry.type} #${entry.id.slice(0, 8)} — ${serverMsg}`);
+      return { success: false, error: serverMsg };
+    }
 
     if (entry.retryCount >= entry.maxRetries) {
       store.updateEntryStatus(entry.id, 'failed', `Max retries atteint: ${errorMsg}`);

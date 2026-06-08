@@ -7,7 +7,7 @@ import { create } from 'zustand';
 
 // ── Types ──
 
-export type OfflineEntryType = 'ticket' | 'payment' | 'stock_movement' | 'return' | 'void' | 'antifraude_log' | 'pointage' | 'cashier_metrics' | 'staffing_snapshot';
+export type OfflineEntryType = 'ticket' | 'payment' | 'stock_movement' | 'return' | 'void' | 'antifraude_log' | 'pointage' | 'cashier_metrics' | 'staffing_snapshot' | 'credit_note_return';
 
 export type SyncStatus = 'local_pending' | 'syncing' | 'synced' | 'conflict' | 'failed';
 

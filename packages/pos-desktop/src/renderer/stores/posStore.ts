@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { authApi } from '../services/api';
+import type { PaymentMethod } from '../services/paymentMachine';
 
 export interface CartItem {
   productId: string;
@@ -31,7 +32,7 @@ interface Customer {
 /* ── Ticket History ── */
 
 export interface TicketPayment {
-  method: 'cash' | 'card' | 'mixed';
+  method: PaymentMethod;
   amountMinorUnits: number;
 }
 

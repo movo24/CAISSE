@@ -8,6 +8,7 @@
     "dev": "vite --port 5177 --host",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
+    "lint": "eslint src --ext ts,tsx",
     "ios:sync": "npm run build && npx cap sync ios",
     "ios:open": "npx cap open ios",
     "ios:run": "npm run build && npx cap run ios"

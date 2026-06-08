@@ -5,6 +5,8 @@
 
 // ── Event definitions ──
 
+import type { PaymentMethod } from './paymentMachine';
+
 export interface SaleCompletedPayload {
   storeId: string;
   cashierId: string;
@@ -14,7 +16,7 @@ export interface SaleCompletedPayload {
   totalMinorUnits: number;
   itemCount: number;
   durationSeconds: number;
-  paymentMethod: 'cash' | 'card' | 'mixed';
+  paymentMethod: PaymentMethod;
   discountMinorUnits: number;
 }
 

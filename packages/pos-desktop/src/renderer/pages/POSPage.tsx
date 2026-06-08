@@ -6,10 +6,11 @@ import {
   ScanBarcode, UserCircle, Weight, Tag, ArrowRight,
   FileText, Smartphone, XCircle, Clock, Trash2, Coins, Split,
   History, RotateCcw, Printer, Receipt, AlertTriangle,
-  Camera, Monitor, Tablet,
+  Camera, Monitor, Tablet, Mail, Loader2, Ticket, Gift,
 } from 'lucide-react';
 import { usePOSStore } from '../stores/posStore';
-import { productsApi, salesApi, customersApi, occupancyApi } from '../services/api';
+import { productsApi, salesApi, customersApi, occupancyApi, receiptsApi } from '../services/api';
+import { computePaymentState, type PaymentMethod } from '../services/paymentMachine';
 import { FluxWidget } from '../components/FluxWidget';
 import { useOfflineMode } from '../hooks/useOfflineMode';
 import { useWakeLock } from '../hooks/useWakeLock';
@@ -27,11 +28,14 @@ import { useComparisonStore } from '../stores/comparisonStore';
 import { useDeviceProfile, platformClasses } from '../hooks/useDeviceProfile';
 import { useTicketHistory } from '../hooks/useTicketHistory';
 import { TicketHistoryModal } from '../components/pos/TicketHistoryModal';
+import { ReturnModal } from '../components/pos/ReturnModal';
+import { AvoirTenderModal } from '../components/pos/AvoirTenderModal';
 import { peripheralBridge } from '../services/peripheralBridge';
 import { useCloudSyncStore } from '../services/cloudSyncIdentity';
 import { Wifi, WifiOff, CloudOff, Cloud, RefreshCw as SyncIcon, ShieldAlert, Upload, Lock as LockIcon } from 'lucide-react';
 import { IPadPOSLayout } from '../components/ipad/IPadPOSLayout';
 import { StockAlertToast } from '../components/StockAlertToast';
+import { SaleGuardsGate } from '../components/SaleGuardsGate';
 import { SalesCockpit } from '../components/SalesCockpit';
 
 /* ── Helpers ── */
@@ -79,12 +83,13 @@ interface CatalogueProduct {
 
 /* ── Payment types ── */
 
-type PaymentMethod = 'cash' | 'card' | 'mixed';
+// PaymentMethod is the canonical union from paymentMachine (cash/card/mixed/voucher/gift_card/store_credit)
 
 interface PartialPayment {
   id: string;
   method: PaymentMethod;
   amountMinorUnits: number;
+  creditNoteCode?: string;
 }
 
 /* ── Confirmation overlay types ── */
@@ -133,6 +138,16 @@ export function POSPage() {
   // Fullscreen confirmation overlay
   const [confirmation, setConfirmation] = useState<ConfirmationData | null>(null);
   const confirmationRef = useRef<ConfirmationData | null>(null); // mirror to avoid stale closures
+
+  // Email-receipt modal (shown from the confirmation overlay when a server saleId exists)
+  const [emailModal, setEmailModal] = useState(false);
+  const [emailValue, setEmailValue] = useState('');
+  const [emailStatus, setEmailStatus] = useState<'idle' | 'sending' | 'sent' | 'error' | 'disabled'>('idle');
+
+  // Return / credit-note modal (online only)
+  const [returnOpen, setReturnOpen] = useState(false);
+  // Pay-by-avoir tender modal
+  const [avoirOpen, setAvoirOpen] = useState(false);
   const [ticketCountdown, setTicketCountdown] = useState(TICKET_TIMEOUT_MS / 1000);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -283,14 +298,35 @@ export function POSPage() {
     completeTransaction(choice);
   }, [completeTransaction]);
 
+  /** Email the just-completed receipt. Requires a server saleId (online sale). */
+  const sendReceiptEmail = useCallback(async () => {
+    const saleId = (store as any).lastSaleId as string | undefined;
+    if (!saleId) return;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailValue.trim())) {
+      setEmailStatus('error');
+      return;
+    }
+    setEmailStatus('sending');
+    try {
+      const res = await receiptsApi.email(saleId, emailValue.trim());
+      if (res.data?.skipped) setEmailStatus('disabled');
+      else if (res.data?.sent) setEmailStatus('sent');
+      else setEmailStatus('error');
+    } catch {
+      setEmailStatus('error');
+    }
+  }, [store, emailValue]);
+
   /** dismissConfirmation: alias for "skip" — used by Escape key and the "Passer" link */
   const dismissConfirmation = useCallback(() => {
     completeTransaction();
   }, [completeTransaction]);
 
-  // Auto-dismiss countdown — STABLE deps (no stale closure issue)
+  // Auto-dismiss countdown — STABLE deps (no stale closure issue).
+  // Paused while the email-receipt modal is open so the overlay does not vanish
+  // under the cashier; closing the modal restarts a fresh countdown.
   useEffect(() => {
-    if (!confirmation) return;
+    if (!confirmation || emailModal) return;
 
     // Keep the ref in sync
     confirmationRef.current = confirmation;
@@ -319,7 +355,7 @@ export function POSPage() {
       countdownRef.current = null;
       timeoutRef.current = null;
     };
-  }, [confirmation]); // ✅ Only depends on confirmation, NOT on handleTicketChoice
+  }, [confirmation, emailModal]); // restart/pause with the email modal too
 
   // Redirect if not logged in
   useEffect(() => {
@@ -586,19 +622,21 @@ export function POSPage() {
 
   /* ── Commit partial payment (after TPE approval for card) ── */
 
-  const commitPartialPayment = (method: PaymentMethod, amountMinor: number) => {
+  const commitPartialPayment = (method: PaymentMethod, amountMinor: number, creditNoteCode?: string) => {
     const payment: PartialPayment = {
       id: `pay-${Date.now()}`,
       method,
       amountMinorUnits: amountMinor,
+      creditNoteCode,
     };
 
     const newPayments = [...partialPayments, payment];
-    const newTotalPaid = newPayments.reduce((s, p) => s + p.amountMinorUnits, 0);
     const ticketTotal = store.total();
+    // Tender state machine: cash change only; voucher/gift-card overpay forfeited.
+    const state = computePaymentState(ticketTotal, newPayments);
 
-    if (newTotalPaid >= ticketTotal) {
-      finalizePayment(newPayments, newTotalPaid - ticketTotal);
+    if (state.isCovered) {
+      finalizePayment(newPayments, state.changeDue);
     } else {
       setPartialPayments(newPayments);
       setSplitAmountInput('');
@@ -649,7 +687,7 @@ export function POSPage() {
       const res = await salesApi.create({
         items: store.cartItems.map((i) => ({ ean: i.ean, quantity: i.quantity })),
         customerQrCode: store.customerQrCode || undefined,
-        payments: payments.map((p) => ({ method: p.method, amountMinorUnits: p.amountMinorUnits })),
+        payments: payments.map((p) => ({ method: p.method, amountMinorUnits: p.amountMinorUnits, creditNoteCode: p.creditNoteCode })),
       });
       ticketNumber = res.data.ticketNumber || `T-${Date.now().toString().slice(-6)}`;
       if (res.data.jackpotResult) store.setJackpotResult(res.data.jackpotResult);
@@ -744,18 +782,27 @@ export function POSPage() {
   const methodLabel = (m: string) => {
     if (m === 'card') return 'Carte Bancaire';
     if (m === 'cash') return 'Especes';
+    if (m === 'voucher') return 'Titre-resto';
+    if (m === 'gift_card') return 'Carte cadeau';
+    if (m === 'store_credit') return 'Avoir';
     return 'Paiement Mixte';
   };
 
   const methodIcon = (m: string) => {
     if (m === 'card') return <CreditCard size={18} />;
     if (m === 'cash') return <Banknote size={18} />;
+    if (m === 'voucher') return <Ticket size={18} />;
+    if (m === 'gift_card') return <Gift size={18} />;
+    if (m === 'store_credit') return <Ticket size={18} />;
     return <Layers size={18} />;
   };
 
   const methodIconSmall = (m: string) => {
     if (m === 'card') return <CreditCard size={14} className="text-pos-accent" />;
     if (m === 'cash') return <Banknote size={14} className="text-pos-success" />;
+    if (m === 'voucher') return <Ticket size={14} className="text-amber-500" />;
+    if (m === 'gift_card') return <Gift size={14} className="text-violet-500" />;
+    if (m === 'store_credit') return <Ticket size={14} className="text-emerald-500" />;
     return <Layers size={14} className="text-pos-muted" />;
   };
 
@@ -767,6 +814,7 @@ export function POSPage() {
         <EmployeePinGate onVerified={(name) => console.log(`[POS] Employee verified: ${name}`)} />
         <IPadPOSLayout />
         <StockAlertToast />
+        <SaleGuardsGate />
       </>
     );
   }
@@ -912,6 +960,16 @@ export function POSPage() {
             <span className="hidden compact:inline">Historique</span>
             <kbd className="text-[9px] bg-indigo-100 px-1 py-0.5 rounded font-mono">F9</kbd>
           </button>
+          {rights.canRefund && (
+            <button
+              onClick={() => setReturnOpen(true)}
+              title="Retour / Avoir"
+              className={`flex items-center gap-1.5 font-semibold rounded-full bg-amber-50 text-amber-600 hover:bg-amber-100 transition-colors border border-amber-100 ${device.isCompact ? 'text-xs px-2.5 py-2' : 'text-[11px] px-3 py-1.5'}`}
+            >
+              <RotateCcw size={device.isCompact ? 14 : 12} />
+              <span className="hidden compact:inline">Retour</span>
+            </button>
+          )}
         </div>
 
         <div className="relative">
@@ -1302,6 +1360,33 @@ export function POSPage() {
                       <Banknote size={18} className="text-pos-success" /> Especes
                     </button>
                   </div>
+                  {/* Additional tenders — no PSP, available offline. No cash change on these. */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      className="flex items-center justify-center gap-2 px-4 py-3.5 rounded-2xl border-2 border-pos-border/40 hover:border-amber-400 hover:bg-amber-50 transition-all font-semibold text-sm"
+                      onClick={() => addPartialPayment('voucher')}
+                      disabled={processing}
+                      title="Titre-resto (aucune monnaie rendue)"
+                    >
+                      <Ticket size={18} className="text-amber-500" /> Titre-resto
+                    </button>
+                    <button
+                      className="flex items-center justify-center gap-2 px-4 py-3.5 rounded-2xl border-2 border-pos-border/40 hover:border-violet-400 hover:bg-violet-50 transition-all font-semibold text-sm"
+                      onClick={() => addPartialPayment('gift_card')}
+                      disabled={processing}
+                      title="Carte cadeau (aucune monnaie rendue)"
+                    >
+                      <Gift size={18} className="text-violet-500" /> Carte cadeau
+                    </button>
+                  </div>
+                  <button
+                    className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-2xl border-2 border-pos-border/40 hover:border-emerald-400 hover:bg-emerald-50 transition-all font-semibold text-sm"
+                    onClick={() => setAvoirOpen(true)}
+                    disabled={processing}
+                    title="Payer avec un avoir"
+                  >
+                    <Ticket size={18} className="text-emerald-500" /> Payer par avoir
+                  </button>
                   {/* Offline payment warning */}
                   {offlineMode.isOffline && (
                     <div className="mt-2 flex items-start gap-2 bg-amber-50 rounded-xl px-3 py-2 border border-amber-200">
@@ -1662,6 +1747,16 @@ export function POSPage() {
                   )}
                 </button>
               </div>
+
+              {/* Email receipt — only when the sale reached the server (has a saleId) */}
+              {(store as any).lastSaleId && (
+                <button
+                  onClick={() => { setEmailValue(''); setEmailStatus('idle'); setEmailModal(true); }}
+                  className="mt-3 w-full flex items-center justify-center gap-2 py-3 rounded-2xl border-2 border-white/20 bg-white/5 hover:border-white/40 transition-all text-sm font-semibold text-white"
+                >
+                  <Mail size={18} /> Envoyer le reçu par email
+                </button>
+              )}
             </div>
 
             {/* Countdown + auto-dismiss */}
@@ -1690,6 +1785,62 @@ export function POSPage() {
             </button>
           </div>
         </div>
+      )}
+
+      {/* ═══════ EMAIL RECEIPT MODAL ═══════ */}
+      {emailModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setEmailModal(false)}>
+          <div className="w-full max-w-sm bg-white rounded-3xl shadow-2xl p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2 mb-4">
+              <Mail size={20} className="text-emerald-600" />
+              <h3 className="text-lg font-bold text-gray-900">Reçu par email</h3>
+            </div>
+            {emailStatus === 'sent' ? (
+              <div className="text-center py-6">
+                <CheckCircle2 size={40} className="mx-auto text-emerald-500 mb-2" />
+                <p className="text-sm font-semibold text-gray-800">Reçu envoyé à {emailValue}</p>
+                <button onClick={() => setEmailModal(false)} className="mt-5 w-full py-3 rounded-2xl bg-emerald-600 text-white font-semibold">Fermer</button>
+              </div>
+            ) : (
+              <>
+                <input
+                  type="email"
+                  value={emailValue}
+                  onChange={(e) => { setEmailValue(e.target.value); if (emailStatus !== 'idle') setEmailStatus('idle'); }}
+                  placeholder="client@email.com"
+                  autoFocus
+                  className="w-full px-4 py-3 rounded-2xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400/40"
+                  onKeyDown={(e) => { if (e.key === 'Enter') sendReceiptEmail(); }}
+                />
+                {emailStatus === 'error' && <p className="text-xs text-red-500 mt-2">Adresse invalide ou échec de l'envoi.</p>}
+                {emailStatus === 'disabled' && <p className="text-xs text-amber-600 mt-2">Service email non configuré sur le serveur.</p>}
+                <div className="flex gap-3 mt-5">
+                  <button onClick={() => setEmailModal(false)} className="flex-1 py-3 rounded-2xl border border-gray-200 text-sm font-semibold text-gray-500">Annuler</button>
+                  <button
+                    onClick={sendReceiptEmail}
+                    disabled={emailStatus === 'sending'}
+                    className="flex-1 py-3 rounded-2xl bg-emerald-600 text-white text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {emailStatus === 'sending' && <Loader2 size={15} className="animate-spin" />}
+                    Envoyer
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ═══════ RETURN / CREDIT-NOTE MODAL ═══════ */}
+      {returnOpen && <ReturnModal onClose={() => setReturnOpen(false)} />}
+
+      {/* ═══════ PAY-BY-AVOIR TENDER MODAL ═══════ */}
+      {avoirOpen && (
+        <AvoirTenderModal
+          amountDueMinor={remaining}
+          onApply={(code, amt) => { commitPartialPayment('store_credit', amt, code); setAvoirOpen(false); }}
+          onClose={() => setAvoirOpen(false)}
+        />
       )}
 
       {/* ═══════ CAMERA BARCODE SCANNER OVERLAY (iPad/Tablet) ═══════ */}
@@ -1733,6 +1884,9 @@ export function POSPage() {
 
       {/* ═══════ STOCK ALERT TOAST ═══════ */}
       <StockAlertToast />
+
+      {/* ═══════ SALE GUARDS (anti-error, before payment) ═══════ */}
+      <SaleGuardsGate />
     </div>
   );
 }

@@ -8,9 +8,11 @@ import { JwtStrategy } from './jwt.strategy';
 import { StoreEntity } from '../../database/entities/store.entity';
 import { EmployeeEntity } from '../../database/entities/employee.entity';
 import { PosSessionEntity } from '../../database/entities/pos-session.entity';
+import { AuditModule } from '../audit/audit.module';
 
 @Module({
   imports: [
+    AuditModule,
     PassportModule,
     JwtModule.register({
       secret: (() => {
