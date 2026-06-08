@@ -317,6 +317,20 @@ export class SalesService {
       );
     }
 
+    // --- M1: an avoir (store_credit) can only cover the RESIDUAL due, never more.
+    // Never trust the client's split: cap server-side so a sale can never debit an
+    // avoir beyond what cash/card/other tenders left to pay (no value destruction). ---
+    const storeCreditRequested = dto.payments
+      .filter((p) => p.method === 'store_credit')
+      .reduce((sum, p) => sum + p.amountMinorUnits, 0);
+    const nonStoreCreditPaid = paymentTotal - storeCreditRequested;
+    const storeCreditAllowed = Math.max(0, totalAfterDiscount - nonStoreCreditPaid);
+    if (storeCreditRequested > storeCreditAllowed) {
+      throw new BadRequestException(
+        `Montant d'avoir (${storeCreditRequested}) dépasse le reste dû (${storeCreditAllowed})`,
+      );
+    }
+
     // =====================================================================
     // TRANSACTION BOUNDARY — everything below is atomic
     // Retry up to 3 times on serialization/unique constraint failures
@@ -894,6 +908,7 @@ export class SalesService {
     await queryRunner.connect();
     await queryRunner.startTransaction();
 
+    let avoirRestoredMinorUnits = 0;
     try {
       sale.status = 'voided';
       const saved = await queryRunner.manager.save(SaleEntity, sale);
@@ -906,6 +921,29 @@ export class SalesService {
            WHERE id = $2 AND store_id = $3`,
           [item.quantity, item.productId, storeId],
         );
+      }
+
+      // --- M3: restore store-credit avoirs consumed by this sale. Voiding must NOT
+      // destroy the customer's credit. Runs exactly once: the void-once guard
+      // (status='voided' throws) + idempotency replay prevent any double-restore. ---
+      const redemptionRows = await queryRunner.query(
+        `SELECT credit_note_id, amount_minor_units FROM credit_note_redemptions
+          WHERE sale_id = $1 AND store_id = $2`,
+        [sale.id, storeId],
+      );
+      const redemptions: { credit_note_id: string; amount_minor_units: number | string }[] =
+        Array.isArray(redemptionRows) ? redemptionRows : [];
+      for (const r of redemptions) {
+        const amt = Number(r.amount_minor_units) || 0;
+        await queryRunner.query(
+          `UPDATE credit_notes
+              SET remaining_minor_units = remaining_minor_units + $1,
+                  status = CASE WHEN remaining_minor_units + $1 >= total_minor_units
+                                THEN 'active' ELSE 'partially_redeemed' END
+            WHERE id = $2 AND store_id = $3`,
+          [amt, r.credit_note_id, storeId],
+        );
+        avoirRestoredMinorUnits += amt;
       }
 
       // Persist idempotency key atomically with the void.
@@ -951,6 +989,7 @@ export class SalesService {
             totalMinorUnits: sale.totalMinorUnits,
             employeeRole: employeeRole ?? null,
             reason: reason ?? null,
+            avoirRestoredMinorUnits,
             source: 'pos_void',
           },
         });
