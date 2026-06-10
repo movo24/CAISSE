@@ -10,6 +10,7 @@ import { RealtimeModule } from './common/realtime/realtime.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { ProductsModule } from './modules/products/products.module';
 import { SalesModule } from './modules/sales/sales.module';
+import { PosSessionModule } from './modules/pos-session/pos-session.module';
 import { ReturnsModule } from './modules/returns/returns.module';
 import { CustomersModule } from './modules/customers/customers.module';
 import { StoresModule } from './modules/stores/stores.module';
@@ -94,6 +95,7 @@ const isProd = process.env.NODE_ENV === 'production';
     AuthModule,
     ProductsModule,
     SalesModule,
+    PosSessionModule,
     CustomersModule,
     StoresModule,
     ReportsModule,
