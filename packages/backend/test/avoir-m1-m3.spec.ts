@@ -132,10 +132,16 @@ describe('Fiscal — M1 (avoir cap) + M3 (avoir restore on void)', () => {
     expect((await avoir(code)).remainingMinorUnits).toBe(500); // restauré UNE fois, pas 1000
   });
 
-  it('M3 — vente mixte avoir+cash : seule la part avoir est restaurée', async () => {
+  it('M3 — vente mixte avoir+carte : seule la part avoir est restaurée', async () => {
+    // Void is intentionally exercised on non-cash payments; realized cash legs
+    // are covered by void-cash-realized-guard.spec.ts and must be reversed via
+    // returns. The invariant under test is partial restoration of the avoir
+    // leg only — it is tender-agnostic for the non-avoir leg (the cash here
+    // was incidental). A card leg preserves the assertion and respects the
+    // cash guard.
     const code = await mintAvoir(300);
     const dto = { items: [{ ean: '5000000000001', quantity: 1 }], payments: [
-      { method: 'cash', amountMinorUnits: 200 }, { method: 'store_credit', amountMinorUnits: 300, creditNoteCode: code },
+      { method: 'card', amountMinorUnits: 200 }, { method: 'store_credit', amountMinorUnits: 300, creditNoteCode: code },
     ] };
     await freshStock();
     const sale: any = await sales.createSale(STORE_ID, EMP_ID, dto as any, SNAP);

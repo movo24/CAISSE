@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ConflictException,
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -916,6 +917,41 @@ export class SalesService {
       });
       throw new BadRequestException(
         `Annulation refusee : montant (${(sale.totalMinorUnits / 100).toFixed(2)}€) depasse la limite manager (${(MAX_MANAGER_VOID_CENTS / 100).toFixed(2)}€). Contactez un administrateur.`,
+      );
+    }
+
+    // ── Guard sécurité : void interdit dès qu'un leg cash est réalisé ──
+    // Une vente cash encaissée a eu lieu fiscalement ; l'effacer (void) serait
+    // une fausse déclaration. L'annulation passe par createReturn.
+    //
+    // Scope : guard d'intégrité du journal fiscal /CAISSE contre l'exfil cash.
+    // Hors scope : void-après-carte-settled (même obligation NF525, gouvernée
+    // par un trigger PSP — follow-up : guard unifié réversibilité).
+    //
+    // Mode de défaillance sous évolution du modèle :
+    //   - Ne dépend pas de sale.status.
+    //   - Dépend de l'invariant "leg présent ⟹ réalisé" ; fail-safe (over-block)
+    //     si cet invariant tombe (ex. futur split-tender ou layaway). La migration
+    //     d'un realized: boolean sur sale_payments relâcherait l'over-block, elle
+    //     ne fermerait pas un trou — le trou est déjà fermé.
+    //
+    // Cas net-zéro pré-nommé : une vente cash encaissée puis remboursée par
+    // createReturn conserve son leg +cash dans sale_payments. Le guard bloque
+    // son void, ce qui est correct (la vente a eu lieu, son annulation passe
+    // par la voie return déjà parcourue, pas par void).
+    const cashRealized = sale.payments.some(
+      (p) => p.method === 'cash' && p.amountMinorUnits > 0,
+    );
+    if (cashRealized) {
+      logBusinessEvent({
+        event: 'VOID_ATTEMPTED',
+        storeId,
+        employeeId,
+        data: { saleId: id, amount: sale.totalMinorUnits, denied: true, reason: 'cash_leg_realized' },
+      });
+      throw new ConflictException(
+        "Une vente avec encaissement cash realise ne peut etre annulee par void. " +
+        "Utiliser un retour (createReturn) pour generer un remboursement ou un avoir.",
       );
     }
 

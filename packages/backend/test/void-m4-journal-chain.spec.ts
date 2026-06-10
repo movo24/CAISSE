@@ -67,8 +67,11 @@ describe('Fiscal — M4 (void chained into append-only fiscal journal)', () => {
   const journalRepo = () => ds.getRepository(FiscalJournalEntity);
 
   async function sellAndVoid(): Promise<any> {
+    // Void is intentionally exercised on non-cash payments; realized cash legs
+    // are covered by void-cash-realized-guard.spec.ts and must be reversed via
+    // returns. The journal-chain invariant under test is tender-agnostic.
     await freshStock();
-    const dto = { items: [{ ean: '5000000000001', quantity: 1 }], payments: [{ method: 'cash', amountMinorUnits: 500 }] };
+    const dto = { items: [{ ean: '5000000000001', quantity: 1 }], payments: [{ method: 'card', amountMinorUnits: 500 }] };
     const sale: any = await sales.createSale(STORE_ID, EMP_ID, dto as any, SNAP);
     await sales.voidSale(sale.id, EMP_ID, STORE_ID, 'admin');
     return sale;
@@ -112,7 +115,8 @@ describe('Fiscal — M4 (void chained into append-only fiscal journal)', () => {
 
   it('M4 — la vente d’origine reste immuable (hash inchangé)', async () => {
     await freshStock();
-    const dto = { items: [{ ean: '5000000000001', quantity: 1 }], payments: [{ method: 'cash', amountMinorUnits: 500 }] };
+    // Void is intentionally exercised on non-cash payments (see sellAndVoid above).
+    const dto = { items: [{ ean: '5000000000001', quantity: 1 }], payments: [{ method: 'card', amountMinorUnits: 500 }] };
     const sale: any = await sales.createSale(STORE_ID, EMP_ID, dto as any, SNAP);
     const beforeHash = sale.hashChainCurrent;
     const voided: any = await sales.voidSale(sale.id, EMP_ID, STORE_ID, 'admin');

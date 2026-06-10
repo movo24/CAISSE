@@ -36,6 +36,11 @@ describe('SalesService — voidSale audit (Option 2)', () => {
     totalMinorUnits: 4500,
     status: 'completed' as any,
     lineItems: [{ productId: 'p1', quantity: 2 } as any],
+    // Mock honors findOne's real contract (relations: ['lineItems', 'payments']):
+    // payments is always an array, never undefined. Empty here — the audit
+    // tests exercise non-cash voids; cash-leg refusal is covered by
+    // void-cash-realized-guard.spec.ts.
+    payments: [],
   };
 
   beforeEach(async () => {

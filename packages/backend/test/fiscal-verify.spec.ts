@@ -62,8 +62,12 @@ describe('Fiscal — chain verifier', () => {
 
   const freshStock = () => ds.getRepository(ProductEntity).update({ storeId: STORE_ID }, { stockQuantity: 1000 });
   async function sell(): Promise<any> {
+    // Void is intentionally exercised on non-cash payments; realized cash legs
+    // are covered by void-cash-realized-guard.spec.ts and must be reversed via
+    // returns. The verifier tests are tender-agnostic — they check chain
+    // linkage and recompute, not the payment method.
     await freshStock();
-    const dto = { items: [{ ean: '5000000000001', quantity: 1 }], payments: [{ method: 'cash', amountMinorUnits: 500 }] };
+    const dto = { items: [{ ean: '5000000000001', quantity: 1 }], payments: [{ method: 'card', amountMinorUnits: 500 }] };
     return sales.createSale(STORE_ID, EMP_ID, dto as any, SNAP);
   }
   const get = (c: any[], name: string) => c.find((x) => x.chain === name);
