@@ -38,6 +38,12 @@ railing that makes the rest safe.
 - DB-level invariants (partial unique index) over check-then-insert
   (the γ TOCTOU lesson); map 23505 → 409.
 - Never reveal secrets (DATABASE_URL password, full PIN hashes).
+- **No fiscal-prod DB credentials in the agent's perimeter — even for a
+  read-only SELECT.** A credential the agent holds is in its blast radius
+  (reusable, loggable). To prove a migration applied on `caisse_pos`, read
+  the `Migration … executed successfully` line in the Railway deploy logs
+  (the human runs the deploy), or run the SELECT yourself. The agent
+  triangulates via read-only health endpoints, never via the fiscal DB.
 
 ---
 
@@ -93,12 +99,22 @@ npm run build:pos
 
 ### Deployment (current)
 
+> Corrected 2026-06-11 by endpoint triangulation. The earlier "Backend A vs
+> Backend B" framing was stale: the DNS cutover happened, so there is ONE
+> CAISSE backend, live on the custom domain. The old Railway native URL is
+> dead (404).
+
 | Layer | Where | URL |
 |-------|-------|-----|
-| Backend B (sandbox, Railway) | `vibrant-freedom` workspace | `caisse-backend-production.up.railway.app` |
-| Backend A (canonical prod) | **DO NOT TOUCH** | `api.addxintelligence.com` |
+| CAISSE backend (the only one, live) | Railway `vibrant-freedom`, service `caisse-backend`, branch `main` | `https://api.addxintelligence.com` (custom domain, cutover done) |
+| ~~Railway native URL~~ (dead, 404) | — | ~~`caisse-backend-production.up.railway.app`~~ |
 | Backoffice | Railway static | `app.addxintelligence.com` |
-| Database | Neon serverless PostgreSQL | `ep-square-violet-agqygacb-pooler` |
+| Database | Neon serverless PostgreSQL `caisse_pos` | `ep-square-violet-agqygacb-pooler` |
+
+Verify health read-only: `curl https://api.addxintelligence.com/api/health`.
+Migration-applied proof: read the `Migration … executed successfully` line
+in the Railway deploy logs (you run the manual deploy) — do NOT connect the
+agent to the fiscal prod DB to check (see the operating-autonomy contract).
 
 **Railway deploys are MANUAL** — GitHub App cross-account limitation (repo: `movo24/CAISSE`,
 workspace: `y5ctnxgdc9-hue`). Use `serviceInstanceDeployV2(commitSha: "SHA")` via Railway API
@@ -219,7 +235,11 @@ Current migrations (run in order):
    ```
 6. **No DNS cutover** without explicit "GO DNS" from user
 7. **No JWT regeneration** without explicit permission
-8. **No modification to Backend A** (`api.addxintelligence.com`) — production canonical, untouchable
+8. **`api.addxintelligence.com` is the live production CAISSE backend** — its
+   CODE is deployed by merging to `main` + a MANUAL Railway deploy (human).
+   Never change its infra (DNS, Railway service config, env) without explicit
+   GO. (This supersedes the old "Backend A untouchable" framing — there is no
+   separate Backend A; it is the one CAISSE backend.)
 9. **No Cloudflare/Railway config changes** without explicit GO
 
 ---
@@ -396,7 +416,7 @@ shared/
 | Admin Magasins shows 0 stores | Open | `POST /api/stores/sync` must succeed. Requires `TIMEWIN24_POS_SECRET` or `TIMEWIN24_API_KEY` on Railway. |
 | Railway deploys not auto-triggered | Structural | Cross-account GitHub limit. Manual via `serviceInstanceDeployV2`. See RUNBOOK. |
 | In-memory cache (no Redis) | Low risk | Set `REDIS_URL` before multi-instance prod. |
-| Backend A untouched | Hard constraint | `api.addxintelligence.com` = prod canonical. Never touch without explicit GO. |
+| Prod infra untouched | Hard constraint | `api.addxintelligence.com` = the live CAISSE backend. Code ships via main + manual Railway deploy; never change its infra (DNS/Railway/env) without explicit GO. |
 
 ---
 
