@@ -4,11 +4,12 @@ import {
   Get,
   Body,
   Param,
+  Headers,
   Request,
   UseGuards,
   ParseUUIDPipe,
 } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiHeader } from '@nestjs/swagger';
 
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PosSessionService } from './pos-session.service';
@@ -22,11 +23,20 @@ export class PosSessionController {
   constructor(private readonly service: PosSessionService) {}
 
   @Post('open')
+  @ApiHeader({
+    name: 'X-Terminal-Id',
+    description: 'Physical terminal identifier — required (γ-model: sessions are terminal-bound)',
+    required: true,
+  })
   @ApiOperation({
     summary:
-      'Open a POS session for the authenticated employee. Refuses if an active session already exists for this (store, employee).',
+      'Open a POS session on a terminal. Refuses without X-Terminal-Id, or if the terminal already has an active session.',
   })
-  open(@Body() dto: OpenSessionDto, @Request() req: any) {
+  open(
+    @Body() dto: OpenSessionDto,
+    @Headers('x-terminal-id') terminalId: string,
+    @Request() req: any,
+  ) {
     return this.service.openSession(
       req.user.storeId,
       req.user.employeeId,
@@ -36,7 +46,7 @@ export class PosSessionController {
         maxDiscount: req.user.maxDiscount,
       },
       {
-        terminalId: dto.terminalId,
+        terminalId,
         offlineMode: dto.offlineMode,
       },
     );
@@ -55,10 +65,18 @@ export class PosSessionController {
   }
 
   @Get('active')
-  @ApiOperation({
-    summary: 'Get the active POS session for the authenticated employee, if any.',
+  @ApiHeader({
+    name: 'X-Terminal-Id',
+    description: 'Physical terminal identifier — required',
+    required: true,
   })
-  active(@Request() req: any) {
-    return this.service.findActive(req.user.storeId, req.user.employeeId);
+  @ApiOperation({
+    summary: 'Get the active POS session for this terminal, if any (γ-model lookup).',
+  })
+  active(
+    @Headers('x-terminal-id') terminalId: string,
+    @Request() req: any,
+  ) {
+    return this.service.findActiveForTerminal(req.user.storeId, terminalId);
   }
 }

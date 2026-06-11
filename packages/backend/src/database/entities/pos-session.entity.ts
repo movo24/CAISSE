@@ -17,6 +17,11 @@ import {
 @Entity('pos_sessions')
 @Index(['storeId', 'isActive'])
 @Index(['employeeId', 'isActive'])
+// γ invariant at the DB level: ONE active session per (store, terminal).
+// In prod this is the partial unique index created by migration 1719
+// (uq_pos_sessions_store_terminal_active ... WHERE is_active). The entity
+// declares it too so synchronize-based test DBs carry the same constraint.
+@Index(['storeId', 'terminalId'], { unique: true, where: '"is_active"' })
 export class PosSessionEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -27,6 +32,16 @@ export class PosSessionEntity {
   /** TimeWin24 employee UUID — NOT a foreign key (lives in TW24 DB) */
   @Column({ name: 'employee_id' })
   employeeId: string;
+
+  /**
+   * Physical terminal identifier (γ-model, D1 decision), captured from the
+   * X-Terminal-Id header at session open. Uniqueness invariant is
+   * applicative: ONE active session per (storeId, terminalId). Nullable at
+   * the DB level (additive migration); the application refuses to open a
+   * session without it, so every new row carries one.
+   */
+  @Column({ name: 'terminal_id', type: 'varchar', nullable: true })
+  terminalId: string | null;
 
   /** Snapshot: employee name at session start */
   @Column({ name: 'employee_name' })

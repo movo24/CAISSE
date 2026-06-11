@@ -1,23 +1,17 @@
-import { IsOptional, IsString, IsBoolean } from 'class-validator';
+import { IsOptional, IsBoolean } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 /**
  * DTO for opening a POS session.
  *
- * employeeId is NOT in the body — it comes from the authenticated JWT
- * (req.user.employeeId). The client cannot set it.
+ * NOT in the body:
+ *   - employeeId — comes from the authenticated JWT (req.user.employeeId).
+ *     The client cannot set it.
+ *   - terminalId — comes from the X-Terminal-Id header (γ-model: sessions
+ *     are terminal-bound, the header is required). Body cannot set it
+ *     either: one source of truth, no ambiguity between body and header.
  */
 export class OpenSessionDto {
-  /**
-   * Optional terminal identifier. If provided, the session is bound to
-   * this terminal. If not, the session is bound to (store, employee) only.
-   * Future strate II work may require this; (1a) accepts but doesn't enforce.
-   */
-  @ApiProperty({ required: false })
-  @IsOptional()
-  @IsString()
-  terminalId?: string;
-
   /**
    * Explicit flag for offline mode at session open. Defaults to false.
    */
