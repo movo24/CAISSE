@@ -211,7 +211,90 @@ row, so the store stays in refuse-mode (sticky, fail-closed).
 a session on an unverified terminal must NEVER feed authoritative attribution,
 or the transitional window leaks into the chain at the flip.
 
----
+## ADR-012 — Z seal boundary = close-window keyed on the chain cursor (not the calendar, not wall-clock)
+**Status:** RATIFIED (A/B + the boundary form below) · build OPEN, in layers.
+Supersedes the "A/B spec OPEN" of ADR-009: **A-1** (seal the Z form, append-only
+hash-chained), **A-2** (canonical verbatim payload, like `fiscal_journal`),
+**A-4** (returns attributed at event time), **A-5** (perpetual grand total /
+cumul perpétuel advanced at each close), **B-1** (gift-card / returns counted in
+the closure) are now ratified.
+
+**Context — the coupling found while closing H4 (see GAPS CORRECTION-2):** a
+sealed Z is inalterable only if its *perimeter* is immutable — no sale may enter
+an already-sealed window, or `sealed total ≠ recompute` and "verifiable vs the
+sales chain" breaks. The Z today buckets by `DATE(s.created_at)`
+(`reports.service.ts:35`), which is **not** an immutable perimeter:
+- *early close* — manager closes at 18:00, store open till 20:00; the 18:00-20:00
+  sales share the calendar day → they land in a sealed day;
+- *post-midnight trade* — one trading night splits across two calendar Z.
+
+**Decision — the perimeter is a close-window, keyed on the lock-serialized chain
+cursor, not the clock.** A clôture is an *event*, not a midnight.
+- The per-store monotonic cursor **already exists**: `ticket_number` is assigned
+  `max+1` under the `stores FOR UPDATE` lock (`sales.service.ts:362-377`), and the
+  hash chain's `prevHash` is read `ORDER BY ticket_number DESC LIMIT 1` (`:380-385`)
+  → **the chain is ordered by `ticket_number`; it IS the cursor.**
+- The close, under the **same** `stores FOR UPDATE` lock, snapshots
+  `close_seq = max(ticket_number)` (as an **integer**). Window =
+  `ticket_number ∈ (prev_close_seq, close_seq]`. The cursor only advances under
+  the lock; the close reads it under the lock → every sale "before" is ≤ close_seq,
+  every sale "after" is > close_seq. **Race-free by construction**, independent of
+  any timestamp.
+- `created_at`/`completedAt` become **informative** (display, analytics), never the
+  fiscal boundary.
+
+**Verified (the facts this rests on — not asserted):**
+- `completedAt = new Date()` (`:398`) IS inside the locked section (FOR UPDATE at
+  `:362`) → the "timestamp posed before the lock" race does not occur today; but
+  wall-clock-under-lock is not guaranteed-monotonic (NTP) and is refactor-fragile
+  → not used as the boundary.
+- `ticket_number` is the lock-serialized monotonic per-store cursor the chain is
+  already ordered by → used as the boundary.
+
+**Coupled sub-rules (ratified into the spec, not deferred):**
+- **online-only V1 is load-bearing for the seal**, not a convenience: it is what
+  keeps the cursor/timestamps clean (no late offline insert into a sealed window).
+  A third reason to keep it, beyond H4.
+- **Daily-closure guarantee** — the window model needs a close *guaranteed each
+  day* (auto-close at a store-TZ cutover, with a forced-close fallback on next
+  activity if a window has spanned the cutover). Pure event-driven without forcing
+  → a lazy operator yields a 3-day window = non-daily closure, which NF525 dislikes.
+- **strate-II inheritance** — a re-sealed offline sale lands in the **open**
+  window; if its real sale-time falls in an already-closed window, the re-seal is
+  **refused or routed to an explicit écart**, never a mutation of a sealed window.
+  The seal must account for it. (Carried so it is not lost when offline returns.)
+- **verify-recompute is a standing command** (like `fiscal:verify`), not a
+  one-shot test: `sum(sales where ticket_number ∈ window) == sealed total` for
+  every sealed window, re-runnable for life — the "verifiable vs the sales chain"
+  property as a permanent drift detector.
+
+**Proposed shape (z_seals, mirrors `fiscal_journal` — append-only, hash-chained,
+verbatim text payload):** per `(storeId, sequence)`: `prev_close_seq`,
+`close_seq` (int), the window aggregate (revenue, tax, count, by-tender, returns),
+the perpetual grand total after close, `payload` (canonical text, hashed),
+`hash_chain_prev`/`hash_chain_current` (a Z-chain parallel to the sales chain).
+Never updated/deleted.
+
+**Found during verification (latent, separate fix):** `ticket_number` is a
+zero-padded string `T-000006`; `ORDER BY ticket_number DESC` is numeric only to 6
+digits → at 1,000,000 sales/store the ticket generator and `prevHash` lookup break
+(dup tickets + chain fork). The seal sidesteps it by keying on the parsed integer,
+but the **ticket generator itself needs a separate fix** (cast-to-int ordering or a
+dedicated sequence column). Fiscal (chain fork at scale), off the seal's path.
+
+**Invariant guarded / breaks if undone:**
+- **Boundary on the chain cursor, not the clock** — keying the window on
+  `created_at`/wall-clock re-introduces the race (a stamp posed before the lock, or
+  an NTP backward jump, drops a sale into a sealed window) → `sealed total ≠
+  recompute`. The cursor is monotone *because* it only moves under the lock; that is
+  the property the seal must inherit, not borrow from the clock.
+- **Same lock as the chain (M5)** — the close must take the per-store `FOR UPDATE`
+  to snapshot `close_seq` atomically; under a different lock (or none) a sale can
+  commit between snapshot and seal → boundary leak.
+- **Daily-closure guarantee** — without it the model is correct but produces
+  non-journalière closures; NF525 wants the periodicity.
+- **Correct-before-seal (B with A, from ADR-009)** — returns enter the total
+  *before* the window is graved, never after.
 
 ## OPEN decisions (specced, awaiting the owner — not ratified, not filled)
 
