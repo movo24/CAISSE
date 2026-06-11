@@ -257,3 +257,47 @@ Two findings exceed their prior framing and are elevated here:
   an NF525-defensible store.
 No ratified decision was found resting on thin reasoning. The route-to-store 🔴
 [M] list is the order driver — not SaaS exhaustiveness.
+
+---
+
+## Post-audit corrections (append-only — supersede, never rewrite)
+
+### CORRECTION-1 — C2 was overstated; re-verified directly. 🔴 → 🟠
+The original C2 entries claimed "fine-grained rights NOT enforced server-side"
+and the synthesis read "a forged request bypasses the void/refund/discount
+limits". **This is FALSE — superseded.** Re-verification (the explicit
+absent-vs-not-found check):
+- No global authz guard — only `ThrottlerGuard` is `APP_GUARD`
+  (`app.module.ts:141`). So authz is per-endpoint, confirmed.
+- **The discount cap IS enforced server-side** — `sales.service.ts:289-295`
+  ("Enforce maxDiscount limit") rejects a discount above the employee's
+  `maxDiscount`, and `maxDiscount` comes from the **JWT-signed** claim → a
+  forged request cannot raise it.
+- **Void and refund ARE role-gated server-side** — `@Roles('admin','manager')`
+  + `RolesGuard` at the controllers (`sales.controller.ts:73`,
+  `returns.controller.ts:26`). A cashier is blocked.
+→ "Forged request bypasses the limits" is FALSE. The coarse role gates + the
+discount cap are enforced. **C2 drops from 🔴 to 🟠** and OFF the route-critical
+[M] list.
+
+**What actually remains (the true, smaller gap):** per-employee fine-grained
+rights *beyond role* are not enforceable (the `ROLE_RIGHTS` map is keyed by
+role, so role enforcement already covers the role-level distinction; a
+per-employee override grant is not enforced — but that may not be a product
+requirement). 🟠 [M/S].
+
+The genuine [M] control gap in domain C is **C4 — manager-approval override PIN
+(ABSENT)**, which stands: it is a *missing control*, not a *bypass*. The
+route-critical [M] list is corrected to drop C2 and keep C4.
+
+This correction is the "absent vs not-found" discipline working: an
+enforcement-absent claim from a fan-out agent, re-verified at the source before
+being treated as 🔴.
+
+### NOTE — H4 mitigation shipped (route-critical #1, fail-closed)
+Branch `fix/h4-close-offline-sale-door` (`41ce4c1`): the offline raw-save door
+into `sales` is closed (online-only V1) + `hash_chain_prev/current` made
+NOT NULL (migration 1722) → a SINGLE sealing path into `sales`, the unsealed
+state non-representable. The full offline re-sealing subsystem (strate-II
+reconciliation) remains deferred/OPEN. Paired frontend follow-up: the POS must
+refuse to COMPLETE a sale offline in V1 (today it enqueues an OFF-* ticket).
