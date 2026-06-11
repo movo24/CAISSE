@@ -22,6 +22,8 @@ import { AuditService } from '../audit/audit.service';
 import { StockService } from '../stock/stock.service';
 import { JackpotService, JackpotResult } from '../jackpot/jackpot.service';
 import { TimewinService } from '../timewin/timewin.service';
+import { PosSessionService } from '../pos-session/pos-session.service';
+import { OperatorAttributionService } from '../operator-attribution/operator-attribution.service';
 import { PaginatedResult } from '../../common/dto/pagination.dto';
 import { logBusinessEvent } from '../../common/business-logger';
 import { RealtimeService } from '../../common/realtime/realtime.service';
@@ -73,6 +75,8 @@ export class SalesService {
     private jackpotService: JackpotService,
     private timewinService: TimewinService,
     private realtime: RealtimeService,
+    private posSessionService: PosSessionService,
+    private operatorAttribution: OperatorAttributionService,
   ) {}
 
   /** Serialize an entity to a plain JSON object for jsonb storage (dates → ISO strings). */
@@ -172,6 +176,10 @@ export class SalesService {
     dto: CreateSaleDto,
     employeeSnapshot?: { employeeName?: string; employeeRole?: string; maxDiscount?: number },
     idempotencyKey?: string,
+    // (1b) terminal claim (X-Terminal-Id). Used only to record a
+    // non-authoritative operator attribution; the hashed sale.employee_id
+    // stays the JWT value passed above. Optional — absent → no_session.
+    terminalId?: string,
   ): Promise<SaleEntity> {
     // --- Idempotency (NF525): a replayed offline-sync POST must NEVER create a
     // second sale. Fast path BEFORE validation so a replay does not falsely fail
@@ -498,6 +506,26 @@ export class SalesService {
 
       // --- Redeem store-credit avoirs as tender, atomically with the sale ---
       await this.applyStoreCreditRedemptions(queryRunner, storeId, saved.id, dto.payments);
+
+      // --- (1b) operator attribution — NON-AUTHORITATIVE, same transaction ---
+      // Records which operator the active terminal session attributes this
+      // sale to, in the operator_attribution side-table. The hashed
+      // sale.employee_id (above) is unchanged — this never feeds a hash or a
+      // fiscal export. The session lookup is a plain read of pos_sessions
+      // (independent of this transaction); the insert rides this transaction
+      // so the observation commits atomically with the sale. Absent terminal
+      // or no active session → attribution_source='no_session' (gap recorded
+      // in data, never blocks the sale).
+      const saleSession = terminalId
+        ? await this.posSessionService.findActiveForTerminal(storeId, terminalId)
+        : null;
+      await this.operatorAttribution.recordWithinTransaction(queryRunner.manager, {
+        eventType: 'sale',
+        eventId: saved.id,
+        storeId,
+        terminalId: terminalId ?? null,
+        session: saleSession,
+      });
 
       // --- Persist idempotency key in the SAME transaction as the sale, so the
       // sale and its dedup record commit (or roll back) atomically. A concurrent
@@ -889,6 +917,9 @@ export class SalesService {
     maxDiscountPercent?: number,
     reason?: string,
     idempotencyKey?: string,
+    // (1b) terminal claim — non-authoritative attribution only; the hashed
+    // voidPayload.employeeId stays the JWT value. Optional → no_session.
+    terminalId?: string,
   ): Promise<SaleEntity> {
     // --- Idempotency: a replayed void must return the cached result, NOT throw
     // "already voided" (which a naive network retry would otherwise hit). ---
@@ -1032,7 +1063,11 @@ export class SalesService {
         voidedAt: new Date().toISOString(),
       });
       const journalCurrentHash = sha256(journalPrevHash + voidPayload);
+      // Pre-generate the journal entry id so the (1b) attribution can point
+      // precisely at THIS void event (event_id = the journal row).
+      const voidJournalId = uuidv4();
       await queryRunner.manager.insert(FiscalJournalEntity, {
+        id: voidJournalId,
         storeId,
         eventType: 'void',
         refId: sale.id,
@@ -1040,6 +1075,20 @@ export class SalesService {
         payload: voidPayload,
         hashChainPrev: journalPrevHash,
         hashChainCurrent: journalCurrentHash,
+      });
+
+      // --- (1b) operator attribution for the void event — NON-AUTHORITATIVE,
+      // same transaction. The void's hashed operator (voidPayload.employeeId)
+      // is unchanged; this only records the session's view in the side-table.
+      const voidSession = terminalId
+        ? await this.posSessionService.findActiveForTerminal(storeId, terminalId)
+        : null;
+      await this.operatorAttribution.recordWithinTransaction(queryRunner.manager, {
+        eventType: 'void',
+        eventId: voidJournalId,
+        storeId,
+        terminalId: terminalId ?? null,
+        session: voidSession,
       });
 
       // Persist idempotency key atomically with the void.

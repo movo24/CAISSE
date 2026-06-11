@@ -8,6 +8,8 @@ import { CreditNoteLineEntity } from '../../database/entities/credit-note-line.e
 import { SaleEntity } from '../../database/entities/sale.entity';
 import { IdempotencyKeyEntity } from '../../database/entities/idempotency-key.entity';
 import { AuditService } from '../audit/audit.service';
+import { PosSessionService } from '../pos-session/pos-session.service';
+import { OperatorAttributionService } from '../operator-attribution/operator-attribution.service';
 import { PaginatedResult } from '../../common/dto/pagination.dto';
 
 const GENESIS = '0'.repeat(64);
@@ -36,6 +38,8 @@ export class ReturnsService {
     @InjectRepository(IdempotencyKeyEntity) private idemRepo: Repository<IdempotencyKeyEntity>,
     private dataSource: DataSource,
     private auditService: AuditService,
+    private posSessionService: PosSessionService,
+    private operatorAttribution: OperatorAttributionService,
   ) {}
 
   private normalizeIdempotencyKey(key?: string): string | undefined {
@@ -71,6 +75,11 @@ export class ReturnsService {
     dto: CreateReturnDto,
     employeeName?: string,
     idempotencyKey?: string,
+    // (1b) terminal claim — non-authoritative attribution only. The return's
+    // operator (credit_notes.employee_id) is the JWT of WHOEVER does the
+    // return (already correct per #7: never inherited from the original
+    // sale). This records the session's view; it does not change attribution.
+    terminalId?: string,
   ): Promise<CreditNoteEntity> {
     const idemKey = this.normalizeIdempotencyKey(idempotencyKey);
     if (idemKey) {
@@ -182,6 +191,22 @@ export class ReturnsService {
         cn.lines = returnLines.map((l) => Object.assign(new CreditNoteLineEntity(), l));
 
         const saved = await qr.manager.save(CreditNoteEntity, cn);
+
+        // --- (1b) operator attribution for the return — NON-AUTHORITATIVE,
+        // same transaction. The return operator (credit_notes.employee_id) is
+        // unchanged; this records the session's view in the side-table. The
+        // session is looked up for the RETURN terminal (whoever holds the
+        // return register now) — never the original sale's terminal/operator.
+        const returnSession = terminalId
+          ? await this.posSessionService.findActiveForTerminal(storeId, terminalId)
+          : null;
+        await this.operatorAttribution.recordWithinTransaction(qr.manager, {
+          eventType: 'return',
+          eventId: saved.id,
+          storeId,
+          terminalId: terminalId ?? null,
+          session: returnSession,
+        });
 
         // Restore stock atomically.
         for (const l of returnLines) {
@@ -365,6 +390,7 @@ export class ReturnsService {
     dto: { ticketNumber: string; items: { ean: string; quantity: number }[]; reason?: string; refundMethod: 'cash' | 'card' | 'store_credit' },
     employeeName?: string,
     idempotencyKey?: string,
+    terminalId?: string,
   ): Promise<CreditNoteEntity> {
     const sale = await this.saleRepo.findOne({ where: { ticketNumber: dto.ticketNumber, storeId } });
     if (!sale) throw new NotFoundException(`Vente introuvable pour le ticket ${dto.ticketNumber}`);
@@ -380,6 +406,7 @@ export class ReturnsService {
       { originalSaleId: sale.id, items, reason: dto.reason, refundMethod: dto.refundMethod },
       employeeName,
       idempotencyKey,
+      terminalId,
     );
   }
 

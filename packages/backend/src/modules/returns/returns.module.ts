@@ -8,6 +8,8 @@ import { CreditNoteRedemptionEntity } from '../../database/entities/credit-note-
 import { SaleEntity } from '../../database/entities/sale.entity';
 import { IdempotencyKeyEntity } from '../../database/entities/idempotency-key.entity';
 import { AuditModule } from '../audit/audit.module';
+import { PosSessionModule } from '../pos-session/pos-session.module';
+import { OperatorAttributionModule } from '../operator-attribution/operator-attribution.module';
 
 @Module({
   imports: [
@@ -19,6 +21,9 @@ import { AuditModule } from '../audit/audit.module';
       IdempotencyKeyEntity,
     ]),
     AuditModule,
+    // (1b) operator attribution on the return door.
+    PosSessionModule,
+    OperatorAttributionModule,
   ],
   controllers: [ReturnsController],
   providers: [ReturnsService],

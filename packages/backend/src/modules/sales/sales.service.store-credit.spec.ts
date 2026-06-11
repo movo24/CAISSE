@@ -16,6 +16,8 @@ import { StockService } from '../stock/stock.service';
 import { JackpotService } from '../jackpot/jackpot.service';
 import { TimewinService } from '../timewin/timewin.service';
 import { RealtimeService } from '../../common/realtime/realtime.service';
+import { PosSessionService } from '../pos-session/pos-session.service';
+import { OperatorAttributionService } from '../operator-attribution/operator-attribution.service';
 
 /** Redemption of store-credit avoirs as a sale tender (chantier 1b). */
 describe('SalesService — applyStoreCreditRedemptions', () => {
@@ -39,6 +41,8 @@ describe('SalesService — applyStoreCreditRedemptions', () => {
         { provide: JackpotService, useValue: noop },
         { provide: TimewinService, useValue: noop },
         { provide: RealtimeService, useValue: { emit: jest.fn() } },
+        { provide: PosSessionService, useValue: { findActiveForTerminal: jest.fn() } },
+        { provide: OperatorAttributionService, useValue: { recordWithinTransaction: jest.fn() } },
       ],
     }).compile();
     service = module.get(SalesService);

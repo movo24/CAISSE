@@ -87,9 +87,18 @@ export class OperatorAttributionService {
       await this.repo.query(
         // COUNT(CASE WHEN ... THEN 1 END) instead of COUNT(*) FILTER (WHERE):
         // equivalent and correct in real Postgres, and pg-mem-compatible
-        // (pg-mem mis-evaluates FILTER). Within attribution_source='session',
-        // session_operator_id is non-null by construction and employee_id is
-        // non-null, so plain <> is null-safe (no IS DISTINCT FROM needed).
+        // (pg-mem mis-evaluates FILTER).
+        //
+        // <> instead of IS DISTINCT FROM is null-safe HERE because BOTH
+        // operands are non-null:
+        //   - session_operator_id: non-null within attribution_source='session'
+        //     (= the session's employeeId, by construction in record…).
+        //   - sales.employee_id: `varchar NOT NULL` (InitialSchema migration).
+        // ASSUMPTION: if sales.employee_id ever becomes nullable, this metric
+        // would silently undercount divergence (a null vs a value reads as
+        // "equal" under <>). Revert to IS DISTINCT FROM (prod) and a pg-mem
+        // workaround at that point. Low severity — this is the observability
+        // metric, not a fiscal invariant.
         `SELECT
            COUNT(*)::int AS total,
            COUNT(CASE WHEN oa.attribution_source = 'session' THEN 1 END)::int AS with_session,

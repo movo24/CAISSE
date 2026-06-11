@@ -8,6 +8,8 @@ import { CreditNoteEntity } from '../../database/entities/credit-note.entity';
 import { SaleEntity } from '../../database/entities/sale.entity';
 import { IdempotencyKeyEntity } from '../../database/entities/idempotency-key.entity';
 import { AuditService } from '../audit/audit.service';
+import { PosSessionService } from '../pos-session/pos-session.service';
+import { OperatorAttributionService } from '../operator-attribution/operator-attribution.service';
 
 const SALE = {
   id: 'sale-1',
@@ -55,6 +57,8 @@ describe('ReturnsService', () => {
         { provide: getRepositoryToken(IdempotencyKeyEntity), useValue: idemRepo },
         { provide: DataSource, useValue: dataSource },
         { provide: AuditService, useValue: audit },
+        { provide: PosSessionService, useValue: { findActiveForTerminal: jest.fn() } },
+        { provide: OperatorAttributionService, useValue: { recordWithinTransaction: jest.fn() } },
       ],
     }).compile();
     service = module.get(ReturnsService);

@@ -13,6 +13,8 @@ import { PromotionsModule } from '../promotions/promotions.module';
 import { AuditModule } from '../audit/audit.module';
 import { StockModule } from '../stock/stock.module';
 import { JackpotModule } from '../jackpot/jackpot.module';
+import { PosSessionModule } from '../pos-session/pos-session.module';
+import { OperatorAttributionModule } from '../operator-attribution/operator-attribution.module';
 
 @Module({
   imports: [
@@ -29,6 +31,10 @@ import { JackpotModule } from '../jackpot/jackpot.module';
     AuditModule,
     StockModule,
     JackpotModule,
+    // (1b) operator attribution: read the active terminal session and record
+    // a non-authoritative attribution within the sale/void transaction.
+    PosSessionModule,
+    OperatorAttributionModule,
   ],
   controllers: [SalesController],
   providers: [SalesService],
