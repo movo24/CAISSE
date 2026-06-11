@@ -1,7 +1,43 @@
 # CLAUDE.md — Development Guide
 
-> Last updated: 2026-05-26 (full audit pass)
+> Last updated: 2026-06-11 (operating-autonomy contract added)
 > Rule: **Audit → Plan → Execute**. Each change must be minimal, targeted, testable and reversible.
+
+---
+
+## Operating-autonomy contract
+
+**Default: maximum autonomy. Do not ask for what is reversible. Proceed, show the result.**
+
+**Full autonomy (do not stop):**
+- Feature branches: create, code, commit, push (never `main`).
+- Additive migrations on empty/greenfield tables; tests; TSC; diffs.
+- Any decision that can be undone without a persistent trace.
+
+**Mandatory stop — surface it, do not decide alone:**
+- Any write to `main` / prod (PR + merge = human click).
+- Any decision that changes fiscal attribution, journal chaining, or what
+  becomes authoritative under NF525/ISCA.
+- Anything irreversible once real transactions are recorded.
+- Doubt about whether something is fiscal/irreversible → treat it as such, stop.
+
+When you stop: name the decision, give analysis + recommendation, do not
+apply before GO.
+
+**Why this gate exists:** the only costly errors here are irreversible-under-
+real-transactions and fiscal-attribution ones. Pre-containing exactly those is
+what makes full autonomy safe everywhere else. The escalation classifier
+missing — taking a fiscal decision for a routine one and proceeding without
+flagging — is the one real risk; "doubt → treat as fiscal → stop" is the
+railing that makes the rest safe.
+
+**Frozen sub-rules already in force (do not relitigate):**
+- Never declare NF525 validated.
+- Append-only-compensatoire: never status-flip a fiscal record; chain a
+  compensating event. Soft-deactivate, never hard-delete.
+- DB-level invariants (partial unique index) over check-then-insert
+  (the γ TOCTOU lesson); map 23505 → 409.
+- Never reveal secrets (DATABASE_URL password, full PIN hashes).
 
 ---
 
