@@ -301,3 +301,59 @@ NOT NULL (migration 1722) → a SINGLE sealing path into `sales`, the unsealed
 state non-representable. The full offline re-sealing subsystem (strate-II
 reconciliation) remains deferred/OPEN. Paired frontend follow-up: the POS must
 refuse to COMPLETE a sale offline in V1 (today it enqueues an OFF-* ticket).
+
+### CORRECTION-2 — H4 "offline forks the chain" was MIS-SCOPED; the active path does not fork. 🔴 → hygiene
+Triggered by tracing the twin value-moving doors (void/refund) — which led to
+the real offline wiring and revealed H4 itself was mis-diagnosed. **The "offline
+forks the fiscal chain" framing is FALSE for the active path — superseded.**
+Verified wiring (the discipline that should have preceded the 🔴, not followed):
+
+- The POS offline queue is drained by **`syncEngine`**. `syncEngine.ts:139`
+  syncs queued tickets via **`salesApi.create` → `POST /sales` → `createSale`
+  (SEALED)** — authoritative server re-price, real ticket number, hash chain
+  under the per-store `FOR UPDATE` lock. The OFF-* ticket and client prices are
+  discarded. → **an offline sale RE-SEALS via createSale; it does NOT fork.**
+- The raw-save backend `sync.service.push` (the door H4 closed) has **NO POS
+  caller** — the only reference to `/sync/batch` is a TODO stub
+  (`cloudSyncIdentity.ts:248`). A LATENT door (loaded gun, never fired), not the
+  active danger.
+- **Single drainer confirmed**: only `syncEngine` consumes the offlineStore
+  queue; no alternative raw-save drainer.
+
+**Re-evaluation:**
+- **Backend H4 (`850b1d8`: close door + NOT NULL): KEEP — as HYGIENE, not a
+  blocker.** Hardens a latent dangerous door (if `/sync/batch` is ever wired it
+  cannot raw-save) and makes the unsealed state non-representable. Zero
+  functional impact (no caller; createSale always sets the hash). The pre-deploy
+  SELECT-null gate on migration 1722 still stands.
+- **Frontend H4 (`e7f130f`: refuse offline completion): KEEP — but for the
+  CORRECT reason.** NOT "offline forks / would be lost / money-without-sale"
+  (all FALSE — the offline flow re-seals and is idempotent). The real reason is
+  a TIMESTAMP imprecision: `createSale:398` stamps `completedAt = new Date()` at
+  SEAL time (no client sale-time field on `CreateSaleDto`), and the Z buckets by
+  `DATE(s.created_at)` (`reports.service.ts:35`). So an offline sale synced later
+  gets a SYNC-time fiscal timestamp → a 23:55 sale synced 00:05 lands in the
+  WRONG day's Z (bounded "bad-day" risk). Online-only V1 ELIMINATES this (every
+  sale is created online at sale-time → correct Z). Asymmetry of risk: keep =
+  lose a rare-outage convenience (recoverable); revert = ship a temporal
+  imprecision into prod fiscal records (costly to un-ship). Conservative wins for
+  a fiscal V1. **The commit messages' "fork/lost" framing is superseded by this
+  correction (to be fixed at squash-merge).**
+
+**Twin doors (void/refund):** `enqueueVoid`/`enqueueCashRefund` are latent (the
+void sync path uses the SEALED `salesApi.void` endpoint). No twin-door fork. If
+ever wired, they must go via the sealed path (which syncEngine already does for
+voids).
+
+**Route consequence:** H4 LEAVES the critical [M] route (a phantom on the active
+path). The backend hardening stays as hygiene, not a blocker. The
+sync-time-timestamp item is a smaller, bounded fiscal-correctness item, naturally
+folded into the future offline subsystem / adjacent to the A/B Z work (it is
+about WHICH Z a sale lands in). One 🔴 fewer. The route [M] tightens to:
+**A/B (Z seal + returns) · L1 (attestation) · C4 (manager-approval) · H2
+(fiscal-anomaly alerts) · (D cash-recon · #4 device-credential).**
+
+**Standing rule adopted (the lesson):** no 🔴-active without tracing the real
+caller on the live path. "Is this door reachable on the active path?" precedes
+severity — a stub/no-caller is "latent", not "active". Applies to one's own work,
+not only to fan-out claims.
