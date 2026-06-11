@@ -296,6 +296,70 @@ dedicated sequence column). Fiscal (chain fork at scale), off the seal's path.
 - **Correct-before-seal (B with A, from ADR-009)** — returns enter the total
   *before* the window is graved, never after.
 
+### ADR-012 AMENDMENT-1 — the returns/voids border + the closure-operator question (before the form is frozen)
+**Status:** #1 + #2 RATIFIED · #3 PROPOSED, pending owner veto. Reshapes the
+z_seals form; supersedes the single `(prev_close_seq, close_seq]` pair.
+**Why:** before posing the (append-only, sacred) table, verified how the
+corrective chains border. **Both head by wall-clock, neither has a cursor:**
+- `credit_notes` (returns + gift): `ORDER BY created_at DESC` (`returns.service.ts:149,293`),
+  no sequence column.
+- `fiscal_journal` (voids): `ORDER BY created_at DESC` (`sales.service.ts:1014`),
+  no sequence column.
+- only `sales` heads on a real cursor (`ticket_number`).
+→ (a) the returns/voids side has **no race-free border** — A-4 "event-time" was
+framed under the old wall-clock model = exactly the boundary just eliminated for
+sales; (b) **a latent head-selection fork** on both corrective chains
+(ms-tie / NTP-backward → arbitrary head → fork) that sales already avoids.
+
+**#1 — border each chain by its own lock-serialized sequence cursor (RATIFIED).**
+All three chains already serialize on the **same** `stores FOR UPDATE`. The seal,
+under that one lock, snapshots **three** cursor pairs — sales, credit_notes,
+fiscal_journal — window per chain = `seq ∈ (prev_close_seq, close_seq]`.
+**Prerequisite layer (layer 0):** add a dedicated **monotonic integer sequence
+column** to `credit_notes` and `fiscal_journal`, head the chain on it (fixes the
+latent fork), and converge `sales` off the `ticket_number` lexical `parseInt`
+onto the same kind of column (absorbs the 1M chip `task_765e6cb0` — one fix, three
+chains). **A-4 RE-RATIFIED under the cursor model:** a return's window membership
+is its **credit_note sequence**, not event-time; event-time stays informative
+(display / the attribution side-table), never the fiscal boundary. The corrective
+fork-latent is *more* urgent than the 1M (forkable today on a tie), so layer 0 is
+the build's real first brick, not a deferral.
+
+**#2 — the seal stores a status-aware ventilation, not a flat total (RATIFIED).**
+Per the B+A enumeration: **CA brut (completed sales) / annulations (voids) /
+retours (credit_notes) / net**, par-tender where needed — each from its own cursor
+window. Layer 2 computes the ventilation; it does **not** sum the window flat. The
+perpetual grand total (A-5) advances by the net.
+
+**#3 — does the z_seal capture+hash the closing operator? (PROPOSED — owner veto).**
+A clôture is itself a deliberate operator fiscal act. This grazes ADR-004
+(attribution is structural, OFF the hashed tables; operator-in-hash deferred to
+v3). **Recommendation: capture+hash the closing operator IN the z_seal payload** —
+the v3-deferral rationale (per-terminal device credential, high-frequency rings)
+does **not** apply to a low-frequency, manager-performed closure, and a seal that
+omits *who closed* is weaker for an auditor. This is the one piece that touches the
+attribution-authority principle → **not frozen until the owner rules.** If vetoed:
+the closing operator lives in the side-table like the rest, seal stays
+operator-free.
+
+**Revised z_seals shape:** `(storeId, close_number)`; **three** `prev/close`
+sequence pairs (`sales_seq`, `credit_note_seq`, `journal_seq`); the status-aware
+ventilation (#2); the perpetual grand total after close; `closing_operator`
+(pending #3); `payload` (canonical text, hashed); `hash_chain_prev/current`
+(a Z-chain parallel to the three it seals). Append-only; never updated/deleted.
+
+**Invariant guarded / breaks if undone:**
+- **Every chain bordered by its own cursor, none by the clock** — a single
+  wall-clock border on the returns/voids side re-opens the race the sales side
+  closed; the window would be partly race-free, partly not → `sealed ventilation ≠
+  recompute`.
+- **One lock, three snapshots** — the three heads must be read under the *same*
+  `stores FOR UPDATE` the chains write under, or a sale/return/void commits between
+  snapshots → border leak.
+- **Layer 0 fixes a present fork, not a future one** — heading a fiscal chain by
+  `created_at` is the defect; the sequence column is the repair, and it is the same
+  object the seal needs. Undo → the corrective chains keep their tie/NTP fork.
+
 ## OPEN decisions (specced, awaiting the owner — not ratified, not filled)
 
 - **A/B-1** — gift-card *issuance* in the Z: liability (separate line, excluded
