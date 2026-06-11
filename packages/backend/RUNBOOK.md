@@ -2,6 +2,11 @@
 
 ## Production deployment (current)
 
+> Topology corrected 2026-06-11 by endpoint triangulation. The DNS cutover
+> happened: the LIVE backend is `https://api.addxintelligence.com`. The old
+> Railway native URL `caisse-backend-production.up.railway.app` is DEAD (404)
+> — do not use it as a deploy/health target.
+
 | Item | Value |
 |---|---|
 | Platform | Railway |
@@ -10,8 +15,8 @@
 | Service ID | `a7b2748a-6000-4a32-802b-0e9319287f43` |
 | Service name | `caisse-backend` |
 | Environment | `production` (id `7ade5bb3-4e17-4460-a6c0-f50995bded67`) |
-| Native URL | `https://caisse-backend-production.up.railway.app` |
-| Custom domain | _(pending DNS cutover — `api.addxintelligence.com`)_ |
+| **Live URL** | **`https://api.addxintelligence.com`** (custom domain, cutover done) |
+| ~~Railway native URL~~ | ~~`caisse-backend-production.up.railway.app`~~ — **DEAD (404)** |
 | Source | GitHub `movo24/CAISSE` branch `main` |
 | Build | Dockerfile in `packages/backend/Dockerfile` |
 | Root directory | `packages/backend` |
@@ -22,8 +27,8 @@
 ## Quick commands
 
 ```bash
-# Health check
-curl https://caisse-backend-production.up.railway.app/api/health
+# Health check (LIVE backend)
+curl https://api.addxintelligence.com/api/health
 
 # Get latest deployment status
 TOKEN=<RAILWAY_API_TOKEN>
@@ -94,7 +99,7 @@ mutation {
     serviceDomainId: "<DOMAIN_ID>"
     serviceId: "<SERVICE_ID>"
     environmentId: "<ENV_ID>"
-    domain: "caisse-backend-production.up.railway.app"
+    domain: "api.addxintelligence.com"   # live custom domain (cutover done)
     targetPort: 8080
   })
 }
@@ -130,7 +135,7 @@ Steps:
 ## Smoke test checklist
 
 ```bash
-URL=https://caisse-backend-production.up.railway.app
+URL=https://api.addxintelligence.com
 
 # Critical
 curl -sS -o /dev/null -w "%{http_code}\n" $URL/api/health                                  # 200

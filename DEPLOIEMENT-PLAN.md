@@ -8,7 +8,7 @@
 |---|---|---|
 | `main` (local + GitHub) | `db29db4` | à jour (pos-modules+M1/M3, offline/PDF, analytics) |
 | Front prod Vercel `addx-backoffice` → `app.addxintelligence.com`, `admin.addxintelligence.com` | commit `9801b9e2` (~avril) | **périmé** |
-| Backend prod Railway → `api.addxintelligence.com` | ~avril | **périmé** : `/api/health`=200, mais `product-analytics`/`sales-trend`=**404** |
+| Backend prod Railway → `api.addxintelligence.com` | à jour (2026-06-11) | **live** : `/api/health`=200, `product-analytics`=**401** (existe, à jour). C'est le seul backend CAISSE ; l'URL native Railway `caisse-backend-production.up.railway.app` est morte (404). |
 | Preview front à jour | `db29db4` | **déployée (non-prod)** ✅ |
 
 Le push `main` n'a **pas** auto-déployé Vercel (déploiements manuels, pas d'intégration Git auto).
