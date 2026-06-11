@@ -69,3 +69,51 @@ export function computePaymentState(totalMinorUnits: number, tenders: Tender[]):
 export function isFullyCovered(totalMinorUnits: number, tenders: Tender[]): boolean {
   return computePaymentState(totalMinorUnits, tenders).isCovered;
 }
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * (H4) Sale-completion error policy — ONLINE-ONLY V1.
+ *
+ * The dangerous decision, extracted as a pure function so it is unit-testable
+ * in the node env (no renderHook / testing-library needed). The hook calls
+ * this and acts on the result.
+ *
+ * On a network error, the policy is REFUSE — never queue the sale offline:
+ * the backend now rejects offline sales at sync (they would be lost), and
+ * queuing + opening the drawer would take cash for a sale that never enters
+ * the fiscal chain. A sale enters the chain ONLY when sealed server-side.
+ * ────────────────────────────────────────────────────────────────────────── */
+
+export type CompletionErrorAction =
+  /** Network down → online-only V1: refuse, take no money, queue nothing. */
+  | { kind: 'refuse_offline'; message: string }
+  /** Backend reachable but rejected the sale (e.g. insufficient stock). */
+  | { kind: 'surface_business_error' };
+
+/** True when the error is a transport/network failure (no usable response). */
+export function isNetworkError(err: any): boolean {
+  return (
+    !err?.response ||
+    err?.code === 'ERR_NETWORK' ||
+    err?.code === 'ECONNABORTED' ||
+    (typeof err?.message === 'string' && err.message.includes('Network Error'))
+  );
+}
+
+/**
+ * Decide what the POS must do when sale completion throws. A network error
+ * NEVER maps to an offline queue (that path is closed in V1) — it maps to a
+ * refusal that moves no money. This is the regression guard: re-introducing
+ * offline-queue-on-network would have to change this function and break its
+ * test.
+ */
+export function decideCompletionError(err: any): CompletionErrorAction {
+  if (isNetworkError(err)) {
+    return {
+      kind: 'refuse_offline',
+      message:
+        'Encaissement indisponible hors-ligne. La vente n’a PAS été ' +
+        'enregistrée — réessayez quand la connexion revient.',
+    };
+  }
+  return { kind: 'surface_business_error' };
+}

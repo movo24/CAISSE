@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { computePaymentState, isFullyCovered, Tender } from './paymentMachine';
+import {
+  computePaymentState,
+  isFullyCovered,
+  decideCompletionError,
+  isNetworkError,
+  Tender,
+} from './paymentMachine';
 
 const t = (method: any, amount: number): Tender => ({ method, amountMinorUnits: amount });
 
@@ -61,5 +67,39 @@ describe('computePaymentState', () => {
   it('isFullyCovered reflects coverage', () => {
     expect(isFullyCovered(1000, [t('cash', 1000)])).toBe(true);
     expect(isFullyCovered(1000, [t('cash', 999)])).toBe(false);
+  });
+});
+
+describe('(H4) decideCompletionError — online-only V1 refuse-on-network', () => {
+  it('classifies transport/network failures as network errors', () => {
+    expect(isNetworkError({})).toBe(true); // no response at all
+    expect(isNetworkError({ code: 'ERR_NETWORK' })).toBe(true);
+    expect(isNetworkError({ code: 'ECONNABORTED' })).toBe(true);
+    expect(isNetworkError({ message: 'Network Error' })).toBe(true);
+  });
+
+  it('a backend response is NOT a network error', () => {
+    expect(isNetworkError({ response: { status: 400, data: { message: 'Insufficient stock' } } })).toBe(false);
+  });
+
+  it('a network error maps to refuse_offline — NEVER an offline queue', () => {
+    // The regression guard: re-introducing offline-queue-on-network would have
+    // to change this to a different kind and break this test.
+    const a = decideCompletionError({ code: 'ERR_NETWORK' });
+    expect(a.kind).toBe('refuse_offline');
+    expect(a).not.toMatchObject({ kind: 'offline_queue' });
+    if (a.kind === 'refuse_offline') {
+      expect(a.message).toMatch(/hors-ligne/i);
+      expect(a.message).toMatch(/n’a PAS été enregistrée|pas été enregistrée/i);
+    }
+  });
+
+  it('a no-response error (drawer-pulling path) maps to refuse_offline', () => {
+    expect(decideCompletionError({}).kind).toBe('refuse_offline');
+  });
+
+  it('a backend business rejection maps to surface_business_error (cashier retries)', () => {
+    const a = decideCompletionError({ response: { status: 400, data: { message: 'Insufficient stock' } } });
+    expect(a.kind).toBe('surface_business_error');
   });
 });

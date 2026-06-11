@@ -4,8 +4,7 @@ import { salesApi } from '../services/api';
 import { usePerformanceStore } from '../stores/performanceStore';
 import { posEventBus } from '../services/posEventBus';
 import { peripheralBridge, TicketData } from '../services/peripheralBridge';
-import { useOfflineStore } from '../stores/offlineStore';
-import { computePaymentState, PaymentMethod } from '../services/paymentMachine';
+import { computePaymentState, decideCompletionError, PaymentMethod } from '../services/paymentMachine';
 
 /* ── Types ── */
 
@@ -174,55 +173,37 @@ export function usePayment() {
         posEventBus.emit('STOCK_ALERT', { alerts: res.data.stockAlerts });
       }
     } catch (err: any) {
-      // ── Offline fallback: network error → queue locally ──
-      const isNetworkError =
-        !err?.response || // No response = network down
-        err?.code === 'ERR_NETWORK' ||
-        err?.code === 'ECONNABORTED' ||
-        err?.message?.includes('Network Error');
+      setProcessing(false);
+      const action = decideCompletionError(err);
 
-      if (isNetworkError) {
-        console.warn('[POS] Backend unreachable — queuing sale offline');
-        const offlineStore = useOfflineStore.getState();
-
-        // Generate local ticket number
-        ticketNumber = `OFF-${Date.now().toString(36).toUpperCase()}`;
-
-        // Enqueue ticket for later sync
-        offlineStore.enqueue({
-          type: 'ticket',
-          payload: {
-            ticketNumber,
-            items: store.cartItems.map((i) => ({ ean: i.ean, quantity: i.quantity, name: i.name, unitPriceMinorUnits: i.unitPriceMinorUnits })),
-            payments: payments.map((p) => ({ method: p.method, amountMinorUnits: p.amountMinorUnits })),
-            totalMinorUnits: totalAmount,
-            customerQrCode: store.customerQrCode || undefined,
-          },
-          cashierId: store.employee?.id || 'unknown',
-          cashierName,
-          storeId: store.employee?.storeId || 'unknown',
-        });
-
-        // Decrement local stock cache
-        store.cartItems.forEach((item) => {
-          offlineStore.decrementLocalStock(item.ean, item.quantity);
-        });
-
-        posEventBus.emit('SALE_OFFLINE', { ticketNumber, pendingCount: offlineStore.pendingCount + 1 });
-        // Continue to confirmation (don't return — sale was accepted locally)
-      } else {
-        setProcessing(false);
-        // Extract error message from backend response (e.g. "Insufficient stock")
-        const message =
-          err?.response?.data?.message ||
-          err?.response?.data?.details?.[0] ||
-          err?.message ||
-          'Erreur lors de la vente';
-        posEventBus.emit('SALE_ERROR', { message });
-        console.error('[POS] Sale failed:', message);
-        // Do NOT clear cart — let the cashier fix the issue and retry
+      if (action.kind === 'refuse_offline') {
+        // (H4) ONLINE-ONLY V1 — the offline raw-save door is closed server-side
+        // (sync rejects offline sales). REFUSE here: take no money, queue
+        // nothing, decrement no stock, open no drawer, print nothing. Falling
+        // through to confirmation (the old offline-enqueue path) would take
+        // cash for a sale that never enters the fiscal chain. The cashier sees
+        // the refusal and knows the sale did not happen. (Lost-sale-during-
+        // outage is the accepted online-only V1 cost until the offline
+        // re-sealing subsystem ships.)
+        posEventBus.emit('SALE_ERROR', { message: action.message });
+        console.warn(
+          '[POS] Backend unreachable — sale REFUSED (online-only V1). ' +
+            'No cash taken, nothing queued, no stock decrement.',
+        );
+        // Do NOT clear cart — the cashier retries when connectivity returns.
         return;
       }
+
+      // surface_business_error — backend reachable but rejected (e.g. stock).
+      const message =
+        err?.response?.data?.message ||
+        err?.response?.data?.details?.[0] ||
+        err?.message ||
+        'Erreur lors de la vente';
+      posEventBus.emit('SALE_ERROR', { message });
+      console.error('[POS] Sale failed:', message);
+      // Do NOT clear cart — let the cashier fix the issue and retry.
+      return;
     }
     const timestamp = new Date();
     store.addTicketToHistory({
