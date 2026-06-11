@@ -32,6 +32,7 @@ import { PosSessionService } from '../src/modules/pos-session/pos-session.servic
 import { OperatorAttributionService } from '../src/modules/operator-attribution/operator-attribution.service';
 import { StoreEntity } from '../src/database/entities/store.entity';
 import { ProductEntity } from '../src/database/entities/product.entity';
+import { FiscalJournalEntity } from '../src/database/entities/fiscal-journal.entity';
 
 describe('(1b) operator-attribution binding', () => {
   let moduleRef: TestingModule;
@@ -135,5 +136,34 @@ describe('(1b) operator-attribution binding', () => {
     expect(att?.sessionOperatorId).toBe(OP_B);
     expect(att?.sessionTerminalId).toBe('Term-B');
     expect(att?.sessionOperatorId).not.toBe(OP_A);
+  });
+
+  it('#7 CORRECTNESS (void mirror): void at terminal D is attributed to D, never the original sale operator C', async () => {
+    // A void is ALSO a corrective door operating on a prior sale: voidSale
+    // loads the original sale, so the original operator/terminal is in scope.
+    // The attribution must come from the VOID terminal's session, not the
+    // sale's. (createSale carries no such risk — the sale IS the origin event.)
+    const OP_C = uuidv4();
+    await sessions.openSession(STORE, OP_C, SNAP, { terminalId: 'Term-C' });
+    await freshStock();
+    // card payment → not blocked by the cash-void guard.
+    const saleDto = { items: [{ ean: '5000000000001', quantity: 1 }], payments: [{ method: 'card', amountMinorUnits: 500 }] };
+    const sale: any = await sales.createSale(STORE, OP_C, saleDto as any, SNAP, undefined, 'Term-C');
+
+    // A DIFFERENT operator D, at terminal D, voids the sale.
+    const OP_D = uuidv4();
+    await sessions.openSession(STORE, OP_D, SNAP, { terminalId: 'Term-D' });
+    await sales.voidSale(sale.id, OP_D, STORE, 'admin', undefined, undefined, undefined, 'Term-D');
+
+    // The void's fiscal_journal entry is the attribution event.
+    const journal: any = await ds
+      .getRepository(FiscalJournalEntity)
+      .findOne({ where: { refId: sale.id, eventType: 'void' } });
+    expect(journal).toBeTruthy();
+    const att = await attribution.findByEvent('void', journal.id);
+    // Attributed to the VOID operator/terminal — never the original sale's.
+    expect(att?.sessionOperatorId).toBe(OP_D);
+    expect(att?.sessionTerminalId).toBe('Term-D');
+    expect(att?.sessionOperatorId).not.toBe(OP_C);
   });
 });
