@@ -72,6 +72,22 @@ export class SyncService {
     if (!payload.storeId || !payload.deviceId) {
       throw new BadRequestException('storeId and deviceId are required');
     }
+
+    // --- (H4) Offline sales are NOT accepted in V1 — ONLINE-ONLY. ---
+    // A sale must be created online via POST /sales so it is sealed into the
+    // per-store fiscal hash chain (stores FOR UPDATE lock + prevHash + sha256
+    // in createSale). A raw insert here would land hash-less and off-chain,
+    // FORKING the chain — there must be a SINGLE sealing path into `sales`.
+    // The full offline-sealing subsystem (re-seal server-side, in order, at
+    // sync) is deferred; until then this door is closed fail-closed. Customer
+    // and stock sync below remain open (not hash-chained fiscal records).
+    if (payload.sales && payload.sales.length > 0) {
+      throw new BadRequestException(
+        'Offline sales are not accepted (online-only V1). A sale must be ' +
+          'created online via POST /sales so it is sealed into the fiscal ' +
+          'hash chain.',
+      );
+    }
     for (const adj of payload.stockAdjustments) {
       if (!Number.isInteger(adj.delta)) {
         throw new BadRequestException(
@@ -94,41 +110,12 @@ export class SyncService {
     await queryRunner.startTransaction();
 
     try {
-      // 1. Batch-deduplicate sales
-      //    Collect all IDs, do ONE query to find existing, then bulk insert new ones
-      if (payload.sales.length > 0) {
-        const saleIds = payload.sales
-          .map((s) => s.id)
-          .filter((id): id is string => !!id);
-
-        const existingIds = new Set<string>();
-        if (saleIds.length > 0) {
-          const existing = await queryRunner.manager.find(SaleEntity, {
-            where: { id: In(saleIds) },
-            select: ['id'],
-          });
-          existing.forEach((e) => existingIds.add(e.id));
-        }
-
-        const newSales = payload.sales.filter(
-          (s) => !s.id || !existingIds.has(s.id),
-        );
-        if (newSales.length > 0) {
-          // Batch insert in chunks of 100 to avoid hitting param limits
-          const CHUNK_SIZE = 100;
-          for (let i = 0; i < newSales.length; i += CHUNK_SIZE) {
-            const chunk = newSales.slice(i, i + CHUNK_SIZE);
-            await queryRunner.manager.save(SaleEntity, chunk);
-          }
-          accepted += newSales.length;
-        }
-
-        if (existingIds.size > 0) {
-          this.logger.debug(
-            `Skipped ${existingIds.size} duplicate sales`,
-          );
-        }
-      }
+      // 1. Sales — intentionally NOT processed here (H4, online-only V1).
+      //    The raw `manager.save(SaleEntity, …)` that used to live here was the
+      //    second, UN-SEALED write door into `sales` (no hash chain, no store
+      //    lock) — it forked the fiscal chain. It has been removed; offline
+      //    sales are rejected at the input-validation gate above. A future
+      //    offline subsystem must re-seal through createSale's path, never raw.
 
       // 2. Batch-check customer conflicts
       if (payload.customers.length > 0) {

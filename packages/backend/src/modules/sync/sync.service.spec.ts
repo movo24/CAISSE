@@ -56,12 +56,21 @@ describe('SyncService — push', () => {
     await expect(service.push(basePayload({ stockAdjustments: [{ productId: 'p', delta: 999999, reason: 'x' }] }))).rejects.toThrow(BadRequestException);
   });
 
-  it('deduplicates already-synced sales (idempotent replay)', async () => {
-    existingSales = [{ id: 'a' }]; // 'a' already on the server
-    const res = await service.push(basePayload({ sales: [{ id: 'a' } as any, { id: 'b' } as any] }));
-    expect(res.accepted).toBe(1); // only 'b' is new
-    const savedArg = qr.manager.save.mock.calls.find((c: any[]) => c[0] === SaleEntity)?.[1];
-    expect(savedArg.map((s: any) => s.id)).toEqual(['b']);
+  it('(H4) rejects a payload containing offline sales (online-only V1)', async () => {
+    // The offline raw-save door into `sales` is closed: it was the second,
+    // un-sealed write path (no hash chain, no store lock) and forked the
+    // fiscal chain. Sales must be created online via POST /sales (sealed).
+    await expect(
+      service.push(basePayload({ sales: [{ id: 'b' } as any] })),
+    ).rejects.toThrow(BadRequestException);
+    // No raw SaleEntity save is attempted.
+    const savedSale = qr.manager.save.mock.calls.find((c: any[]) => c[0] === SaleEntity);
+    expect(savedSale).toBeUndefined();
+  });
+
+  it('accepts a sales-free payload (customers/stock still sync)', async () => {
+    const res = await service.push(basePayload({ sales: [] }));
+    expect(res).toBeDefined();
     expect(qr.commitTransaction).toHaveBeenCalled();
   });
 

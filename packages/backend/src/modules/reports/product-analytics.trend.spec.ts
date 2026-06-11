@@ -43,6 +43,7 @@ describe('ProductAnalyticsService.getSalesTrend — bucketing jour local', () =>
     const s = await saleRepo.save({
       storeId, employeeId: 'emp-1', ticketNumber: `T-${total}`,
       status: 'completed', totalMinorUnits: total, currencyCode: 'EUR',
+      hashChainPrev: '0'.repeat(64), hashChainCurrent: '0'.repeat(64),
     } as Partial<SaleEntity> as SaleEntity);
     // @CreateDateColumn force "now" à l'insert → on repositionne created_at.
     await saleRepo.update(s.id, { createdAt: new Date(iso) });

@@ -164,7 +164,11 @@ describe('E2E — money flow (login → sale → return → avoir → pay → Z)
     expect(z.transactionCount).toBeGreaterThanOrEqual(2);
   });
 
-  it('offline sync: push inserts queued sales, a replay is deduped (idempotent)', async () => {
+  it('(H4) offline sync REJECTS sales (online-only V1) — no unsealed row enters the chain', async () => {
+    // The offline raw-save door into `sales` was the second, un-sealed write
+    // path (no hash chain, no store lock) — it forked the fiscal chain. It is
+    // now closed: sync rejects any sales payload; sales must be created online
+    // via createSale (sealed). Customer/stock sync remain open.
     const offlineSale = {
       id: uuidv4(), storeId: STORE_ID, employeeId: EMP_ID, status: 'completed',
       subtotalMinorUnits: 500, discountTotalMinorUnits: 0, taxTotalMinorUnits: 83, totalMinorUnits: 500,
@@ -175,13 +179,10 @@ describe('E2E — money flow (login → sale → return → avoir → pay → Z)
       sales: [offlineSale as any], customers: [], stockAdjustments: [],
     };
 
-    const first = await sync.push(payload);
-    expect(first.accepted).toBe(1);
+    await expect(sync.push(payload)).rejects.toThrow(/online-only|Offline sales/i);
 
-    const replay = await sync.push(payload); // same sale id → already on server
-    expect(replay.accepted).toBe(0); // deduped, no duplicate
-
+    // Nothing was inserted — the canonical table cannot hold an unsealed row.
     const count = await ds.getRepository('sales').count({ where: { ticketNumber: 'OFF-SYNC-1' } as any });
-    expect(count).toBe(1);
+    expect(count).toBe(0);
   });
 });

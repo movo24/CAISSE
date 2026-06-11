@@ -42,7 +42,7 @@ describe('ProductAnalyticsService.getReport — données exploitables (intégrat
 
   async function sell(productId: string, name: string, price: number, units: number) {
     const when = new Date(Date.now() - 2 * 86_400_000); // il y a 2 jours
-    const sale = await saleRepo.save({ storeId, employeeId: 'e', ticketNumber: `T-${name}`, status: 'completed', totalMinorUnits: price * units, currencyCode: 'EUR' } as Partial<SaleEntity> as SaleEntity);
+    const sale = await saleRepo.save({ storeId, employeeId: 'e', ticketNumber: `T-${name}`, status: 'completed', totalMinorUnits: price * units, currencyCode: 'EUR', hashChainPrev: '0'.repeat(64), hashChainCurrent: '0'.repeat(64) } as Partial<SaleEntity> as SaleEntity);
     await saleRepo.update(sale.id, { createdAt: when } as any);
     await lineRepo.save({ saleId: sale.id, productId, productName: name, ean: 'E', quantity: units, unitPriceMinorUnits: price, lineTotalMinorUnits: price * units, taxRate: 20 } as Partial<SaleLineItemEntity> as SaleLineItemEntity);
   }

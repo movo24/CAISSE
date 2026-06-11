@@ -61,10 +61,16 @@ export class SaleEntity {
   @Column({ name: 'ticket_number' })
   ticketNumber: string;
 
-  @Column({ name: 'hash_chain_prev', nullable: true })
+  // (H4) NOT NULL — a sale row in the canonical table can never be unsealed.
+  // createSale always sets these (genesis hash for the first sale, the prior
+  // current otherwise). The nullable columns were the structural ENABLER of
+  // the offline raw-save fork; making them NOT NULL makes the unsealed state
+  // non-representable, the same discipline as the partial-unique-index and the
+  // attribution side-table — forbid the bad state at the schema level.
+  @Column({ name: 'hash_chain_prev' })
   hashChainPrev: string;
 
-  @Column({ name: 'hash_chain_current', nullable: true })
+  @Column({ name: 'hash_chain_current' })
   hashChainCurrent: string;
 
   /**
