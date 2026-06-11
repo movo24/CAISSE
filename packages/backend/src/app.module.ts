@@ -11,6 +11,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { ProductsModule } from './modules/products/products.module';
 import { SalesModule } from './modules/sales/sales.module';
 import { PosSessionModule } from './modules/pos-session/pos-session.module';
+import { PosTerminalModule } from './modules/pos-terminal/pos-terminal.module';
 import { ReturnsModule } from './modules/returns/returns.module';
 import { CustomersModule } from './modules/customers/customers.module';
 import { StoresModule } from './modules/stores/stores.module';
@@ -96,6 +97,7 @@ const isProd = process.env.NODE_ENV === 'production';
     ProductsModule,
     SalesModule,
     PosSessionModule,
+    PosTerminalModule,
     CustomersModule,
     StoresModule,
     ReportsModule,
