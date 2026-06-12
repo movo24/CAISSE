@@ -67,4 +67,11 @@ describe('Étage 3 — brief provenance guard (INV-3 structural)', () => {
   it('numberless prose is trivially valid', () => {
     expect(verifyBriefProvenance(FINDINGS, 'Journée calme, rien à signaler.').valid).toBe(true);
   });
+
+  it('digits embedded in SOURCED strings trace (store name "B43" quoted in prose)', () => {
+    const withB43: BriefFindings = { ...FINDINGS, stores: [{ ...FINDINGS.stores[0], name: 'Grand Littoral B43' }] };
+    expect(verifyBriefProvenance(withB43, 'B43 réalise 30 tickets.').valid).toBe(true);
+    // …but an unsourced number still fails alongside it:
+    expect(verifyBriefProvenance(withB43, 'B43 réalise 77 tickets.').valid).toBe(false);
+  });
 });

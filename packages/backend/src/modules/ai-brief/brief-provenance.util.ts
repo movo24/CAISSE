@@ -36,9 +36,16 @@ export function collectAllowedValues(findings: BriefFindings): Set<string> {
     if (typeof node === 'number') add(node);
     else if (Array.isArray(node)) node.forEach(walk);
     else if (node && typeof node === 'object') Object.values(node).forEach(walk);
-    else if (typeof node === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(node)) {
-      const [y, m, d] = node.split('-').map(Number);
-      [y, m, d].forEach((v) => allowed.add(key(v)));
+    else if (typeof node === 'string') {
+      if (/^\d{4}-\d{2}-\d{2}$/.test(node)) {
+        node.split('-').map(Number).forEach((v) => allowed.add(key(v)));
+      } else {
+        // Numbers embedded in SOURCED strings (store names like "B43", "Grand
+        // Littoral B43") are findings content — prose quoting the name must trace.
+        for (const token of node.match(NUMBER_TOKEN) ?? []) {
+          candidateParses(token).forEach((n) => allowed.add(key(n)));
+        }
+      }
     }
   };
   walk(findings);
