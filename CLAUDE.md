@@ -361,6 +361,7 @@ shared/
 | Railway deploys not auto-triggered | Structural | Cross-account GitHub limit. Manual via `serviceInstanceDeployV2`. See RUNBOOK. |
 | In-memory cache (no Redis) | Low risk | Set `REDIS_URL` before multi-instance prod. |
 | Backend A untouched | Hard constraint | `api.addxintelligence.com` = prod canonical. Never touch without explicit GO. |
+| Cash-sale fiscal reversal via `createReturn` — UNCOVERED | **Named debt** | The `void-cash-realized` guard blocks voiding a sale with a realized cash leg; such a sale must be reversed via `createReturn` (cash refund), not `void`. The fiscal-chain/journal behaviour of that **createReturn-cash** path is **not yet tested/carried**. M3/M4 specs were transposed onto non-cash tenders (M3 → `store_credit`, M4 → `card`) to preserve their assertions after the guard landed. See [DEBT.md](DEBT.md). Address in a **separate fiscal-design PR** — do not let it disappear silently. |
 
 ---
 
