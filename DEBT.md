@@ -82,3 +82,26 @@ read-only discipline is, for now, enforced **in code** (`ReadOnlyGuard` rejects 
 
 **Cross-ref:** migration `1723000000000-CreateAnalyticsProjection` (the schema),
 `MobileReadApiModule` / `ReadOnlyGuard` (the code-level read-only seal).
+
+---
+
+## D-ALERTS-1 — `store_closed_late` evaluates a WALL-CLOCK threshold in UTC
+
+**Status:** OPEN · named debt · **blocks étage-4 delivery of this rule** (not its étage-2 generation).
+**Since:** étage 2, rule `store_closed_late` (2026-06-12).
+
+**The problem.** The rule compares `now.getUTCHours()` to `close_hour_utc`. For a
+French network this is NOT benign: a store closing at 20:00 LOCAL is 18:00 or 19:00
+UTC depending on DST — a fixed UTC hour mis-fires by 1–2h twice a year, and the
+"late" threshold is inherently a wall-clock concept. Greenfield keeps it inert today
+(rule generates facts nobody is paged on), but **étage 4 must NOT deliver
+`store_closed_late` until the store-timezone policy lands.**
+
+**What closes it:**
+1. a store-TZ policy (per-store timezone as DATA — registry/config, aligned with the
+   business-day definition item the owner carries);
+2. the rule evaluates the closing hour in STORE-LOCAL time;
+3. remove this entry.
+
+**Cross-ref:** `rules/store-closed-late.rule.ts` (caveat comment), the étage-0 UTC
+business-day convention, the Z_SEAL_SPEC business-day OPEN.
