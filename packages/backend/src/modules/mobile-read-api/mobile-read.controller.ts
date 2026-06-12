@@ -1,4 +1,4 @@
-import { Controller, Get, Logger, NotFoundException, Req, UseGuards } from '@nestjs/common';
+import { Controller, Get, Logger, NotFoundException, Param, Req, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { ReadOnlyGuard } from './read-only.guard';
 import { StoreScopeResolverService } from '../analytics-projection/store-scope-resolver.service';
@@ -35,6 +35,13 @@ export class MobileReadController {
     const scope = await this.scopeOf(req);
     const today = new Date().toISOString().slice(0, 10);
     return this.read.overview(scope, today);
+  }
+
+  @Get('stores/:id/live')
+  async live(@Param('id') id: string, @Req() req: any) {
+    const scope = await this.scopeOf(req);
+    this.ensureInScope(id, scope, req); // 404 + log if out of scope (= if non-existent)
+    return this.read.liveForStore(id);
   }
 
   // ── helpers ──

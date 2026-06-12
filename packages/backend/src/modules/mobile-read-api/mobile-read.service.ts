@@ -87,6 +87,28 @@ export class MobileReadService {
       computedAt, // oldest freshness across the aggregated rows (null if scope empty)
     };
   }
+
+  /**
+   * GET /stores/:id/live — live state of ONE store (sessions / presence / stock). The
+   * caller (controller) has already gated the id against the scope (resource 404+log
+   * rule); this just reads analytics.* for that store. computed_at = oldest snapshot.
+   */
+  async liveForStore(storeId: string) {
+    const [sessions, presence, stock, registry] = await Promise.all([
+      this.sessions.findOne({ where: { storeId } }),
+      this.presence.findOne({ where: { storeId } }),
+      this.stock.findOne({ where: { storeId } }),
+      this.registry.findOne({ where: { storeId } }),
+    ]);
+    return {
+      storeId,
+      name: registry?.name ?? null,
+      sessions: { openSessions: sessions?.openSessions ?? 0, activeTerminals: sessions?.activeTerminals ?? 0 },
+      presence: { presentCount: presence?.presentCount ?? 0, expectedCount: presence?.expectedCount ?? 0 },
+      stock: { ruptureCount: stock?.ruptureCount ?? 0, lowStockCount: stock?.lowStockCount ?? 0 },
+      computedAt: oldest([sessions?.computedAt, presence?.computedAt, stock?.computedAt]),
+    };
+  }
 }
 
 function oldest(dates: (Date | null | undefined)[]): Date | null {
