@@ -151,6 +151,16 @@ export const usePerformanceStore = create<PerformanceState>((set, get) => ({
     // Business invariant: a void must reference a KNOWN ticket. An unknown
     // ticketNumber is a clean no-op (no voidCount/voidAmount increment, no phantom
     // ticket) so void counters can never over-count vs the recorded tickets.
+    //
+    // ⚠️ CONSTRAINT — this no-op is safe ONLY while recordVoid has no caller.
+    // Wiring it to the real void flow REQUIRES first distinguishing:
+    //   • ticket that never existed (benign) — keep the no-op, vs
+    //   • ticket lost from front state but still alive/voidable backend-side
+    //     (reload / new cashier session / day rollover / cross-terminal) — a
+    //     LEGITIMATE void that this no-op would otherwise swallow silently.
+    // At that point: emit an observability signal (warn) OR re-verify against the
+    // backend — the choice depends on the real shape of the void flow. Do NOT
+    // wire recordVoid without resolving this (see DEBT/constat-2).
     const known = session.transactions.some((t) => t.ticketNumber === ticketNumber);
     if (!known) return;
 
