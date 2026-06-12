@@ -8,6 +8,7 @@ import { AnalyticsStoreStockEntity } from '../../database/entities/analytics-sto
 import { AnalyticsAlertEntity } from '../../database/entities/analytics-alert.entity';
 import { AnalyticsAlertConfigEntity } from '../../database/entities/analytics-alert-config.entity';
 import { AnalyticsAlertCursorEntity } from '../../database/entities/analytics-alert-cursor.entity';
+import { AnalyticsStoreTargetEntity } from '../../database/entities/analytics-store-target.entity';
 import { AlertsEngineService } from './alerts-engine.service';
 import { ALERT_RULES, AlertRule } from './alert-rule.interface';
 import { VoidRateRule } from './rules/void-rate.rule';
@@ -15,6 +16,7 @@ import { StockLowRule } from './rules/stock-low.rule';
 import { SalesDropRule } from './rules/sales-drop.rule';
 import { StoreClosedLateRule } from './rules/store-closed-late.rule';
 import { DiscountRateRule } from './rules/discount-rate.rule';
+import { TargetReachedRule } from './rules/target-reached.rule';
 
 /**
  * Étage 2 — alerts engine. Socle: tables + runner + computed_at gate, ZERO rule
@@ -32,6 +34,7 @@ import { DiscountRateRule } from './rules/discount-rate.rule';
       AnalyticsAlertEntity,
       AnalyticsAlertConfigEntity,
       AnalyticsAlertCursorEntity,
+      AnalyticsStoreTargetEntity,
     ]),
   ],
   providers: [
@@ -40,10 +43,11 @@ import { DiscountRateRule } from './rules/discount-rate.rule';
     SalesDropRule,
     StoreClosedLateRule,
     DiscountRateRule,
+    TargetReachedRule,
     {
       provide: ALERT_RULES,
       useFactory: (...rules: AlertRule[]) => rules,
-      inject: [VoidRateRule, StockLowRule, SalesDropRule, StoreClosedLateRule, DiscountRateRule],
+      inject: [VoidRateRule, StockLowRule, SalesDropRule, StoreClosedLateRule, DiscountRateRule, TargetReachedRule],
     },
     AlertsEngineService,
   ],
