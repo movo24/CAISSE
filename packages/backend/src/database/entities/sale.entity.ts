@@ -15,6 +15,12 @@ import { SalePaymentEntity } from './sale-payment.entity';
 @Index(['storeId', 'status', 'completedAt'])
 @Index(['customerId'])
 @Index(['ticketNumber', 'storeId'], { unique: true })
+// Per-store monotonic fiscal cursor. PARTIAL unique (sale_seq IS NOT NULL) so
+// offline-synced sales (client ticket numbers, no seq) don't collide on NULL,
+// while the online hash chain stays gap-checkable. Declared here so
+// synchronize-based test DBs (pg-mem) build it; mirrored in migration 1720 for
+// prod. See uq_sales_store_sale_seq.
+@Index(['storeId', 'saleSeq'], { unique: true, where: '"sale_seq" IS NOT NULL' })
 export class SaleEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -60,6 +66,19 @@ export class SaleEntity {
 
   @Column({ name: 'ticket_number' })
   ticketNumber: string;
+
+  /**
+   * Per-store monotonic sequence — the AUTHORITATIVE fiscal cursor (ADR-012).
+   * `ticket_number` is a zero-padded display string; ordering the hash chain by
+   * it is lexical, which diverges from numeric at the 6-digit boundary
+   * (`T-1000000` < `T-999999` as text → dup tickets + chain fork). This integer
+   * column is what the generator and the hash-chain head are ordered by, so the
+   * chain stays correct past 1,000,000 sales. Nullable: offline-synced sales
+   * carry a client ticket number and no seq (excluded from the chain head via
+   * `sale_seq IS NOT NULL`). Explicit `type` per the TypeORM nullable-union rule.
+   */
+  @Column({ name: 'sale_seq', type: 'bigint', nullable: true })
+  saleSeq: number | null;
 
   @Column({ name: 'hash_chain_prev', nullable: true })
   hashChainPrev: string;

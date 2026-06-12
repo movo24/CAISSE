@@ -363,24 +363,30 @@ export class SalesService {
         [storeId],
       );
 
-      const lastSaleResult = await queryRunner.query(
-        `SELECT ticket_number FROM sales
-         WHERE store_id = $1
-         ORDER BY ticket_number DESC
-         LIMIT 1`,
+      // --- Ticket number from the monotonic integer cursor (sale_seq), NOT from
+      // lexical ordering of the padded ticket string. `ORDER BY ticket_number
+      // DESC` is text ordering: it equals numeric order only to 6 digits, so at
+      // the 1,000,000th sale `T-1000000` sorts before `T-999999` → the generator
+      // recomputes 1000000 (DUPLICATE ticket) and the chain head below reads the
+      // wrong row (chain FORK). MAX(sale_seq) is numeric and correct at any scale.
+      // sale_seq is the cursor ADR-012 keys the Z-seal close-window on. ---
+      const nextSeqResult = await queryRunner.query(
+        `SELECT COALESCE(MAX(sale_seq), 0) + 1 AS next_seq
+           FROM sales WHERE store_id = $1`,
         [storeId],
       );
-      const lastTicketNum =
-        lastSaleResult.length > 0
-          ? parseInt(lastSaleResult[0].ticket_number.split('-')[1] || '0')
-          : 0;
-      const ticketNumber = `T-${String(lastTicketNum + 1).padStart(6, '0')}`;
+      const saleSeq = Number(nextSeqResult[0].next_seq);
+      const ticketNumber = `T-${String(saleSeq).padStart(6, '0')}`;
 
-      // --- Hash chain ---
+      // --- Hash chain head: the row with the greatest sale_seq for this store.
+      // Ordered by the SAME integer cursor as the generator (never the lexical
+      // ticket string) so the chain links to the true predecessor past 1,000,000.
+      // `sale_seq IS NOT NULL` skips offline-synced sales (client ticket, no seq),
+      // which are not part of the online fiscal chain. ---
       const prevHashResult = await queryRunner.query(
         `SELECT hash_chain_current FROM sales
-         WHERE store_id = $1
-         ORDER BY ticket_number DESC
+         WHERE store_id = $1 AND sale_seq IS NOT NULL
+         ORDER BY sale_seq DESC
          LIMIT 1`,
         [storeId],
       );
@@ -432,6 +438,7 @@ export class SalesService {
       sale.totalMinorUnits = totalAfterDiscount;
       sale.currencyCode = 'EUR';
       sale.ticketNumber = ticketNumber;
+      sale.saleSeq = saleSeq;
       sale.hashChainPrev = prevHash;
       sale.hashChainCurrent = currentHash;
       sale.hashVersion = 2;

@@ -111,11 +111,16 @@ export class FiscalVerifyService {
 
   // ── sales ────────────────────────────────────────────────────────────────
   private async verifySales(storeId: string): Promise<ChainReport> {
+    // Order by the integer cursor (sale_seq), NULLS LAST so offline-synced sales
+    // (client ticket, no seq) trail the online chain. Ordering by ticket_number
+    // is lexical and mis-orders past 1,000,000 (T-1000000 < T-999999 as text);
+    // linkage itself walks hash pointers and is order-independent, but the row
+    // order shown for diagnostics must follow the same cursor as the generator.
     const sales = await this.ds.query(
       `SELECT id, store_id, employee_id, customer_id, subtotal_minor_units, discount_total_minor_units,
               tax_total_minor_units, total_minor_units, ticket_number, hash_chain_prev, hash_chain_current,
               hash_version, completed_at
-         FROM sales WHERE store_id = $1 ORDER BY ticket_number ASC`,
+         FROM sales WHERE store_id = $1 ORDER BY sale_seq ASC NULLS LAST, ticket_number ASC`,
       [storeId],
     );
     const rows: any[] = Array.isArray(sales) ? sales : [];
