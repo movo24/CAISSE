@@ -78,4 +78,20 @@ describe('Étage 0 — store scope resolver (INV-5)', () => {
     expect(await applyStoreScope(repo.createQueryBuilder('d'), 'd', [S1]).getCount()).toBe(1);
     expect(await applyStoreScope(repo.createQueryBuilder('d'), 'd', [S4]).getCount()).toBe(0);
   });
+
+  it('INV-5 decisive — a manager FORGING a query for a store outside their access gets ZERO rows (silent filter, no 403)', async () => {
+    const daily = ds.getRepository(AnalyticsStoreDailyEntity);
+    // S4 (org B) is outside the manager's access (home S1 + access S2). Its data EXISTS:
+    await daily.save({ storeId: S4, businessDay: '2026-06-12', computedAt: new Date() } as any);
+
+    const scope = await svc.resolveAccessibleStoreIds({ employeeId: MANAGER, storeId: S1, role: 'manager' });
+    expect(scope).not.toContain(S4); // the resolver leaves S4 out
+
+    // The forged read for S4, run under the manager's resolved scope, is SILENTLY
+    // empty — at this floor there is no API/403, the WHERE clause just filters it out.
+    const forged = await applyStoreScope(daily.createQueryBuilder('d'), 'd', scope)
+      .andWhere('d.store_id = :sid', { sid: S4 })
+      .getCount();
+    expect(forged).toBe(0);
+  });
 });

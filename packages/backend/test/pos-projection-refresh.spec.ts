@@ -98,4 +98,32 @@ describe('Étage 0 — POS projection refresh (INV-4)', () => {
     expect(await ds.getRepository(AnalyticsStoreSessionsEntity).count({ where: { storeId: STORE } })).toBe(1);
     expect(await ds.getRepository(AnalyticsStoreRegistryEntity).count({ where: { storeId: STORE } })).toBe(1);
   });
+
+  it('idempotent (CONTENT): re-running on the SAME sources reproduces identical proj content + monotonic computed_at', async () => {
+    const dailyRepo = ds.getRepository(AnalyticsStoreDailyEntity);
+    const sessRepo = ds.getRepository(AnalyticsStoreSessionsEntity);
+
+    const before = await dailyRepo.findOne({ where: { storeId: STORE } });
+    const beforeSess = await sessRepo.findOne({ where: { storeId: STORE } });
+    const t1 = new Date(before!.computedAt).getTime();
+
+    // Re-run with a LATER clock, SAME source data.
+    await svc.refreshAll(new Date(t1 + 60_000));
+
+    const after = await dailyRepo.findOne({ where: { storeId: STORE } });
+    const afterSess = await sessRepo.findOne({ where: { storeId: STORE } });
+
+    // No duplicate.
+    expect(await dailyRepo.count({ where: { storeId: STORE } })).toBe(1);
+
+    // STRICT content equality on every derived field (id churns on delete+insert,
+    // computed_at may rise — both excluded). Catches an upsert that overwrites with
+    // different values (a count-only test would miss it).
+    const strip = (r: any) => ({ ...r, id: undefined, computedAt: undefined });
+    expect(strip(after)).toEqual(strip(before));
+    expect(strip(afterSess)).toEqual(strip(beforeSess));
+
+    // computed_at is monotonic — it does NOT go backward.
+    expect(new Date(after!.computedAt).getTime()).toBeGreaterThanOrEqual(t1);
+  });
 });
