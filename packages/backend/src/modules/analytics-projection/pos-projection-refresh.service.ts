@@ -57,11 +57,12 @@ export class PosProjectionRefreshService {
     const completed = await this.sales
       .createQueryBuilder('s')
       .select('COALESCE(SUM(s.total_minor_units), 0)', 'ca')
+      .addSelect('COALESCE(SUM(s.discount_total_minor_units), 0)', 'disc')
       .addSelect('COUNT(*)', 'cnt')
       .where('s.store_id = :sid', { sid: store.id })
       .andWhere("s.status = 'completed'")
       .andWhere('DATE(s.created_at) = :day', { day })
-      .getRawOne<{ ca: string; cnt: string }>();
+      .getRawOne<{ ca: string; disc: string; cnt: string }>();
 
     const voided = await this.sales
       .createQueryBuilder('s')
@@ -80,6 +81,7 @@ export class PosProjectionRefreshService {
       .getRawOne<{ amt: string }>();
 
     const caBrut = Number(completed?.ca ?? 0);
+    const discountTotal = Number(completed?.disc ?? 0);
     const txCount = Number(completed?.cnt ?? 0);
     const voidAmount = Number(voided?.amt ?? 0);
     const voidCount = Number(voided?.cnt ?? 0);
@@ -97,6 +99,7 @@ export class PosProjectionRefreshService {
         voidCount,
         voidAmountMinor: voidAmount,
         returnsAmountMinor: returnsAmount,
+        discountTotalMinor: discountTotal,
         netMinor: caBrut - returnsAmount, // voids already excluded from completed
         byTender: null, // V1: tender breakdown deferred (column ready) — flagged
         computedAt: now,

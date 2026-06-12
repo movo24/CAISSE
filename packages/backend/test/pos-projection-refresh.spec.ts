@@ -39,9 +39,9 @@ describe('Étage 0 — POS projection refresh (INV-4)', () => {
       currencyCode: 'EUR', ticketNumber: `T-${uuidv4().slice(0, 6)}`, ...over,
     });
     await ds.getRepository(SaleEntity).save([
-      sale({ totalMinorUnits: 1000, status: 'completed' }),
-      sale({ totalMinorUnits: 500, status: 'completed' }),
-      sale({ totalMinorUnits: 300, status: 'voided' }),
+      sale({ totalMinorUnits: 1000, status: 'completed', discountTotalMinorUnits: 150 }),
+      sale({ totalMinorUnits: 500, status: 'completed', discountTotalMinorUnits: 50 }),
+      sale({ totalMinorUnits: 300, status: 'voided', discountTotalMinorUnits: 999 }), // voided → excluded from discounts too
     ] as any);
     await ds.getRepository(CreditNoteEntity).save([
       { id: uuidv4(), storeId: STORE, code: `AV-${uuidv4().slice(0, 6)}`, origin: 'return', type: 'store_credit', status: 'active', totalMinorUnits: 200, remainingMinorUnits: 200, currencyCode: 'EUR', employeeId: EMP },
@@ -75,6 +75,7 @@ describe('Étage 0 — POS projection refresh (INV-4)', () => {
     expect(d!.voidCount).toBe(1);
     expect(d!.voidAmountMinor).toBe(300);
     expect(d!.returnsAmountMinor).toBe(200);
+    expect(d!.discountTotalMinor).toBe(200); // 150 + 50 (the voided sale's 999 excluded)
     expect(d!.netMinor).toBe(1300); // 1500 − 200
     expect(d!.computedAt).toBeTruthy();
   });

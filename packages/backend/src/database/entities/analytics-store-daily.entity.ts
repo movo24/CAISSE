@@ -50,6 +50,10 @@ export class AnalyticsStoreDailyEntity {
   @Column({ name: 'returns_amount_minor', type: 'integer', default: 0 })
   returnsAmountMinor: number;
 
+  /** Discounts granted on completed sales ← sales.discount_total (raw figure). */
+  @Column({ name: 'discount_total_minor', type: 'integer', default: 0 })
+  discountTotalMinor: number;
+
   /** net = ca_brut − returns (voids already excluded from completed sales). */
   @Column({ name: 'net_minor', type: 'integer', default: 0 })
   netMinor: number;
