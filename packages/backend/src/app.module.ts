@@ -35,6 +35,7 @@ import { StripeModule } from './common/stripe/stripe.module';
 import { StripeTerminalModule } from './modules/stripe-terminal/stripe-terminal.module';
 import { TerminalsModule } from './modules/terminals/terminals.module';
 import { TimewinModule } from './modules/timewin/timewin.module';
+import { MobileReadApiModule } from './modules/mobile-read-api/mobile-read-api.module';
 import { ShiftRemindersModule } from './modules/shift-reminders/shift-reminders.module';
 import { SalesAiModule } from './modules/sales-ai/sales-ai.module';
 import { ReceiptsModule } from './modules/receipts/receipts.module';
@@ -134,6 +135,7 @@ const isProd = process.env.NODE_ENV === 'production';
     // Sales Guards (anti-error engine — read-only, separate audit table)
     SalesGuardsModule,
     ReturnsModule,
+    MobileReadApiModule,
   ],
   providers: [
     // Apply rate limiting globally to ALL endpoints

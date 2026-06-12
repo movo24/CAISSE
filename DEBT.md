@@ -49,3 +49,36 @@ design pass, not bolted onto the guard PR.
 `packages/backend/src/modules/sales/sales.service.ts` (the "Cas net-zéro pré-nommé"
 block); specs `void-cash-realized-guard.spec.ts`, `avoir-m1-m3.spec.ts`,
 `void-m4-journal-chain.spec.ts`.
+
+---
+
+## D-ANALYTICS-1 — `GRANT SELECT ON SCHEMA analytics` to the mobile API's DB role is deferred
+
+**Status:** OPEN · named debt · settle when the mobile API gets its own deployment / DB role.
+**Since:** étage 0/1 (the `analytics` Postgres schema, 2026-06-12).
+
+**Why the schema exists.** The cockpit read model lives in a dedicated Postgres schema
+`analytics` (not a `public` prefix) precisely so the mobile API's DB role can be granted
+exactly:
+```sql
+GRANT USAGE ON SCHEMA analytics;
+GRANT SELECT ON ALL TABLES IN SCHEMA analytics;
+ALTER DEFAULT PRIVILEGES IN SCHEMA analytics GRANT SELECT ON TABLES TO <mobile_api_role>;
+```
+…and **nothing else** — INV-1/INV-2 enforced at the **database** level (read-only by
+construction, zero access to the source/transactional `public` tables).
+
+**The debt.** The backend currently runs on a **single DB connection/role** that can
+read/write everything. So the GRANT-scoped read-only role is **not yet in place** — the
+read-only discipline is, for now, enforced **in code** (`ReadOnlyGuard` rejects non-GET;
+`MobileReadService` reads only `analytics.*`), not at the DB level. Acceptable for now
+(the code guards hold), but the DB grant is the stronger, structural seal.
+
+**What closes it** (at the latest when the mobile API gets its own deployment / DB creds):
+1. create a dedicated DB role for the mobile API;
+2. `GRANT USAGE + SELECT ON SCHEMA analytics` (only) to it;
+3. point the mobile API connection at that role;
+4. remove this entry.
+
+**Cross-ref:** migration `1723000000000-CreateAnalyticsProjection` (the schema),
+`MobileReadApiModule` / `ReadOnlyGuard` (the code-level read-only seal).
