@@ -160,19 +160,8 @@ describe('posStore — selectors (subtotal / totalDiscount / total)', () => {
   });
 });
 
-describe('posStore — edge: discount exceeds subtotal (DOCUMENTED real behaviour)', () => {
-  it('total() is NOT clamped → it goes negative (current real behaviour)', () => {
-    usePOSStore.setState({
-      cartItems: [line({ unitPriceMinorUnits: 500, quantity: 1, discountMinorUnits: 800 })],
-    });
-    expect(usePOSStore.getState().subtotal()).toBe(500);
-    expect(usePOSStore.getState().totalDiscount()).toBe(800);
-    expect(usePOSStore.getState().total()).toBe(-300); // not clamped at 0
-  });
-
-  // AMBIGUITY — blocked, not invented. The store returns a NEGATIVE total when
-  // discounts exceed the subtotal. Whether total() should clamp at 0 (and/or the
-  // UI should prevent over-discounting) is NOT encoded anywhere — do not freeze a
-  // clamping rule from a test. Reported to the owner for a decision.
-  it.todo('CONFIRM business rule: should total() clamp at 0 when discount > subtotal? (current = negative)');
-});
+// NOTE: the "discount > subtotal" edge (previously documented here as an ambiguity
+// + it.todo) is RESOLVED by fix/frontend-store-business-rules (RULE 1 — total()
+// clamps at 0). Its firm invariant lives in posStore.invariants.test.ts on that
+// branch; the ambiguity block was removed here so this suite stays consistent once
+// the invariants PR is on main (it merges first).

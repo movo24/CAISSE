@@ -160,23 +160,12 @@ describe('performanceStore — recordVoid', () => {
     expect(s.transactions[0].wasVoided).toBe(true);
   });
 
-  // INCONSISTENT-DATA case — DOCUMENTED real behaviour:
-  it('on an UNKNOWN ticketNumber: still increments voidCount/voidAmount, marks nothing (real behaviour)', () => {
-    usePerformanceStore.setState({
-      session: session({ ticketCount: 1, transactions: [txn({ ticketNumber: 'T-1' })] }),
-    });
-    usePerformanceStore.getState().recordVoid('T-DOES-NOT-EXIST', 500);
-    const s = usePerformanceStore.getState().session!;
-    expect(s.voidCount).toBe(1); // incremented despite no matching ticket
-    expect(s.voidAmount).toBe(500);
-    expect(s.transactions.every((t) => t.wasVoided === false)).toBe(true); // nothing marked
-  });
-
-  // AMBIGUITY — blocked, not invented. recordVoid increments voidCount even when
-  // the ticketNumber matches no recorded transaction, so voidCount/getVoidRate can
-  // over-count vs the actual voided tickets. Whether that is intended (caller
-  // guarantees a valid ticket) or a guard is missing is NOT confirmed by the code.
-  it.todo('CONFIRM business rule: should recordVoid reject/ignore an unknown ticketNumber instead of incrementing voidCount?');
+  // NOTE: the "recordVoid on an unknown ticketNumber" edge (previously documented
+  // here as an ambiguity + it.todo asserting the old increment-anyway behaviour) is
+  // RESOLVED by fix/frontend-store-business-rules (RULE 2 — recordVoid no-ops on an
+  // unknown ticket). Its firm invariant lives in performanceStore.invariants.test.ts
+  // on that branch; the old-behaviour assertion was removed here so this suite stays
+  // consistent once the invariants PR is on main (it merges first).
 });
 
 describe('performanceStore — projections (deterministic)', () => {

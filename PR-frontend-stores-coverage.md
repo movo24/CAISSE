@@ -11,17 +11,17 @@ They have since been **ratified and fixed** in the sibling PR
 `main`, the two `it.todo` markers in this branch become resolved and must be removed
 so the knowledge does not rot:
 
-- [ ] **posStore** — remove `it.todo` at `posStore.test.ts:177`
-  *("CONFIRM business rule: should total() clamp at 0 when discount > subtotal?")*.
-  **Resolved:** RULE 1 — `total() = Math.max(0, subtotal − totalDiscount)` (never
-  negative). Replace the `.todo` with a firm assertion (or rely on the invariant
-  test `posStore.invariants.test.ts` from the fix PR).
+- [x] **posStore** — `it.todo` removed (was `posStore.test.ts:177`).
+  **Resolved by** RULE 1 — `total() = Math.max(0, subtotal − totalDiscount)` (never
+  negative). The paired old-behaviour assertion (`total() === -300`) was removed too,
+  since it would fail once the invariants PR is on main; the firm invariant lives in
+  `posStore.invariants.test.ts` on `fix/frontend-store-business-rules`.
 
-- [ ] **performanceStore** — remove `it.todo` at `performanceStore.test.ts:179`
-  *("CONFIRM business rule: should recordVoid reject/ignore an unknown ticketNumber?")*.
-  **Resolved:** RULE 2 — `recordVoid` no-ops on an unknown ticket (no voidCount/
-  voidAmount increment, no phantom). Replace the `.todo` with a firm assertion (or
-  rely on `performanceStore.invariants.test.ts` from the fix PR).
+- [x] **performanceStore** — `it.todo` removed (was `performanceStore.test.ts:179`).
+  **Resolved by** RULE 2 — `recordVoid` no-ops on an unknown ticket. The paired
+  old-behaviour assertion (voidCount increments on an unknown ticket) was removed too,
+  for the same reason; the firm invariant lives in
+  `performanceStore.invariants.test.ts` on `fix/frontend-store-business-rules`.
 
 ## Suggested merge order
 1. `fix/frontend-store-business-rules` (the two invariants + fixes) → `main`.
