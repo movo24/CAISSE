@@ -32,7 +32,15 @@ export class AnalyticsStoreDailyEntity {
   @Column({ name: 'business_day', type: 'date' })
   businessDay: string;
 
-  /** Gross revenue (centimes) — copied from the POS source, not re-derived. */
+  /**
+   * Revenue of the day's completed sales (centimes) — copied from the POS source.
+   * ⚠️ AXIS PIN (do not "fix"): here «brut» means BEFORE RETURNS (vs net_minor =
+   * after returns). It is NOT before-discounts: sale totals are POST-discount at
+   * the source, so this value already has discounts deducted. The pre-discount
+   * gross is caBrutMinor + discountTotalMinor — which is why discount_rate's
+   * denominator ADDS the discount back. Renaming would break the brut/net-returns
+   * axis; the convention is pinned here instead.
+   */
   @Column({ name: 'ca_brut_minor', type: 'integer', default: 0 })
   caBrutMinor: number;
 

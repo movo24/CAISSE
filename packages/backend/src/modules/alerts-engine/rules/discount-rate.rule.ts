@@ -30,6 +30,9 @@ export class DiscountRateRule implements AlertRule {
     const minTx = Number(params.min_tx ?? 0);
     if (d.txCount === 0 || d.txCount < minTx) return [];
 
+    // ⚠️ caBrutMinor is POST-discount (the brut/net axis is RETURNS, pinned on the
+    // entity field). Adding the discount back reconstructs the pre-discount gross —
+    // do NOT "simplify" this to caBrutMinor alone.
     const gross = d.caBrutMinor + d.discountTotalMinor;
     if (gross <= 0) return [];
     const rate = d.discountTotalMinor / gross;
