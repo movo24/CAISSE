@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AnalyticsStoreDailyEntity } from '../../database/entities/analytics-store-daily.entity';
 import { AnalyticsStoreSessionsEntity } from '../../database/entities/analytics-store-sessions.entity';
@@ -11,7 +12,8 @@ import { AnalyticsBriefEntity } from '../../database/entities/analytics-brief.en
 import { AnalyticsProjectionModule } from '../analytics-projection/analytics-projection.module';
 import { ReadOnlyGuard } from '../mobile-read-api/read-only.guard';
 import { BriefFindingsService } from './brief-findings.service';
-import { BRIEF_NARRATOR, TemplateBriefNarrator } from './brief-narrator.interface';
+import { BRIEF_NARRATOR } from './brief-narrator.interface';
+import { makeBriefNarrator } from './haiku-brief.narrator';
 import { AiBriefService } from './ai-brief.service';
 import { AiBriefController } from './ai-brief.controller';
 
@@ -38,7 +40,14 @@ import { AiBriefController } from './ai-brief.controller';
   controllers: [AiBriefController],
   providers: [
     BriefFindingsService,
-    { provide: BRIEF_NARRATOR, useClass: TemplateBriefNarrator },
+    {
+      // Ratified provider: Haiku 4.5 behind the seam when ANTHROPIC_API_KEY is
+      // set (env only, never hardcoded); otherwise the deterministic template —
+      // the cockpit is fully functional without any provider (the floor).
+      provide: BRIEF_NARRATOR,
+      useFactory: (config: ConfigService) => makeBriefNarrator(config.get<string>('ANTHROPIC_API_KEY')),
+      inject: [ConfigService],
+    },
     AiBriefService,
     ReadOnlyGuard,
   ],
