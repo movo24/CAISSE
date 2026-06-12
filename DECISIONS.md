@@ -360,6 +360,49 @@ ventilation (#2); the perpetual grand total after close; `closing_operator`
   `created_at` is the defect; the sequence column is the repair, and it is the same
   object the seal needs. Undo → the corrective chains keep their tie/NTP fork.
 
+### ADR-012 AMENDMENT-1 #3 RESOLVED + the layer-0 backfill obligation — form CLOSED
+**#3 RULED: the closing operator is a side-table door, NOT hashed.** Reversing the
+prior recommendation, on the principle itself: the z_seal already makes the
+*closure* tamper-evident (total / window / cumul); the narrow question was only
+whether the *operator* enters that hash. The closing operator has the **same
+device-credential gap** as the sale operator — "which manager physically closed"
+is unprovable without a per-terminal credential, exactly what the v3-deferral
+(ADR-004/006) exists to keep out of the hash. Manager-gating raises the trust
+floor but does not close the provenance gap. Hashing it now would be both an
+exception to a ratified principle (sale-operator un-hashed, closing-operator hashed
+— a future auditor must then understand the special case) **and** graving a
+non-trusted attribution. → the closing operator is recorded as **one more
+`operator_attribution` door** (insert-only, inside the closure transaction), the
+same pattern as sale/void/return, **non-authoritative until v3** where every
+attribution flips together with the device-credential. Uniform, zero exception; the
+auditor still has "who closed" in an append-only structure; only the operator's
+*authority* waits, as everywhere. (issueGiftCard remains the other OPEN door.)
+
+**Layer-0 backfill obligation (highest proof bar — it rewrites the head-read of
+three fiscal chains):** the sequence column is backfilled by **walking the hash
+chain from genesis (follow `prevHash`), never by a `created_at` sort** — `created_at`
+is precisely the unreliable thing being removed; ordering the backfill by it would
+grave a wrong order on a tie. **The walk IS the integrity audit:** a chain that
+unrolls cleanly (single genesis, each `prevHash` matches exactly one successor, no
+orphans) = a well-defined sequence to assign; a walk that breaks or forks (zero or
+multiple successors, multiple genesis roots) = a **pre-existing fork surfaced →
+STOP, incident** (the 1722 null-check pattern: a fiscal pre-condition that gates
+deploy, not something to auto-repair). Layer 0 is therefore **fix + integrity audit
+of the three existing chains**, not a mechanical column-add. *(Exception, ratified:
+for `sales` the chain already heads on `ticket_number` (monotone, not `created_at`),
+so backfilling `sale_seq` from the ticket integer suffix ≡ chain order — the by-walk
+mandate does not bite there; the missing sales walk-audit moves into
+`fiscal:verify-z`. The by-walk mandate binds the two corrective chains.)*
+
+**Form CLOSED** — A/B + the boundary (ADR-012) + #1/#2/#3 (this amendment) are
+ratified; the build proceeds: **layer 0** (sequence cursors on the three chains;
+**sales done** = `fix/ticket-number-sequence-cursor` `40248ef`; **corrective
+chains** `credit_notes` + `fiscal_journal` by-walk + walk-audit = remaining) →
+layer 1 (`z_seals`) → layer 2 (close: 3-cursor snapshot, status-aware ventilation,
+perpetual total, closing-operator side-table door) → layer 3 (`fiscal:verify-z`
+standing) → daily-closure guarantee. All three cursors must land before layer 1.
+Each: branch, tests, surfaced; merge is the owner's click.
+
 ## OPEN decisions (specced, awaiting the owner — not ratified, not filled)
 
 - **A/B-1** — gift-card *issuance* in the Z: liability (separate line, excluded
