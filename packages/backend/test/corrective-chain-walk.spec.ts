@@ -15,7 +15,12 @@ import {
 } from '../src/database/migrations/1720000000001-AddCorrectiveChainSeqCursors';
 
 const H = (n: number) => String(n).padStart(64, '0'); // distinct 64-char hashes
-const row = (id: string, prev: string | null, cur: string | null): ChainRow => ({ id, prev, cur });
+const row = (
+  id: string,
+  prev: string | null,
+  cur: string | null,
+  createdAt?: string,
+): ChainRow => ({ id, prev, cur, createdAt });
 
 describe('walkChainSequence — backfill order + structural audit', () => {
   it('empty chain → empty plan', () => {
@@ -89,13 +94,34 @@ describe('walkChainSequence — backfill order + structural audit', () => {
     ).toThrow(/CORRUPTION \(P5\).*orphan/);
   });
 
-  it('STOP (6) — NULL hash → LEGACY (P6), distinct from corruption', () => {
+  it('STOP (6) — null-hash created BEFORE the chain began → LEGACY (P6), a fact', () => {
+    expect(() =>
+      walkChainSequence('t', [
+        row('g', CHAIN_GENESIS, H(1), '2024-06-01T00:00:00Z'), // first chained row
+        row('legacy', null, null, '2024-01-01T00:00:00Z'), // earlier → pre-chain
+      ]),
+    ).toThrow(/LEGACY \(P6\).*pre-chain/);
+  });
+
+  it('STOP (6) — null-hash created AT/AFTER the chain began → CORRUPTION (P6-lost-hash)', () => {
+    expect(() =>
+      walkChainSequence('t', [
+        row('g', CHAIN_GENESIS, H(1), '2024-06-01T00:00:00Z'), // first chained row
+        row('lost', null, null, '2024-09-01T00:00:00Z'), // later → should have hashed
+      ]),
+    ).toThrow(/CORRUPTION \(P6-lost-hash\).*lost\/missing hash/);
+  });
+
+  it('STOP (6) — null-hash with NO created_at is NOT provably pre-chain → corruption side', () => {
+    // Fail-safe: an unknown created_at is treated as the corruption side, never
+    // silently waved through as benign legacy. (Here no chained row has a known
+    // created_at either, so the whole store reads as pre-chain → LEGACY.)
     expect(() =>
       walkChainSequence('t', [
         row('g', CHAIN_GENESIS, H(1)),
         row('legacy', null, null),
       ]),
-    ).toThrow(/LEGACY \(P6\).*NULL hash/);
+    ).toThrow(/P6/);
   });
 
   it('a longer clean chain stays 1..n in link order', () => {

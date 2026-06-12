@@ -6,6 +6,12 @@ export interface ChainRow {
   id: string;
   prev: string | null;
   cur: string | null;
+  /**
+   * Insert time — used ONLY to CLASSIFY a null-hash row (pre-chain LEGACY vs
+   * post-chain CORRUPTION), NEVER as the chain ordering (that is the link). The
+   * boundary is data-intrinsic: the store's own first chained row.
+   */
+  createdAt?: Date | string | null;
 }
 
 /**
@@ -15,7 +21,9 @@ export interface ChainRow {
  * THROWS on any structural break (a pre-existing fork surfaced → incident).
  *
  * STOP predicates (= "casse/ambigu", ADR-012 AMENDMENT-1):
- *   (6) NULL prev/cur          — unchained legacy row (credit_notes is nullable);
+ *   (6) NULL prev/cur          — unchained row; classified by created_at vs the
+ *                                store's first chained row: pre-chain = LEGACY
+ *                                (disposition), at/after = CORRUPTION (lost hash);
  *   (4) duplicate `cur`        — ambiguous head (also guarantees termination);
  *   (1) 0 genesis with rows    — rootless chain;
  *   (2) ≥2 genesis             — multiple roots / fork;
@@ -32,16 +40,49 @@ export function walkChainSequence(
 ): Array<{ id: string; seq: number }> {
   if (rows.length === 0) return [];
 
-  // (6) NULL-hash row = legacy unchained (credit_notes columns are nullable).
-  for (const r of rows) {
-    if (r.cur === null || r.prev === null) {
+  // (6) NULL-hash rows. The chain ORDERING never uses created_at — but to
+  // CLASSIFY a null-hash row we compare its created_at to the store's first
+  // CHAINED row (data-intrinsic boundary, no external epoch):
+  //   created_at <  first-chained → pre-chain  → LEGACY     (disposition decision);
+  //   created_at ≥  first-chained → post-chain → CORRUPTION (a row that LOST its hash).
+  // Both STOP — no silent pass — but the class is a FACT, not a guess. (NB: the
+  // credit_notes chain was born with the table, so in practice a null is far more
+  // likely CORRUPTION than pre-chain LEGACY; the data decides per store.)
+  const nullRows = rows.filter((r) => r.cur === null || r.prev === null);
+  if (nullRows.length > 0) {
+    const ts = (v: Date | string | null | undefined): number | null =>
+      v == null ? null : new Date(v).getTime();
+    const firstChainedAt = rows.reduce<number | null>((min, r) => {
+      if (r.cur === null || r.prev === null) return min; // chained rows only
+      const t = ts(r.createdAt);
+      return t === null ? min : min === null ? t : Math.min(min, t);
+    }, null);
+    // pre-chain ⟺ provably earlier than the first chained row. Unknown created_at
+    // is NOT provably pre-chain → treated as the corruption side (fail safe).
+    const isPreChain = (r: ChainRow): boolean => {
+      if (firstChainedAt === null) return true; // no chained row → chain never began
+      const t = ts(r.createdAt);
+      return t !== null && t < firstChainedAt;
+    };
+    const legacy = nullRows.filter(isPreChain);
+    const corrupt = nullRows.filter((r) => !isPreChain(r));
+    const ids = (rs: ChainRow[]) =>
+      `${rs.slice(0, 5).map((r) => r.id).join(', ')}${rs.length > 5 ? ', …' : ''}`;
+    if (corrupt.length > 0) {
       throw new Error(
-        `${label}: LEGACY (P6) — row ${r.id} has a NULL hash (prev=${r.prev}, ` +
-          `current=${r.cur}): an unchained row, almost certainly pre-chain legacy ` +
-          `data. This is a DISPOSITION decision (chain-migrate or exclude), NOT ` +
-          `corruption — refusing to backfill until resolved.`,
+        `${label}: CORRUPTION (P6-lost-hash) — ${corrupt.length} null-hash row(s) ` +
+          `created at/after the store's chain began (${ids(corrupt)}): they SHOULD ` +
+          `be chained but are not — a lost/missing hash. ALARM${
+            legacy.length ? ` (+ ${legacy.length} pre-chain LEGACY row(s))` : ''
+          }.`,
       );
     }
+    throw new Error(
+      `${label}: LEGACY (P6) — ${legacy.length} null-hash row(s), all created ` +
+        `BEFORE the store's chain began (${ids(legacy)}): pre-chain data. A ` +
+        `DISPOSITION decision (chain-migrate or exclude), NOT corruption — refusing ` +
+        `to backfill until resolved.`,
+    );
   }
 
   // (4) duplicate `current` — ambiguous head; also bounds the walk.
@@ -177,7 +218,8 @@ export class AddCorrectiveChainSeqCursors1720000000001
 
     for (const { store_id } of stores) {
       const rows: ChainRow[] = await qr.query(
-        `SELECT id, hash_chain_prev AS prev, hash_chain_current AS cur
+        `SELECT id, hash_chain_prev AS prev, hash_chain_current AS cur,
+                created_at AS "createdAt"
            FROM ${table} WHERE store_id = $1`,
         [store_id],
       );
