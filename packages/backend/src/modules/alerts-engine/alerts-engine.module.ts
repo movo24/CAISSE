@@ -9,7 +9,8 @@ import { AnalyticsAlertEntity } from '../../database/entities/analytics-alert.en
 import { AnalyticsAlertConfigEntity } from '../../database/entities/analytics-alert-config.entity';
 import { AnalyticsAlertCursorEntity } from '../../database/entities/analytics-alert-cursor.entity';
 import { AlertsEngineService } from './alerts-engine.service';
-import { ALERT_RULES } from './alert-rule.interface';
+import { ALERT_RULES, AlertRule } from './alert-rule.interface';
+import { VoidRateRule } from './rules/void-rate.rule';
 
 /**
  * Étage 2 — alerts engine. Socle: tables + runner + computed_at gate, ZERO rule
@@ -29,7 +30,15 @@ import { ALERT_RULES } from './alert-rule.interface';
       AnalyticsAlertCursorEntity,
     ]),
   ],
-  providers: [{ provide: ALERT_RULES, useValue: [] }, AlertsEngineService],
+  providers: [
+    VoidRateRule,
+    {
+      provide: ALERT_RULES,
+      useFactory: (...rules: AlertRule[]) => rules,
+      inject: [VoidRateRule],
+    },
+    AlertsEngineService,
+  ],
   exports: [AlertsEngineService],
 })
 export class AlertsEngineModule {}
