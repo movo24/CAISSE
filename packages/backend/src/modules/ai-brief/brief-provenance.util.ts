@@ -36,20 +36,36 @@ export function collectAllowedValues(findings: BriefFindings): Set<string> {
     if (typeof node === 'number') add(node);
     else if (Array.isArray(node)) node.forEach(walk);
     else if (node && typeof node === 'object') Object.values(node).forEach(walk);
-    else if (typeof node === 'string') {
-      if (/^\d{4}-\d{2}-\d{2}$/.test(node)) {
-        node.split('-').map(Number).forEach((v) => allowed.add(key(v)));
-      } else {
-        // Numbers embedded in SOURCED strings (store names like "B43", "Grand
-        // Littoral B43") are findings content — prose quoting the name must trace.
-        for (const token of node.match(NUMBER_TOKEN) ?? []) {
-          candidateParses(token).forEach((n) => allowed.add(key(n)));
-        }
-      }
+    else if (typeof node === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(node)) {
+      // Date components only (dated prose like "le 12"). NOTE — implementation (A):
+      // digits embedded in other sourced strings (store names like "B43") do NOT
+      // join the allowed set; those strings are consumed WHOLE by the scrub in
+      // verifyBriefProvenance, so a fabricated metric can never launder a name's
+      // digits ("43 %" out of "B43").
+      node.split('-').map(Number).forEach((v) => allowed.add(key(v)));
     }
   };
   walk(findings);
   return allowed;
+}
+
+/**
+ * Sourced strings that may legitimately appear in prose (store names, codes…):
+ * every digit-bearing string leaf of the findings. The verifier removes their
+ * VERBATIM occurrences from the text before numeric validation — longest first so
+ * a contained substring is scrubbed by its container. Conservative corollary: a
+ * SHORTENED quote ("B43" for "Grand Littoral B43") does not scrub and fails
+ * CLOSED → fallback, never a leak.
+ */
+export function collectSourcedStrings(findings: BriefFindings): string[] {
+  const out = new Set<string>();
+  const walk = (node: unknown): void => {
+    if (Array.isArray(node)) node.forEach(walk);
+    else if (node && typeof node === 'object') Object.values(node).forEach(walk);
+    else if (typeof node === 'string' && /\d/.test(node)) out.add(node);
+  };
+  walk(findings);
+  return [...out].sort((a, b) => b.length - a.length);
 }
 
 /** Extract number tokens from prose: "1 234,56", "1,234.56", "12.5", "70", "120000". */
@@ -78,8 +94,15 @@ function candidateParses(raw: string): number[] {
 
 export function verifyBriefProvenance(findings: BriefFindings, text: string): ProvenanceResult {
   const allowed = collectAllowedValues(findings);
+
+  // Implementation (A): consume sourced strings WHOLE before numeric validation.
+  let scrubbed = text;
+  for (const s of collectSourcedStrings(findings)) {
+    scrubbed = scrubbed.split(s).join(' ');
+  }
+
   const untraceable: string[] = [];
-  for (const token of text.match(NUMBER_TOKEN) ?? []) {
+  for (const token of scrubbed.match(NUMBER_TOKEN) ?? []) {
     const traced = candidateParses(token).some((n) => allowed.has(key(n)));
     if (!traced) untraceable.push(token);
   }

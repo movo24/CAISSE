@@ -68,10 +68,18 @@ describe('Étage 3 — brief provenance guard (INV-3 structural)', () => {
     expect(verifyBriefProvenance(FINDINGS, 'Journée calme, rien à signaler.').valid).toBe(true);
   });
 
-  it('digits embedded in SOURCED strings trace (store name "B43" quoted in prose)', () => {
+  it('(A) sourced names are consumed WHOLE — a verbatim quote traces', () => {
     const withB43: BriefFindings = { ...FINDINGS, stores: [{ ...FINDINGS.stores[0], name: 'Grand Littoral B43' }] };
-    expect(verifyBriefProvenance(withB43, 'B43 réalise 30 tickets.').valid).toBe(true);
-    // …but an unsourced number still fails alongside it:
-    expect(verifyBriefProvenance(withB43, 'B43 réalise 77 tickets.').valid).toBe(false);
+    expect(verifyBriefProvenance(withB43, 'Grand Littoral B43 réalise 30 tickets.').valid).toBe(true);
+  });
+
+  it('DECISIVE (A vs B) — a name’s digits can NOT launder a fabricated metric: an isolated "43" fails', () => {
+    const withB43: BriefFindings = { ...FINDINGS, stores: [{ ...FINDINGS.stores[0], name: 'Grand Littoral B43' }] };
+    // Under (B) the 43 from "B43" would have joined the allowed set and this would pass.
+    expect(verifyBriefProvenance(withB43, 'La performance atteint 43% aujourd’hui.').valid).toBe(false);
+    // A SHORTENED name quote does not scrub → fails CLOSED (conservative: fallback, never a leak).
+    expect(verifyBriefProvenance(withB43, 'B43 réalise 30 tickets.').valid).toBe(false);
+    // And an unsourced number next to the verbatim name still fails.
+    expect(verifyBriefProvenance(withB43, 'Grand Littoral B43 réalise 77 tickets.').valid).toBe(false);
   });
 });
