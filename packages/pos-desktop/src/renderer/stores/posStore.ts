@@ -365,5 +365,8 @@ export const usePOSStore = create<POSState>((set, get) => ({
     ),
   totalDiscount: () =>
     get().cartItems.reduce((sum, i) => sum + i.discountMinorUnits, 0),
-  total: () => get().subtotal() - get().totalDiscount(),
+  // Business invariant: a cart total is never negative. If discounts exceed the
+  // subtotal, clamp at 0 (line state + discount semantics unchanged — only the
+  // final total clamps).
+  total: () => Math.max(0, get().subtotal() - get().totalDiscount()),
 }));
