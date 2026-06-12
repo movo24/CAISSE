@@ -13,6 +13,7 @@ import { ALERT_RULES, AlertRule } from './alert-rule.interface';
 import { VoidRateRule } from './rules/void-rate.rule';
 import { StockLowRule } from './rules/stock-low.rule';
 import { SalesDropRule } from './rules/sales-drop.rule';
+import { StoreClosedLateRule } from './rules/store-closed-late.rule';
 
 /**
  * Étage 2 — alerts engine. Socle: tables + runner + computed_at gate, ZERO rule
@@ -36,10 +37,11 @@ import { SalesDropRule } from './rules/sales-drop.rule';
     VoidRateRule,
     StockLowRule,
     SalesDropRule,
+    StoreClosedLateRule,
     {
       provide: ALERT_RULES,
       useFactory: (...rules: AlertRule[]) => rules,
-      inject: [VoidRateRule, StockLowRule, SalesDropRule],
+      inject: [VoidRateRule, StockLowRule, SalesDropRule, StoreClosedLateRule],
     },
     AlertsEngineService,
   ],
