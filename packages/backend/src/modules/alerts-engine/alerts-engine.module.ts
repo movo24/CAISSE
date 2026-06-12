@@ -11,6 +11,7 @@ import { AnalyticsAlertCursorEntity } from '../../database/entities/analytics-al
 import { AlertsEngineService } from './alerts-engine.service';
 import { ALERT_RULES, AlertRule } from './alert-rule.interface';
 import { VoidRateRule } from './rules/void-rate.rule';
+import { StockLowRule } from './rules/stock-low.rule';
 
 /**
  * Étage 2 — alerts engine. Socle: tables + runner + computed_at gate, ZERO rule
@@ -32,10 +33,11 @@ import { VoidRateRule } from './rules/void-rate.rule';
   ],
   providers: [
     VoidRateRule,
+    StockLowRule,
     {
       provide: ALERT_RULES,
       useFactory: (...rules: AlertRule[]) => rules,
-      inject: [VoidRateRule],
+      inject: [VoidRateRule, StockLowRule],
     },
     AlertsEngineService,
   ],
