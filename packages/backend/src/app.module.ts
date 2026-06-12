@@ -37,6 +37,7 @@ import { TerminalsModule } from './modules/terminals/terminals.module';
 import { TimewinModule } from './modules/timewin/timewin.module';
 import { MobileReadApiModule } from './modules/mobile-read-api/mobile-read-api.module';
 import { AlertsEngineModule } from './modules/alerts-engine/alerts-engine.module';
+import { AiBriefModule } from './modules/ai-brief/ai-brief.module';
 import { ShiftRemindersModule } from './modules/shift-reminders/shift-reminders.module';
 import { SalesAiModule } from './modules/sales-ai/sales-ai.module';
 import { ReceiptsModule } from './modules/receipts/receipts.module';
@@ -138,6 +139,7 @@ const isProd = process.env.NODE_ENV === 'production';
     ReturnsModule,
     MobileReadApiModule,
     AlertsEngineModule,
+    AiBriefModule,
   ],
   providers: [
     // Apply rate limiting globally to ALL endpoints
