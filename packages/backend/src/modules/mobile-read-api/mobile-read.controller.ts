@@ -1,15 +1,58 @@
-import { Controller, UseGuards } from '@nestjs/common';
+import { Controller, Get, Logger, NotFoundException, Req, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { ReadOnlyGuard } from './read-only.guard';
+import { StoreScopeResolverService } from '../analytics-projection/store-scope-resolver.service';
+import { MobileReadService } from './mobile-read.service';
 
 /**
  * Wesley Command Center — étage 1 (mobile-read-api). GET-only cockpit read surface.
  *
- * Auth (`JwtAuthGuard`) + INV-1 read-only (`ReadOnlyGuard`) apply to the WHOLE
- * controller. NO endpoints yet — they are added one per commit AFTER the scope rule
- * (403 on an explicit out-of-scope request vs silent empty filter) is decided.
- * Every future endpoint will read ONLY `analytics.*` (never the sources).
+ * Auth (`JwtAuthGuard`) + INV-1 read-only (`ReadOnlyGuard`) on the WHOLE controller.
+ * Every handler reads ONLY `analytics.*` (via MobileReadService) and scopes at the
+ * QUERY layer (INV-5). Scope rule (decided): a COLLECTION is silently shaped by the
+ * scope; a RESOURCE :id outside the scope → 404 (indistinguishable from a genuinely
+ * missing store — anti-enumeration) + a server-side WARN (the forge attempt is the
+ * audit signal). One error path.
  */
 @Controller('mobile/v1')
 @UseGuards(JwtAuthGuard, ReadOnlyGuard)
-export class MobileReadController {}
+export class MobileReadController {
+  private readonly logger = new Logger(MobileReadController.name);
+
+  constructor(
+    private readonly scopeResolver: StoreScopeResolverService,
+    private readonly read: MobileReadService,
+  ) {}
+
+  @Get('stores')
+  async stores(@Req() req: any) {
+    const scope = await this.scopeOf(req);
+    return this.read.listStores(scope);
+  }
+
+  // ── helpers ──
+
+  private scopeOf(req: any): Promise<string[]> {
+    const u = req?.user ?? {};
+    return this.scopeResolver.resolveAccessibleStoreIds({
+      employeeId: u.employeeId,
+      storeId: u.storeId,
+      role: u.role,
+    });
+  }
+
+  /**
+   * RESOURCE guard: a :id outside the scope is 404 (NOT 403 — no existence leak) and
+   * the attempt is logged. The thrown `NotFoundException()` is the DEFAULT one, so the
+   * out-of-scope 404 body is identical to a genuinely-missing store's 404.
+   */
+  private ensureInScope(storeId: string, scope: string[], req: any): void {
+    if (!scope.includes(storeId)) {
+      this.logger.warn(
+        `[mobile] out-of-scope store request — user=${req?.user?.employeeId ?? 'unknown'} ` +
+          `store=${storeId} scope=[${scope.join(',')}]`,
+      );
+      throw new NotFoundException();
+    }
+  }
+}

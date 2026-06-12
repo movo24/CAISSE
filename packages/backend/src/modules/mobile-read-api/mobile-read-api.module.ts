@@ -1,17 +1,33 @@
 import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
 import { AnalyticsProjectionModule } from '../analytics-projection/analytics-projection.module';
+import { AnalyticsStoreRegistryEntity } from '../../database/entities/analytics-store-registry.entity';
+import { AnalyticsStoreDailyEntity } from '../../database/entities/analytics-store-daily.entity';
+import { AnalyticsStoreSessionsEntity } from '../../database/entities/analytics-store-sessions.entity';
+import { AnalyticsStorePresenceEntity } from '../../database/entities/analytics-store-presence.entity';
+import { AnalyticsStoreStockEntity } from '../../database/entities/analytics-store-stock.entity';
 import { MobileReadController } from './mobile-read.controller';
+import { MobileReadService } from './mobile-read.service';
 import { ReadOnlyGuard } from './read-only.guard';
 
 /**
  * Wesley Command Center — étage 1 (mobile-read-api). GET-only read API over the
- * analytics projection. Imports AnalyticsProjectionModule for the INV-5 store-scope
- * resolver (used by the endpoints, added later). Not imported into AppModule yet —
- * activated deliberately once endpoints exist + the scope rule is decided.
+ * analytics projection. forFeature wires ONLY the analytics.* read-model repos (the
+ * service reads no source table); AnalyticsProjectionModule provides the INV-5
+ * store-scope resolver.
  */
 @Module({
-  imports: [AnalyticsProjectionModule],
+  imports: [
+    TypeOrmModule.forFeature([
+      AnalyticsStoreRegistryEntity,
+      AnalyticsStoreDailyEntity,
+      AnalyticsStoreSessionsEntity,
+      AnalyticsStorePresenceEntity,
+      AnalyticsStoreStockEntity,
+    ]),
+    AnalyticsProjectionModule,
+  ],
   controllers: [MobileReadController],
-  providers: [ReadOnlyGuard],
+  providers: [MobileReadService, ReadOnlyGuard],
 })
 export class MobileReadApiModule {}
