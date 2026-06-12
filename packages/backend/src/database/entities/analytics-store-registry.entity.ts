@@ -9,7 +9,7 @@ import { Entity, PrimaryColumn, Column, Index } from 'typeorm';
  * INV-5: `organization_id` + `store_id` are the scoping keys the resolver maps onto
  * (owner = whole organization, manager = explicit store list).
  */
-@Entity('analytics_store_registry')
+@Entity({ schema: 'analytics', name: 'store_registry' })
 @Index(['organizationId'])
 export class AnalyticsStoreRegistryEntity {
   /** = stores.id (the projection mirrors the source key, no surrogate). */

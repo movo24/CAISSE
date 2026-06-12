@@ -9,7 +9,7 @@ import { Entity, PrimaryGeneratedColumn, Column, Index } from 'typeorm';
  * stock_balances; the projection consolidates, it does not recompute stock.
  * INV-5: `store_id` is the query-layer scoping key.
  */
-@Entity('analytics_store_stock')
+@Entity({ schema: 'analytics', name: 'store_stock' })
 @Index(['storeId'], { unique: true })
 export class AnalyticsStoreStockEntity {
   @PrimaryGeneratedColumn('uuid')

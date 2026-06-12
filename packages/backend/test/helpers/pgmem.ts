@@ -23,6 +23,11 @@ export function loadAllEntities(): any[] {
  */
 export function createPgMemDataSource(): { db: IMemoryDb; dataSource: DataSource } {
   const db = newDb();
+  // The analytics-projection read model lives in a dedicated `analytics` schema
+  // (INV-2). The entities declare schema:'analytics'; synchronize needs the schema
+  // to pre-exist (TypeORM does not create schemas). Additive — public-schema tests
+  // are unaffected.
+  (db as any).createSchema('analytics');
   db.public.registerFunction({ name: 'version', returns: DataType.text, implementation: () => 'PostgreSQL 14.0 (pg-mem)' });
   db.public.registerFunction({ name: 'current_database', returns: DataType.text, implementation: () => 'test' });
   // impure: true → pg-mem ne met PAS le résultat en cache (chaque appel génère

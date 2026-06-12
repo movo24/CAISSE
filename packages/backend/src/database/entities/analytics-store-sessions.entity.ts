@@ -6,7 +6,7 @@ import { Entity, PrimaryGeneratedColumn, Column, Index } from 'typeorm';
  * INV-4: derived from `pos_sessions` (the source of truth for sessions/terminals).
  * INV-5: `store_id` is the query-layer scoping key.
  */
-@Entity('analytics_store_sessions')
+@Entity({ schema: 'analytics', name: 'store_sessions' })
 @Index(['storeId'], { unique: true })
 export class AnalyticsStoreSessionsEntity {
   @PrimaryGeneratedColumn('uuid')

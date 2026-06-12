@@ -19,7 +19,7 @@ import { Entity, PrimaryGeneratedColumn, Column, Index } from 'typeorm';
  * INV-5 (tenant scope): `store_id` is the scoping key — every cockpit query filters
  * `WHERE store_id IN (:accessibleStores)` in the QUERY layer (never in the UI).
  */
-@Entity('analytics_store_daily')
+@Entity({ schema: 'analytics', name: 'store_daily' })
 @Index(['storeId', 'businessDay'], { unique: true })
 @Index(['storeId'])
 export class AnalyticsStoreDailyEntity {

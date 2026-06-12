@@ -8,7 +8,7 @@ import { Entity, PrimaryGeneratedColumn, Column, Index } from 'typeorm';
  * TimeWin24 proxy into this projection; `computed_at` carries the freshness.
  * INV-5: `store_id` is the query-layer scoping key.
  */
-@Entity('analytics_store_presence')
+@Entity({ schema: 'analytics', name: 'store_presence' })
 @Index(['storeId'], { unique: true })
 export class AnalyticsStorePresenceEntity {
   @PrimaryGeneratedColumn('uuid')
