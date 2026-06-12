@@ -44,6 +44,14 @@ export class MobileReadController {
     return this.read.liveForStore(id);
   }
 
+  @Get('stores/:id/performance')
+  async performance(@Param('id') id: string, @Req() req: any) {
+    const scope = await this.scopeOf(req);
+    this.ensureInScope(id, scope, req); // 404 + log if out of scope (= if non-existent)
+    const today = new Date().toISOString().slice(0, 10);
+    return this.read.performanceForStore(id, today);
+  }
+
   // ── helpers ──
 
   private scopeOf(req: any): Promise<string[]> {

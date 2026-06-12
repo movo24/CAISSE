@@ -109,6 +109,29 @@ export class MobileReadService {
       computedAt: oldest([sessions?.computedAt, presence?.computedAt, stock?.computedAt]),
     };
   }
+
+  /**
+   * GET /stores/:id/performance — sales performance of ONE store for the business day
+   * (CA / tickets / average basket) from analytics.store_daily. Average basket =
+   * caBrut / txCount (same definition as the POS metrics). Scope already gated by the
+   * caller. computed_at carried through.
+   */
+  async performanceForStore(storeId: string, businessDay: string) {
+    const d = await this.daily.findOne({ where: { storeId, businessDay } });
+    const tx = d?.txCount ?? 0;
+    const caBrut = d?.caBrutMinor ?? 0;
+    return {
+      storeId,
+      businessDay,
+      caBrutMinor: caBrut,
+      netMinor: d?.netMinor ?? 0,
+      txCount: tx,
+      voidCount: d?.voidCount ?? 0,
+      returnsAmountMinor: d?.returnsAmountMinor ?? 0,
+      avgBasketMinor: tx > 0 ? Math.round(caBrut / tx) : 0,
+      computedAt: d?.computedAt ?? null,
+    };
+  }
 }
 
 function oldest(dates: (Date | null | undefined)[]): Date | null {
