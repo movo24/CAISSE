@@ -148,6 +148,12 @@ export const usePerformanceStore = create<PerformanceState>((set, get) => ({
     const session = get().session;
     if (!session) return;
 
+    // Business invariant: a void must reference a KNOWN ticket. An unknown
+    // ticketNumber is a clean no-op (no voidCount/voidAmount increment, no phantom
+    // ticket) so void counters can never over-count vs the recorded tickets.
+    const known = session.transactions.some((t) => t.ticketNumber === ticketNumber);
+    if (!known) return;
+
     const updated: CashierSessionMetrics = {
       ...session,
       voidCount: session.voidCount + 1,
