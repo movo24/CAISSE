@@ -426,6 +426,12 @@ Each: branch, tests, surfaced; merge is the owner's click.
 - **D — cash drawer reconciliation** — does NOT exist. The detective-tier cash
   control (theoretical-vs-counted cash, variance = skim signal). Biggest
   remaining sub-system; queued behind A/B. OPEN.
+  *Forward dependency (étage-2 alerts audit, 2026-06-12):* the cockpit alert rule
+  **`cash_gap` is blocked on D** — the projection cannot derive what no source
+  produces (INV-4: no recompute on the alerts side). When D lands: étage-0 derives
+  the session-close variance into `analytics.*`, then `cash_gap` = **+1 standard
+  rule** (one commit, same pattern as void_rate). Hook recorded here so the alerts
+  side is not forgotten when D ships.
 - **v3 bascule** — operator into the hash, gated on a per-terminal device
   credential + the `terminal_unverified` gate (ADR-011). Future, gated. OPEN.
 - **Sister-of-#7** — at v3, the return operator must *enter* `chainPayload` for
