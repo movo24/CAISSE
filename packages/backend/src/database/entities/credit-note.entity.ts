@@ -76,6 +76,15 @@ export class CreditNoteEntity {
   @Column({ name: 'hash_chain_current', type: 'varchar', nullable: true })
   hashChainCurrent: string | null;
 
+  /**
+   * Monotonic per-store cursor the hash chain heads on (ADR-012 layer 0) —
+   * replaces `ORDER BY created_at` head-selection (wall-clock, fork-prone). The
+   * Z-seal close-window borders the returns side on this. Nullable for
+   * offline-synced rows outside the online chain; backfilled by chain walk.
+   */
+  @Column({ name: 'credit_note_seq', type: 'bigint', nullable: true })
+  creditNoteSeq: number | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

@@ -53,6 +53,15 @@ export class FiscalJournalEntity {
   @Column({ name: 'hash_chain_current', length: 64 })
   hashChainCurrent: string;
 
+  /**
+   * Monotonic per-store cursor the journal chain heads on (ADR-012 layer 0) —
+   * replaces `ORDER BY created_at` head-selection (wall-clock, fork-prone). The
+   * Z-seal close-window borders the voids side on this. Nullable only in the
+   * pre-backfill window; backfilled by chain walk, then assigned at insert.
+   */
+  @Column({ name: 'journal_seq', type: 'bigint', nullable: true })
+  journalSeq: number | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 }

@@ -1016,15 +1016,22 @@ export class SalesService {
       // verbatim. Inside the tx → rolls back atomically with the void. The
       // void-once guard + idempotency replay make this run exactly once. ---
       const GENESIS_HASH = '0'.repeat(64);
+      // Head the journal chain on the monotonic integer cursor `journal_seq`,
+      // NOT `created_at` — created_at is wall-clock (ms-tie / NTP-backward →
+      // ambiguous head → fork). ADR-012 layer 0; the Z-seal borders the voids
+      // side of its close-window on this cursor.
       const lastJournal = await queryRunner.query(
-        `SELECT hash_chain_current FROM fiscal_journal
-          WHERE store_id = $1 ORDER BY created_at DESC LIMIT 1`,
+        `SELECT journal_seq AS seq, hash_chain_current AS cur
+           FROM fiscal_journal
+          WHERE store_id = $1 AND journal_seq IS NOT NULL
+          ORDER BY journal_seq DESC LIMIT 1`,
         [storeId],
       );
-      const journalPrevHash =
-        Array.isArray(lastJournal) && lastJournal.length > 0
-          ? lastJournal[0].hash_chain_current
-          : GENESIS_HASH;
+      const hasJournalHead = Array.isArray(lastJournal) && lastJournal.length > 0;
+      const journalSeq = (hasJournalHead ? Number(lastJournal[0].seq) : 0) + 1;
+      const journalPrevHash = hasJournalHead
+        ? lastJournal[0].cur
+        : GENESIS_HASH;
       const voidPayload = JSON.stringify({
         type: 'void',
         saleId: sale.id,
@@ -1047,6 +1054,7 @@ export class SalesService {
         payload: voidPayload,
         hashChainPrev: journalPrevHash,
         hashChainCurrent: journalCurrentHash,
+        journalSeq,
       });
 
       // Persist idempotency key atomically with the void.

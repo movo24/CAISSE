@@ -144,12 +144,19 @@ export class ReturnsService {
         // prevHash and fork the chain.
         await qr.query(`SELECT id FROM stores WHERE id = $1 FOR UPDATE`, [storeId]);
 
-        // Per-store hash chain over credit notes.
+        // Per-store hash chain over credit notes, headed on the monotonic integer
+        // cursor `credit_note_seq`, NOT `created_at` — created_at is wall-clock
+        // (ms-tie / NTP-backward → ambiguous head → fork). ADR-012 layer 0; this
+        // is the cursor the Z-seal close-window borders the returns side on.
         const lastCn = await qr.query(
-          `SELECT hash_chain_current FROM credit_notes WHERE store_id = $1 ORDER BY created_at DESC LIMIT 1`,
+          `SELECT credit_note_seq AS seq, hash_chain_current AS cur
+             FROM credit_notes
+            WHERE store_id = $1 AND credit_note_seq IS NOT NULL
+            ORDER BY credit_note_seq DESC LIMIT 1`,
           [storeId],
         );
-        const prevHash = lastCn.length > 0 ? lastCn[0].hash_chain_current : GENESIS;
+        const creditNoteSeq = (lastCn.length > 0 ? Number(lastCn[0].seq) : 0) + 1;
+        const prevHash = lastCn.length > 0 ? lastCn[0].cur : GENESIS;
         const code = this.genCode();
         const isStoreCredit = dto.refundMethod === 'store_credit';
         const chainPayload = JSON.stringify({
@@ -179,6 +186,7 @@ export class ReturnsService {
         cn.currencyCode = sale.currencyCode || 'EUR';
         cn.hashChainPrev = prevHash;
         cn.hashChainCurrent = currentHash;
+        cn.creditNoteSeq = creditNoteSeq;
         cn.lines = returnLines.map((l) => Object.assign(new CreditNoteLineEntity(), l));
 
         const saved = await qr.manager.save(CreditNoteEntity, cn);
@@ -290,10 +298,14 @@ export class ReturnsService {
         await qr.query(`SELECT id FROM stores WHERE id = $1 FOR UPDATE`, [storeId]);
 
         const lastCn = await qr.query(
-          `SELECT hash_chain_current FROM credit_notes WHERE store_id = $1 ORDER BY created_at DESC LIMIT 1`,
+          `SELECT credit_note_seq AS seq, hash_chain_current AS cur
+             FROM credit_notes
+            WHERE store_id = $1 AND credit_note_seq IS NOT NULL
+            ORDER BY credit_note_seq DESC LIMIT 1`,
           [storeId],
         );
-        const prevHash = lastCn.length > 0 ? lastCn[0].hash_chain_current : GENESIS;
+        const creditNoteSeq = (lastCn.length > 0 ? Number(lastCn[0].seq) : 0) + 1;
+        const prevHash = lastCn.length > 0 ? lastCn[0].cur : GENESIS;
         const code = (data.code?.trim().toUpperCase()) || this.genGiftCode();
         const currentHash = sha256(prevHash + JSON.stringify({ code, storeId, amount, origin: 'gift_card' }));
 
@@ -315,6 +327,7 @@ export class ReturnsService {
         cn.currencyCode = 'EUR';
         cn.hashChainPrev = prevHash;
         cn.hashChainCurrent = currentHash;
+        cn.creditNoteSeq = creditNoteSeq;
         cn.lines = [];
 
         const saved = await qr.manager.save(CreditNoteEntity, cn);
