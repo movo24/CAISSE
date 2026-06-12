@@ -9,6 +9,7 @@ import { PosSessionEntity } from '../../database/entities/pos-session.entity';
 import { AnalyticsStoreDailyEntity } from '../../database/entities/analytics-store-daily.entity';
 import { AnalyticsStoreSessionsEntity } from '../../database/entities/analytics-store-sessions.entity';
 import { AnalyticsStoreRegistryEntity } from '../../database/entities/analytics-store-registry.entity';
+import { guardedProjectionUpsert } from './projection-upsert.util';
 
 /**
  * INV-4 — POS refresh job. CONSOLIDATES the POS source of truth into the read model
@@ -84,41 +85,54 @@ export class PosProjectionRefreshService {
     const voidCount = Number(voided?.cnt ?? 0);
     const returnsAmount = Number(returns?.amt ?? 0);
 
-    // upsert (one row per store/day): delete-then-insert keeps it idempotent + pg-mem-safe.
-    await this.projDaily.delete({ storeId: store.id, businessDay: day });
-    await this.projDaily.insert({
-      storeId: store.id,
-      businessDay: day,
-      caBrutMinor: caBrut,
-      txCount,
-      voidCount,
-      voidAmountMinor: voidAmount,
-      returnsAmountMinor: returnsAmount,
-      netMinor: caBrut - returnsAmount, // voids already excluded from completed
-      byTender: null, // V1: tender breakdown deferred (column ready) — flagged
-      computedAt: now,
-    });
+    // guarded upsert (one row per store/day): replaces only if `now` is not stale.
+    await guardedProjectionUpsert(
+      this.projDaily,
+      { storeId: store.id, businessDay: day },
+      {
+        storeId: store.id,
+        businessDay: day,
+        caBrutMinor: caBrut,
+        txCount,
+        voidCount,
+        voidAmountMinor: voidAmount,
+        returnsAmountMinor: returnsAmount,
+        netMinor: caBrut - returnsAmount, // voids already excluded from completed
+        byTender: null, // V1: tender breakdown deferred (column ready) — flagged
+        computedAt: now,
+      },
+      now,
+      this.logger,
+      'analytics_store_daily',
+    );
 
     // ── sessions snapshot (distinct terminals computed in JS — no SQL DISTINCT) ──
     const active = await this.sessions.find({ where: { storeId: store.id, isActive: true } });
     const terminals = new Set(active.map((s) => s.terminalId).filter((t): t is string => !!t));
-    await this.projSessions.delete({ storeId: store.id });
-    await this.projSessions.insert({
-      storeId: store.id,
-      openSessions: active.length,
-      activeTerminals: terminals.size,
-      computedAt: now,
-    });
+    await guardedProjectionUpsert(
+      this.projSessions,
+      { storeId: store.id },
+      { storeId: store.id, openSessions: active.length, activeTerminals: terminals.size, computedAt: now },
+      now,
+      this.logger,
+      'analytics_store_sessions',
+    );
 
     // ── registry projection (so the cockpit reads no source table for store meta) ──
-    await this.projRegistry.delete({ storeId: store.id });
-    await this.projRegistry.insert({
-      storeId: store.id,
-      name: store.name,
-      organizationId: store.organizationId ?? null,
-      unitId: (store as any).unitId ?? null,
-      isActive: store.isActive,
-      computedAt: now,
-    });
+    await guardedProjectionUpsert(
+      this.projRegistry,
+      { storeId: store.id },
+      {
+        storeId: store.id,
+        name: store.name,
+        organizationId: store.organizationId ?? null,
+        unitId: (store as any).unitId ?? null,
+        isActive: store.isActive,
+        computedAt: now,
+      },
+      now,
+      this.logger,
+      'analytics_store_registry',
+    );
   }
 }

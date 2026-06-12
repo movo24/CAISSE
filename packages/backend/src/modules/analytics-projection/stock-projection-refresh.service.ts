@@ -6,6 +6,7 @@ import { StoreEntity } from '../../database/entities/store.entity';
 import { StockLocationEntity } from '../../database/entities/stock-location.entity';
 import { StockBalanceEntity } from '../../database/entities/stock-balance.entity';
 import { AnalyticsStoreStockEntity } from '../../database/entities/analytics-store-stock.entity';
+import { guardedProjectionUpsert } from './projection-upsert.util';
 
 /**
  * INV-4 — stock is owned by Inventory; the canonical source is `stock_balances`
@@ -53,13 +54,14 @@ export class StockProjectionRefreshService {
         }
       }
 
-      await this.projStock.delete({ storeId: store.id });
-      await this.projStock.insert({
-        storeId: store.id,
-        ruptureCount: rupture,
-        lowStockCount: low,
-        computedAt: now,
-      });
+      await guardedProjectionUpsert(
+        this.projStock,
+        { storeId: store.id },
+        { storeId: store.id, ruptureCount: rupture, lowStockCount: low, computedAt: now },
+        now,
+        this.logger,
+        'analytics_store_stock',
+      );
     }
   }
 }

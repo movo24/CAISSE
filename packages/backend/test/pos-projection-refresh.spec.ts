@@ -126,4 +126,19 @@ describe('Étage 0 — POS projection refresh (INV-4)', () => {
     // computed_at is monotonic — it does NOT go backward.
     expect(new Date(after!.computedAt).getTime()).toBeGreaterThanOrEqual(t1);
   });
+
+  it('hard guard (real flow) — a refresh with an OLDER clock leaves the row unchanged', async () => {
+    // The WARNING-on-reject is pinned deterministically in projection-upsert.util.spec.ts
+    // (mock logger). Here we prove the END-TO-END behaviour: a stale clock does not move
+    // the row back. If the guard did NOT reject, computed_at would drop to the stale value.
+    const daily = ds.getRepository(AnalyticsStoreDailyEntity);
+    const current = await daily.findOne({ where: { storeId: STORE } });
+    const fresh = new Date(current!.computedAt).getTime();
+
+    await svc.refreshAll(new Date(fresh - 60_000)); // STALE clock
+
+    const after = await daily.findOne({ where: { storeId: STORE } });
+    expect(new Date(after!.computedAt).getTime()).toBe(fresh); // kept the fresher row
+    expect(await daily.count({ where: { storeId: STORE } })).toBe(1); // still one row
+  });
 });

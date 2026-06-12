@@ -5,6 +5,7 @@ import { Repository } from 'typeorm';
 import { StoreEntity } from '../../database/entities/store.entity';
 import { AnalyticsStorePresenceEntity } from '../../database/entities/analytics-store-presence.entity';
 import { TimewinService } from '../timewin/timewin.service';
+import { guardedProjectionUpsert } from './projection-upsert.util';
 
 /**
  * INV-4 — presence is owned by TimeWin24. There is NO local attendance table (that
@@ -63,13 +64,14 @@ export class PresenceProjectionRefreshService {
         continue;
       }
       const { present, expected } = extractPresence(shifts);
-      await this.projPresence.delete({ storeId: store.id });
-      await this.projPresence.insert({
-        storeId: store.id,
-        presentCount: present,
-        expectedCount: expected,
-        computedAt: now,
-      });
+      await guardedProjectionUpsert(
+        this.projPresence,
+        { storeId: store.id },
+        { storeId: store.id, presentCount: present, expectedCount: expected, computedAt: now },
+        now,
+        this.logger,
+        'analytics_store_presence',
+      );
     }
   }
 }
