@@ -1,9 +1,9 @@
 /**
- * Étage 1 — GET /mobile/v1/stores/:id/live (resource). Happy path: live state of an
- * in-scope store from analytics.*. Decisive: a FORGED :id outside the scope → 404 +
- * a server-side WARN (anti-enumeration; the forge attempt is the audit signal).
+ * Étage 2 (clôture) — GET /mobile/v1/alerts (collection, silently scoped). The
+ * cockpit sees the scope's alert FACTS (today + the previous business day, since a
+ * fact may belong to a closed day, e.g. sales_drop); out-of-scope stores' alerts
+ * are shaped out. computed_at carried on every row.
  */
-import { NotFoundException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
 import { createPgMemDataSource } from './helpers/pgmem';
@@ -20,15 +20,18 @@ import { StoreScopeResolverService } from '../src/modules/analytics-projection/s
 import { MobileReadService } from '../src/modules/mobile-read-api/mobile-read.service';
 import { MobileReadController } from '../src/modules/mobile-read-api/mobile-read.controller';
 
-describe('Étage 1 — GET /mobile/v1/stores/:id/live (resource, 404+log out of scope)', () => {
+describe('Étage 2 — GET /mobile/v1/alerts (scoped collection)', () => {
   let ds: DataSource;
   let controller: MobileReadController;
   const ORG_A = uuidv4();
   const ORG_B = uuidv4();
-  const S1 = uuidv4(); // manager home (org A, in scope)
-  const S4 = uuidv4(); // org B (out of scope — a real store the manager must not see)
+  const S1 = uuidv4();
+  const S4 = uuidv4();
   const MANAGER = uuidv4();
-  const now = new Date('2026-06-12T09:00:00Z');
+  const now = new Date();
+  const today = now.toISOString().slice(0, 10);
+  const yesterday = new Date(now.getTime() - 86_400_000).toISOString().slice(0, 10);
+  const lastWeek = new Date(now.getTime() - 7 * 86_400_000).toISOString().slice(0, 10);
 
   beforeAll(async () => {
     const { dataSource } = createPgMemDataSource();
@@ -38,10 +41,12 @@ describe('Étage 1 — GET /mobile/v1/stores/:id/live (resource, 404+log out of 
       { id: S1, name: 'B43', organizationId: ORG_A, isActive: true, currencyCode: 'EUR' },
       { id: S4, name: 'Évry', organizationId: ORG_B, isActive: true, currencyCode: 'EUR' },
     ] as any);
-    await ds.getRepository(AnalyticsStoreRegistryEntity).save([{ storeId: S1, name: 'B43', organizationId: ORG_A, unitId: null, isActive: true, computedAt: now }] as any);
-    await ds.getRepository(AnalyticsStoreSessionsEntity).save([{ storeId: S1, openSessions: 2, activeTerminals: 3, computedAt: now }] as any);
-    await ds.getRepository(AnalyticsStorePresenceEntity).save([{ storeId: S1, presentCount: 4, expectedCount: 5, computedAt: now }] as any);
-    await ds.getRepository(AnalyticsStoreStockEntity).save([{ storeId: S1, ruptureCount: 1, lowStockCount: 2, computedAt: now }] as any);
+    await ds.getRepository(AnalyticsAlertEntity).save([
+      { storeId: S1, rule: 'void_rate', businessDay: today, thresholdBand: 'warning', payload: { rate: 0.12 }, computedAt: now },
+      { storeId: S1, rule: 'sales_drop', businessDay: yesterday, thresholdBand: 'drop', payload: { observedDropPct: 0.4 }, computedAt: now },
+      { storeId: S1, rule: 'stock_low', businessDay: lastWeek, thresholdBand: 'rupture', payload: {}, computedAt: now }, // outside the window
+      { storeId: S4, rule: 'void_rate', businessDay: today, thresholdBand: 'critical', payload: {}, computedAt: now }, // out of scope
+    ] as any);
 
     const resolver = new StoreScopeResolverService(ds.getRepository(StoreEntity), ds.getRepository(EmployeeStoreAccessEntity));
     const service = new MobileReadService(
@@ -58,21 +63,16 @@ describe('Étage 1 — GET /mobile/v1/stores/:id/live (resource, 404+log out of 
     await ds?.destroy();
   });
 
-  it('happy path — live state of an in-scope store, with computed_at', async () => {
-    const live = await controller.live(S1, { user: { employeeId: MANAGER, storeId: S1, role: 'manager' } });
-    expect(live.storeId).toBe(S1);
-    expect(live.sessions.activeTerminals).toBe(3);
-    expect(live.presence.presentCount).toBe(4);
-    expect(live.stock.ruptureCount).toBe(1);
-    expect(live.computedAt).toBeTruthy();
+  it('a manager sees ONLY their scope’s alerts, within today + the previous day', async () => {
+    const rows = await controller.alerts({ user: { employeeId: MANAGER, storeId: S1, role: 'manager' } });
+    expect(rows.map((r) => r.rule).sort()).toEqual(['sales_drop', 'void_rate']);
+    expect(rows.every((r) => r.storeId === S1)).toBe(true); // S4's alert shaped out (silent collection rule)
+    expect(rows.find((r) => r.rule === 'stock_low')).toBeUndefined(); // last week = outside the window
   });
 
-  it('DECISIVE — a forged :id outside the scope → 404 + a server WARN', async () => {
-    const warnSpy = jest.spyOn((controller as any).logger, 'warn').mockImplementation(() => undefined);
-    await expect(
-      controller.live(S4, { user: { employeeId: MANAGER, storeId: S1, role: 'manager' } }),
-    ).rejects.toBeInstanceOf(NotFoundException);
-    expect(warnSpy).toHaveBeenCalled(); // the forge attempt is logged (audit)
-    warnSpy.mockRestore();
+  it('every alert row carries its payload + computed_at (freshness of the source fact)', async () => {
+    const rows = await controller.alerts({ user: { employeeId: MANAGER, storeId: S1, role: 'manager' } });
+    expect(rows.every((r) => !!r.computedAt)).toBe(true);
+    expect(rows.find((r) => r.rule === 'void_rate')!.payload).toMatchObject({ rate: 0.12 });
   });
 });

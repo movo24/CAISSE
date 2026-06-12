@@ -6,6 +6,7 @@ import { AnalyticsStoreDailyEntity } from '../../database/entities/analytics-sto
 import { AnalyticsStoreSessionsEntity } from '../../database/entities/analytics-store-sessions.entity';
 import { AnalyticsStorePresenceEntity } from '../../database/entities/analytics-store-presence.entity';
 import { AnalyticsStoreStockEntity } from '../../database/entities/analytics-store-stock.entity';
+import { AnalyticsAlertEntity } from '../../database/entities/analytics-alert.entity';
 import { applyStoreScope } from '../analytics-projection/store-scope.util';
 
 /**
@@ -21,6 +22,7 @@ export class MobileReadService {
     @InjectRepository(AnalyticsStoreSessionsEntity) private readonly sessions: Repository<AnalyticsStoreSessionsEntity>,
     @InjectRepository(AnalyticsStorePresenceEntity) private readonly presence: Repository<AnalyticsStorePresenceEntity>,
     @InjectRepository(AnalyticsStoreStockEntity) private readonly stock: Repository<AnalyticsStoreStockEntity>,
+    @InjectRepository(AnalyticsAlertEntity) private readonly alertsRepo: Repository<AnalyticsAlertEntity>,
   ) {}
 
   /** GET /stores — the authorized stores (collection, silently scoped). */
@@ -108,6 +110,28 @@ export class MobileReadService {
       stock: { ruptureCount: stock?.ruptureCount ?? 0, lowStockCount: stock?.lowStockCount ?? 0 },
       computedAt: oldest([sessions?.computedAt, presence?.computedAt, stock?.computedAt]),
     };
+  }
+
+  /**
+   * GET /alerts — the scope's alert FACTS (collection, silently scoped). Window =
+   * the current + previous business day (a fact may belong to a closed day, e.g.
+   * sales_drop), newest first. Reads analytics.alerts only; computed_at carried.
+   */
+  async listAlerts(scope: string[], businessDay: string, previousDay: string) {
+    const rows = await applyStoreScope(this.alertsRepo.createQueryBuilder('a'), 'a', scope)
+      .andWhere('a.business_day IN (:...days)', { days: [businessDay, previousDay] })
+      .orderBy('a.created_at', 'DESC')
+      .getMany();
+    return rows.map((a) => ({
+      id: a.id,
+      storeId: a.storeId,
+      rule: a.rule,
+      thresholdBand: a.thresholdBand,
+      businessDay: a.businessDay,
+      payload: a.payload,
+      computedAt: a.computedAt,
+      createdAt: a.createdAt,
+    }));
   }
 
   /**

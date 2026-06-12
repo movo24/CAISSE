@@ -37,6 +37,15 @@ export class MobileReadController {
     return this.read.overview(scope, today);
   }
 
+  @Get('alerts')
+  async alerts(@Req() req: any) {
+    const scope = await this.scopeOf(req);
+    const now = new Date();
+    const today = now.toISOString().slice(0, 10);
+    const yesterday = new Date(now.getTime() - 86_400_000).toISOString().slice(0, 10);
+    return this.read.listAlerts(scope, today, yesterday);
+  }
+
   @Get('stores/:id/live')
   async live(@Param('id') id: string, @Req() req: any) {
     const scope = await this.scopeOf(req);
