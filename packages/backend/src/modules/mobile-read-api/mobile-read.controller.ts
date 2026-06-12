@@ -30,6 +30,13 @@ export class MobileReadController {
     return this.read.listStores(scope);
   }
 
+  @Get('dashboard/overview')
+  async overview(@Req() req: any) {
+    const scope = await this.scopeOf(req);
+    const today = new Date().toISOString().slice(0, 10);
+    return this.read.overview(scope, today);
+  }
+
   // ── helpers ──
 
   private scopeOf(req: any): Promise<string[]> {

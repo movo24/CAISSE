@@ -39,4 +39,57 @@ export class MobileReadService {
       computedAt: r.computedAt,
     }));
   }
+
+  /**
+   * GET /dashboard/overview — aggregate across the scope's stores (collection, silently
+   * scoped). `computedAt` is the OLDEST contributing row's freshness ("data as of at
+   * least X") — honest, not the most optimistic. Aggregation in JS (one row per store
+   * per projection → small + pg-mem-safe).
+   */
+  async overview(scope: string[], businessDay: string) {
+    const daily = await applyStoreScope(this.daily.createQueryBuilder('d'), 'd', scope)
+      .andWhere('d.business_day = :day', { day: businessDay })
+      .getMany();
+    const sessions = await applyStoreScope(this.sessions.createQueryBuilder('s'), 's', scope).getMany();
+    const presence = await applyStoreScope(this.presence.createQueryBuilder('p'), 'p', scope).getMany();
+    const stock = await applyStoreScope(this.stock.createQueryBuilder('k'), 'k', scope).getMany();
+    const storeCount = await applyStoreScope(this.registry.createQueryBuilder('r'), 'r', scope).getCount();
+
+    const sum = <T>(rows: T[], pick: (r: T) => number) => rows.reduce((a, r) => a + (pick(r) || 0), 0);
+    const computedAt = oldest([
+      ...daily.map((r) => r.computedAt),
+      ...sessions.map((r) => r.computedAt),
+      ...presence.map((r) => r.computedAt),
+      ...stock.map((r) => r.computedAt),
+    ]);
+
+    return {
+      scope: { storeCount },
+      sales: {
+        caNetMinor: sum(daily, (r) => r.netMinor),
+        caBrutMinor: sum(daily, (r) => r.caBrutMinor),
+        txCount: sum(daily, (r) => r.txCount),
+        voidCount: sum(daily, (r) => r.voidCount),
+        returnsAmountMinor: sum(daily, (r) => r.returnsAmountMinor),
+      },
+      sessions: {
+        openSessions: sum(sessions, (r) => r.openSessions),
+        activeTerminals: sum(sessions, (r) => r.activeTerminals),
+      },
+      presence: {
+        presentCount: sum(presence, (r) => r.presentCount),
+        expectedCount: sum(presence, (r) => r.expectedCount),
+      },
+      stock: {
+        ruptureCount: sum(stock, (r) => r.ruptureCount),
+        lowStockCount: sum(stock, (r) => r.lowStockCount),
+      },
+      computedAt, // oldest freshness across the aggregated rows (null if scope empty)
+    };
+  }
+}
+
+function oldest(dates: (Date | null | undefined)[]): Date | null {
+  const ms = dates.filter(Boolean).map((d) => new Date(d as Date).getTime());
+  return ms.length ? new Date(Math.min(...ms)) : null;
 }
