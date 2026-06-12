@@ -15,6 +15,7 @@ import { AnalyticsStoreSessionsEntity } from '../src/database/entities/analytics
 import { AnalyticsStorePresenceEntity } from '../src/database/entities/analytics-store-presence.entity';
 import { AnalyticsStoreStockEntity } from '../src/database/entities/analytics-store-stock.entity';
 import { AnalyticsAlertEntity } from '../src/database/entities/analytics-alert.entity';
+import { AnalyticsStoreTargetEntity } from '../src/database/entities/analytics-store-target.entity';
 import { StoreScopeResolverService } from '../src/modules/analytics-projection/store-scope-resolver.service';
 import { MobileReadService } from '../src/modules/mobile-read-api/mobile-read.service';
 import { MobileReadController } from '../src/modules/mobile-read-api/mobile-read.controller';
@@ -74,6 +75,7 @@ describe('Étage 1 — GET /mobile/v1/dashboard/overview (scoped aggregate)', ()
       ds.getRepository(AnalyticsStorePresenceEntity),
       ds.getRepository(AnalyticsStoreStockEntity),
       ds.getRepository(AnalyticsAlertEntity),
+      ds.getRepository(AnalyticsStoreTargetEntity),
     );
     controller = new MobileReadController(resolver, service);
   });
@@ -100,5 +102,18 @@ describe('Étage 1 — GET /mobile/v1/dashboard/overview (scoped aggregate)', ()
     const o = await controller.overview({ user: { employeeId: ADMIN, storeId: S1, role: 'admin' } });
     expect(o.computedAt).toBeTruthy();
     expect(new Date(o.computedAt!).getTime()).toBe(new Date('2026-06-12T08:00:00Z').getTime());
+  });
+
+  it('NO target datum → targetMinor/targetReachedPct are NULL (honest absence, nothing fabricated)', async () => {
+    const o = await controller.overview({ user: { employeeId: ADMIN, storeId: S1, role: 'admin' } });
+    expect(o.sales.targetMinor).toBeNull();
+    expect(o.sales.targetReachedPct).toBeNull();
+  });
+
+  it('WITH a datum in the SHARED store_targets table → target + %atteint (one source, two readers)', async () => {
+    await ds.getRepository(AnalyticsStoreTargetEntity).save({ storeId: S1, dailyTargetMinor: 3000, isActive: true } as any);
+    const o = await controller.overview({ user: { employeeId: ADMIN, storeId: S1, role: 'admin' } });
+    expect(o.sales.targetMinor).toBe(3000);
+    expect(o.sales.targetReachedPct).toBe(70); // caBrut 2100 / 3000
   });
 });

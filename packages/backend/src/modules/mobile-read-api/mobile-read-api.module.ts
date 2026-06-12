@@ -7,6 +7,7 @@ import { AnalyticsStoreSessionsEntity } from '../../database/entities/analytics-
 import { AnalyticsStorePresenceEntity } from '../../database/entities/analytics-store-presence.entity';
 import { AnalyticsStoreStockEntity } from '../../database/entities/analytics-store-stock.entity';
 import { AnalyticsAlertEntity } from '../../database/entities/analytics-alert.entity';
+import { AnalyticsStoreTargetEntity } from '../../database/entities/analytics-store-target.entity';
 import { MobileReadController } from './mobile-read.controller';
 import { MobileReadService } from './mobile-read.service';
 import { ReadOnlyGuard } from './read-only.guard';
@@ -26,6 +27,7 @@ import { ReadOnlyGuard } from './read-only.guard';
       AnalyticsStorePresenceEntity,
       AnalyticsStoreStockEntity,
       AnalyticsAlertEntity,
+      AnalyticsStoreTargetEntity,
     ]),
     AnalyticsProjectionModule,
   ],

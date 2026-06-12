@@ -16,6 +16,7 @@ import { AnalyticsStoreSessionsEntity } from '../src/database/entities/analytics
 import { AnalyticsStorePresenceEntity } from '../src/database/entities/analytics-store-presence.entity';
 import { AnalyticsStoreStockEntity } from '../src/database/entities/analytics-store-stock.entity';
 import { AnalyticsAlertEntity } from '../src/database/entities/analytics-alert.entity';
+import { AnalyticsStoreTargetEntity } from '../src/database/entities/analytics-store-target.entity';
 import { StoreScopeResolverService } from '../src/modules/analytics-projection/store-scope-resolver.service';
 import { MobileReadService } from '../src/modules/mobile-read-api/mobile-read.service';
 import { MobileReadController } from '../src/modules/mobile-read-api/mobile-read.controller';
@@ -51,6 +52,7 @@ describe('Étage 1 — GET /mobile/v1/stores/:id/live (resource, 404+log out of 
       ds.getRepository(AnalyticsStorePresenceEntity),
       ds.getRepository(AnalyticsStoreStockEntity),
       ds.getRepository(AnalyticsAlertEntity),
+      ds.getRepository(AnalyticsStoreTargetEntity),
     );
     controller = new MobileReadController(resolver, service);
   });

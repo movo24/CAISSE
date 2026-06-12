@@ -22,6 +22,7 @@ import { AnalyticsStoreSessionsEntity } from '../src/database/entities/analytics
 import { AnalyticsStorePresenceEntity } from '../src/database/entities/analytics-store-presence.entity';
 import { AnalyticsStoreStockEntity } from '../src/database/entities/analytics-store-stock.entity';
 import { AnalyticsAlertEntity } from '../src/database/entities/analytics-alert.entity';
+import { AnalyticsStoreTargetEntity } from '../src/database/entities/analytics-store-target.entity';
 import { MobileReadController } from '../src/modules/mobile-read-api/mobile-read.controller';
 import { MobileReadService } from '../src/modules/mobile-read-api/mobile-read.service';
 import { StoreScopeResolverService } from '../src/modules/analytics-projection/store-scope-resolver.service';
@@ -50,7 +51,7 @@ describe('Étage 1 — mobile read API review gates (HTTP)', () => {
         TypeOrmModule.forFeature([
           StoreEntity, EmployeeStoreAccessEntity,
           AnalyticsStoreRegistryEntity, AnalyticsStoreDailyEntity, AnalyticsStoreSessionsEntity,
-          AnalyticsStorePresenceEntity, AnalyticsStoreStockEntity, AnalyticsAlertEntity,
+          AnalyticsStorePresenceEntity, AnalyticsStoreStockEntity, AnalyticsAlertEntity, AnalyticsStoreTargetEntity,
         ]),
       ],
       controllers: [MobileReadController],

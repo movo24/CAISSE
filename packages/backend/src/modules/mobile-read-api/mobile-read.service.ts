@@ -7,6 +7,7 @@ import { AnalyticsStoreSessionsEntity } from '../../database/entities/analytics-
 import { AnalyticsStorePresenceEntity } from '../../database/entities/analytics-store-presence.entity';
 import { AnalyticsStoreStockEntity } from '../../database/entities/analytics-store-stock.entity';
 import { AnalyticsAlertEntity } from '../../database/entities/analytics-alert.entity';
+import { AnalyticsStoreTargetEntity } from '../../database/entities/analytics-store-target.entity';
 import { applyStoreScope } from '../analytics-projection/store-scope.util';
 
 /**
@@ -23,6 +24,7 @@ export class MobileReadService {
     @InjectRepository(AnalyticsStorePresenceEntity) private readonly presence: Repository<AnalyticsStorePresenceEntity>,
     @InjectRepository(AnalyticsStoreStockEntity) private readonly stock: Repository<AnalyticsStoreStockEntity>,
     @InjectRepository(AnalyticsAlertEntity) private readonly alertsRepo: Repository<AnalyticsAlertEntity>,
+    @InjectRepository(AnalyticsStoreTargetEntity) private readonly targets: Repository<AnalyticsStoreTargetEntity>,
   ) {}
 
   /** GET /stores — the authorized stores (collection, silently scoped). */
@@ -57,6 +59,15 @@ export class MobileReadService {
     const stock = await applyStoreScope(this.stock.createQueryBuilder('k'), 'k', scope).getMany();
     const storeCount = await applyStoreScope(this.registry.createQueryBuilder('r'), 'r', scope).getCount();
 
+    // Daily objective — ONE source (analytics.store_targets), read here AND by the
+    // target_reached rule. Sum of the scope's ACTIVE targets; null when no store in
+    // scope has a datum (honest absence — INV-3: never a fabricated objective).
+    // V1 nuance (single store): with partial multi-store coverage the pct is over
+    // the covered subset only.
+    const targetRows = await applyStoreScope(this.targets.createQueryBuilder('t'), 't', scope)
+      .andWhere('t.is_active = true')
+      .getMany();
+
     const sum = <T>(rows: T[], pick: (r: T) => number) => rows.reduce((a, r) => a + (pick(r) || 0), 0);
     const computedAt = oldest([
       ...daily.map((r) => r.computedAt),
@@ -73,6 +84,10 @@ export class MobileReadService {
         txCount: sum(daily, (r) => r.txCount),
         voidCount: sum(daily, (r) => r.voidCount),
         returnsAmountMinor: sum(daily, (r) => r.returnsAmountMinor),
+        targetMinor: targetRows.length ? sum(targetRows, (t) => t.dailyTargetMinor) : null,
+        targetReachedPct: targetRows.length
+          ? Math.round((sum(daily, (r) => r.caBrutMinor) / Math.max(1, sum(targetRows, (t) => t.dailyTargetMinor))) * 1000) / 10
+          : null,
       },
       sessions: {
         openSessions: sum(sessions, (r) => r.openSessions),
