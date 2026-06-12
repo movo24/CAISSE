@@ -36,8 +36,10 @@ export function walkChainSequence(
   for (const r of rows) {
     if (r.cur === null || r.prev === null) {
       throw new Error(
-        `${label}: row ${r.id} has a NULL hash (prev=${r.prev}, current=${r.cur}) ` +
-          `— unchained legacy row, refusing to backfill. INCIDENT.`,
+        `${label}: LEGACY (P6) — row ${r.id} has a NULL hash (prev=${r.prev}, ` +
+          `current=${r.cur}): an unchained row, almost certainly pre-chain legacy ` +
+          `data. This is a DISPOSITION decision (chain-migrate or exclude), NOT ` +
+          `corruption — refusing to backfill until resolved.`,
       );
     }
   }
@@ -48,8 +50,8 @@ export function walkChainSequence(
     const cur = r.cur as string;
     if (byCur.has(cur)) {
       throw new Error(
-        `${label}: duplicate hash_chain_current ${cur} (rows ${byCur.get(cur)}, ` +
-          `${r.id}) — ambiguous chain head. INCIDENT: pre-existing fork.`,
+        `${label}: CORRUPTION (P4) — duplicate hash_chain_current ${cur} (rows ` +
+          `${byCur.get(cur)}, ${r.id}): ambiguous chain head, a pre-existing fork. ALARM.`,
       );
     }
     byCur.set(cur, r.id);
@@ -67,15 +69,15 @@ export function walkChainSequence(
   const genesis = byPrev.get(CHAIN_GENESIS) ?? [];
   if (genesis.length === 0) {
     throw new Error(
-      `${label}: ${rows.length} row(s) but NO genesis (prev='0'×64) — rootless ` +
-        `chain. INCIDENT.`,
+      `${label}: CORRUPTION (P1) — ${rows.length} row(s) but NO genesis ` +
+        `(prev='0'×64): rootless chain. ALARM.`,
     );
   }
   if (genesis.length > 1) {
     throw new Error(
-      `${label}: ${genesis.length} genesis rows (${genesis
+      `${label}: CORRUPTION (P2) — ${genesis.length} genesis rows (${genesis
         .map((g) => g.id)
-        .join(', ')}) — multiple roots / fork. INCIDENT.`,
+        .join(', ')}): multiple roots / fork. ALARM.`,
     );
   }
 
@@ -86,7 +88,7 @@ export function walkChainSequence(
   let seq = 0;
   while (node) {
     if (visited.has(node.id)) {
-      throw new Error(`${label}: cycle at row ${node.id}. INCIDENT.`);
+      throw new Error(`${label}: CORRUPTION (P4-cycle) — cycle at row ${node.id}. ALARM.`);
     }
     visited.add(node.id);
     out.push({ id: node.id, seq: ++seq });
@@ -94,8 +96,8 @@ export function walkChainSequence(
     const succ: Array<{ id: string; cur: string }> = byPrev.get(node.cur) ?? [];
     if (succ.length > 1) {
       throw new Error(
-        `${label}: fork — ${succ.length} successors of ${node.cur} (rows ` +
-          `${succ.map((s) => s.id).join(', ')}). INCIDENT.`,
+        `${label}: CORRUPTION (P3) — fork: ${succ.length} successors of ${node.cur} ` +
+          `(rows ${succ.map((s) => s.id).join(', ')}). ALARM.`,
       );
     }
     node = succ.length === 1 ? succ[0] : null;
@@ -105,10 +107,10 @@ export function walkChainSequence(
   if (visited.size !== rows.length) {
     const orphans = rows.filter((r) => !visited.has(r.id)).map((r) => r.id);
     throw new Error(
-      `${label}: ${orphans.length} orphan row(s) not reachable from genesis ` +
-        `(${orphans.slice(0, 5).join(', ')}${
+      `${label}: CORRUPTION (P5) — ${orphans.length} orphan row(s) not reachable ` +
+        `from genesis (${orphans.slice(0, 5).join(', ')}${
           orphans.length > 5 ? ', …' : ''
-        }). INCIDENT: broken chain.`,
+        }): broken chain. ALARM.`,
     );
   }
 

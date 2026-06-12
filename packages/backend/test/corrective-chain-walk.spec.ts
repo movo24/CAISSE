@@ -41,57 +41,61 @@ describe('walkChainSequence — backfill order + structural audit', () => {
     ]);
   });
 
-  it('STOP (1) — no genesis (rootless chain)', () => {
+  // Each STOP must name a DISTINCT class+predicate so a deploy STOP tells you
+  // which fired — and crucially whether it's CORRUPTION (alarm) or LEGACY
+  // (disposition decision, not corruption). Asserting the tag, not just the text.
+
+  it('STOP (1) — no genesis (rootless chain) → CORRUPTION (P1)', () => {
     expect(() =>
       walkChainSequence('t', [row('a', H(1), H(2)), row('b', H(2), H(3))]),
-    ).toThrow(/NO genesis/);
+    ).toThrow(/CORRUPTION \(P1\).*NO genesis/);
   });
 
-  it('STOP (2) — multiple genesis roots', () => {
+  it('STOP (2) — multiple genesis roots → CORRUPTION (P2)', () => {
     expect(() =>
       walkChainSequence('t', [
         row('g1', CHAIN_GENESIS, H(1)),
         row('g2', CHAIN_GENESIS, H(2)),
       ]),
-    ).toThrow(/multiple roots/);
+    ).toThrow(/CORRUPTION \(P2\).*multiple roots/);
   });
 
-  it('STOP (3) — fork: two successors of one node', () => {
+  it('STOP (3) — fork: two successors of one node → CORRUPTION (P3)', () => {
     expect(() =>
       walkChainSequence('t', [
         row('g', CHAIN_GENESIS, H(1)),
         row('a', H(1), H(2)),
         row('b', H(1), H(3)), // also chains off H(1) → fork
       ]),
-    ).toThrow(/fork/);
+    ).toThrow(/CORRUPTION \(P3\).*fork/);
   });
 
-  it('STOP (4) — duplicate hash_chain_current (ambiguous head, subsumes cycle)', () => {
+  it('STOP (4) — duplicate hash_chain_current (subsumes cycle) → CORRUPTION (P4)', () => {
     expect(() =>
       walkChainSequence('t', [
         row('g', CHAIN_GENESIS, H(1)),
         row('a', H(1), H(1)), // current collides with genesis' current
       ]),
-    ).toThrow(/duplicate hash_chain_current/);
+    ).toThrow(/CORRUPTION \(P4\).*duplicate hash_chain_current/);
   });
 
-  it('STOP (5) — orphan row unreachable from genesis', () => {
+  it('STOP (5) — orphan row unreachable from genesis → CORRUPTION (P5)', () => {
     expect(() =>
       walkChainSequence('t', [
         row('g', CHAIN_GENESIS, H(1)),
         row('a', H(1), H(2)),
         row('x', H(9), H(8)), // prev points at no node → unreachable
       ]),
-    ).toThrow(/orphan/);
+    ).toThrow(/CORRUPTION \(P5\).*orphan/);
   });
 
-  it('STOP (6) — NULL hash (legacy unchained credit_notes row)', () => {
+  it('STOP (6) — NULL hash → LEGACY (P6), distinct from corruption', () => {
     expect(() =>
       walkChainSequence('t', [
         row('g', CHAIN_GENESIS, H(1)),
         row('legacy', null, null),
       ]),
-    ).toThrow(/NULL hash/);
+    ).toThrow(/LEGACY \(P6\).*NULL hash/);
   });
 
   it('a longer clean chain stays 1..n in link order', () => {
