@@ -19,6 +19,7 @@ import { AnalyticsStoreTargetEntity } from '../src/database/entities/analytics-s
 import { AnalyticsBriefEntity } from '../src/database/entities/analytics-brief.entity';
 import { AnalyticsStoreClockEntity } from '../src/database/entities/analytics-store-clock.entity';
 import { AnalyticsStoreWeeklyHoursEntity } from '../src/database/entities/analytics-store-weekly-hours.entity';
+import { AnalyticsStoreHolidayClosureEntity } from '../src/database/entities/analytics-store-holiday-closure.entity';
 import { StoreScheduleService } from '../src/modules/store-schedule/store-schedule.service';
 import { StoreScopeResolverService } from '../src/modules/analytics-projection/store-scope-resolver.service';
 import { BriefFindingsService } from '../src/modules/ai-brief/brief-findings.service';
@@ -77,7 +78,7 @@ describe('Étage 3 — GET /mobile/v1/ai-brief (scoped brief)', () => {
       new TemplateBriefNarrator(),
       ds.getRepository(AnalyticsBriefEntity),
       ds.getRepository(AnalyticsStoreClockEntity),
-      new StoreScheduleService(ds.getRepository(AnalyticsStoreWeeklyHoursEntity)),
+      new StoreScheduleService(ds.getRepository(AnalyticsStoreWeeklyHoursEntity), ds.getRepository(AnalyticsStoreHolidayClosureEntity)),
     );
     const resolver = new StoreScopeResolverService(ds.getRepository(StoreEntity), ds.getRepository(EmployeeStoreAccessEntity));
     controller = new AiBriefController(resolver, service);

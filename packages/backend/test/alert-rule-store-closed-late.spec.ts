@@ -11,6 +11,7 @@ import { createPgMemDataSource } from './helpers/pgmem';
 import { AnalyticsStoreSessionsEntity } from '../src/database/entities/analytics-store-sessions.entity';
 import { AnalyticsStoreClockEntity } from '../src/database/entities/analytics-store-clock.entity';
 import { AnalyticsStoreWeeklyHoursEntity } from '../src/database/entities/analytics-store-weekly-hours.entity';
+import { AnalyticsStoreHolidayClosureEntity } from '../src/database/entities/analytics-store-holiday-closure.entity';
 import { StoreScheduleService } from '../src/modules/store-schedule/store-schedule.service';
 import { StoreClosedLateRule } from '../src/modules/alerts-engine/rules/store-closed-late.rule';
 
@@ -43,7 +44,7 @@ describe('Étage 2 — store_closed_late rule (schedule resolver + clock TZ)', (
     rule = new StoreClosedLateRule(
       ds.getRepository(AnalyticsStoreSessionsEntity),
       ds.getRepository(AnalyticsStoreClockEntity),
-      new StoreScheduleService(ds.getRepository(AnalyticsStoreWeeklyHoursEntity)),
+      new StoreScheduleService(ds.getRepository(AnalyticsStoreWeeklyHoursEntity), ds.getRepository(AnalyticsStoreHolidayClosureEntity)),
     );
   });
   afterAll(async () => {

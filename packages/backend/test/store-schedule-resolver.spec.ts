@@ -7,6 +7,7 @@ import { DataSource } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
 import { createPgMemDataSource } from './helpers/pgmem';
 import { AnalyticsStoreWeeklyHoursEntity } from '../src/database/entities/analytics-store-weekly-hours.entity';
+import { AnalyticsStoreHolidayClosureEntity } from '../src/database/entities/analytics-store-holiday-closure.entity';
 import { StoreScheduleService, weekdayOf, minutesOf } from '../src/modules/store-schedule/store-schedule.service';
 
 describe('Schedule resolver — weekly hours (single source)', () => {
@@ -31,7 +32,7 @@ describe('Schedule resolver — weekly hours (single source)', () => {
       else if (d === 6) await repo.save(wh(STORE, 6, { openLocal: '10:00', closeLocal: '22:00' }) as any);
       else await repo.save(wh(STORE, d) as any);
     }
-    svc = new StoreScheduleService(repo);
+    svc = new StoreScheduleService(repo, ds.getRepository(AnalyticsStoreHolidayClosureEntity));
   });
   afterAll(async () => {
     await ds?.destroy();
@@ -51,6 +52,15 @@ describe('Schedule resolver — weekly hours (single source)', () => {
 
   it('no override → network default (open every day, 09:00–20:00)', async () => {
     expect(await svc.resolve(OTHER, '2026-06-21')).toEqual({ openLocal: '09:00', closeLocal: '20:00' });
+  });
+
+  it('HOLIDAY closure composes ABOVE the weekly row (férié > hebdo), per-store only', async () => {
+    // 2026-07-14 = mardi (fête nationale). STORE checks the closure; OTHER does not.
+    await ds.getRepository(AnalyticsStoreHolidayClosureEntity).save({ storeId: STORE, holidayKey: 'fete_nationale' } as any);
+    expect(await svc.resolve(STORE, '2026-07-14')).toBe('closed'); // weekly says open 09:00–20:00 — the holiday wins
+    expect(await svc.resolve(OTHER, '2026-07-14')).toEqual({ openLocal: '09:00', closeLocal: '20:00' }); // unchecked store stays open
+    // an UNchecked holiday (noël) does not close STORE:
+    expect(await svc.resolve(STORE, '2026-12-25')).not.toBe('closed');
   });
 
   it('no datum at all → null (honest absence, callers skip)', async () => {

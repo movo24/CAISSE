@@ -2,15 +2,18 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
 import { AnalyticsStoreWeeklyHoursEntity } from '../../database/entities/analytics-store-weekly-hours.entity';
+import { AnalyticsStoreHolidayClosureEntity } from '../../database/entities/analytics-store-holiday-closure.entity';
+import { holidayKeyOf } from './french-holidays.util';
 
 /**
  * SCHEDULE RESOLVER — the SINGLE source for "is this store open on that local
  * day, and until when". store_closed_late and the close beat call THIS; neither
  * re-derives hours from anywhere else (one source per datum).
  *
- * resolve(storeId, localDay) over OWNER data (store_weekly_hours, per-store
- * 7-row override else network default):
- *   - weekday row is_closed → CLOSED
+ * resolve(storeId, localDay) over OWNER data, composed (ratified: férié > hebdo):
+ *   - localDay is a French holiday THIS store closes on (store_holiday_closures
+ *     row, owner checklist) → CLOSED
+ *   - else weekday row is_closed → CLOSED
  *   - else {openLocal, closeLocal}
  *   - no datum at all → null (honest absence: callers SKIP, never invent hours)
  *
@@ -24,10 +27,19 @@ export class StoreScheduleService {
   constructor(
     @InjectRepository(AnalyticsStoreWeeklyHoursEntity)
     private readonly weeklyHours: Repository<AnalyticsStoreWeeklyHoursEntity>,
+    @InjectRepository(AnalyticsStoreHolidayClosureEntity)
+    private readonly holidayClosures: Repository<AnalyticsStoreHolidayClosureEntity>,
   ) {}
 
   /** storeId null → network default rows only (e.g. a multi-store brief scope). */
   async resolve(storeId: string | null, localDay: string): Promise<ResolvedSchedule> {
+    // Holiday closure beats the weekly row (owner's per-store checklist).
+    if (storeId) {
+      const holidayKey = holidayKeyOf(localDay);
+      if (holidayKey && (await this.holidayClosures.findOne({ where: { storeId, holidayKey } }))) {
+        return 'closed';
+      }
+    }
     const weekday = weekdayOf(localDay);
     const row =
       (storeId ? await this.weeklyHours.findOne({ where: { storeId, weekday, isActive: true } }) : null) ??

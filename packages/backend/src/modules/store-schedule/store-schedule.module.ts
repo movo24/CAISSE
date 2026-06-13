@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AnalyticsStoreWeeklyHoursEntity } from '../../database/entities/analytics-store-weekly-hours.entity';
+import { AnalyticsStoreHolidayClosureEntity } from '../../database/entities/analytics-store-holiday-closure.entity';
 import { StoreScheduleService } from './store-schedule.service';
 
 /**
@@ -9,7 +10,7 @@ import { StoreScheduleService } from './store-schedule.service';
  * import this module; none re-derives hours.
  */
 @Module({
-  imports: [TypeOrmModule.forFeature([AnalyticsStoreWeeklyHoursEntity])],
+  imports: [TypeOrmModule.forFeature([AnalyticsStoreWeeklyHoursEntity, AnalyticsStoreHolidayClosureEntity])],
   providers: [StoreScheduleService],
   exports: [StoreScheduleService],
 })

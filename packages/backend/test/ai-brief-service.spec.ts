@@ -20,6 +20,7 @@ import { AnalyticsStoreTargetEntity } from '../src/database/entities/analytics-s
 import { AnalyticsBriefEntity } from '../src/database/entities/analytics-brief.entity';
 import { AnalyticsStoreClockEntity } from '../src/database/entities/analytics-store-clock.entity';
 import { AnalyticsStoreWeeklyHoursEntity } from '../src/database/entities/analytics-store-weekly-hours.entity';
+import { AnalyticsStoreHolidayClosureEntity } from '../src/database/entities/analytics-store-holiday-closure.entity';
 import { StoreScheduleService } from '../src/modules/store-schedule/store-schedule.service';
 import { BriefFindingsService, BriefFindings } from '../src/modules/ai-brief/brief-findings.service';
 import { BriefNarrator } from '../src/modules/ai-brief/brief-narrator.interface';
@@ -47,7 +48,7 @@ describe('Étage 3 — AiBriefService (beats + guard + hold-until-next-beat)', (
   const makeService = (narrator: BriefNarrator) =>
     new AiBriefService(
       findings, narrator, ds.getRepository(AnalyticsBriefEntity), ds.getRepository(AnalyticsStoreClockEntity),
-      new StoreScheduleService(ds.getRepository(AnalyticsStoreWeeklyHoursEntity)),
+      new StoreScheduleService(ds.getRepository(AnalyticsStoreWeeklyHoursEntity), ds.getRepository(AnalyticsStoreHolidayClosureEntity)),
     );
 
   beforeAll(async () => {
