@@ -181,9 +181,9 @@ export class StoresController {
 
   @Put(':id/schedule')
   @Roles('admin')
-  @ApiOperation({ summary: 'Update store operating hours (validated; TW24 informed best-effort)' })
-  async updateSchedule(@Param('id') id: string, @Body() body: { schedules: ScheduleDayDto[] }) {
-    await this.scheduleAdmin.putWeekly(id, body?.schedules);
+  @ApiOperation({ summary: 'Update store operating hours (validated; atomic audit; TW24 best-effort)' })
+  async updateSchedule(@Param('id') id: string, @Body() body: { schedules: ScheduleDayDto[] }, @Request() req: any) {
+    await this.scheduleAdmin.putWeekly(id, body?.schedules, req.user.employeeId);
     // downstream sync — fail-soft inside (a TW24 outage never blocks the datum write)
     await this.storesService.updateStoreSchedule(id, body.schedules);
     return this.scheduleAdmin.getWeekly(id);
@@ -198,9 +198,9 @@ export class StoresController {
 
   @Put(':id/holiday-closures')
   @Roles('admin')
-  @ApiOperation({ summary: 'Update the holiday closure selection' })
-  async updateHolidayClosures(@Param('id') id: string, @Body() body: { closedHolidayKeys: string[] }) {
-    await this.scheduleAdmin.putHolidays(id, body?.closedHolidayKeys);
+  @ApiOperation({ summary: 'Update the holiday closure selection (atomic audit)' })
+  async updateHolidayClosures(@Param('id') id: string, @Body() body: { closedHolidayKeys: string[] }, @Request() req: any) {
+    await this.scheduleAdmin.putHolidays(id, body?.closedHolidayKeys, req.user.employeeId);
     return this.scheduleAdmin.getHolidays(id);
   }
 }

@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
 import { AnalyticsStoreWeeklyHoursEntity } from '../../database/entities/analytics-store-weekly-hours.entity';
 import { AnalyticsStoreHolidayClosureEntity } from '../../database/entities/analytics-store-holiday-closure.entity';
+import { AuditService } from '../audit/audit.service';
 import { FRENCH_HOLIDAY_KEYS, FrenchHolidayKey } from './french-holidays.util';
 
 /**
@@ -55,6 +56,7 @@ export class StoreScheduleAdminService {
     private readonly weeklyHours: Repository<AnalyticsStoreWeeklyHoursEntity>,
     @InjectRepository(AnalyticsStoreHolidayClosureEntity)
     private readonly holidayClosures: Repository<AnalyticsStoreHolidayClosureEntity>,
+    private readonly audit: AuditService,
   ) {}
 
   /** Effective grid for the UI: the store's rows, else the network default. */
@@ -74,20 +76,44 @@ export class StoreScheduleAdminService {
     };
   }
 
-  /** Set-replace the store's 7 rows (validated — this IS the resolver's source). */
-  async putWeekly(storeId: string, days: ScheduleDayDto[]): Promise<void> {
+  /**
+   * Set-replace the store's 7 rows (validated — this IS the resolver's source).
+   * The mutation and its chained audit entry are written ATOMICALLY (runWithAudit):
+   * the hours can never change without an attributable audit record, and vice versa.
+   */
+  async putWeekly(storeId: string, days: ScheduleDayDto[], actorEmployeeId: string): Promise<void> {
     validateWeeklySchedule(days);
-    await this.weeklyHours.delete({ storeId });
-    for (const d of days) {
-      await this.weeklyHours.insert({
+    await this.audit.runWithAudit(
+      {
         storeId,
-        weekday: d.dayOfWeek,
-        openLocal: d.closed ? null : d.openTime!,
-        closeLocal: d.closed ? null : d.closeTime!,
-        isClosed: d.closed,
-        isActive: true,
-      });
-    }
+        employeeId: actorEmployeeId,
+        action: 'store_hours_updated',
+        entityType: 'store_schedule',
+        entityId: storeId,
+        details: {
+          days: days.map((d) => ({
+            d: d.dayOfWeek,
+            closed: d.closed,
+            open: d.closed ? null : d.openTime,
+            close: d.closed ? null : d.closeTime,
+          })),
+        },
+      },
+      async (m) => {
+        const repo = m.getRepository(AnalyticsStoreWeeklyHoursEntity);
+        await repo.delete({ storeId });
+        for (const d of days) {
+          await repo.insert({
+            storeId,
+            weekday: d.dayOfWeek,
+            openLocal: d.closed ? null : d.openTime!,
+            closeLocal: d.closed ? null : d.closeTime!,
+            isClosed: d.closed,
+            isActive: true,
+          });
+        }
+      },
+    );
   }
 
   /** The full checklist (all 11 keys), checked = this store closes that day. */
@@ -97,16 +123,30 @@ export class StoreScheduleAdminService {
     return FRENCH_HOLIDAY_KEYS.map((key) => ({ key, closed: checked.has(key) }));
   }
 
-  /** Set-replace the store's closure selection (unknown keys rejected). */
-  async putHolidays(storeId: string, closedKeys: string[]): Promise<void> {
+  /** Set-replace the store's closure selection (unknown keys rejected). Atomic with audit. */
+  async putHolidays(storeId: string, closedKeys: string[], actorEmployeeId: string): Promise<void> {
     if (!Array.isArray(closedKeys)) throw new BadRequestException('closedHolidayKeys doit être une liste.');
     const valid = new Set<string>(FRENCH_HOLIDAY_KEYS);
     for (const key of closedKeys) {
       if (!valid.has(key)) throw new BadRequestException(`Jour férié inconnu: ${key}.`);
     }
-    await this.holidayClosures.delete({ storeId });
-    for (const holidayKey of [...new Set(closedKeys)]) {
-      await this.holidayClosures.insert({ storeId, holidayKey });
-    }
+    const unique = [...new Set(closedKeys)];
+    await this.audit.runWithAudit(
+      {
+        storeId,
+        employeeId: actorEmployeeId,
+        action: 'store_holidays_updated',
+        entityType: 'store_schedule',
+        entityId: storeId,
+        details: { closedHolidayKeys: unique },
+      },
+      async (m) => {
+        const repo = m.getRepository(AnalyticsStoreHolidayClosureEntity);
+        await repo.delete({ storeId });
+        for (const holidayKey of unique) {
+          await repo.insert({ storeId, holidayKey });
+        }
+      },
+    );
   }
 }
