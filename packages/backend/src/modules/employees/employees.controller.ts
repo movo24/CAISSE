@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { EmployeesService } from './employees.service';
+import { EmployeeStoreAccessService } from './employee-store-access.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard, Roles } from '../../common/guards/roles.guard';
 import { CreateEmployeeDto, UpdateEmployeeDto } from '../../common/dto';
@@ -21,7 +22,10 @@ import { CreateEmployeeDto, UpdateEmployeeDto } from '../../common/dto';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('employees')
 export class EmployeesController {
-  constructor(private employeesService: EmployeesService) {}
+  constructor(
+    private employeesService: EmployeesService,
+    private storeAccess: EmployeeStoreAccessService,
+  ) {}
 
   // ── Rights endpoints (static routes BEFORE :id) ──
 
@@ -121,5 +125,30 @@ export class EmployeesController {
   @ApiOperation({ summary: 'Deactivate employee (alias for POST deactivate)' })
   deactivateViaDelete(@Param('id') id: string, @Request() req: any) {
     return this.employeesService.deactivate(id, req.user.storeId);
+  }
+
+  // ── Store-access control plane (owner-only; each change audit-logged) ──
+
+  @Get(':id/store-access')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: "List the stores a manager has been granted access to" })
+  listStoreAccess(@Param('id') id: string) {
+    return this.storeAccess.list(id);
+  }
+
+  @Post(':id/store-access')
+  @Roles('admin')
+  @ApiOperation({ summary: 'Grant a manager access to a store (atomic audit)' })
+  async grantStoreAccess(@Param('id') id: string, @Body() body: { storeId: string }, @Request() req: any) {
+    await this.storeAccess.grant(id, body?.storeId, req.user.employeeId);
+    return this.storeAccess.list(id);
+  }
+
+  @Delete(':id/store-access/:storeId')
+  @Roles('admin')
+  @ApiOperation({ summary: 'Revoke a manager\'s access to a store (atomic audit)' })
+  async revokeStoreAccess(@Param('id') id: string, @Param('storeId') storeId: string, @Request() req: any) {
+    await this.storeAccess.revoke(id, storeId, req.user.employeeId);
+    return this.storeAccess.list(id);
   }
 }
