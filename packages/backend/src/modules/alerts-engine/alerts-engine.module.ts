@@ -9,6 +9,7 @@ import { AnalyticsAlertEntity } from '../../database/entities/analytics-alert.en
 import { AnalyticsAlertConfigEntity } from '../../database/entities/analytics-alert-config.entity';
 import { AnalyticsAlertCursorEntity } from '../../database/entities/analytics-alert-cursor.entity';
 import { AnalyticsStoreTargetEntity } from '../../database/entities/analytics-store-target.entity';
+import { AnalyticsStoreClockEntity } from '../../database/entities/analytics-store-clock.entity';
 import { AlertsEngineService } from './alerts-engine.service';
 import { ALERT_RULES, AlertRule } from './alert-rule.interface';
 import { VoidRateRule } from './rules/void-rate.rule';
@@ -35,6 +36,7 @@ import { TargetReachedRule } from './rules/target-reached.rule';
       AnalyticsAlertConfigEntity,
       AnalyticsAlertCursorEntity,
       AnalyticsStoreTargetEntity,
+      AnalyticsStoreClockEntity,
     ]),
   ],
   providers: [

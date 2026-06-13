@@ -1,18 +1,22 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
 import { AnalyticsStoreSessionsEntity } from '../../../database/entities/analytics-store-sessions.entity';
+import { AnalyticsStoreClockEntity } from '../../../database/entities/analytics-store-clock.entity';
 import { AlertFact, AlertRule, AlertRuleContext } from '../alert-rule.interface';
 
 /**
- * store_closed_late — POS sessions still OPEN past the store's configured closing
- * hour. Source (INV-4): analytics.store_sessions open_sessions (the sessions
- * projection); the closing hour is DATA (param close_hour_utc, store-overridable).
+ * store_closed_late — POS sessions still OPEN past the store's closing hour.
+ * Source (INV-4): analytics.store_sessions open_sessions (the sessions projection).
  *
- * Timezone caveat (noted, consistent with the étage-0 UTC business-day convention):
- * the hour is compared in UTC; the seeded default (21h UTC ≈ 22h/23h Paris) is a
- * starting point — per-store overrides carry the local reality. A real store-TZ
- * policy is an owner decision tracked with the business-day definition.
+ * The closing hour comes from analytics.store_clock — the SINGLE wall-clock datum
+ * shared with the ai-brief beats and the (future) business-day definition
+ * (ratified: never a "beats TZ" separate from an "alerts TZ"). Per-store override
+ * else network default; no clock row → silent (no invented closing hour).
+ *
+ * D-ALERTS-1 still applies: the clock's timezone is the UTC STAND-IN today, so
+ * the hour comparison is UTC wall-clock — generation is fine (greenfield-inert),
+ * but étage 4 must NOT deliver this rule until the real store-TZ policy lands.
  */
 @Injectable()
 export class StoreClosedLateRule implements AlertRule {
@@ -21,13 +25,18 @@ export class StoreClosedLateRule implements AlertRule {
   constructor(
     @InjectRepository(AnalyticsStoreSessionsEntity)
     private readonly sessions: Repository<AnalyticsStoreSessionsEntity>,
+    @InjectRepository(AnalyticsStoreClockEntity)
+    private readonly clock: Repository<AnalyticsStoreClockEntity>,
   ) {}
 
-  async evaluate({ storeId, businessDay, now, params }: AlertRuleContext): Promise<AlertFact[]> {
-    if (!params) return [];
-    const closeHourUtc = Number(params.close_hour_utc ?? NaN);
-    if (Number.isNaN(closeHourUtc)) return [];
-    if (now.getUTCHours() < closeHourUtc) return []; // store still legitimately open
+  async evaluate({ storeId, businessDay, now }: AlertRuleContext): Promise<AlertFact[]> {
+    const clock =
+      (await this.clock.findOne({ where: { storeId, isActive: true } })) ??
+      (await this.clock.findOne({ where: { storeId: IsNull(), isActive: true } }));
+    if (!clock) return []; // no clock datum → no invented closing hour
+
+    // UTC stand-in: hours are read as UTC until the store-TZ policy lands (D-ALERTS-1).
+    if (now.getUTCHours() < clock.closeHour) return []; // store still legitimately open
 
     const s = await this.sessions.findOne({ where: { storeId } });
     if (!s || s.openSessions === 0) return []; // properly closed → silent
@@ -40,7 +49,8 @@ export class StoreClosedLateRule implements AlertRule {
         payload: {
           openSessions: s.openSessions,
           activeTerminals: s.activeTerminals,
-          closeHourUtc,
+          closeHour: clock.closeHour,
+          clockTimezone: clock.timezone,
           observedHourUtc: now.getUTCHours(),
         },
       },

@@ -9,6 +9,7 @@ import { AnalyticsStoreRegistryEntity } from '../../database/entities/analytics-
 import { AnalyticsAlertEntity } from '../../database/entities/analytics-alert.entity';
 import { AnalyticsStoreTargetEntity } from '../../database/entities/analytics-store-target.entity';
 import { AnalyticsBriefEntity } from '../../database/entities/analytics-brief.entity';
+import { AnalyticsStoreClockEntity } from '../../database/entities/analytics-store-clock.entity';
 import { AnalyticsProjectionModule } from '../analytics-projection/analytics-projection.module';
 import { ReadOnlyGuard } from '../mobile-read-api/read-only.guard';
 import { BriefFindingsService } from './brief-findings.service';
@@ -34,6 +35,7 @@ import { AiBriefController } from './ai-brief.controller';
       AnalyticsAlertEntity,
       AnalyticsStoreTargetEntity,
       AnalyticsBriefEntity,
+      AnalyticsStoreClockEntity,
     ]),
     AnalyticsProjectionModule,
   ],

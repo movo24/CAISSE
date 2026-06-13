@@ -26,7 +26,11 @@ export class AiBriefController {
       storeId: u.storeId,
       role: u.role,
     });
-    const today = new Date().toISOString().slice(0, 10);
-    return this.aiBrief.getOrGenerate(scope, today);
+    return this.aiBrief.getOrGenerate(scope, this.now());
+  }
+
+  /** Clock seam (deterministic in tests). */
+  protected now(): Date {
+    return new Date();
   }
 }

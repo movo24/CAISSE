@@ -17,6 +17,7 @@ import { AnalyticsStoreRegistryEntity } from '../src/database/entities/analytics
 import { AnalyticsAlertEntity } from '../src/database/entities/analytics-alert.entity';
 import { AnalyticsStoreTargetEntity } from '../src/database/entities/analytics-store-target.entity';
 import { AnalyticsBriefEntity } from '../src/database/entities/analytics-brief.entity';
+import { AnalyticsStoreClockEntity } from '../src/database/entities/analytics-store-clock.entity';
 import { StoreScopeResolverService } from '../src/modules/analytics-projection/store-scope-resolver.service';
 import { BriefFindingsService } from '../src/modules/ai-brief/brief-findings.service';
 import { TemplateBriefNarrator } from '../src/modules/ai-brief/brief-narrator.interface';
@@ -60,9 +61,23 @@ describe('Étage 3 — GET /mobile/v1/ai-brief (scoped brief)', () => {
       ds.getRepository(AnalyticsAlertEntity),
       ds.getRepository(AnalyticsStoreTargetEntity),
     );
-    const service = new AiBriefService(findings, new TemplateBriefNarrator(), ds.getRepository(AnalyticsBriefEntity));
+    // The single wall-clock datum (UTC stand-in) — beats 10/15 + close 20.
+    await ds.getRepository(AnalyticsStoreClockEntity).save({
+      storeId: null, timezone: 'Etc/UTC', briefBeatHours: [10, 15], closeHour: 20, isActive: true,
+    } as any);
+    const service = new AiBriefService(
+      findings,
+      new TemplateBriefNarrator(),
+      ds.getRepository(AnalyticsBriefEntity),
+      ds.getRepository(AnalyticsStoreClockEntity),
+    );
     const resolver = new StoreScopeResolverService(ds.getRepository(StoreEntity), ds.getRepository(EmployeeStoreAccessEntity));
     controller = new AiBriefController(resolver, service);
+    // Pin the controller's clock seam inside today (real date — matches the seeded
+    // daily rows) at 13:00 UTC → beat 10 has passed, deterministic.
+    const fixedNow = new Date();
+    fixedNow.setUTCHours(13, 0, 0, 0);
+    jest.spyOn(controller as any, 'now').mockReturnValue(fixedNow);
   });
   afterAll(async () => {
     await ds?.destroy();
@@ -71,6 +86,7 @@ describe('Étage 3 — GET /mobile/v1/ai-brief (scoped brief)', () => {
   it('the brief is built from the manager’s scope ONLY — the other org’s figures never appear', async () => {
     const r = await controller.brief({ user: { employeeId: MANAGER, storeId: S1, role: 'manager' } });
     expect(r.status).toBe('rendered');
+    expect(r.beat).toBe(10); // the 13:00 request lands in the midday beat
     expect(r.text).toContain('1500,00'); // S1's CA (150000 minor)
     expect(r.text).toContain('42');
     expect(r.text).not.toContain('7777'); // S4's CA never leaks (silent scope shaping)

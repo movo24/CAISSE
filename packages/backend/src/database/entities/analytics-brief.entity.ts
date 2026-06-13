@@ -2,13 +2,13 @@ import { Entity, PrimaryGeneratedColumn, Column, Index, CreateDateColumn } from 
 
 /**
  * ANALYTICS BRIEFS — the persisted daily narrative brief (étage 3). One row per
- * (scope_key, business_day); regenerated ONLY when the projection freshness
- * advances (computed_at cache anchor, same monotonic gate as alerts) — the LLM is
- * not re-called on every request and the prose is stable within a refresh window.
+ * (scope_key, business_day, beat); regenerated only AT a beat (scheduled hours
+ * from analytics.store_clock), stable between beats — the LLM is called at most
+ * once per beat and the executive never sees the prose move between refreshes.
  * Only provenance-verified text is ever persisted/served (INV-3).
  */
 @Entity({ schema: 'analytics', name: 'briefs' })
-@Index(['scopeKey', 'businessDay'], { unique: true })
+@Index(['scopeKey', 'businessDay', 'beat'], { unique: true })
 export class AnalyticsBriefEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -19,6 +19,16 @@ export class AnalyticsBriefEntity {
 
   @Column({ name: 'business_day', type: 'date' })
   businessDay: string;
+
+  /**
+   * The BEAT (wall-clock hour from analytics.store_clock) this brief belongs to.
+   * Ratified: a brief regenerates only at a beat (12h/17h/fermeture — UTC stand-in
+   * 10/15/close), stable in between; the (scope, day, beat) key makes the
+   * stability structural. A failed beat persists the template fallback under the
+   * same key — held until the NEXT beat, never retried.
+   */
+  @Column({ name: 'beat', type: 'integer', default: 0 })
+  beat: number;
 
   /** The projection freshness the brief was built from (the cache anchor). */
   @Column({ name: 'computed_at', type: 'timestamptz' })
