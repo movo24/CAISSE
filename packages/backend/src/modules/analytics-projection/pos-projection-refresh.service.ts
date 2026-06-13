@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
+import { AlertService } from '../../common/alert/alert.service';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
 import { StoreEntity } from '../../database/entities/store.entity';
@@ -47,6 +48,7 @@ export class PosProjectionRefreshService {
       await this.refreshAll(new Date());
     } catch (e: any) {
       this.logger.warn(`POS projection refresh failed: ${e?.message}`);
+      AlertService.instance.fire('PROJECTION_REFRESH_FAILED', `POS projection refresh failed: ${e?.message}`);
     }
   }
 

@@ -25,7 +25,11 @@ export type AlertEvent =
   | 'CIRCUIT_BREAKER_OPEN'
   | 'CIRCUIT_BREAKER_CLOSED'
   | 'LOGIN_BRUTEFORCE'
-  | 'RATE_LIMIT_BURST';
+  | 'RATE_LIMIT_BURST'
+  // Background read-model jobs (cockpit data plane; fiscal core unaffected → warning).
+  | 'PROJECTION_REFRESH_FAILED'
+  | 'ALERTS_EVAL_FAILED'
+  | 'NOTIFY_DELIVERY_FAILED';
 
 export interface AlertEntry {
   event: AlertEvent;
@@ -117,6 +121,9 @@ export class AlertService {
       case 'LOGIN_BRUTEFORCE':
         return 'critical';
       case 'RATE_LIMIT_BURST':
+      case 'PROJECTION_REFRESH_FAILED':
+      case 'ALERTS_EVAL_FAILED':
+      case 'NOTIFY_DELIVERY_FAILED':
         return 'warning';
       default:
         return 'info';

@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
+import { AlertService } from '../../common/alert/alert.service';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
 import { AnalyticsStoreRegistryEntity } from '../../database/entities/analytics-store-registry.entity';
@@ -57,6 +58,7 @@ export class AlertsEngineService {
       await this.evaluateAll(new Date());
     } catch (e: any) {
       this.logger.warn(`alerts evaluation failed: ${e?.message}`);
+      AlertService.instance.fire('ALERTS_EVAL_FAILED', `alerts evaluation failed: ${e?.message}`);
     }
   }
 

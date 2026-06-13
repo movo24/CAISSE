@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
+import { AlertService } from '../../common/alert/alert.service';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, MoreThan, Repository } from 'typeorm';
 import { AnalyticsAlertEntity } from '../../database/entities/analytics-alert.entity';
@@ -54,6 +55,7 @@ export class NotifyDeliveryService {
       await this.deliverAll(new Date());
     } catch (e: any) {
       this.logger.warn(`notify delivery failed: ${e?.message}`);
+      AlertService.instance.fire('NOTIFY_DELIVERY_FAILED', `notify delivery failed: ${e?.message}`);
     }
   }
 
