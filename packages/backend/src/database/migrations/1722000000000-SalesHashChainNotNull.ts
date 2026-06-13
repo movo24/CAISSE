@@ -12,31 +12,34 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * Safe on the current prod (`caisse_pos` is empty / greenfield). createSale
  * always sets both (genesis hash for the first sale).
  *
- * ┌─ MANDATORY PRE-DEPLOY GATE (human, on the fiscal DB — NOT the agent) ─┐
- * │ ALTER COLUMN SET NOT NULL scans the whole table and FAILS if a single │
- * │ row has a null hash. Before deploying the commit that carries this    │
- * │ migration, run on `caisse_pos`:                                       │
- * │                                                                       │
- * │   SELECT count(*) FROM sales                                          │
- * │   WHERE hash_chain_current IS NULL OR hash_chain_prev IS NULL;        │
- * │                                                                       │
- * │   • 0   → the migration applies clean. Deploy.                        │
- * │   • >0  → STOP. These are pre-existing UN-SEALED fiscal sales (legacy │
- * │          pre-hash-chain rows, or rows from the now-closed second door │
- * │          if it ever ran) = an incident. You CANNOT retro-seal a hash  │
- * │          (it would not be in the real chain). Decide their status     │
- * │          deliberately and document it BEFORE tightening the column.   │
- * │          The migration is a damage DETECTOR — do not discover the     │
- * │          damage via a failed prod deploy.                             │
- * └───────────────────────────────────────────────────────────────────────┘
- *
- * (The Railway deploy log will only show "Migration … executed successfully"
- * if the count is 0 — but run the SELECT first so you know before, not after.)
+ * A6 (ratified): the pre-deploy gate is INTERNAL — the migration itself counts
+ * the un-sealed rows and RAISES with an explicit diagnosis BEFORE any ALTER.
+ * No human checklist on the deploy path (prevent-at-write, not advise-at-deploy):
+ * a dirty table can never be discovered via a half-applied ALTER failure.
  */
 export class SalesHashChainNotNull1722000000000 implements MigrationInterface {
   name = 'SalesHashChainNotNull1722000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
+    // ── INTERNAL GATE (A6): refuse to tighten over un-sealed fiscal rows ──
+    // >0 means pre-existing UN-SEALED sales (legacy pre-hash-chain rows, or rows
+    // from the now-closed second door if it ever ran) = an incident. A hash can
+    // NOT be retro-sealed (it would not be in the real chain): their status must
+    // be decided deliberately and documented BEFORE this column tightens. The
+    // RAISE makes the migration a damage DETECTOR that stops the deploy itself.
+    const [{ unsealed }] = await queryRunner.query(
+      `SELECT count(*)::int AS unsealed FROM sales
+       WHERE hash_chain_current IS NULL OR hash_chain_prev IS NULL`,
+    );
+    if (Number(unsealed) > 0) {
+      throw new Error(
+        `[H4 GATE] ${unsealed} sales row(s) have a NULL hash_chain_prev/current — ` +
+          `pre-existing UN-SEALED fiscal rows. STOP: a hash cannot be retro-sealed; ` +
+          `decide and document their status before applying SalesHashChainNotNull1722000000000. ` +
+          `Nothing was altered (the migration transaction rolls back).`,
+      );
+    }
+
     await queryRunner.query(
       `ALTER TABLE sales ALTER COLUMN hash_chain_prev SET NOT NULL`,
     );
