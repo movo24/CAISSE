@@ -16,6 +16,8 @@ import { AnalyticsStoreDailyEntity } from '../src/database/entities/analytics-st
 import { AnalyticsStoreClockEntity } from '../src/database/entities/analytics-store-clock.entity';
 import { AnalyticsStoreSessionsEntity } from '../src/database/entities/analytics-store-sessions.entity';
 import { AnalyticsStoreRegistryEntity } from '../src/database/entities/analytics-store-registry.entity';
+import { AnalyticsStoreProductDailyEntity } from '../src/database/entities/analytics-store-product-daily.entity';
+import { SaleLineItemEntity } from '../src/database/entities/sale-line-item.entity';
 import { PosProjectionRefreshService } from '../src/modules/analytics-projection/pos-projection-refresh.service';
 
 describe('Étage 0 — POS projection refresh (INV-4)', () => {
@@ -24,6 +26,11 @@ describe('Étage 0 — POS projection refresh (INV-4)', () => {
   const ORG = uuidv4();
   const STORE = uuidv4();
   const EMP = uuidv4();
+  const SALE1 = uuidv4();
+  const SALE2 = uuidv4();
+  const SALE_VOID = uuidv4();
+  const P1 = uuidv4();
+  const P2 = uuidv4();
 
   beforeAll(async () => {
     const { dataSource } = createPgMemDataSource();
@@ -40,9 +47,20 @@ describe('Étage 0 — POS projection refresh (INV-4)', () => {
       currencyCode: 'EUR', ticketNumber: `T-${uuidv4().slice(0, 6)}`, ...over,
     });
     await ds.getRepository(SaleEntity).save([
-      sale({ totalMinorUnits: 1000, status: 'completed', discountTotalMinorUnits: 150 }),
-      sale({ totalMinorUnits: 500, status: 'completed', discountTotalMinorUnits: 50 }),
-      sale({ totalMinorUnits: 300, status: 'voided', discountTotalMinorUnits: 999 }), // voided → excluded from discounts too
+      sale({ id: SALE1, totalMinorUnits: 1000, status: 'completed', discountTotalMinorUnits: 150 }),
+      sale({ id: SALE2, totalMinorUnits: 500, status: 'completed', discountTotalMinorUnits: 50 }),
+      sale({ id: SALE_VOID, totalMinorUnits: 300, status: 'voided', discountTotalMinorUnits: 999 }), // voided → excluded from discounts too
+    ] as any);
+    // A5 source: line items (the voided sale's items must NOT reach the projection)
+    const li = (saleId: string, productId: string, qty: number, total: number) => ({
+      id: uuidv4(), saleId, productId, productName: 'P', ean: `360000${qty}`, quantity: qty,
+      unitPriceMinorUnits: Math.round(total / qty), discountMinorUnits: 0, lineTotalMinorUnits: total,
+    });
+    await ds.getRepository(SaleLineItemEntity).save([
+      li(SALE1, P1, 2, 600),
+      li(SALE1, P2, 1, 400),
+      li(SALE2, P1, 1, 500),
+      li(SALE_VOID, P1, 3, 300), // voided → excluded
     ] as any);
     await ds.getRepository(CreditNoteEntity).save([
       { id: uuidv4(), storeId: STORE, code: `AV-${uuidv4().slice(0, 6)}`, origin: 'return', type: 'store_credit', status: 'active', totalMinorUnits: 200, remainingMinorUnits: 200, currencyCode: 'EUR', employeeId: EMP },
@@ -62,6 +80,8 @@ describe('Étage 0 — POS projection refresh (INV-4)', () => {
       ds.getRepository(AnalyticsStoreSessionsEntity),
       ds.getRepository(AnalyticsStoreRegistryEntity),
       ds.getRepository(AnalyticsStoreClockEntity),
+      ds.getRepository(SaleLineItemEntity),
+      ds.getRepository(AnalyticsStoreProductDailyEntity),
     );
     await svc.refreshAll(new Date());
   });
@@ -129,8 +149,12 @@ describe('Étage 0 — POS projection refresh (INV-4)', () => {
     const dailyRepo = ds.getRepository(AnalyticsStoreDailyEntity);
     const sessRepo = ds.getRepository(AnalyticsStoreSessionsEntity);
 
+    const prodRepo = ds.getRepository(AnalyticsStoreProductDailyEntity);
+    const byPid = (a: any, b: any) => a.productId.localeCompare(b.productId);
+
     const before = await dailyRepo.findOne({ where: { storeId: STORE } });
     const beforeSess = await sessRepo.findOne({ where: { storeId: STORE } });
+    const beforeProducts = (await prodRepo.find({ where: { storeId: STORE } })).sort(byPid);
     const t1 = new Date(before!.computedAt).getTime();
 
     // Re-run with a LATER clock, SAME source data.
@@ -138,6 +162,7 @@ describe('Étage 0 — POS projection refresh (INV-4)', () => {
 
     const after = await dailyRepo.findOne({ where: { storeId: STORE } });
     const afterSess = await sessRepo.findOne({ where: { storeId: STORE } });
+    const afterProducts = (await prodRepo.find({ where: { storeId: STORE } })).sort(byPid);
 
     // No duplicate.
     expect(await dailyRepo.count({ where: { storeId: STORE } })).toBe(1);
@@ -148,9 +173,31 @@ describe('Étage 0 — POS projection refresh (INV-4)', () => {
     const strip = (r: any) => ({ ...r, id: undefined, computedAt: undefined });
     expect(strip(after)).toEqual(strip(before));
     expect(strip(afterSess)).toEqual(strip(beforeSess));
+    expect(afterProducts.map(strip)).toEqual(beforeProducts.map(strip)); // A5 replays identically
 
     // computed_at is monotonic — it does NOT go backward.
     expect(new Date(after!.computedAt).getTime()).toBeGreaterThanOrEqual(t1);
+  });
+
+  it('A5 — per-product qty/revenue from COMPLETED sales only; a vanished product is set-replaced away', async () => {
+    const repo = ds.getRepository(AnalyticsStoreProductDailyEntity);
+    const rows = await repo.find({ where: { storeId: STORE } });
+    expect(rows).toHaveLength(2);
+    const p1 = rows.find((r) => r.productId === P1)!;
+    const p2 = rows.find((r) => r.productId === P2)!;
+    expect(p1.qty).toBe(3); // 2 + 1 — the voided sale's qty 3 EXCLUDED
+    expect(p1.revenueMinor).toBe(1100); // 600 + 500 — the voided 300 EXCLUDED
+    expect(p2.qty).toBe(1);
+    expect(p2.revenueMinor).toBe(400);
+
+    // set-replace: P2's lines vanish from the source → its row is removed, P1 untouched
+    await ds.getRepository(SaleLineItemEntity).delete({ productId: P2 });
+    await svc.refreshAll(new Date(Date.now() + 60_000));
+    const after = await repo.find({ where: { storeId: STORE } });
+    expect(after).toHaveLength(1);
+    expect(after[0].productId).toBe(P1);
+    expect(after[0].qty).toBe(3);
+    expect(after[0].revenueMinor).toBe(1100);
   });
 
   it('hard guard (real flow) — a refresh with an OLDER clock leaves the row unchanged', async () => {

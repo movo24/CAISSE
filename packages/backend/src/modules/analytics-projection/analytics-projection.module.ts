@@ -13,6 +13,8 @@ import { AnalyticsStorePresenceEntity } from '../../database/entities/analytics-
 import { AnalyticsStoreStockEntity } from '../../database/entities/analytics-store-stock.entity';
 import { AnalyticsStoreRegistryEntity } from '../../database/entities/analytics-store-registry.entity';
 import { AnalyticsStoreClockEntity } from '../../database/entities/analytics-store-clock.entity';
+import { SaleLineItemEntity } from '../../database/entities/sale-line-item.entity';
+import { AnalyticsStoreProductDailyEntity } from '../../database/entities/analytics-store-product-daily.entity';
 import { TimewinModule } from '../timewin/timewin.module';
 import { StoreScopeResolverService } from './store-scope-resolver.service';
 import { PosProjectionRefreshService } from './pos-projection-refresh.service';
@@ -41,6 +43,8 @@ import { StockProjectionRefreshService } from './stock-projection-refresh.servic
       AnalyticsStoreStockEntity,
       AnalyticsStoreRegistryEntity,
       AnalyticsStoreClockEntity,
+      SaleLineItemEntity,
+      AnalyticsStoreProductDailyEntity,
     ]),
     TimewinModule,
   ],

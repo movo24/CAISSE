@@ -5,11 +5,13 @@ import { IsNull, Repository } from 'typeorm';
 import { StoreEntity } from '../../database/entities/store.entity';
 import { SaleEntity } from '../../database/entities/sale.entity';
 import { CreditNoteEntity } from '../../database/entities/credit-note.entity';
+import { SaleLineItemEntity } from '../../database/entities/sale-line-item.entity';
 import { PosSessionEntity } from '../../database/entities/pos-session.entity';
 import { AnalyticsStoreDailyEntity } from '../../database/entities/analytics-store-daily.entity';
 import { AnalyticsStoreSessionsEntity } from '../../database/entities/analytics-store-sessions.entity';
 import { AnalyticsStoreRegistryEntity } from '../../database/entities/analytics-store-registry.entity';
 import { AnalyticsStoreClockEntity } from '../../database/entities/analytics-store-clock.entity';
+import { AnalyticsStoreProductDailyEntity } from '../../database/entities/analytics-store-product-daily.entity';
 import { guardedProjectionUpsert } from './projection-upsert.util';
 import { localDayString, localDayRange } from '../../common/clock/wall-clock.util';
 
@@ -35,6 +37,8 @@ export class PosProjectionRefreshService {
     @InjectRepository(AnalyticsStoreSessionsEntity) private readonly projSessions: Repository<AnalyticsStoreSessionsEntity>,
     @InjectRepository(AnalyticsStoreRegistryEntity) private readonly projRegistry: Repository<AnalyticsStoreRegistryEntity>,
     @InjectRepository(AnalyticsStoreClockEntity) private readonly clock: Repository<AnalyticsStoreClockEntity>,
+    @InjectRepository(SaleLineItemEntity) private readonly lineItems: Repository<SaleLineItemEntity>,
+    @InjectRepository(AnalyticsStoreProductDailyEntity) private readonly projProducts: Repository<AnalyticsStoreProductDailyEntity>,
   ) {}
 
   @Cron('*/5 * * * *')
@@ -120,6 +124,48 @@ export class PosProjectionRefreshService {
       this.logger,
       'analytics_store_daily',
     );
+
+    // ── A5: per-product daily (qty + revenue from COMPLETED sales' line items) ──
+    // Set-replace under the same computed_at guard: upsert what the source says,
+    // then drop rows whose product vanished from the source (each drop respects
+    // monotonicity — a fresher row is never removed by a stale run).
+    const products = await this.lineItems
+      .createQueryBuilder('li')
+      .select('li.product_id', 'pid')
+      .addSelect('COALESCE(SUM(li.quantity), 0)', 'qty')
+      .addSelect('COALESCE(SUM(li.line_total_minor_units), 0)', 'rev')
+      .innerJoin(SaleEntity, 's', 's.id = li.sale_id')
+      .where('s.store_id = :sid', { sid: store.id })
+      .andWhere("s.status = 'completed'")
+      .andWhere('s.created_at >= :dayStart AND s.created_at < :dayEnd', { dayStart, dayEnd })
+      .groupBy('li.product_id')
+      .getRawMany<{ pid: string; qty: string; rev: string }>();
+
+    const seenProducts = new Set<string>();
+    for (const pRow of products) {
+      seenProducts.add(pRow.pid);
+      await guardedProjectionUpsert(
+        this.projProducts,
+        { storeId: store.id, businessDay: day, productId: pRow.pid },
+        {
+          storeId: store.id,
+          businessDay: day,
+          productId: pRow.pid,
+          qty: Number(pRow.qty),
+          revenueMinor: Number(pRow.rev),
+          computedAt: now,
+        },
+        now,
+        this.logger,
+        'analytics_store_product_daily',
+      );
+    }
+    const stale = await this.projProducts.find({ where: { storeId: store.id, businessDay: day } });
+    for (const row of stale) {
+      if (!seenProducts.has(row.productId) && new Date(row.computedAt).getTime() <= now.getTime()) {
+        await this.projProducts.delete({ id: row.id });
+      }
+    }
 
     // ── sessions snapshot (distinct terminals computed in JS — no SQL DISTINCT) ──
     const active = await this.sessions.find({ where: { storeId: store.id, isActive: true } });
