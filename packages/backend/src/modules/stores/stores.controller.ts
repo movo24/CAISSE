@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { StoresService } from './stores.service';
+import { StoreScheduleAdminService, ScheduleDayDto } from '../store-schedule/store-schedule-admin.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard, Roles } from '../../common/guards/roles.guard';
 import { CreateStoreDto, UpdateStoreDto } from '../../common/dto';
@@ -23,7 +24,10 @@ import { BusinessError } from '../../common/errors/business-error';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('stores')
 export class StoresController {
-  constructor(private storesService: StoresService) {}
+  constructor(
+    private storesService: StoresService,
+    private scheduleAdmin: StoreScheduleAdminService,
+  ) {}
 
   /**
    * GET /api/stores — list all stores (for backoffice tour de controle)
@@ -162,19 +166,41 @@ export class StoresController {
     return this.storesService.hardDelete(id, req.user.employeeId);
   }
 
-  // ── Operating Hours (proxy to TimeWin24) ──
+  // ── Operating Hours ──
+  // The schedule DATUM lives in analytics.store_weekly_hours (the resolver's
+  // single source — store_closed_late + close beat). This admin surface is the
+  // write path (server validation = the guarantee); the legacy TimeWin24 push
+  // is kept as a best-effort DOWNSTREAM sync (fail-soft, never authoritative).
 
   @Get(':id/schedule')
   @Roles('admin', 'manager')
-  @ApiOperation({ summary: 'Get store operating hours (from TimeWin24)' })
+  @ApiOperation({ summary: 'Get store operating hours (schedule datum)' })
   getSchedule(@Param('id') id: string) {
-    return this.storesService.getStoreSchedule(id);
+    return this.scheduleAdmin.getWeekly(id);
   }
 
   @Put(':id/schedule')
   @Roles('admin')
-  @ApiOperation({ summary: 'Update store operating hours (synced to TimeWin24)' })
-  updateSchedule(@Param('id') id: string, @Body() body: { schedules: any[] }) {
-    return this.storesService.updateStoreSchedule(id, body.schedules);
+  @ApiOperation({ summary: 'Update store operating hours (validated; TW24 informed best-effort)' })
+  async updateSchedule(@Param('id') id: string, @Body() body: { schedules: ScheduleDayDto[] }) {
+    await this.scheduleAdmin.putWeekly(id, body?.schedules);
+    // downstream sync — fail-soft inside (a TW24 outage never blocks the datum write)
+    await this.storesService.updateStoreSchedule(id, body.schedules);
+    return this.scheduleAdmin.getWeekly(id);
+  }
+
+  @Get(':id/holiday-closures')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'Holiday checklist (checked = this store closes)' })
+  getHolidayClosures(@Param('id') id: string) {
+    return this.scheduleAdmin.getHolidays(id);
+  }
+
+  @Put(':id/holiday-closures')
+  @Roles('admin')
+  @ApiOperation({ summary: 'Update the holiday closure selection' })
+  async updateHolidayClosures(@Param('id') id: string, @Body() body: { closedHolidayKeys: string[] }) {
+    await this.scheduleAdmin.putHolidays(id, body?.closedHolidayKeys);
+    return this.scheduleAdmin.getHolidays(id);
   }
 }

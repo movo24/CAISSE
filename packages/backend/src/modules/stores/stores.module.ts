@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { StoreScheduleModule } from '../store-schedule/store-schedule.module';
 import { StoresService } from './stores.service';
 import { StoresController } from './stores.controller';
 import { StoreEntity } from '../../database/entities/store.entity';
@@ -9,6 +10,7 @@ import { UnitEntity } from '../../database/entities/unit.entity';
 @Module({
   imports: [
     TypeOrmModule.forFeature([StoreEntity, OrganizationEntity, UnitEntity]),
+    StoreScheduleModule,
   ],
   controllers: [StoresController],
   providers: [StoresService],

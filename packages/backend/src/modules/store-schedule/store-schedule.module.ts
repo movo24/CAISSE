@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AnalyticsStoreWeeklyHoursEntity } from '../../database/entities/analytics-store-weekly-hours.entity';
 import { AnalyticsStoreHolidayClosureEntity } from '../../database/entities/analytics-store-holiday-closure.entity';
 import { StoreScheduleService } from './store-schedule.service';
+import { StoreScheduleAdminService } from './store-schedule-admin.service';
 
 /**
  * Schedule resolver module — exports the ONE schedule source (StoreScheduleService).
@@ -11,7 +12,7 @@ import { StoreScheduleService } from './store-schedule.service';
  */
 @Module({
   imports: [TypeOrmModule.forFeature([AnalyticsStoreWeeklyHoursEntity, AnalyticsStoreHolidayClosureEntity])],
-  providers: [StoreScheduleService],
-  exports: [StoreScheduleService],
+  providers: [StoreScheduleService, StoreScheduleAdminService],
+  exports: [StoreScheduleService, StoreScheduleAdminService],
 })
 export class StoreScheduleModule {}

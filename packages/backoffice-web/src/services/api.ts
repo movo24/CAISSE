@@ -256,6 +256,9 @@ export const storesApi = {
   syncFromTimeWin: () => api.post('/stores/sync'),
   getSchedule: (storeId: string) => api.get(`/stores/${storeId}/schedule`),
   updateSchedule: (storeId: string, schedules: any[]) => api.put(`/stores/${storeId}/schedule`, { schedules }),
+  getHolidayClosures: (storeId: string) => api.get(`/stores/${storeId}/holiday-closures`),
+  updateHolidayClosures: (storeId: string, closedHolidayKeys: string[]) =>
+    api.put(`/stores/${storeId}/holiday-closures`, { closedHolidayKeys }),
 };
 
 // ---------------------------------------------------------------------------

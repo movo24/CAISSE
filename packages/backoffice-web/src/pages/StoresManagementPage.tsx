@@ -3,6 +3,7 @@ import {
   Store, Plus, Search, X, Pencil, MapPin, Globe, Clock,
   CheckCircle2, Loader2, Building2, Users, Trash2, Archive, RotateCcw,
 } from 'lucide-react';
+import { validateScheduleDays } from '../utils/schedule-validation';
 import { storesApi, organizationsApi, unitsApi } from '../services/api';
 
 interface StoreItem {
@@ -34,32 +35,57 @@ interface ScheduleDay {
   closeTime: string;
 }
 
+const HOLIDAY_LABELS: Record<string, string> = {
+  jour_de_l_an: "Jour de l'an (1ᵉʳ janvier)",
+  lundi_de_paques: 'Lundi de Pâques',
+  fete_du_travail: 'Fête du Travail (1ᵉʳ mai)',
+  victoire_1945: 'Victoire 1945 (8 mai)',
+  ascension: 'Ascension',
+  lundi_de_pentecote: 'Lundi de Pentecôte',
+  fete_nationale: 'Fête nationale (14 juillet)',
+  assomption: 'Assomption (15 août)',
+  toussaint: 'Toussaint (1ᵉʳ novembre)',
+  armistice_1918: 'Armistice 1918 (11 novembre)',
+  noel: 'Noël (25 décembre)',
+};
+
 function ScheduleEditor({ storeId }: { storeId: string }) {
   const [schedule, setSchedule] = useState<ScheduleDay[]>(
     DAY_ORDER.map((d) => ({ dayOfWeek: d, closed: false, openTime: '09:00', closeTime: '20:00' }))
   );
+  const [holidays, setHolidays] = useState<Array<{ key: string; closed: boolean }>>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  // client MIRROR of the server validation (UX only — the server re-validates)
+  const errors = validateScheduleDays(schedule);
+  const hasErrors = Object.keys(errors).length > 0;
 
   useEffect(() => {
-    storesApi.getSchedule(storeId).then((res) => {
-      const data = Array.isArray(res.data) ? res.data : [];
-      if (data.length > 0) {
-        setSchedule(DAY_ORDER.map((d) => {
-          const found = data.find((s: any) => s.dayOfWeek === d);
-          return found
-            ? { dayOfWeek: d, closed: found.closed, openTime: found.openTime || '09:00', closeTime: found.closeTime || '20:00' }
-            : { dayOfWeek: d, closed: false, openTime: '09:00', closeTime: '20:00' };
-        }));
-      }
-    }).catch(() => {}).finally(() => setLoading(false));
+    Promise.all([storesApi.getSchedule(storeId), storesApi.getHolidayClosures(storeId)])
+      .then(([schedRes, holRes]) => {
+        // schedule datum shape: { source, days } (legacy arrays tolerated)
+        const data = Array.isArray(schedRes.data?.days) ? schedRes.data.days : Array.isArray(schedRes.data) ? schedRes.data : [];
+        if (data.length > 0) {
+          setSchedule(DAY_ORDER.map((d) => {
+            const found = data.find((s: any) => s.dayOfWeek === d);
+            return found
+              ? { dayOfWeek: d, closed: found.closed, openTime: found.openTime || '09:00', closeTime: found.closeTime || '20:00' }
+              : { dayOfWeek: d, closed: false, openTime: '09:00', closeTime: '20:00' };
+          }));
+        }
+        if (Array.isArray(holRes.data)) setHolidays(holRes.data);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, [storeId]);
 
   const handleSaveSchedule = async () => {
+    if (hasErrors) return; // mirror only — the server re-validates anyway
     setSaving(true);
     try {
       await storesApi.updateSchedule(storeId, schedule);
+      await storesApi.updateHolidayClosures(storeId, holidays.filter((h) => h.closed).map((h) => h.key));
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch {
@@ -68,6 +94,9 @@ function ScheduleEditor({ storeId }: { storeId: string }) {
       setSaving(false);
     }
   };
+
+  const toggleHoliday = (key: string) =>
+    setHolidays((prev) => prev.map((h) => (h.key === key ? { ...h, closed: !h.closed } : h)));
 
   const updateDay = (dayOfWeek: number, field: string, value: any) => {
     setSchedule((prev) =>
@@ -87,7 +116,7 @@ function ScheduleEditor({ storeId }: { storeId: string }) {
         <button
           type="button"
           onClick={handleSaveSchedule}
-          disabled={saving}
+          disabled={saving || hasErrors}
           className="px-3 py-1.5 bg-bo-accent text-white text-xs font-semibold rounded-lg hover:bg-bo-accent/90 transition-colors disabled:opacity-50"
         >
           {saving ? 'Sauvegarde...' : saved ? '✓ Sauvegardé' : 'Enregistrer horaires'}
@@ -124,8 +153,27 @@ function ScheduleEditor({ storeId }: { storeId: string }) {
               </>
             )}
             {day.closed && <span className="text-xs text-red-400 italic">Fermé</span>}
+            {!day.closed && errors[day.dayOfWeek] && (
+              <span className="text-xs text-red-500">{errors[day.dayOfWeek]}</span>
+            )}
           </div>
         ))}
+      </div>
+      <div className="mt-4">
+        <h4 className="text-xs font-bold text-bo-text mb-2">Jours fériés — cocher = magasin fermé</h4>
+        <div className="grid grid-cols-2 gap-1.5">
+          {holidays.map((h) => (
+            <label key={h.key} className="flex items-center gap-1.5 cursor-pointer py-1 px-2 rounded-lg bg-white">
+              <input
+                type="checkbox"
+                checked={h.closed}
+                onChange={() => toggleHoliday(h.key)}
+                className="rounded border-gray-300 text-bo-accent focus:ring-bo-accent/30"
+              />
+              <span className="text-xs text-bo-text">{HOLIDAY_LABELS[h.key] ?? h.key}</span>
+            </label>
+          ))}
+        </div>
       </div>
     </div>
   );
