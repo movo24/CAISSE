@@ -105,3 +105,10 @@ UTC depending on DST — a fixed UTC hour mis-fires by 1–2h twice a year, and 
 
 **Cross-ref:** `rules/store-closed-late.rule.ts` (caveat comment), the étage-0 UTC
 business-day convention, the Z_SEAL_SPEC business-day OPEN.
+
+*Addendum (étage-4 review, 2026-06-13) — DISPLAY question, to settle before real
+sessions exist:* the freeze is DELIVERY-only, so `store_closed_late` facts remain
+visible in `GET /mobile/v1/alerts` with the UTC stand-in's 1–2h imprecision.
+Inert in greenfield. Owner decision pending (same resolution as the store-TZ
+policy): either the DISPLAY also waits for the precise TZ, or the UTC stand-in is
+a deliberately acceptable "coarse late" to show without pushing. Not coded yet.

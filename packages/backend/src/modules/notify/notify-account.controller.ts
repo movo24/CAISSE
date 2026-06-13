@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   Delete,
+  Get,
   NotFoundException,
   Param,
   Post,
@@ -66,6 +67,14 @@ export class NotifyAccountController {
     owned.isActive = false;
     await this.devices.save(owned);
     return { status: 'unregistered' };
+  }
+
+  @Get('preferences')
+  async getPreferences(@Req() req: any) {
+    const employeeId = req?.user?.employeeId;
+    const row = await this.prefs.findOne({ where: { employeeId } });
+    // No row yet = the defaults the engine applies: enabled, no quiet window.
+    return row ?? { employeeId, enabled: true, quietStartHour: null, quietEndHour: null };
   }
 
   @Put('preferences')

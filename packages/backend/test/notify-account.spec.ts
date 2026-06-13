@@ -68,6 +68,14 @@ describe('Étage 4 — notify account write surface', () => {
     expect(cleared).toMatchObject({ enabled: false, quietStartHour: null, quietEndHour: null });
   });
 
+  it('GET preferences — returns the saved row, or the engine defaults when none exists', async () => {
+    const fresh = await controller.getPreferences(reqOf(uuidv4()));
+    expect(fresh).toMatchObject({ enabled: true, quietStartHour: null, quietEndHour: null });
+    await controller.setPreferences(reqOf(BOB), { enabled: true, quietStartHour: 21, quietEndHour: 6 });
+    const saved = await controller.getPreferences(reqOf(BOB));
+    expect(saved).toMatchObject({ employeeId: BOB, quietStartHour: 21, quietEndHour: 6 });
+  });
+
   it('ADVERSE — invalid quiet hours → 400 (out of range, or set alone)', async () => {
     await expect(controller.setPreferences(reqOf(ALICE), { quietStartHour: 25, quietEndHour: 7 })).rejects.toBeInstanceOf(BadRequestException);
     await expect(controller.setPreferences(reqOf(ALICE), { quietStartHour: 22 })).rejects.toBeInstanceOf(BadRequestException);
