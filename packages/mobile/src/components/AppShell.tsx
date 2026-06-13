@@ -3,15 +3,19 @@
 // ─────────────────────────────────────────────────────────────────
 
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { ScanBarcode, ClipboardList, PackageCheck, Search } from 'lucide-react';
+import { ScanBarcode, ClipboardList, PackageCheck, Search, Gauge } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 import { OfflineIndicator } from './OfflineIndicator';
+import { canAccessCockpit } from '../cockpit/access';
 
 const tabs = [
-  { path: '/scan', label: 'Scan', icon: ScanBarcode, requiresStock: false },
-  { path: '/inventory', label: 'Inventaire', icon: ClipboardList, requiresStock: true },
-  { path: '/receiving', label: 'Reception', icon: PackageCheck, requiresStock: true },
-  { path: '/search', label: 'Recherche', icon: Search, requiresStock: false },
+  { path: '/scan', label: 'Scan', icon: ScanBarcode, requiresStock: false, requiresCockpit: false },
+  { path: '/inventory', label: 'Inventaire', icon: ClipboardList, requiresStock: true, requiresCockpit: false },
+  { path: '/receiving', label: 'Reception', icon: PackageCheck, requiresStock: true, requiresCockpit: false },
+  { path: '/search', label: 'Recherche', icon: Search, requiresStock: false, requiresCockpit: false },
+  // Cockpit : gate UX (ne pas montrer ce qu'on ne peut pas utiliser) — la
+  // garantie est le scope INV-5 côté serveur, jamais ce filtre.
+  { path: '/cockpit', label: 'Cockpit', icon: Gauge, requiresStock: false, requiresCockpit: true },
 ];
 
 export function AppShell() {
@@ -19,8 +23,11 @@ export function AppShell() {
   const navigate = useNavigate();
   const canModifyStock = useAuthStore((s) => s.canModifyStock);
   const storeInfo = useAuthStore((s) => s.storeInfo);
+  const employee = useAuthStore((s) => s.employee);
 
-  const visibleTabs = tabs.filter((t) => !t.requiresStock || canModifyStock());
+  const visibleTabs = tabs.filter(
+    (t) => (!t.requiresStock || canModifyStock()) && (!t.requiresCockpit || canAccessCockpit(employee?.role)),
+  );
 
   return (
     <div className="flex flex-col min-h-[100dvh] bg-mobile-bg">
