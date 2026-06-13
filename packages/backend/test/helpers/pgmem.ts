@@ -28,6 +28,9 @@ export function createPgMemDataSource(): { db: IMemoryDb; dataSource: DataSource
   // to pre-exist (TypeORM does not create schemas). Additive — public-schema tests
   // are unaffected.
   (db as any).createSchema('analytics');
+  // The notify schema (étage 4: device tokens / preferences / deliveries) — same
+  // pre-creation requirement (TypeORM synchronize does not create schemas).
+  (db as any).createSchema('notify');
   db.public.registerFunction({ name: 'version', returns: DataType.text, implementation: () => 'PostgreSQL 14.0 (pg-mem)' });
   db.public.registerFunction({ name: 'current_database', returns: DataType.text, implementation: () => 'test' });
   // impure: true → pg-mem ne met PAS le résultat en cache (chaque appel génère
