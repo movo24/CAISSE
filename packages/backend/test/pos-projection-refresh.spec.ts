@@ -121,7 +121,7 @@ describe('Étage 0 — POS projection refresh (INV-4)', () => {
       id: PSTORE, name: 'Paris Night', organizationId: ORG, isActive: true, currencyCode: 'EUR',
     } as any);
     await ds.getRepository(AnalyticsStoreClockEntity).save({
-      storeId: PSTORE, timezone: 'Europe/Paris', briefBeatHours: [12, 17], closeHour: 20, isActive: true,
+      storeId: PSTORE, timezone: 'Europe/Paris', briefBeatHours: [12, 17], isActive: true,
     } as any);
     await ds.getRepository(SaleEntity).save([
       { id: uuidv4(), storeId: PSTORE, employeeId: EMP, status: 'completed', subtotalMinorUnits: 0, discountTotalMinorUnits: 0, taxTotalMinorUnits: 0, totalMinorUnits: 700, currencyCode: 'EUR', ticketNumber: `T-${uuidv4().slice(0, 6)}`, createdAt: new Date('2026-06-20T22:15:00Z') }, // 00:15 Paris 06-21 → IN

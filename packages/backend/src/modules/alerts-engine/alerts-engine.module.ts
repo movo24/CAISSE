@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { StoreScheduleModule } from '../store-schedule/store-schedule.module';
 import { AnalyticsStoreRegistryEntity } from '../../database/entities/analytics-store-registry.entity';
 import { AnalyticsStoreDailyEntity } from '../../database/entities/analytics-store-daily.entity';
 import { AnalyticsStoreSessionsEntity } from '../../database/entities/analytics-store-sessions.entity';
@@ -38,6 +39,7 @@ import { TargetReachedRule } from './rules/target-reached.rule';
       AnalyticsStoreTargetEntity,
       AnalyticsStoreClockEntity,
     ]),
+    StoreScheduleModule,
   ],
   providers: [
     VoidRateRule,

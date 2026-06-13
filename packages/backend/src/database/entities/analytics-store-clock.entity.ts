@@ -7,7 +7,7 @@ import { Entity, PrimaryGeneratedColumn, Column, Index } from 'typeorm';
  *
  * A1 (ratified): `timezone` is a real IANA zone (network default seeded
  * 'Europe/Paris' by migration 1730; B43 = Europe/Paris). Every hour below is a
- * LOCAL wall-clock value in that zone — beats, close_hour, the business day all
+ * LOCAL wall-clock value in that zone — beats and the business day
  * read this ONE row (per-store override = one UPDATE of owner data). The original
  * 'Etc/UTC' stand-in (and the D-ALERTS-1 freeze it forced) is gone.
  */
@@ -25,14 +25,13 @@ export class AnalyticsStoreClockEntity {
   @Column({ name: 'timezone', type: 'varchar', default: 'Etc/UTC' })
   timezone: string;
 
-  /** Intraday brief beats (wall-clock hours in `timezone`); the close beat is closeHour. */
+  /** Intraday brief beats (wall-clock hours in `timezone`); the close beat comes
+   * from the schedule resolver (store_weekly_hours) since the schedule chantier. */
   @Column({ name: 'brief_beat_hours', type: 'jsonb' })
   briefBeatHours: number[];
 
   /** Store closing hour (wall-clock in `timezone`) — the 'fermeture' beat AND the
    *  store_closed_late threshold. ONE value, two consumers, zero drift. */
-  @Column({ name: 'close_hour', type: 'integer' })
-  closeHour: number;
 
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;

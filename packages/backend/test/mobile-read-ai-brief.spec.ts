@@ -18,6 +18,8 @@ import { AnalyticsAlertEntity } from '../src/database/entities/analytics-alert.e
 import { AnalyticsStoreTargetEntity } from '../src/database/entities/analytics-store-target.entity';
 import { AnalyticsBriefEntity } from '../src/database/entities/analytics-brief.entity';
 import { AnalyticsStoreClockEntity } from '../src/database/entities/analytics-store-clock.entity';
+import { AnalyticsStoreWeeklyHoursEntity } from '../src/database/entities/analytics-store-weekly-hours.entity';
+import { StoreScheduleService } from '../src/modules/store-schedule/store-schedule.service';
 import { StoreScopeResolverService } from '../src/modules/analytics-projection/store-scope-resolver.service';
 import { BriefFindingsService } from '../src/modules/ai-brief/brief-findings.service';
 import { TemplateBriefNarrator } from '../src/modules/ai-brief/brief-narrator.interface';
@@ -63,13 +65,19 @@ describe('Étage 3 — GET /mobile/v1/ai-brief (scoped brief)', () => {
     );
     // The single wall-clock datum (UTC stand-in) — beats 10/15 + close 20.
     await ds.getRepository(AnalyticsStoreClockEntity).save({
-      storeId: null, timezone: 'Etc/UTC', briefBeatHours: [10, 15], closeHour: 20, isActive: true,
+      storeId: null, timezone: 'Etc/UTC', briefBeatHours: [10, 15], isActive: true,
     } as any);
+    for (let weekday = 0; weekday <= 6; weekday++) {
+      await ds.getRepository(AnalyticsStoreWeeklyHoursEntity).save({
+        storeId: null, weekday, openLocal: '09:00', closeLocal: '20:00', isClosed: false, isActive: true,
+      } as any);
+    }
     const service = new AiBriefService(
       findings,
       new TemplateBriefNarrator(),
       ds.getRepository(AnalyticsBriefEntity),
       ds.getRepository(AnalyticsStoreClockEntity),
+      new StoreScheduleService(ds.getRepository(AnalyticsStoreWeeklyHoursEntity)),
     );
     const resolver = new StoreScopeResolverService(ds.getRepository(StoreEntity), ds.getRepository(EmployeeStoreAccessEntity));
     controller = new AiBriefController(resolver, service);

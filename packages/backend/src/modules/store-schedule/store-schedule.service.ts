@@ -26,10 +26,11 @@ export class StoreScheduleService {
     private readonly weeklyHours: Repository<AnalyticsStoreWeeklyHoursEntity>,
   ) {}
 
-  async resolve(storeId: string, localDay: string): Promise<ResolvedSchedule> {
+  /** storeId null → network default rows only (e.g. a multi-store brief scope). */
+  async resolve(storeId: string | null, localDay: string): Promise<ResolvedSchedule> {
     const weekday = weekdayOf(localDay);
     const row =
-      (await this.weeklyHours.findOne({ where: { storeId, weekday, isActive: true } })) ??
+      (storeId ? await this.weeklyHours.findOne({ where: { storeId, weekday, isActive: true } }) : null) ??
       (await this.weeklyHours.findOne({ where: { storeId: IsNull(), weekday, isActive: true } }));
     if (!row) return null; // no datum — callers skip (never invent an hour)
     if (row.isClosed || row.openLocal == null || row.closeLocal == null) return 'closed';

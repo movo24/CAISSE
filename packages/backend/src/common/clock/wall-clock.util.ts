@@ -53,6 +53,12 @@ export function localHourOf(date: Date, timeZone: string): number {
   return partsInZone(date, timeZone).h;
 }
 
+/** Minutes since local midnight (0–1439) — for wall-clock threshold compares. */
+export function localMinutesOfDay(date: Date, timeZone: string): number {
+  const p = partsInZone(date, timeZone);
+  return p.h * 60 + p.min;
+}
+
 /** Calendar-day arithmetic on YYYY-MM-DD strings (zone-free by construction). */
 export function shiftDayString(day: string, delta: number): string {
   const [y, m, d] = day.split('-').map(Number);

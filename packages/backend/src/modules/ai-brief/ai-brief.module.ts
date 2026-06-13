@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { StoreScheduleModule } from '../store-schedule/store-schedule.module';
 import { AnalyticsStoreDailyEntity } from '../../database/entities/analytics-store-daily.entity';
 import { AnalyticsStoreSessionsEntity } from '../../database/entities/analytics-store-sessions.entity';
 import { AnalyticsStorePresenceEntity } from '../../database/entities/analytics-store-presence.entity';
@@ -38,6 +39,7 @@ import { AiBriefController } from './ai-brief.controller';
       AnalyticsStoreClockEntity,
     ]),
     AnalyticsProjectionModule,
+    StoreScheduleModule,
   ],
   controllers: [AiBriefController],
   providers: [

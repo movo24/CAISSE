@@ -3,19 +3,20 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
 import { AnalyticsStoreSessionsEntity } from '../../../database/entities/analytics-store-sessions.entity';
 import { AnalyticsStoreClockEntity } from '../../../database/entities/analytics-store-clock.entity';
-import { localHourOf } from '../../../common/clock/wall-clock.util';
+import { localMinutesOfDay } from '../../../common/clock/wall-clock.util';
+import { StoreScheduleService, minutesOf } from '../../store-schedule/store-schedule.service';
 import { AlertFact, AlertRule, AlertRuleContext } from '../alert-rule.interface';
 
 /**
- * store_closed_late — POS sessions still OPEN past the store's closing hour.
+ * store_closed_late — POS sessions still OPEN past the store's closing time.
  * Source (INV-4): analytics.store_sessions open_sessions (the sessions projection).
  *
- * The closing hour comes from analytics.store_clock — the SINGLE wall-clock datum
- * shared with the ai-brief beats and the business-day definition (ratified:
- * never a "beats TZ" separate from an "alerts TZ"). A1 ratified: the hour is
- * evaluated in the row's IANA timezone (LOCAL wall-clock, DST-correct) — the UTC
- * stand-in is gone, which is what dissolved D-ALERTS-1. Per-store override else
- * network default; no clock row → silent (no invented closing hour).
+ * The closing time comes from the SCHEDULE RESOLVER (store_weekly_hours — the
+ * single schedule source shared with the close beat; neither re-derives). The
+ * timezone stays the store_clock datum (A1): the threshold compares LOCAL
+ * wall-clock minutes, DST-correct. A day the schedule resolves CLOSED never
+ * fires (an open session in a closed store is a different problem than "late").
+ * No clock datum or no schedule datum → silent (no invented hours).
  */
 @Injectable()
 export class StoreClosedLateRule implements AlertRule {
@@ -26,21 +27,27 @@ export class StoreClosedLateRule implements AlertRule {
     private readonly sessions: Repository<AnalyticsStoreSessionsEntity>,
     @InjectRepository(AnalyticsStoreClockEntity)
     private readonly clock: Repository<AnalyticsStoreClockEntity>,
+    private readonly schedule: StoreScheduleService,
   ) {}
 
   async evaluate({ storeId, businessDay, now }: AlertRuleContext): Promise<AlertFact[]> {
     const clock =
       (await this.clock.findOne({ where: { storeId, isActive: true } })) ??
       (await this.clock.findOne({ where: { storeId: IsNull(), isActive: true } }));
-    if (!clock) return []; // no clock datum → no invented closing hour
+    if (!clock) return []; // no TZ datum → no invented wall-clock
 
-    // A1: LOCAL wall-clock in the datum's IANA timezone (DST-correct).
-    const observedLocalHour = localHourOf(now, clock.timezone);
-    if (observedLocalHour < clock.closeHour) return []; // store still legitimately open
+    const sched = await this.schedule.resolve(storeId, businessDay);
+    if (!sched) return []; // no schedule datum → no invented closing time
+    if (sched === 'closed') return []; // ADVERSE (ratified): a CLOSED day never fires
+
+    // A1: LOCAL wall-clock minutes in the datum's IANA timezone (DST-correct).
+    const observedMinutes = localMinutesOfDay(now, clock.timezone);
+    if (observedMinutes < minutesOf(sched.closeLocal)) return []; // legitimately open
 
     const s = await this.sessions.findOne({ where: { storeId } });
     if (!s || s.openSessions === 0) return []; // properly closed → silent
 
+    const observedLocal = `${String(Math.floor(observedMinutes / 60)).padStart(2, '0')}:${String(observedMinutes % 60).padStart(2, '0')}`;
     return [
       {
         rule: this.name,
@@ -49,9 +56,9 @@ export class StoreClosedLateRule implements AlertRule {
         payload: {
           openSessions: s.openSessions,
           activeTerminals: s.activeTerminals,
-          closeHour: clock.closeHour,
+          closeLocal: sched.closeLocal,
           clockTimezone: clock.timezone,
-          observedLocalHour,
+          observedLocal,
         },
       },
     ];

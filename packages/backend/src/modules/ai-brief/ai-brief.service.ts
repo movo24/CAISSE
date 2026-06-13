@@ -4,6 +4,7 @@ import { IsNull, Repository } from 'typeorm';
 import { createHash } from 'crypto';
 import { AnalyticsBriefEntity } from '../../database/entities/analytics-brief.entity';
 import { AnalyticsStoreClockEntity } from '../../database/entities/analytics-store-clock.entity';
+import { StoreScheduleService, minutesOf } from '../store-schedule/store-schedule.service';
 import { BriefFindingsService } from './brief-findings.service';
 import { BRIEF_NARRATOR, BriefNarrator, renderTemplateBrief } from './brief-narrator.interface';
 import { verifyBriefProvenance } from './brief-provenance.util';
@@ -42,6 +43,7 @@ export class AiBriefService {
     @Inject(BRIEF_NARRATOR) private readonly narrator: BriefNarrator,
     @InjectRepository(AnalyticsBriefEntity) private readonly briefs: Repository<AnalyticsBriefEntity>,
     @InjectRepository(AnalyticsStoreClockEntity) private readonly clock: Repository<AnalyticsStoreClockEntity>,
+    private readonly schedule: StoreScheduleService,
   ) {}
 
   async getOrGenerate(scope: string[], now: Date = new Date()): Promise<BriefResult> {
@@ -52,7 +54,16 @@ export class AiBriefService {
     const clock = await this.clock.findOne({ where: { storeId: IsNull(), isActive: true } });
     const tz = clock?.timezone ?? 'Etc/UTC'; // no datum → degraded UTC labelling (nothing generated anyway)
     const businessDay = localDayString(now, tz);
-    const beats = clock ? [...(clock.briefBeatHours ?? []), clock.closeHour].sort((a, b) => a - b) : [];
+    const beats = clock ? [...(clock.briefBeatHours ?? [])] : [];
+    if (clock) {
+      // Close beat from THE schedule resolver (single source, shared with
+      // store_closed_late). A CLOSED day has no close beat (ratified); the beat
+      // hour is the close ceiled to the next full hour — a brief AT/AFTER close,
+      // never before (exact for round closes). Multi-store scope → network default.
+      const sched = await this.schedule.resolve(scope.length === 1 ? scope[0] : null, businessDay);
+      if (sched && sched !== 'closed') beats.push(Math.ceil(minutesOf(sched.closeLocal) / 60));
+    }
+    beats.sort((a, b) => a - b);
     const passed = beats.filter((h) => h <= localHourOf(now, tz));
 
     if (passed.length === 0) {

@@ -19,6 +19,8 @@ import { AnalyticsAlertEntity } from '../src/database/entities/analytics-alert.e
 import { AnalyticsStoreTargetEntity } from '../src/database/entities/analytics-store-target.entity';
 import { AnalyticsBriefEntity } from '../src/database/entities/analytics-brief.entity';
 import { AnalyticsStoreClockEntity } from '../src/database/entities/analytics-store-clock.entity';
+import { AnalyticsStoreWeeklyHoursEntity } from '../src/database/entities/analytics-store-weekly-hours.entity';
+import { StoreScheduleService } from '../src/modules/store-schedule/store-schedule.service';
 import { BriefFindingsService, BriefFindings } from '../src/modules/ai-brief/brief-findings.service';
 import { BriefNarrator } from '../src/modules/ai-brief/brief-narrator.interface';
 import { AiBriefService } from '../src/modules/ai-brief/ai-brief.service';
@@ -43,15 +45,24 @@ describe('Étage 3 — AiBriefService (beats + guard + hold-until-next-beat)', (
   const STORE = uuidv4();
 
   const makeService = (narrator: BriefNarrator) =>
-    new AiBriefService(findings, narrator, ds.getRepository(AnalyticsBriefEntity), ds.getRepository(AnalyticsStoreClockEntity));
+    new AiBriefService(
+      findings, narrator, ds.getRepository(AnalyticsBriefEntity), ds.getRepository(AnalyticsStoreClockEntity),
+      new StoreScheduleService(ds.getRepository(AnalyticsStoreWeeklyHoursEntity)),
+    );
 
   beforeAll(async () => {
     const { dataSource } = createPgMemDataSource();
     ds = dataSource.isInitialized ? dataSource : await dataSource.initialize();
-    // The single wall-clock datum (UTC stand-in): beats 10/15 + close 20.
+    // The wall-clock datum: TZ + intraday beats 10/15; the close beat (20:00)
+    // comes from the weekly schedule (the resolver's single source).
     await ds.getRepository(AnalyticsStoreClockEntity).save({
-      storeId: null, timezone: 'Etc/UTC', briefBeatHours: [10, 15], closeHour: 20, isActive: true,
+      storeId: null, timezone: 'Etc/UTC', briefBeatHours: [10, 15], isActive: true,
     } as any);
+    for (let weekday = 0; weekday <= 6; weekday++) {
+      await ds.getRepository(AnalyticsStoreWeeklyHoursEntity).save({
+        storeId: null, weekday, openLocal: '09:00', closeLocal: '20:00', isClosed: false, isActive: true,
+      } as any);
+    }
     await ds.getRepository(AnalyticsStoreRegistryEntity).save({
       storeId: STORE, name: 'B43', organizationId: null, unitId: null, isActive: true, computedAt: T1,
     } as any);
@@ -150,7 +161,6 @@ describe('Étage 3 — AiBriefService (beats + guard + hold-until-next-beat)', (
       const clock = await ds.getRepository(AnalyticsStoreClockEntity).findOne({ where: { storeId: IsNull() } });
       clock!.timezone = 'Europe/Paris';
       clock!.briefBeatHours = [12, 17];
-      clock!.closeHour = 20;
       await ds.getRepository(AnalyticsStoreClockEntity).save(clock!);
       await ds.getRepository(AnalyticsStoreRegistryEntity).save({
         storeId: PSTORE, name: 'B43', organizationId: null, unitId: null, isActive: true, computedAt: new Date('2026-06-20T09:00:00Z'),
@@ -164,7 +174,6 @@ describe('Étage 3 — AiBriefService (beats + guard + hold-until-next-beat)', (
       const clock = await ds.getRepository(AnalyticsStoreClockEntity).findOne({ where: { storeId: IsNull() } });
       clock!.timezone = 'Etc/UTC';
       clock!.briefBeatHours = [10, 15];
-      clock!.closeHour = 20;
       await ds.getRepository(AnalyticsStoreClockEntity).save(clock!);
     });
 
