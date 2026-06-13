@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
 import { AnalyticsStoreSessionsEntity } from '../../../database/entities/analytics-store-sessions.entity';
 import { AnalyticsStoreClockEntity } from '../../../database/entities/analytics-store-clock.entity';
+import { localHourOf } from '../../../common/clock/wall-clock.util';
 import { AlertFact, AlertRule, AlertRuleContext } from '../alert-rule.interface';
 
 /**
@@ -10,13 +11,11 @@ import { AlertFact, AlertRule, AlertRuleContext } from '../alert-rule.interface'
  * Source (INV-4): analytics.store_sessions open_sessions (the sessions projection).
  *
  * The closing hour comes from analytics.store_clock — the SINGLE wall-clock datum
- * shared with the ai-brief beats and the (future) business-day definition
- * (ratified: never a "beats TZ" separate from an "alerts TZ"). Per-store override
- * else network default; no clock row → silent (no invented closing hour).
- *
- * D-ALERTS-1 still applies: the clock's timezone is the UTC STAND-IN today, so
- * the hour comparison is UTC wall-clock — generation is fine (greenfield-inert),
- * but étage 4 must NOT deliver this rule until the real store-TZ policy lands.
+ * shared with the ai-brief beats and the business-day definition (ratified:
+ * never a "beats TZ" separate from an "alerts TZ"). A1 ratified: the hour is
+ * evaluated in the row's IANA timezone (LOCAL wall-clock, DST-correct) — the UTC
+ * stand-in is gone, which is what dissolved D-ALERTS-1. Per-store override else
+ * network default; no clock row → silent (no invented closing hour).
  */
 @Injectable()
 export class StoreClosedLateRule implements AlertRule {
@@ -35,8 +34,9 @@ export class StoreClosedLateRule implements AlertRule {
       (await this.clock.findOne({ where: { storeId: IsNull(), isActive: true } }));
     if (!clock) return []; // no clock datum → no invented closing hour
 
-    // UTC stand-in: hours are read as UTC until the store-TZ policy lands (D-ALERTS-1).
-    if (now.getUTCHours() < clock.closeHour) return []; // store still legitimately open
+    // A1: LOCAL wall-clock in the datum's IANA timezone (DST-correct).
+    const observedLocalHour = localHourOf(now, clock.timezone);
+    if (observedLocalHour < clock.closeHour) return []; // store still legitimately open
 
     const s = await this.sessions.findOne({ where: { storeId } });
     if (!s || s.openSessions === 0) return []; // properly closed → silent
@@ -51,7 +51,7 @@ export class StoreClosedLateRule implements AlertRule {
           activeTerminals: s.activeTerminals,
           closeHour: clock.closeHour,
           clockTimezone: clock.timezone,
-          observedHourUtc: now.getUTCHours(),
+          observedLocalHour,
         },
       },
     ];

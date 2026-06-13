@@ -53,7 +53,7 @@ describe('Étage 2 — store_closed_late rule (single clock datum)', () => {
     const facts = await rule.evaluate(ctx(s, LATE) as any);
     expect(facts).toHaveLength(1);
     expect(facts[0]).toMatchObject({ rule: 'store_closed_late', thresholdBand: 'open_after_close', businessDay: DAY });
-    expect(facts[0].payload).toMatchObject({ openSessions: 2, closeHour: 21, clockTimezone: 'Etc/UTC', observedHourUtc: 22 });
+    expect(facts[0].payload).toMatchObject({ openSessions: 2, closeHour: 21, clockTimezone: 'Etc/UTC', observedLocalHour: 22 });
   });
 
   it('a PER-STORE clock override wins over the default (close 18 → fires at 19h)', async () => {
@@ -65,6 +65,22 @@ describe('Étage 2 — store_closed_late rule (single clock datum)', () => {
     const facts = await rule.evaluate(ctx(s, at19) as any);
     expect(facts).toHaveLength(1);
     expect(facts[0].payload).toMatchObject({ closeHour: 18 });
+  });
+
+  it('DECISIVE DST (A1) — LOCAL wall-clock: same wall hour on both sides of the Paris flip → same behaviour', async () => {
+    const s = await seedSessions(2);
+    await ds.getRepository(AnalyticsStoreClockEntity).save({
+      storeId: s, timezone: 'Europe/Paris', briefBeatHours: [12, 17], closeHour: 20, isActive: true,
+    } as any);
+    // Saturday pre-flip (UTC+1): 19:30Z = 20:30 LOCAL → fires.
+    const pre = await rule.evaluate(ctx(s, new Date('2026-03-28T19:30:00Z')) as any);
+    // Monday post-flip (UTC+2): 18:30Z = 20:30 LOCAL → fires too — the UTC hour (18)
+    // is BELOW close_hour 20: the old UTC stand-in would have stayed silent here.
+    const post = await rule.evaluate(ctx(s, new Date('2026-03-30T18:30:00Z')) as any);
+    expect(pre).toHaveLength(1);
+    expect(post).toHaveLength(1);
+    expect(pre[0].payload).toMatchObject({ observedLocalHour: 20, clockTimezone: 'Europe/Paris' });
+    expect(post[0].payload).toMatchObject({ observedLocalHour: 20, clockTimezone: 'Europe/Paris' });
   });
 
   it('ADVERSE — before the closing hour → silent (the store is legitimately open)', async () => {

@@ -8,6 +8,7 @@ import { BriefFindingsService } from './brief-findings.service';
 import { BRIEF_NARRATOR, BriefNarrator, renderTemplateBrief } from './brief-narrator.interface';
 import { verifyBriefProvenance } from './brief-provenance.util';
 import { guardedProjectionUpsert } from '../analytics-projection/projection-upsert.util';
+import { localDayString, localHourOf } from '../../common/clock/wall-clock.util';
 
 export interface BriefResult {
   businessDay: string;
@@ -44,13 +45,15 @@ export class AiBriefService {
   ) {}
 
   async getOrGenerate(scope: string[], now: Date = new Date()): Promise<BriefResult> {
-    const businessDay = now.toISOString().slice(0, 10); // UTC stand-in day (store_clock TZ later)
     const scopeKey = keyOfScope(scope);
 
-    // ── which beat are we in? (network-default clock; per-store TZ comes with the policy) ──
+    // ── which beat are we in? A1: LOCAL wall-clock in the clock datum's IANA
+    //    timezone (DST-correct); the business day is the LOCAL calendar day. ──
     const clock = await this.clock.findOne({ where: { storeId: IsNull(), isActive: true } });
+    const tz = clock?.timezone ?? 'Etc/UTC'; // no datum → degraded UTC labelling (nothing generated anyway)
+    const businessDay = localDayString(now, tz);
     const beats = clock ? [...(clock.briefBeatHours ?? []), clock.closeHour].sort((a, b) => a - b) : [];
-    const passed = beats.filter((h) => h <= now.getUTCHours());
+    const passed = beats.filter((h) => h <= localHourOf(now, tz));
 
     if (passed.length === 0) {
       // Before the first beat (or no clock datum): the stable text is the latest

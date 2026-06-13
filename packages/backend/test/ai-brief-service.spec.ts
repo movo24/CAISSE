@@ -7,7 +7,7 @@
  *  - before the day's first beat, the latest persisted brief stays served
  *    (stable overnight). Clock = analytics.store_clock (UTC stand-in).
  */
-import { DataSource } from 'typeorm';
+import { DataSource, IsNull } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
 import { createPgMemDataSource } from './helpers/pgmem';
 import { AnalyticsStoreDailyEntity } from '../src/database/entities/analytics-store-daily.entity';
@@ -141,5 +141,50 @@ describe('Étage 3 — AiBriefService (beats + guard + hold-until-next-beat)', (
     expect(r).toMatchObject({ status: 'no_data', beat: 10 });
     expect(r.text).toBeNull();
     expect(await ds.getRepository(AnalyticsBriefEntity).count()).toBe(0);
+  });
+
+  describe('A1 — beats + business day in LOCAL wall-clock (Europe/Paris)', () => {
+    const PSTORE = uuidv4();
+
+    beforeAll(async () => {
+      const clock = await ds.getRepository(AnalyticsStoreClockEntity).findOne({ where: { storeId: IsNull() } });
+      clock!.timezone = 'Europe/Paris';
+      clock!.briefBeatHours = [12, 17];
+      clock!.closeHour = 20;
+      await ds.getRepository(AnalyticsStoreClockEntity).save(clock!);
+      await ds.getRepository(AnalyticsStoreRegistryEntity).save({
+        storeId: PSTORE, name: 'B43', organizationId: null, unitId: null, isActive: true, computedAt: new Date('2026-06-20T09:00:00Z'),
+      } as any);
+      await ds.getRepository(AnalyticsStoreDailyEntity).save({
+        storeId: PSTORE, businessDay: '2026-06-20', caBrutMinor: 150000, netMinor: 150000, txCount: 42,
+        voidCount: 0, voidAmountMinor: 0, returnsAmountMinor: 0, discountTotalMinor: 0, computedAt: new Date('2026-06-20T09:00:00Z'),
+      } as any);
+    });
+    afterAll(async () => {
+      const clock = await ds.getRepository(AnalyticsStoreClockEntity).findOne({ where: { storeId: IsNull() } });
+      clock!.timezone = 'Etc/UTC';
+      clock!.briefBeatHours = [10, 15];
+      clock!.closeHour = 20;
+      await ds.getRepository(AnalyticsStoreClockEntity).save(clock!);
+    });
+
+    it('DECISIVE — the midday beat passes by LOCAL hour: 11:30Z = 13:30 Paris → beat 12 (UTC hour 11 would have said none)', async () => {
+      const honest = new ScriptedNarrator(honestScript);
+      const r = await makeService(honest).getOrGenerate([PSTORE], new Date('2026-06-20T11:30:00Z'));
+      expect(r).toMatchObject({ status: 'rendered', beat: 12, businessDay: '2026-06-20' });
+      expect(honest.calls).toBe(1);
+    });
+
+    it('the business day rolls over at LOCAL midnight: 22:30Z = 00:30 Paris next day → pre-first-beat, yesterday’s brief stays served', async () => {
+      const honest = new ScriptedNarrator(honestScript);
+      const svc = makeService(honest);
+      const dayBrief = await svc.getOrGenerate([PSTORE], new Date('2026-06-20T13:00:00Z')); // beat 12, persisted
+      expect(dayBrief).toMatchObject({ status: 'rendered', beat: 12 });
+
+      const r = await svc.getOrGenerate([PSTORE], new Date('2026-06-20T22:30:00Z')); // 00:30 Paris, day 06-21
+      expect(honest.calls).toBe(1); // nothing NEW generated at 00:30 local
+      expect(r).toMatchObject({ businessDay: '2026-06-20', beat: 12 }); // the previous local day's brief
+      expect(r.text).toBe(dayBrief.text);
+    });
   });
 });
