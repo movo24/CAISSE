@@ -14,8 +14,8 @@ import { PUSH_SENDER, LogPushSender } from './push-sender.interface';
 /**
  * Wesley Command Center — étage 4 (push). The account WRITE surface (device
  * registration + preferences, JwtAuthGuard, separate from the GET-only cockpit
- * router) and the delivery engine (alert facts → scoped devices, quiet hours,
- * store_closed_late delivery-frozen by D-ALERTS-1, INV-6 ledger). The concrete
+ * router) and the delivery engine (alert facts → scoped devices, LOCAL quiet
+ * hours, structural freeze list — empty since A1, INV-6 ledger). The concrete
  * push provider is an owner decision on the PUSH_SENDER seam — default = the
  * provider-free LOG floor.
  */

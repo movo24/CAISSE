@@ -17,10 +17,10 @@ import { localHourOf } from '../../common/clock/wall-clock.util';
  * registered devices, scoped per recipient (INV-5 resolver: a manager never
  * receives another org's alert).
  *
- * - D-ALERTS-1 FREEZE (structural, not advisory): `store_closed_late` is excluded
- *   from delivery — its wall-clock threshold runs on the UTC stand-in, so paging a
- *   human on it would page at the wrong hour twice a year. Generation continues;
- *   delivery waits for the real store-TZ policy.
+ * - Delivery freeze list (structural seam, currently EMPTY): a rule named there is
+ *   excluded from delivery while its semantics are in question — generation
+ *   continues, nothing crosses the seam nor the ledger. D-ALERTS-1 (store_closed_late
+ *   on the UTC stand-in) was its first occupant, closed by A1 (LOCAL wall-clock).
  * - Quiet hours (USER data, no invented defaults): a device in its quiet window
  *   is SKIPPED with nothing recorded — the alert stays eligible and is delivered
  *   on the first tick after the window (within the 24h sweep).
@@ -31,8 +31,8 @@ import { localHourOf } from '../../common/clock/wall-clock.util';
  */
 @Injectable()
 export class NotifyDeliveryService {
-  /** D-ALERTS-1: delivery-frozen rules (generation unaffected). */
-  static readonly DELIVERY_FROZEN_RULES = ['store_closed_late'];
+  /** Delivery-frozen rules (generation unaffected). Empty since A1 closed D-ALERTS-1. */
+  static readonly DELIVERY_FROZEN_RULES: string[] = [];
 
   private readonly logger = new Logger(NotifyDeliveryService.name);
 

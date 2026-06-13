@@ -5,14 +5,11 @@ import { Entity, PrimaryGeneratedColumn, Column, Index } from 'typeorm';
  * source consumed by the ai-brief BEATS, the store_closed_late rule, and (future)
  * the business-day definition. Never three parallel TZ configs that drift.
  *
- * STAND-IN (documented): `timezone` is seeded 'Etc/UTC' — hours below are read as
- * UTC wall-clock until the real store-TZ policy lands (D-ALERTS-1). With the UTC
- * stand-in, the seeded defaults (beats [10, 15] + close 20) sit ≈ 12h/17h/22h
- * Paris in summer and drift 1h across DST — acceptable for brief beats (benign),
- * NOT for delivering a "late" alert (which is why store_closed_late stays
- * delivery-frozen by D-ALERTS-1 even though it reads this datum).
- * When the TZ policy lands: set `timezone` per store, interpret the hours in it —
- * beats, the late rule and the business day all upgrade from this ONE row.
+ * A1 (ratified): `timezone` is a real IANA zone (network default seeded
+ * 'Europe/Paris' by migration 1730; B43 = Europe/Paris). Every hour below is a
+ * LOCAL wall-clock value in that zone — beats, close_hour, the business day all
+ * read this ONE row (per-store override = one UPDATE of owner data). The original
+ * 'Etc/UTC' stand-in (and the D-ALERTS-1 freeze it forced) is gone.
  */
 @Entity({ schema: 'analytics', name: 'store_clock' })
 @Index(['storeId'], { unique: true })

@@ -1,6 +1,7 @@
 /**
  * Étage 4 — delivery engine. DECISIVE cases:
- *  - store_closed_late is NEVER delivered (D-ALERTS-1 freeze, structural);
+ *  - store_closed_late IS delivered since A1 (LOCAL wall-clock closed D-ALERTS-1)
+ *    — the freeze mechanism stays, its list is empty;
  *  - recipient scope at delivery time (another org's device gets nothing);
  *  - INV-6: a re-tick never double-delivers (unique (alert, device) claim);
  *  - quiet hours (user data): held with NOTHING recorded, delivered after the window;
@@ -87,15 +88,14 @@ describe('Étage 4 — notify delivery engine', () => {
     await ds?.destroy();
   });
 
-  it('DECISIVE — delivers the in-scope fact, NEVER store_closed_late (D-ALERTS-1), nothing out of scope', async () => {
+  it('DECISIVE — delivers the in-scope facts INCLUDING store_closed_late (A1 dégel), nothing out of scope', async () => {
     const r = await svc.deliverAll(new Date());
-    expect(r.sent).toBe(1); // void_rate → the manager's device, and nothing else
-    expect(sender.sent).toHaveLength(1);
-    expect(sender.sent[0].token).toBe('tok-manager');
-    expect(sender.sent[0].payload.data.rule).toBe('void_rate');
-    // the frozen rule never crossed the seam nor the ledger:
-    expect(sender.sent.some((s) => s.payload.data.rule === 'store_closed_late')).toBe(false);
-    expect(await ds.getRepository(NotifyDeliveryEntity).count({ where: { alertId: frozenAlertId } })).toBe(0);
+    expect(r.sent).toBe(2); // void_rate + store_closed_late → the manager's device, nothing else
+    expect(sender.sent).toHaveLength(2);
+    expect(sender.sent.every((s) => s.token === 'tok-manager')).toBe(true);
+    const rules = sender.sent.map((s) => s.payload.data.rule).sort();
+    expect(rules).toEqual(['store_closed_late', 'void_rate']); // the dégel is THE decisive change
+    expect(await ds.getRepository(NotifyDeliveryEntity).count({ where: { alertId: frozenAlertId } })).toBe(1);
     // the outsider's device (other org) got nothing:
     expect(sender.sent.some((s) => s.token === 'tok-outsider')).toBe(false);
   });
@@ -104,7 +104,7 @@ describe('Étage 4 — notify delivery engine', () => {
     const r = await svc.deliverAll(new Date());
     expect(r.sent).toBe(0);
     expect(await ds.getRepository(NotifyDeliveryEntity).count({ where: { alertId: voidAlertId } })).toBe(1);
-    expect(sender.sent).toHaveLength(1); // unchanged
+    expect(sender.sent).toHaveLength(2); // unchanged
   });
 
   it('DECISIVE quiet hours — held with NOTHING recorded, then delivered after the window', async () => {
