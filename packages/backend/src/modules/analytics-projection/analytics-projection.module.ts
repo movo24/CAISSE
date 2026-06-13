@@ -12,6 +12,7 @@ import { AnalyticsStoreSessionsEntity } from '../../database/entities/analytics-
 import { AnalyticsStorePresenceEntity } from '../../database/entities/analytics-store-presence.entity';
 import { AnalyticsStoreStockEntity } from '../../database/entities/analytics-store-stock.entity';
 import { AnalyticsStoreRegistryEntity } from '../../database/entities/analytics-store-registry.entity';
+import { AnalyticsStoreClockEntity } from '../../database/entities/analytics-store-clock.entity';
 import { TimewinModule } from '../timewin/timewin.module';
 import { StoreScopeResolverService } from './store-scope-resolver.service';
 import { PosProjectionRefreshService } from './pos-projection-refresh.service';
@@ -39,6 +40,7 @@ import { StockProjectionRefreshService } from './stock-projection-refresh.servic
       AnalyticsStorePresenceEntity,
       AnalyticsStoreStockEntity,
       AnalyticsStoreRegistryEntity,
+      AnalyticsStoreClockEntity,
     ]),
     TimewinModule,
   ],

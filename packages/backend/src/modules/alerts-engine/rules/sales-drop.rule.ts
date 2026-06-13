@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AnalyticsStoreDailyEntity } from '../../../database/entities/analytics-store-daily.entity';
+import { shiftDayString } from '../../../common/clock/wall-clock.util';
 import { AlertFact, AlertRule, AlertRuleContext } from '../alert-rule.interface';
 
 /**
@@ -27,7 +28,7 @@ export class SalesDropRule implements AlertRule {
     private readonly daily: Repository<AnalyticsStoreDailyEntity>,
   ) {}
 
-  async evaluate({ storeId, now, params }: AlertRuleContext): Promise<AlertFact[]> {
+  async evaluate({ storeId, businessDay, params }: AlertRuleContext): Promise<AlertFact[]> {
     if (!params) return [];
     const dropPct = Number(params.drop_pct ?? NaN);
     const lookbackWeeks = Number(params.lookback_weeks ?? 4);
@@ -35,13 +36,14 @@ export class SalesDropRule implements AlertRule {
     const minBaseline = Number(params.min_baseline_minor ?? 0);
     if (Number.isNaN(dropPct)) return [];
 
-    const closedDay = shiftDay(now, -1);
+    // A1: day arithmetic on the engine-provided LOCAL business day (zone-free strings).
+    const closedDay = shiftDayString(businessDay, -1);
     const row = await this.daily.findOne({ where: { storeId, businessDay: closedDay } });
     if (!row) return []; // no data for the closed day → nothing to judge
 
     const history: number[] = [];
     for (let w = 1; w <= lookbackWeeks; w++) {
-      const prior = await this.daily.findOne({ where: { storeId, businessDay: shiftDay(now, -1 - 7 * w) } });
+      const prior = await this.daily.findOne({ where: { storeId, businessDay: shiftDayString(businessDay, -1 - 7 * w) } });
       if (prior) history.push(prior.netMinor);
     }
     if (history.length < minWeeks) return []; // not enough same-weekday history (greenfield-safe)
@@ -69,8 +71,3 @@ export class SalesDropRule implements AlertRule {
   }
 }
 
-const shiftDay = (d: Date, delta: number): string => {
-  const x = new Date(d);
-  x.setUTCDate(x.getUTCDate() + delta);
-  return x.toISOString().slice(0, 10);
-};

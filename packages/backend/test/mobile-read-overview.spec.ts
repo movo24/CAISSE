@@ -10,6 +10,7 @@ import { OrganizationEntity } from '../src/database/entities/organization.entity
 import { StoreEntity } from '../src/database/entities/store.entity';
 import { EmployeeStoreAccessEntity } from '../src/database/entities/employee-store-access.entity';
 import { AnalyticsStoreRegistryEntity } from '../src/database/entities/analytics-store-registry.entity';
+import { AnalyticsStoreClockEntity } from '../src/database/entities/analytics-store-clock.entity';
 import { AnalyticsStoreDailyEntity } from '../src/database/entities/analytics-store-daily.entity';
 import { AnalyticsStoreSessionsEntity } from '../src/database/entities/analytics-store-sessions.entity';
 import { AnalyticsStorePresenceEntity } from '../src/database/entities/analytics-store-presence.entity';
@@ -76,6 +77,7 @@ describe('Étage 1 — GET /mobile/v1/dashboard/overview (scoped aggregate)', ()
       ds.getRepository(AnalyticsStoreStockEntity),
       ds.getRepository(AnalyticsAlertEntity),
       ds.getRepository(AnalyticsStoreTargetEntity),
+      ds.getRepository(AnalyticsStoreClockEntity),
     );
     controller = new MobileReadController(resolver, service);
   });

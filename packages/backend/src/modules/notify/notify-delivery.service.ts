@@ -1,14 +1,16 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
-import { MoreThan, Repository } from 'typeorm';
+import { IsNull, MoreThan, Repository } from 'typeorm';
 import { AnalyticsAlertEntity } from '../../database/entities/analytics-alert.entity';
 import { EmployeeEntity } from '../../database/entities/employee.entity';
 import { NotifyDeviceTokenEntity } from '../../database/entities/notify-device-token.entity';
 import { NotifyPreferenceEntity } from '../../database/entities/notify-preference.entity';
 import { NotifyDeliveryEntity } from '../../database/entities/notify-delivery.entity';
+import { AnalyticsStoreClockEntity } from '../../database/entities/analytics-store-clock.entity';
 import { StoreScopeResolverService } from '../analytics-projection/store-scope-resolver.service';
 import { PUSH_SENDER, PushSender } from './push-sender.interface';
+import { localHourOf } from '../../common/clock/wall-clock.util';
 
 /**
  * Étage 4 — alert delivery engine. Fans the alert FACTS (analytics.alerts) out to
@@ -40,6 +42,7 @@ export class NotifyDeliveryService {
     @InjectRepository(NotifyDeviceTokenEntity) private readonly devices: Repository<NotifyDeviceTokenEntity>,
     @InjectRepository(NotifyPreferenceEntity) private readonly prefs: Repository<NotifyPreferenceEntity>,
     @InjectRepository(NotifyDeliveryEntity) private readonly deliveries: Repository<NotifyDeliveryEntity>,
+    @InjectRepository(AnalyticsStoreClockEntity) private readonly storeClock: Repository<AnalyticsStoreClockEntity>,
     private readonly scopeResolver: StoreScopeResolverService,
     @Inject(PUSH_SENDER) private readonly sender: PushSender,
   ) {}
@@ -62,6 +65,10 @@ export class NotifyDeliveryService {
     );
     if (eligible.length === 0) return { sent: 0, held: 0 };
 
+    // A1: quiet hours are wall-clock - evaluated in the network clock's timezone
+    // (the single datum; employees are on the network's clock).
+    const clock = await this.storeClock.findOne({ where: { storeId: IsNull(), isActive: true } });
+    const tz = clock?.timezone ?? 'Etc/UTC';
     const activeDevices = await this.devices.find({ where: { isActive: true } });
     let sent = 0;
     let held = 0;
@@ -71,7 +78,7 @@ export class NotifyDeliveryService {
       const pref = await this.prefs.findOne({ where: { employeeId: device.employeeId } });
       if (pref && !pref.enabled) continue; // user opted out — nothing recorded
 
-      if (pref && inQuietWindow(pref, now)) {
+      if (pref && inQuietWindow(pref, now, tz)) {
         held++; // quiet hours: held, NOT recorded — delivered after the window
         continue;
       }
@@ -132,15 +139,16 @@ export class NotifyDeliveryService {
   }
 }
 
-/** Quiet window over wall-clock hours (UTC stand-in, same convention as store_clock). */
+/** Quiet window over LOCAL wall-clock hours (A1: the clock datum's timezone). */
 export function inQuietWindow(
   pref: { quietStartHour: number | null; quietEndHour: number | null },
   now: Date,
+  timeZone: string,
 ): boolean {
   const start = pref.quietStartHour;
   const end = pref.quietEndHour;
   if (start == null || end == null || start === end) return false;
-  const h = now.getUTCHours();
+  const h = localHourOf(now, timeZone);
   return start < end ? h >= start && h < end : h >= start || h < end; // wraps midnight
 }
 

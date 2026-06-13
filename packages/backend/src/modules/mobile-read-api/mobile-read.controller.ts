@@ -2,6 +2,7 @@ import { Controller, Get, Logger, NotFoundException, Param, Req, UseGuards } fro
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { ReadOnlyGuard } from './read-only.guard';
 import { StoreScopeResolverService } from '../analytics-projection/store-scope-resolver.service';
+import { shiftDayString } from '../../common/clock/wall-clock.util';
 import { MobileReadService } from './mobile-read.service';
 
 /**
@@ -33,17 +34,14 @@ export class MobileReadController {
   @Get('dashboard/overview')
   async overview(@Req() req: any) {
     const scope = await this.scopeOf(req);
-    const today = new Date().toISOString().slice(0, 10);
-    return this.read.overview(scope, today);
+    return this.read.overview(scope, await this.read.businessToday());
   }
 
   @Get('alerts')
   async alerts(@Req() req: any) {
     const scope = await this.scopeOf(req);
-    const now = new Date();
-    const today = now.toISOString().slice(0, 10);
-    const yesterday = new Date(now.getTime() - 86_400_000).toISOString().slice(0, 10);
-    return this.read.listAlerts(scope, today, yesterday);
+    const today = await this.read.businessToday();
+    return this.read.listAlerts(scope, today, shiftDayString(today, -1));
   }
 
   @Get('stores/:id/live')
@@ -57,8 +55,7 @@ export class MobileReadController {
   async performance(@Param('id') id: string, @Req() req: any) {
     const scope = await this.scopeOf(req);
     this.ensureInScope(id, scope, req); // 404 + log if out of scope (= if non-existent)
-    const today = new Date().toISOString().slice(0, 10);
-    return this.read.performanceForStore(id, today);
+    return this.read.performanceForStore(id, await this.read.businessToday());
   }
 
   // ── helpers ──

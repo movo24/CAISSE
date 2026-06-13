@@ -10,6 +10,8 @@ import { AnalyticsStoreStockEntity } from '../../database/entities/analytics-sto
 import { AnalyticsAlertEntity } from '../../database/entities/analytics-alert.entity';
 import { AnalyticsAlertConfigEntity } from '../../database/entities/analytics-alert-config.entity';
 import { AnalyticsAlertCursorEntity } from '../../database/entities/analytics-alert-cursor.entity';
+import { AnalyticsStoreClockEntity } from '../../database/entities/analytics-store-clock.entity';
+import { localDayString } from '../../common/clock/wall-clock.util';
 import { AlertFact, AlertRule, ALERT_RULES } from './alert-rule.interface';
 
 export interface StoreEvaluation {
@@ -44,6 +46,7 @@ export class AlertsEngineService {
     @InjectRepository(AnalyticsAlertEntity) private readonly alerts: Repository<AnalyticsAlertEntity>,
     @InjectRepository(AnalyticsAlertConfigEntity) private readonly config: Repository<AnalyticsAlertConfigEntity>,
     @InjectRepository(AnalyticsAlertCursorEntity) private readonly cursor: Repository<AnalyticsAlertCursorEntity>,
+    @InjectRepository(AnalyticsStoreClockEntity) private readonly storeClock: Repository<AnalyticsStoreClockEntity>,
     @Optional() @Inject(ALERT_RULES) private readonly rules: AlertRule[] = [],
   ) {}
 
@@ -67,7 +70,11 @@ export class AlertsEngineService {
   }
 
   async evaluateStore(storeId: string, now: Date): Promise<StoreEvaluation> {
-    const businessDay = utcDay(now);
+    // A1: the business day is the LOCAL calendar day (per-store clock else default).
+    const clock =
+      (await this.storeClock.findOne({ where: { storeId, isActive: true } })) ??
+      (await this.storeClock.findOne({ where: { storeId: IsNull(), isActive: true } }));
+    const businessDay = localDayString(now, clock?.timezone ?? 'Etc/UTC');
     const freshness = await this.latestComputedAt(storeId, businessDay);
     if (!freshness) return { storeId, gated: true, created: 0, deduped: 0 };
 
@@ -138,7 +145,6 @@ export class AlertsEngineService {
   }
 }
 
-const utcDay = (d: Date): string => d.toISOString().slice(0, 10);
 
 const isUniqueViolation = (e: any): boolean =>
   e?.code === '23505' ||

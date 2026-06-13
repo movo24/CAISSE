@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
 import { AnalyticsStoreRegistryEntity } from '../../database/entities/analytics-store-registry.entity';
 import { AnalyticsStoreDailyEntity } from '../../database/entities/analytics-store-daily.entity';
 import { AnalyticsStoreSessionsEntity } from '../../database/entities/analytics-store-sessions.entity';
@@ -8,7 +8,9 @@ import { AnalyticsStorePresenceEntity } from '../../database/entities/analytics-
 import { AnalyticsStoreStockEntity } from '../../database/entities/analytics-store-stock.entity';
 import { AnalyticsAlertEntity } from '../../database/entities/analytics-alert.entity';
 import { AnalyticsStoreTargetEntity } from '../../database/entities/analytics-store-target.entity';
+import { AnalyticsStoreClockEntity } from '../../database/entities/analytics-store-clock.entity';
 import { applyStoreScope } from '../analytics-projection/store-scope.util';
+import { localDayString } from '../../common/clock/wall-clock.util';
 
 /**
  * Étage 1 read service — reads ONLY `analytics.*` (never the source tables). Every
@@ -25,7 +27,14 @@ export class MobileReadService {
     @InjectRepository(AnalyticsStoreStockEntity) private readonly stock: Repository<AnalyticsStoreStockEntity>,
     @InjectRepository(AnalyticsAlertEntity) private readonly alertsRepo: Repository<AnalyticsAlertEntity>,
     @InjectRepository(AnalyticsStoreTargetEntity) private readonly targets: Repository<AnalyticsStoreTargetEntity>,
+    @InjectRepository(AnalyticsStoreClockEntity) private readonly clockRepo: Repository<AnalyticsStoreClockEntity>,
   ) {}
+
+  /** A1: the cockpit business day is the LOCAL calendar day of the clock datum. */
+  async businessToday(now: Date = new Date()): Promise<string> {
+    const clock = await this.clockRepo.findOne({ where: { storeId: IsNull(), isActive: true } });
+    return localDayString(now, clock?.timezone ?? 'Etc/UTC');
+  }
 
   /** GET /stores — the authorized stores (collection, silently scoped). */
   async listStores(scope: string[]): Promise<

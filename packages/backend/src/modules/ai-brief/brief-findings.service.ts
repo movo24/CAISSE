@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AnalyticsStoreDailyEntity } from '../../database/entities/analytics-store-daily.entity';
+import { shiftDayString } from '../../common/clock/wall-clock.util';
 import { AnalyticsStoreSessionsEntity } from '../../database/entities/analytics-store-sessions.entity';
 import { AnalyticsStorePresenceEntity } from '../../database/entities/analytics-store-presence.entity';
 import { AnalyticsStoreStockEntity } from '../../database/entities/analytics-store-stock.entity';
@@ -73,8 +74,8 @@ export class BriefFindingsService {
   ) {}
 
   async build(scope: string[], businessDay: string): Promise<BriefFindings> {
-    const prevDay = shiftDayStr(businessDay, -1);
-    const weekAgo = shiftDayStr(businessDay, -7);
+    const prevDay = shiftDayString(businessDay, -1);
+    const weekAgo = shiftDayString(businessDay, -7);
 
     const [dayRows, prevRows, weekRows, sessRows, presRows, stockRows, regRows, targetRows, alertRows] =
       await Promise.all([
@@ -192,11 +193,6 @@ const deltaPct = (today?: number, baseline?: number): number | null => {
   return Math.round(((today - baseline) / baseline) * 1000) / 10;
 };
 
-const shiftDayStr = (day: string, delta: number): string => {
-  const d = new Date(`${day}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + delta);
-  return d.toISOString().slice(0, 10);
-};
 
 const oldest = (dates: (Date | null | undefined)[]): Date | null => {
   const ms = dates.filter(Boolean).map((d) => new Date(d as Date).getTime());

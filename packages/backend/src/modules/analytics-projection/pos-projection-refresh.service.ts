@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
 import { StoreEntity } from '../../database/entities/store.entity';
 import { SaleEntity } from '../../database/entities/sale.entity';
 import { CreditNoteEntity } from '../../database/entities/credit-note.entity';
@@ -9,7 +9,9 @@ import { PosSessionEntity } from '../../database/entities/pos-session.entity';
 import { AnalyticsStoreDailyEntity } from '../../database/entities/analytics-store-daily.entity';
 import { AnalyticsStoreSessionsEntity } from '../../database/entities/analytics-store-sessions.entity';
 import { AnalyticsStoreRegistryEntity } from '../../database/entities/analytics-store-registry.entity';
+import { AnalyticsStoreClockEntity } from '../../database/entities/analytics-store-clock.entity';
 import { guardedProjectionUpsert } from './projection-upsert.util';
+import { localDayString, localDayRange } from '../../common/clock/wall-clock.util';
 
 /**
  * INV-4 — POS refresh job. CONSOLIDATES the POS source of truth into the read model
@@ -32,6 +34,7 @@ export class PosProjectionRefreshService {
     @InjectRepository(AnalyticsStoreDailyEntity) private readonly projDaily: Repository<AnalyticsStoreDailyEntity>,
     @InjectRepository(AnalyticsStoreSessionsEntity) private readonly projSessions: Repository<AnalyticsStoreSessionsEntity>,
     @InjectRepository(AnalyticsStoreRegistryEntity) private readonly projRegistry: Repository<AnalyticsStoreRegistryEntity>,
+    @InjectRepository(AnalyticsStoreClockEntity) private readonly clock: Repository<AnalyticsStoreClockEntity>,
   ) {}
 
   @Cron('*/5 * * * *')
@@ -45,14 +48,23 @@ export class PosProjectionRefreshService {
 
   /** Refresh every active store for the given clock (exposed for tests/manual runs). */
   async refreshAll(now: Date): Promise<void> {
-    const day = now.toISOString().slice(0, 10);
     const stores = await this.stores.find({ where: { isActive: true } });
     for (const store of stores) {
-      await this.refreshStore(store, day, now);
+      await this.refreshStore(store, now);
     }
   }
 
-  async refreshStore(store: StoreEntity, day: string, now: Date): Promise<void> {
+  async refreshStore(store: StoreEntity, now: Date): Promise<void> {
+    // A1: the business day is the LOCAL calendar day in the store's clock
+    // timezone (per-store override else network default; no datum -> degraded
+    // UTC labelling). The day window is a pair of UTC INSTANTS bounding the
+    // local day - DST-correct (23h/25h days), and pg-safe (no SQL tz functions).
+    const clock =
+      (await this.clock.findOne({ where: { storeId: store.id, isActive: true } })) ??
+      (await this.clock.findOne({ where: { storeId: IsNull(), isActive: true } }));
+    const tz = clock?.timezone ?? 'Etc/UTC';
+    const day = localDayString(now, tz);
+    const { start: dayStart, end: dayEnd } = localDayRange(day, tz);
     // ── daily POS summary (INV-4: copy the POS figures, don't re-derive) ──
     const completed = await this.sales
       .createQueryBuilder('s')
@@ -61,7 +73,7 @@ export class PosProjectionRefreshService {
       .addSelect('COUNT(*)', 'cnt')
       .where('s.store_id = :sid', { sid: store.id })
       .andWhere("s.status = 'completed'")
-      .andWhere('DATE(s.created_at) = :day', { day })
+      .andWhere('s.created_at >= :dayStart AND s.created_at < :dayEnd', { dayStart, dayEnd })
       .getRawOne<{ ca: string; disc: string; cnt: string }>();
 
     const voided = await this.sales
@@ -70,14 +82,14 @@ export class PosProjectionRefreshService {
       .addSelect('COUNT(*)', 'cnt')
       .where('s.store_id = :sid', { sid: store.id })
       .andWhere("s.status = 'voided'")
-      .andWhere('DATE(s.created_at) = :day', { day })
+      .andWhere('s.created_at >= :dayStart AND s.created_at < :dayEnd', { dayStart, dayEnd })
       .getRawOne<{ amt: string; cnt: string }>();
 
     const returns = await this.creditNotes
       .createQueryBuilder('c')
       .select('COALESCE(SUM(c.total_minor_units), 0)', 'amt')
       .where('c.store_id = :sid', { sid: store.id })
-      .andWhere('DATE(c.created_at) = :day', { day })
+      .andWhere('c.created_at >= :dayStart AND c.created_at < :dayEnd', { dayStart, dayEnd })
       .getRawOne<{ amt: string }>();
 
     const caBrut = Number(completed?.ca ?? 0);

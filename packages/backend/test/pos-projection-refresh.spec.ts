@@ -13,6 +13,7 @@ import { SaleEntity } from '../src/database/entities/sale.entity';
 import { CreditNoteEntity } from '../src/database/entities/credit-note.entity';
 import { PosSessionEntity } from '../src/database/entities/pos-session.entity';
 import { AnalyticsStoreDailyEntity } from '../src/database/entities/analytics-store-daily.entity';
+import { AnalyticsStoreClockEntity } from '../src/database/entities/analytics-store-clock.entity';
 import { AnalyticsStoreSessionsEntity } from '../src/database/entities/analytics-store-sessions.entity';
 import { AnalyticsStoreRegistryEntity } from '../src/database/entities/analytics-store-registry.entity';
 import { PosProjectionRefreshService } from '../src/modules/analytics-projection/pos-projection-refresh.service';
@@ -60,6 +61,7 @@ describe('Étage 0 — POS projection refresh (INV-4)', () => {
       ds.getRepository(AnalyticsStoreDailyEntity),
       ds.getRepository(AnalyticsStoreSessionsEntity),
       ds.getRepository(AnalyticsStoreRegistryEntity),
+      ds.getRepository(AnalyticsStoreClockEntity),
     );
     await svc.refreshAll(new Date());
   });
@@ -91,6 +93,29 @@ describe('Étage 0 — POS projection refresh (INV-4)', () => {
     expect(r!.name).toBe('Grand Littoral B43');
     expect(r!.organizationId).toBe(ORG);
     expect(r!.isActive).toBe(true);
+  });
+
+  it('A1 DECISIVE — a sale at 22:15Z lands under the LOCAL business day (00:15 Paris = J+1), not the UTC date', async () => {
+    const PSTORE = uuidv4();
+    await ds.getRepository(StoreEntity).save({
+      id: PSTORE, name: 'Paris Night', organizationId: ORG, isActive: true, currencyCode: 'EUR',
+    } as any);
+    await ds.getRepository(AnalyticsStoreClockEntity).save({
+      storeId: PSTORE, timezone: 'Europe/Paris', briefBeatHours: [12, 17], closeHour: 20, isActive: true,
+    } as any);
+    await ds.getRepository(SaleEntity).save([
+      { id: uuidv4(), storeId: PSTORE, employeeId: EMP, status: 'completed', subtotalMinorUnits: 0, discountTotalMinorUnits: 0, taxTotalMinorUnits: 0, totalMinorUnits: 700, currencyCode: 'EUR', ticketNumber: `T-${uuidv4().slice(0, 6)}`, createdAt: new Date('2026-06-20T22:15:00Z') }, // 00:15 Paris 06-21 → IN
+      { id: uuidv4(), storeId: PSTORE, employeeId: EMP, status: 'completed', subtotalMinorUnits: 0, discountTotalMinorUnits: 0, taxTotalMinorUnits: 0, totalMinorUnits: 999, currencyCode: 'EUR', ticketNumber: `T-${uuidv4().slice(0, 6)}`, createdAt: new Date('2026-06-20T19:00:00Z') }, // 21:00 Paris 06-20 → OUT of 06-21
+    ] as any);
+
+    const store = await ds.getRepository(StoreEntity).findOneByOrFail({ id: PSTORE });
+    await svc.refreshStore(store, new Date('2026-06-20T22:30:00Z')); // 00:30 local, business day 06-21
+
+    const rows = await ds.getRepository(AnalyticsStoreDailyEntity).find({ where: { storeId: PSTORE } });
+    expect(rows).toHaveLength(1);
+    expect(String(rows[0].businessDay)).toBe('2026-06-21'); // UTC date would have said 06-20
+    expect(rows[0].caBrutMinor).toBe(700); // ONLY the post-local-midnight sale
+    expect(rows[0].txCount).toBe(1);
   });
 
   it('idempotent: a second refresh keeps exactly one row per store', async () => {

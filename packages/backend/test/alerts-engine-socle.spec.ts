@@ -10,6 +10,7 @@ import { DataSource } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
 import { createPgMemDataSource } from './helpers/pgmem';
 import { AnalyticsStoreRegistryEntity } from '../src/database/entities/analytics-store-registry.entity';
+import { AnalyticsStoreClockEntity } from '../src/database/entities/analytics-store-clock.entity';
 import { AnalyticsStoreDailyEntity } from '../src/database/entities/analytics-store-daily.entity';
 import { AnalyticsStoreSessionsEntity } from '../src/database/entities/analytics-store-sessions.entity';
 import { AnalyticsStorePresenceEntity } from '../src/database/entities/analytics-store-presence.entity';
@@ -61,6 +62,7 @@ describe('Étage 2 — alerts engine socle (gate + dedup)', () => {
       ds.getRepository(AnalyticsAlertEntity),
       ds.getRepository(AnalyticsAlertConfigEntity),
       ds.getRepository(AnalyticsAlertCursorEntity),
+      ds.getRepository(AnalyticsStoreClockEntity),
       [stub],
     );
   });

@@ -15,6 +15,7 @@ import { StoreEntity } from '../src/database/entities/store.entity';
 import { EmployeeEntity } from '../src/database/entities/employee.entity';
 import { EmployeeStoreAccessEntity } from '../src/database/entities/employee-store-access.entity';
 import { AnalyticsAlertEntity } from '../src/database/entities/analytics-alert.entity';
+import { AnalyticsStoreClockEntity } from '../src/database/entities/analytics-store-clock.entity';
 import { NotifyDeviceTokenEntity } from '../src/database/entities/notify-device-token.entity';
 import { NotifyPreferenceEntity } from '../src/database/entities/notify-preference.entity';
 import { NotifyDeliveryEntity } from '../src/database/entities/notify-delivery.entity';
@@ -77,6 +78,7 @@ describe('Étage 4 — notify delivery engine', () => {
       ds.getRepository(NotifyDeviceTokenEntity),
       ds.getRepository(NotifyPreferenceEntity),
       ds.getRepository(NotifyDeliveryEntity),
+      ds.getRepository(AnalyticsStoreClockEntity),
       new StoreScopeResolverService(ds.getRepository(StoreEntity), ds.getRepository(EmployeeStoreAccessEntity)),
       sender,
     );
@@ -140,12 +142,20 @@ describe('Étage 4 — notify delivery engine', () => {
 
   it('inQuietWindow — straight and midnight-wrapping windows, degenerate = none', () => {
     const at = (h: number) => new Date(Date.UTC(2026, 5, 12, h, 0, 0));
-    expect(inQuietWindow({ quietStartHour: 9, quietEndHour: 17 }, at(12))).toBe(true);
-    expect(inQuietWindow({ quietStartHour: 9, quietEndHour: 17 }, at(18))).toBe(false);
-    expect(inQuietWindow({ quietStartHour: 22, quietEndHour: 7 }, at(23))).toBe(true); // wrap
-    expect(inQuietWindow({ quietStartHour: 22, quietEndHour: 7 }, at(3))).toBe(true); // wrap
-    expect(inQuietWindow({ quietStartHour: 22, quietEndHour: 7 }, at(12))).toBe(false);
-    expect(inQuietWindow({ quietStartHour: null, quietEndHour: null }, at(12))).toBe(false);
-    expect(inQuietWindow({ quietStartHour: 8, quietEndHour: 8 }, at(8))).toBe(false); // degenerate
+    const UTC = 'Etc/UTC';
+    expect(inQuietWindow({ quietStartHour: 9, quietEndHour: 17 }, at(12), UTC)).toBe(true);
+    expect(inQuietWindow({ quietStartHour: 9, quietEndHour: 17 }, at(18), UTC)).toBe(false);
+    expect(inQuietWindow({ quietStartHour: 22, quietEndHour: 7 }, at(23), UTC)).toBe(true); // wrap
+    expect(inQuietWindow({ quietStartHour: 22, quietEndHour: 7 }, at(3), UTC)).toBe(true); // wrap
+    expect(inQuietWindow({ quietStartHour: 22, quietEndHour: 7 }, at(12), UTC)).toBe(false);
+    expect(inQuietWindow({ quietStartHour: null, quietEndHour: null }, at(12), UTC)).toBe(false);
+    expect(inQuietWindow({ quietStartHour: 8, quietEndHour: 8 }, at(8), UTC)).toBe(false); // degenerate
+  });
+
+  it('A1 DECISIVE — quiet hours are LOCAL: 21:00Z = 23:00 Paris is INSIDE a 22h–7h window (UTC hour 21 was not)', () => {
+    const w = { quietStartHour: 22, quietEndHour: 7 };
+    const summerNight = new Date('2026-06-12T21:00:00Z'); // 23:00 Paris (UTC+2)
+    expect(inQuietWindow(w, summerNight, 'Europe/Paris')).toBe(true);
+    expect(inQuietWindow(w, summerNight, 'Etc/UTC')).toBe(false); // the old stand-in would have paged
   });
 });

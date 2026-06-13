@@ -5,6 +5,7 @@ import { EmployeeEntity } from '../../database/entities/employee.entity';
 import { NotifyDeviceTokenEntity } from '../../database/entities/notify-device-token.entity';
 import { NotifyPreferenceEntity } from '../../database/entities/notify-preference.entity';
 import { NotifyDeliveryEntity } from '../../database/entities/notify-delivery.entity';
+import { AnalyticsStoreClockEntity } from '../../database/entities/analytics-store-clock.entity';
 import { AnalyticsProjectionModule } from '../analytics-projection/analytics-projection.module';
 import { NotifyAccountController } from './notify-account.controller';
 import { NotifyDeliveryService } from './notify-delivery.service';
@@ -26,6 +27,7 @@ import { PUSH_SENDER, LogPushSender } from './push-sender.interface';
       NotifyDeviceTokenEntity,
       NotifyPreferenceEntity,
       NotifyDeliveryEntity,
+      AnalyticsStoreClockEntity,
     ]),
     AnalyticsProjectionModule,
   ],
