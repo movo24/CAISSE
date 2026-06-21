@@ -11,6 +11,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { createHash } from 'crypto';
 import { SaleEntity } from '../../database/entities/sale.entity';
 import { EmployeeEntity } from '../../database/entities/employee.entity';
+import { AlertService } from '../../common/alert/alert.service';
 import { SaleLineItemEntity } from '../../database/entities/sale-line-item.entity';
 import { SalePaymentEntity } from '../../database/entities/sale-payment.entity';
 import { IdempotencyKeyEntity } from '../../database/entities/idempotency-key.entity';
@@ -40,6 +41,8 @@ interface CreateSaleDto {
     stripePaymentIntentId?: string;
     /** Required when method === 'store_credit': the avoir code to redeem. */
     creditNoteCode?: string;
+    /** Card leg not really captured yet → sale stays payment_pending (decision 6). */
+    pendingCapture?: boolean;
   }[];
   /** Manual cart discount (centimes) — capped at 30%, requires a manager approver (decision 5). */
   manualDiscountMinorUnits?: number;
@@ -508,8 +511,20 @@ export class SalesService {
         if (p.stripePaymentIntentId) {
           payment.stripePaymentIntentId = p.stripePaymentIntentId;
         }
+        // Decision 6: a leg flagged pendingCapture is NOT really captured — the
+        // sale will be payment_pending and never counts as paid until regularised.
+        payment.captured = !p.pendingCapture;
+        payment.capturedAt = p.pendingCapture ? null : completedAt;
         return payment;
       });
+
+      // Decision 6: NO "paid" ticket without real capture. If any leg is not
+      // captured, the sale is payment_pending (à régulariser) — the goods left,
+      // the payment is owed. The fiscal record (hash) is sealed either way.
+      const hasUncaptured = sale.payments.some((p) => !p.captured);
+      if (hasUncaptured) {
+        sale.status = 'payment_pending';
+      }
 
       // --- Save sale (cascade saves lineItems + payments) ---
       const saved = await queryRunner.manager.save(SaleEntity, sale);
@@ -632,6 +647,30 @@ export class SalesService {
           });
         } catch (auditErr: any) {
           this.logger.warn(`Audit (discount_applied) failed: ${auditErr?.message}`);
+        }
+      }
+
+      // ── Payment-pending (decision 6): a sale left with an uncaptured card leg is
+      //    "à régulariser" — alert the manager + audit. Never silently "paid". ──
+      if (saved.status === 'payment_pending') {
+        const pendingMinor = saved.payments
+          .filter((p) => !p.captured)
+          .reduce((sum, p) => sum + p.amountMinorUnits, 0);
+        AlertService.instance.fire(
+          'PAYMENT_PENDING_CAPTURE',
+          `Vente ${ticketNumber} (magasin ${storeId}) : ${(pendingMinor / 100).toFixed(2)}€ carte à régulariser`,
+        );
+        try {
+          await this.auditService.log({
+            storeId,
+            employeeId,
+            action: 'payment_pending',
+            entityType: 'sale',
+            entityId: saved.id,
+            details: { ticketNumber, pendingMinorUnits: pendingMinor, totalMinorUnits: totalAfterDiscount },
+          });
+        } catch (auditErr: any) {
+          this.logger.warn(`Audit (payment_pending) failed: ${auditErr?.message}`);
         }
       }
 
@@ -896,6 +935,62 @@ export class SalesService {
     });
     if (!sale) throw new NotFoundException('Sale not found');
     return sale;
+  }
+
+  /** Sales with an uncaptured card leg — the manager's "à régulariser" queue (decision 6). */
+  async listPendingPayments(storeId: string): Promise<SaleEntity[]> {
+    return this.saleRepo.find({
+      where: { storeId, status: 'payment_pending' },
+      relations: ['payments'],
+      order: { completedAt: 'DESC' },
+    });
+  }
+
+  /**
+   * Regularise a pending card leg (decision 6): mark it captured when the card is
+   * REALLY taken — then if all legs are captured the sale becomes completed. A
+   * FAILED capture leaves the sale payment_pending (anomaly), audited + alerted.
+   * Never simulates a payment.
+   */
+  async regularizePayment(
+    saleId: string,
+    storeId: string,
+    employeeId: string,
+    opts: { paymentId?: string; stripePaymentIntentId?: string; success: boolean },
+  ): Promise<{ saleId: string; status: string; regularized: boolean }> {
+    const sale = await this.saleRepo.findOne({ where: { id: saleId, storeId }, relations: ['payments'] });
+    if (!sale) throw new NotFoundException('Sale not found');
+    if (sale.status !== 'payment_pending') throw new BadRequestException('Sale is not pending capture');
+    const leg = sale.payments.find((p) => !p.captured && (!opts.paymentId || p.id === opts.paymentId));
+    if (!leg) throw new BadRequestException('No uncaptured payment leg to regularise');
+
+    if (!opts.success) {
+      // Capture failed — the sale STAYS an anomaly (never falsely "paid").
+      AlertService.instance.fire(
+        'PAYMENT_PENDING_CAPTURE',
+        `Vente ${sale.ticketNumber} (magasin ${storeId}) : capture carte ÉCHOUÉE — reste à régulariser`,
+      );
+      await this.auditService.log({
+        storeId, employeeId, action: 'payment_capture_failed', entityType: 'sale', entityId: saleId,
+        details: { paymentId: leg.id, ticketNumber: sale.ticketNumber },
+      });
+      return { saleId, status: sale.status, regularized: false };
+    }
+
+    leg.captured = true;
+    leg.capturedAt = new Date();
+    if (opts.stripePaymentIntentId) leg.stripePaymentIntentId = opts.stripePaymentIntentId;
+    await this.paymentRepo.save(leg);
+
+    if (!sale.payments.some((p) => !p.captured)) {
+      sale.status = 'completed';
+      await this.saleRepo.save(sale);
+    }
+    await this.auditService.log({
+      storeId, employeeId, action: 'payment_regularized', entityType: 'sale', entityId: saleId,
+      details: { paymentId: leg.id, saleStatus: sale.status },
+    });
+    return { saleId, status: sale.status, regularized: true };
   }
 
   async findByStore(

@@ -27,7 +27,9 @@ export type AlertEvent =
   | 'LOGIN_BRUTEFORCE'
   | 'RATE_LIMIT_BURST'
   // A stock count revealed a shortage ≥ threshold — needs human verification.
-  | 'STOCK_VARIANCE_HIGH';
+  | 'STOCK_VARIANCE_HIGH'
+  // A sale completed with an uncaptured card leg — payment to regularise.
+  | 'PAYMENT_PENDING_CAPTURE';
 
 export interface AlertEntry {
   event: AlertEvent;
@@ -120,6 +122,7 @@ export class AlertService {
         return 'critical';
       case 'RATE_LIMIT_BURST':
       case 'STOCK_VARIANCE_HIGH':
+      case 'PAYMENT_PENDING_CAPTURE':
         return 'warning';
       default:
         return 'info';

@@ -32,6 +32,17 @@ export class SalePaymentEntity {
   @Column({ name: 'terminal_id', type: 'varchar', nullable: true })
   terminalId: string | null;
 
+  /**
+   * Whether this leg is REALLY captured (decision 6). Cash is captured on hand;
+   * a card leg awaiting real capture is captured=false → the sale is
+   * payment_pending and never counts as paid until regularised.
+   */
+  @Column({ type: 'boolean', default: true })
+  captured: boolean;
+
+  @Column({ name: 'captured_at', type: 'timestamp', nullable: true })
+  capturedAt: Date | null;
+
   @ManyToOne(() => SaleEntity, (s) => s.payments)
   @JoinColumn({ name: 'sale_id' })
   sale: SaleEntity;

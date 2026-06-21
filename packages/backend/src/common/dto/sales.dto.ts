@@ -8,6 +8,7 @@ import {
   Min,
   ArrayMinSize,
   IsIn,
+  IsBoolean,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -39,6 +40,11 @@ export class SalePaymentDto {
   @IsOptional()
   @IsString()
   stripePaymentIntentId?: string;
+
+  @ApiPropertyOptional({ description: 'Card leg not really captured yet → sale stays payment_pending until regularised' })
+  @IsOptional()
+  @IsBoolean()
+  pendingCapture?: boolean;
 }
 
 export class CreateSaleDto {

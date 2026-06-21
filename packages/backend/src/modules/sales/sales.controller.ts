@@ -63,10 +63,35 @@ export class SalesController {
     });
   }
 
+  // ── Payment to regularise (decision 6) — static route BEFORE :id ──
+  @Get('pending-payments')
+  @Roles('admin', 'manager')
+  @UseGuards(RolesGuard)
+  @ApiOperation({ summary: 'List sales with an uncaptured card leg (à régulariser)' })
+  pendingPayments(@Request() req: any) {
+    return this.salesService.listPendingPayments(req.user.storeId);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get sale details (tenant-scoped)' })
   findOne(@Param('id', ParseUUIDPipe) id: string, @Request() req: any) {
     return this.salesService.findOne(id, req.user.storeId);
+  }
+
+  @Post(':id/regularize-payment')
+  @Roles('admin', 'manager')
+  @UseGuards(RolesGuard)
+  @ApiOperation({ summary: 'Regularise a pending card leg (capture really taken / failed)' })
+  regularizePayment(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+    @Body() body: { paymentId?: string; stripePaymentIntentId?: string; success: boolean },
+  ) {
+    return this.salesService.regularizePayment(id, req.user.storeId, req.user.employeeId, {
+      paymentId: body?.paymentId,
+      stripePaymentIntentId: body?.stripePaymentIntentId,
+      success: !!body?.success,
+    });
   }
 
   @Post(':id/void')
