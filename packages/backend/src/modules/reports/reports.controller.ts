@@ -40,6 +40,14 @@ export class ReportsController {
     return this.reportsService.getZReport(req.user.storeId, date);
   }
 
+  @Get('x-report')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'Intra-day X-report snapshot (read-only, non-sealing, repeatable)' })
+  getXReport(@Request() req: any, @Query('date') date?: string) {
+    const effectiveDate = date || new Date().toISOString().split('T')[0];
+    return this.reportsService.generateXReport(req.user.storeId, effectiveDate);
+  }
+
   @Get('daily-summary')
   @Roles('admin', 'manager')
   @ApiOperation({ summary: 'Get daily summaries for a date range' })
