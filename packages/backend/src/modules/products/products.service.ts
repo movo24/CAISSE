@@ -11,6 +11,7 @@ import { PriceHistoryEntity } from '../../database/entities/price-history.entity
 import { ProductCategoryEntity } from '../../database/entities/product-category.entity';
 import { BrandEntity } from '../../database/entities/brand.entity';
 import { SupplierEntity } from '../../database/entities/supplier.entity';
+import { StoreProductPriceEntity } from '../../database/entities/store-product-price.entity';
 import { AuditService } from '../audit/audit.service';
 import { PaginatedResult } from '../../common/dto/pagination.dto';
 import { computePriceVerdict, PriceVerdict } from './price-verdict';
@@ -43,7 +44,92 @@ export class ProductsService {
     private brandRepo: Repository<BrandEntity>,
     @InjectRepository(SupplierEntity)
     private supplierRepo: Repository<SupplierEntity>,
+    @InjectRepository(StoreProductPriceEntity)
+    private storePriceRepo: Repository<StoreProductPriceEntity>,
   ) {}
+
+  // ── Per-store price override (decision 4) ──
+
+  /**
+   * The effective price for a product NOW: an active store override (within its
+   * optional window) wins over the product's base price. Single source used by
+   * the sale path and any price read.
+   */
+  async resolveEffectivePrice(product: ProductEntity, now: Date = new Date()): Promise<number> {
+    const override = await this.storePriceRepo.findOne({ where: { productId: product.id } });
+    if (!override || !override.isActive) return product.priceMinorUnits;
+    if (override.startsAt && now < new Date(override.startsAt)) return product.priceMinorUnits;
+    if (override.endsAt && now > new Date(override.endsAt)) return product.priceMinorUnits;
+    return override.priceMinorUnits;
+  }
+
+  async getStoreOverride(storeId: string, productId: string): Promise<StoreProductPriceEntity | null> {
+    await this.findOneForStore(productId, storeId); // tenant guard
+    return this.storePriceRepo.findOne({ where: { productId, storeId } });
+  }
+
+  /** Set/replace a store override (historised) — the override wins at sale time. */
+  async setStoreOverride(
+    storeId: string,
+    productId: string,
+    priceMinorUnits: number,
+    employeeId: string,
+    window?: { startsAt?: Date | null; endsAt?: Date | null },
+    employeeRole?: string,
+  ): Promise<StoreProductPriceEntity> {
+    if (!Number.isInteger(priceMinorUnits) || priceMinorUnits < 0) {
+      throw new BadRequestException('priceMinorUnits must be an integer ≥ 0');
+    }
+    const product = await this.findOneForStore(productId, storeId); // tenant guard
+    const existing = await this.storePriceRepo.findOne({ where: { productId, storeId } });
+    const oldEffective = await this.resolveEffectivePrice(product);
+
+    const row = existing
+      ? Object.assign(existing, { priceMinorUnits, isActive: true, startsAt: window?.startsAt ?? null, endsAt: window?.endsAt ?? null })
+      : this.storePriceRepo.create({ storeId, productId, priceMinorUnits, isActive: true, startsAt: window?.startsAt ?? null, endsAt: window?.endsAt ?? null });
+    const saved = await this.storePriceRepo.save(row);
+
+    // Historise the change (decision: "tout changement de prix doit être historisé").
+    await this.priceHistoryRepo.save({
+      productId,
+      oldPriceMinorUnits: oldEffective,
+      newPriceMinorUnits: priceMinorUnits,
+      changedBy: employeeId,
+      storeId,
+      reason: 'Store price override',
+      changeSource: 'store_override',
+      changedByRole: employeeRole || 'unknown',
+    });
+    await this.auditService.log({
+      storeId,
+      employeeId,
+      action: 'price_change',
+      entityType: 'product',
+      entityId: productId,
+      details: { override: priceMinorUnits, base: product.priceMinorUnits, source: 'store_override' },
+    });
+    return saved;
+  }
+
+  /** Clear the override (back to the base price) — historised. */
+  async clearStoreOverride(storeId: string, productId: string, employeeId: string, employeeRole?: string): Promise<{ cleared: boolean }> {
+    const product = await this.findOneForStore(productId, storeId); // tenant guard
+    const existing = await this.storePriceRepo.findOne({ where: { productId, storeId } });
+    if (!existing) return { cleared: false };
+    const oldEffective = await this.resolveEffectivePrice(product);
+    await this.storePriceRepo.delete({ id: existing.id });
+    await this.priceHistoryRepo.save({
+      productId,
+      oldPriceMinorUnits: oldEffective,
+      newPriceMinorUnits: product.priceMinorUnits,
+      changedBy: employeeId,
+      storeId,
+      reason: 'Store price override cleared',
+      changeSource: 'store_override',
+      changedByRole: employeeRole || 'unknown',
+    });
+    return { cleared: true };
+  }
 
   // ── Brand / supplier reference data (decision 3) ──
 

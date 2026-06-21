@@ -144,6 +144,40 @@ export class ProductsController {
     return this.productsService.findOneForStore(id, req.user.storeId);
   }
 
+  // ── Per-store price override (decision 4) ──
+
+  @Get(':id/store-price')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'Get the per-store price override for a product (if any)' })
+  getStorePrice(@Param('id') id: string, @Request() req: any) {
+    return this.productsService.getStoreOverride(req.user.storeId, id);
+  }
+
+  @Put(':id/store-price')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'Set the per-store price override (wins over base at sale; historised)' })
+  setStorePrice(
+    @Param('id') id: string,
+    @Body() body: { priceMinorUnits: number; startsAt?: string; endsAt?: string },
+    @Request() req: any,
+  ) {
+    return this.productsService.setStoreOverride(
+      req.user.storeId,
+      id,
+      body.priceMinorUnits,
+      req.user.employeeId,
+      { startsAt: body.startsAt ? new Date(body.startsAt) : null, endsAt: body.endsAt ? new Date(body.endsAt) : null },
+      req.user.role,
+    );
+  }
+
+  @Delete(':id/store-price')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'Clear the per-store price override (back to base; historised)' })
+  clearStorePrice(@Param('id') id: string, @Request() req: any) {
+    return this.productsService.clearStoreOverride(req.user.storeId, id, req.user.employeeId, req.user.role);
+  }
+
   @Get(':id/price-history')
   @ApiOperation({ summary: 'Get price change history' })
   priceHistory(@Param('id') id: string, @Request() req: any) {

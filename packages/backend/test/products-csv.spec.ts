@@ -13,6 +13,7 @@ import { PriceHistoryEntity } from '../src/database/entities/price-history.entit
 import { ProductCategoryEntity } from '../src/database/entities/product-category.entity';
 import { BrandEntity } from '../src/database/entities/brand.entity';
 import { SupplierEntity } from '../src/database/entities/supplier.entity';
+import { StoreProductPriceEntity } from '../src/database/entities/store-product-price.entity';
 import { AuditEntryEntity } from '../src/database/entities/audit-entry.entity';
 import { AuditService } from '../src/modules/audit/audit.service';
 import { ProductsService } from '../src/modules/products/products.service';
@@ -37,6 +38,7 @@ describe('Bloc 4i — product CSV import/export', () => {
       new AuditService(ds.getRepository(AuditEntryEntity), ds),
       ds.getRepository(BrandEntity),
       ds.getRepository(SupplierEntity),
+      ds.getRepository(StoreProductPriceEntity),
     );
   });
   afterAll(async () => {

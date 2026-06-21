@@ -7,6 +7,7 @@ import { PriceHistoryEntity } from '../../database/entities/price-history.entity
 import { ProductCategoryEntity } from '../../database/entities/product-category.entity';
 import { BrandEntity } from '../../database/entities/brand.entity';
 import { SupplierEntity } from '../../database/entities/supplier.entity';
+import { StoreProductPriceEntity } from '../../database/entities/store-product-price.entity';
 import { AuditService } from '../audit/audit.service';
 
 /**
@@ -37,6 +38,7 @@ describe('ProductsService — getStockAlerts pagination', () => {
         { provide: AuditService, useValue: { log: jest.fn() } },
         { provide: getRepositoryToken(BrandEntity), useValue: {} },
         { provide: getRepositoryToken(SupplierEntity), useValue: {} },
+        { provide: getRepositoryToken(StoreProductPriceEntity), useValue: {} },
       ],
     }).compile();
     service = module.get(ProductsService);

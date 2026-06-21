@@ -201,6 +201,10 @@ export class SalesService {
       if (!product) {
         throw new BadRequestException(`Product not found: ${item.ean}`);
       }
+      // Per-store price override (decision 4): an active override wins over the
+      // base price. Applied to the in-memory product so it flows consistently
+      // through line totals, promos, the sale total and the fiscal hash.
+      product.priceMinorUnits = await this.productsService.resolveEffectivePrice(product);
       resolvedProducts.set(item.ean, product);
     }
 
