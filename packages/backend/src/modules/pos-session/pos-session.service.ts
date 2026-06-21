@@ -67,10 +67,13 @@ export class PosSessionService {
     event: 'session.opened' | 'session.closed',
   ): Promise<void> {
     this.timewin
-      ?.pushEvent(session.storeId, event, session.employeeId, {
-        sessionId: session.id,
-        terminalId: session.terminalId,
-      })
+      ?.pushEvent(
+        session.storeId,
+        event,
+        session.employeeId,
+        { sessionId: session.id, terminalId: session.terminalId },
+        `${event}:${session.id}`, // idempotency key: a session opens/closes exactly once
+      )
       .catch((e: any) => this.logger.warn(`[timewin ${event}] ${e?.message}`));
 
     if (this.audit) {

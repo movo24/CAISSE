@@ -1,7 +1,10 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { createHmac, randomUUID } from 'crypto';
 import { AlertService } from '../../common/alert/alert.service';
+import { TimewinEventEntity } from '../../database/entities/timewin-event.entity';
 
 /* ── Types ── */
 
@@ -98,7 +101,14 @@ export class TimewinService implements OnModuleInit {
   private employeeCache = new Map<string, CachedEmployee[]>();
   private cacheTTL = 30 * 60 * 1000; // 30 minutes
 
-  constructor(private config: ConfigService) {}
+  constructor(
+    private config: ConfigService,
+    // Idempotency ledger — @Optional so the service still constructs in contexts
+    // without the repo; in real DI it is always provided (TimewinModule.forFeature).
+    @Optional()
+    @InjectRepository(TimewinEventEntity)
+    private readonly eventRepo?: Repository<TimewinEventEntity>,
+  ) {}
 
   onModuleInit() {
     this.baseUrl = this.config.get('TIMEWIN24_URL', 'http://localhost:3000');
@@ -252,12 +262,60 @@ export class TimewinService implements OnModuleInit {
     eventType: 'sale.completed' | 'session.opened' | 'session.closed' | 'stock.alert' | 'store.created' | 'store.updated' | 'pointage' | 'cashier_metrics' | 'staffing_snapshot',
     employeeId?: string,
     data?: Record<string, unknown>,
-  ): Promise<{ received: boolean; eventId: string }> {
-    return this.fetchWithPosSecret('/api/pos-events/webhook', {
-      method: 'POST',
-      headers: { 'X-POS-Store-Id': storeId },
-      body: { eventType, employeeId, data },
-    });
+    idempotencyKey?: string,
+  ): Promise<{ received: boolean; eventId: string; deduped?: boolean }> {
+    // ── Idempotency (decision: NO duplicate TimeWin24 events) ──
+    // Claim-before-send on a UNIQUE idempotency_key: an already-SENT event is
+    // never re-sent (deduped); a pending/failed one is retried; a concurrent
+    // claim that loses the unique race re-reads and dedups. Degrades to a plain
+    // send only when no key is given or the ledger repo is absent.
+    if (idempotencyKey && this.eventRepo) {
+      const existing = await this.eventRepo.findOne({ where: { idempotencyKey } });
+      if (existing?.status === 'sent') {
+        return { received: true, eventId: existing.id, deduped: true };
+      }
+      if (!existing) {
+        try {
+          await this.eventRepo.insert({
+            idempotencyKey,
+            eventType,
+            storeId,
+            employeeId: employeeId ?? null,
+            status: 'pending',
+            attempts: 0,
+          });
+        } catch (e: any) {
+          if (isUniqueViolation(e)) {
+            const now = await this.eventRepo.findOne({ where: { idempotencyKey } });
+            if (now?.status === 'sent') return { received: true, eventId: now.id, deduped: true };
+          } else {
+            throw e;
+          }
+        }
+      }
+      await this.eventRepo.increment({ idempotencyKey }, 'attempts', 1).catch(() => {});
+    }
+
+    try {
+      const result = await this.fetchWithPosSecret('/api/pos-events/webhook', {
+        method: 'POST',
+        headers: { 'X-POS-Store-Id': storeId },
+        body: { eventType, employeeId, data, idempotencyKey },
+      });
+      if (idempotencyKey && this.eventRepo) {
+        await this.eventRepo
+          .update({ idempotencyKey }, { status: 'sent', sentAt: new Date(), lastError: null })
+          .catch(() => {});
+      }
+      return result;
+    } catch (e: any) {
+      if (idempotencyKey && this.eventRepo) {
+        await this.eventRepo
+          .update({ idempotencyKey }, { status: 'failed', lastError: String(e?.message ?? e).slice(0, 500) })
+          .catch(() => {});
+      }
+      throw e;
+    }
   }
 
   /* ── HTTP helpers ── */
@@ -404,3 +462,8 @@ export class TimewinService implements OnModuleInit {
     return data.stores || [];
   }
 }
+
+const isUniqueViolation = (e: any): boolean =>
+  e?.code === '23505' ||
+  e?.driverError?.code === '23505' ||
+  /duplicate|unique/i.test(e?.message ?? '');

@@ -36,7 +36,7 @@ describe('Bloc 3.4/3.5 — session lifecycle observability', () => {
     const svc = new PosSessionService(ds.getRepository(PosSessionEntity), { pushEvent } as any, audit);
     const session = await svc.openSession(STORE, EMP, snapshot, { terminalId: 'TERM-A' });
 
-    expect(pushEvent).toHaveBeenCalledWith(STORE, 'session.opened', EMP, expect.objectContaining({ sessionId: session.id, terminalId: 'TERM-A' }));
+    expect(pushEvent).toHaveBeenCalledWith(STORE, 'session.opened', EMP, expect.objectContaining({ sessionId: session.id, terminalId: 'TERM-A' }), `session.opened:${session.id}`);
     const rows = await auditRows();
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ action: 'pos_session_opened', entityType: 'pos_session', entityId: session.id, employeeId: EMP });
@@ -52,7 +52,7 @@ describe('Bloc 3.4/3.5 — session lifecycle observability', () => {
     const closed = await svc.closeSession(open.id, STORE, EMP);
 
     expect(closed.isActive).toBe(false);
-    expect(pushEvent).toHaveBeenCalledWith(STORE, 'session.closed', EMP, expect.objectContaining({ sessionId: open.id }));
+    expect(pushEvent).toHaveBeenCalledWith(STORE, 'session.closed', EMP, expect.objectContaining({ sessionId: open.id }), `session.closed:${open.id}`);
     const rows = await auditRows();
     const closeEntry = rows.find((r) => r.action === 'pos_session_closed' && r.entityId === open.id);
     expect(closeEntry).toBeTruthy();
