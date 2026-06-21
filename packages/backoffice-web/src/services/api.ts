@@ -143,7 +143,8 @@ export const authApi = {
 // Products
 // ---------------------------------------------------------------------------
 export const productsApi = {
-  list: (params?: { storeId?: string }) => api.get('/products', { params }),
+  list: (params?: { storeId?: string; brandId?: string; supplierId?: string; search?: string; page?: number; limit?: number }) =>
+    api.get('/products', { params }),
   get: (id: string) => api.get(`/products/${id}`),
   create: (data: any) => api.post('/products', data),
   update: (id: string, data: any) => api.put(`/products/${id}`, data),
@@ -153,6 +154,41 @@ export const productsApi = {
   priceHistory: (id: string) => api.get(`/products/${id}/price-history`),
   priceAnalytics: (id: string) => api.get(`/products/${id}/price-analytics`),
   generateBarcode: (id: string) => api.post(`/products/${id}/generate-barcode`),
+  // Variants / SKU (decision 5)
+  listVariants: (id: string) => api.get(`/products/${id}/variants`),
+  createVariant: (id: string, data: { ean: string; variantName: string; priceMinorUnits: number; sku?: string; stockQuantity?: number; taxRate?: number; costMinorUnits?: number }) =>
+    api.post(`/products/${id}/variants`, data),
+  // Per-store price override (decision 4)
+  getStorePrice: (id: string) => api.get(`/products/${id}/store-price`),
+  setStorePrice: (id: string, data: { priceMinorUnits: number; startsAt?: string; endsAt?: string }) => api.put(`/products/${id}/store-price`, data),
+  clearStorePrice: (id: string) => api.delete(`/products/${id}/store-price`),
+  // Brand / supplier (decision 3)
+  listBrands: () => api.get('/products/brands'),
+  createBrand: (name: string) => api.post('/products/brands', { name }),
+  listSuppliers: () => api.get('/products/suppliers'),
+  createSupplier: (name: string) => api.post('/products/suppliers', { name }),
+  // CSV (Bloc 4i)
+  exportCsv: () => api.get('/products/export', { responseType: 'text' }),
+  importCsv: (csv: string) => api.post('/products/import', { csv }),
+};
+
+// Promo codes (decision 6)
+export const promoCodesApi = {
+  list: () => api.get('/promo-codes'),
+  create: (data: { code: string; discountType: 'percentage' | 'fixed'; discountValue: number; startsAt?: string; endsAt?: string; maxUses?: number; productId?: string; categoryId?: string }) =>
+    api.post('/promo-codes', data),
+  validate: (code: string, ctx?: { productId?: string; categoryId?: string }) => api.post('/promo-codes/validate', { code, ...ctx }),
+  redeem: (data: { code: string; saleId?: string; discountAppliedMinorUnits?: number }) => api.post('/promo-codes/redeem', data),
+  deactivate: (id: string) => api.post(`/promo-codes/${id}/deactivate`),
+  history: (id: string) => api.get(`/promo-codes/${id}/history`),
+};
+
+// Stock reconciliation — inventory variance ≥20% (decision 7)
+export const stockReconciliationApi = {
+  count: (data: { productId: string; physicalQty: number }) => api.post('/stock-reconciliation/count', data),
+  pending: () => api.get('/stock-reconciliation/pending'),
+  confirm: (id: string, data: { confirmedQty: number; reason: string }) => api.post(`/stock-reconciliation/${id}/confirm`, data),
+  reject: (id: string, note?: string) => api.post(`/stock-reconciliation/${id}/reject`, { note }),
 };
 
 // ---------------------------------------------------------------------------
@@ -162,6 +198,10 @@ export const salesApi = {
   list: (date?: string, storeId?: string) => api.get('/sales', { params: { date, storeId } }),
   get: (id: string) => api.get(`/sales/${id}`),
   void: (id: string) => api.post(`/sales/${id}/void`),
+  // Payments to regularise (decision 6)
+  pendingPayments: () => api.get('/sales/pending-payments'),
+  regularizePayment: (id: string, data: { success: boolean; paymentId?: string; stripePaymentIntentId?: string }) =>
+    api.post(`/sales/${id}/regularize-payment`, data),
 };
 
 // ---------------------------------------------------------------------------

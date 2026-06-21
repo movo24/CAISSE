@@ -26,6 +26,12 @@ import { SalesGuardsPage } from './pages/SalesGuardsPage';
 import { BillingPage } from './pages/BillingPage';
 import { ComingSoonPage } from './pages/ComingSoonPage';
 import { NetworkDashboardPage } from './pages/NetworkDashboardPage';
+import { ProductVariantsPage } from './pages/ProductVariantsPage';
+import { StorePricesPage } from './pages/StorePricesPage';
+import { BrandsSuppliersPage } from './pages/BrandsSuppliersPage';
+import { PromoCodesPage } from './pages/PromoCodesPage';
+import { PendingPaymentsPage } from './pages/PendingPaymentsPage';
+import { InventoryVariancePage } from './pages/InventoryVariancePage';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import './styles/globals.css';
 
@@ -71,6 +77,12 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             {/* Couche 3: Exploitation magasin */}
             <Route path="/" element={<DashboardPage />} />
             <Route path="/products" element={<ProductsPage />} />
+            <Route path="/catalog/variants" element={<ProductVariantsPage />} />
+            <Route path="/catalog/store-prices" element={<StorePricesPage />} />
+            <Route path="/catalog/brands-suppliers" element={<BrandsSuppliersPage />} />
+            <Route path="/promo-codes" element={<PromoCodesPage />} />
+            <Route path="/pending-payments" element={<PendingPaymentsPage />} />
+            <Route path="/inventory-variance" element={<InventoryVariancePage />} />
             <Route path="/stock-alerts" element={<StockAlertsPage />} />
             <Route path="/labels" element={<LabelsPage />} />
             <Route path="/performance" element={<ProductPerformancePage />} />

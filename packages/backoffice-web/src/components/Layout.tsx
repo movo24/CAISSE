@@ -5,6 +5,7 @@ import {
   ChevronDown, ChevronRight, Globe, Store as StoreIcon,
   AlertTriangle, Building2, Network, Plug, CreditCard, Tag, Warehouse,
   BarChart3, Users, ShieldAlert, Database, Wallet, CalendarClock, Undo2,
+  Boxes, Coins, Ticket, ClipboardCheck, Factory,
 } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 import { useAppScope } from '../hooks/useAppScope';
@@ -54,6 +55,12 @@ const navItems: NavItem[] = [
 
   // Couche 3 — Exploitation magasin
   { path: '/products', label: 'Produits', icon: Package, scope: 'store' },
+  { path: '/catalog/variants', label: 'Variantes', icon: Boxes, minRole: 'manager', scope: 'store' },
+  { path: '/catalog/store-prices', label: 'Prix magasin', icon: Coins, minRole: 'manager', scope: 'store' },
+  { path: '/catalog/brands-suppliers', label: 'Marques & Fournisseurs', icon: Factory, minRole: 'manager', scope: 'store' },
+  { path: '/promo-codes', label: 'Codes promo', icon: Ticket, minRole: 'manager', scope: 'store' },
+  { path: '/pending-payments', label: 'Paiements à régulariser', icon: CreditCard, minRole: 'manager', scope: 'store' },
+  { path: '/inventory-variance', label: 'Écarts inventaire', icon: ClipboardCheck, minRole: 'manager', scope: 'store' },
   { path: '/stock-alerts', label: 'Alertes Stock', icon: AlertTriangle, scope: 'store' },
   { path: '/labels', label: 'Etiquettes', icon: Tag, minRole: 'manager', scope: 'store' },
   { path: '/performance', label: 'Performance', icon: BarChart3, minRole: 'manager', scope: 'store' },
