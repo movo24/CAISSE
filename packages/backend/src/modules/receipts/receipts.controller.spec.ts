@@ -7,7 +7,10 @@ import { SaleEntity } from '../../database/entities/sale.entity';
 import { SaleLineItemEntity } from '../../database/entities/sale-line-item.entity';
 import { SalePaymentEntity } from '../../database/entities/sale-payment.entity';
 import { StoreEntity } from '../../database/entities/store.entity';
+import { CreditNoteEntity } from '../../database/entities/credit-note.entity';
+import { CreditNoteLineEntity } from '../../database/entities/credit-note-line.entity';
 import { MailService } from '../../common/messaging/mail.service';
+import { AuditService } from '../audit/audit.service';
 
 const SALE_ID = '11111111-1111-4111-8111-111111111111';
 
@@ -33,7 +36,10 @@ describe('ReceiptsController — email receipt', () => {
         { provide: getRepositoryToken(SaleLineItemEntity), useValue: { find: jest.fn().mockResolvedValue([]) } },
         { provide: getRepositoryToken(SalePaymentEntity), useValue: { find: jest.fn().mockResolvedValue([]) } },
         { provide: getRepositoryToken(StoreEntity), useValue: { findOne: jest.fn().mockResolvedValue({ name: 'Boutique' }) } },
+        { provide: getRepositoryToken(CreditNoteEntity), useValue: { findOne: jest.fn() } },
+        { provide: getRepositoryToken(CreditNoteLineEntity), useValue: { find: jest.fn().mockResolvedValue([]) } },
         { provide: MailService, useValue: mail },
+        { provide: AuditService, useValue: { log: jest.fn() } },
       ],
     }).compile();
     controller = module.get(ReceiptsController);

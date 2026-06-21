@@ -4,6 +4,7 @@ import {
   Post,
   Param,
   Body,
+  Req,
   UseGuards,
   BadRequestException,
   NotFoundException,
@@ -16,9 +17,14 @@ import { SaleEntity } from '../../database/entities/sale.entity';
 import { SaleLineItemEntity } from '../../database/entities/sale-line-item.entity';
 import { SalePaymentEntity } from '../../database/entities/sale-payment.entity';
 import { StoreEntity } from '../../database/entities/store.entity';
+import { CreditNoteEntity } from '../../database/entities/credit-note.entity';
+import { CreditNoteLineEntity } from '../../database/entities/credit-note-line.entity';
 import { SkipTenantCheck } from '../../common/interceptors/tenant.interceptor';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { MailService } from '../../common/messaging/mail.service';
+import { AuditService } from '../audit/audit.service';
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Human labels for payment methods on the receipt. */
 const PAYMENT_LABELS: Record<string, string> = {
@@ -51,8 +57,75 @@ export class ReceiptsController {
     @InjectRepository(SaleLineItemEntity) private lineRepo: Repository<SaleLineItemEntity>,
     @InjectRepository(SalePaymentEntity) private payRepo: Repository<SalePaymentEntity>,
     @InjectRepository(StoreEntity) private storeRepo: Repository<StoreEntity>,
+    @InjectRepository(CreditNoteEntity) private cnRepo: Repository<CreditNoteEntity>,
+    @InjectRepository(CreditNoteLineEntity) private cnLineRepo: Repository<CreditNoteLineEntity>,
     private readonly mail: MailService,
+    private readonly audit: AuditService,
   ) {}
+
+  // ── Credit-note (avoir / remboursement) receipt — Bloc 10g.
+  //    Declared BEFORE @Get(':saleId') so 'credit-note' is not read as a saleId. ──
+
+  /** GET /api/receipts/credit-note/:id — printable proof of a refund / avoir (public). */
+  @Get('credit-note/:id')
+  @SkipTenantCheck()
+  @ApiOperation({ summary: 'Get a credit-note (refund/avoir) receipt (public, no auth)' })
+  async getCreditNoteReceipt(@Param('id') id: string) {
+    if (!UUID_RE.test(id)) throw new NotFoundException('Avoir introuvable');
+    const cn = await this.cnRepo.findOne({ where: { id } });
+    if (!cn) throw new NotFoundException('Avoir introuvable');
+
+    const lines = await this.cnLineRepo.find({ where: { creditNoteId: cn.id } });
+    const store = await this.storeRepo.findOne({ where: { id: cn.storeId } });
+
+    this.logger.log(`[CREDIT_NOTE] Accessed: ${cn.code} (cn ${id.slice(0, 8)})`);
+
+    return {
+      kind: 'credit_note' as const,
+      code: cn.code,
+      date: cn.createdAt,
+      creditType: cn.type, // 'refund' | 'store_credit'
+      refundMethod: cn.refundMethod ? PAYMENT_LABELS[cn.refundMethod] ?? cn.refundMethod : null,
+      originalTicketNumber: cn.originalTicketNumber || null,
+      store: {
+        name: store?.name || 'Magasin',
+        address: store?.address || '',
+        city: store?.city || '',
+        siret: store?.siret || '',
+        tvaIntracom: store?.tvaIntracom || '',
+      },
+      items: lines.map((l) => ({
+        name: l.productName || 'Produit',
+        quantity: l.quantity,
+        unitPrice: l.unitPriceMinorUnits / 100,
+        total: l.lineTotalMinorUnits / 100,
+      })),
+      total: cn.totalMinorUnits / 100,
+      remaining: cn.remainingMinorUnits / 100, // for a store-credit avoir
+      cashier: cn.employeeNameSnapshot || '',
+    };
+  }
+
+  /** GET /api/receipts/credit-note/:id/html — the same as a printable page. */
+  @Get('credit-note/:id/html')
+  @SkipTenantCheck()
+  @ApiOperation({ summary: 'Get a credit-note receipt as an HTML page (public)' })
+  async getCreditNoteReceiptHtml(@Param('id') id: string) {
+    return this.buildCreditNoteHtml(id);
+  }
+
+  /** POST /api/receipts/credit-note/:id/reprint — staff reprint, audited (who/when). */
+  @Post('credit-note/:id/reprint')
+  @UseGuards(JwtAuthGuard)
+  @SkipTenantCheck()
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Reprint a credit-note receipt (auth required; logged to the audit chain)' })
+  async reprintCreditNote(@Param('id') id: string, @Req() req: any) {
+    const data = await this.getCreditNoteReceipt(id); // 404 if unknown
+    const cn = await this.cnRepo.findOne({ where: { id } });
+    await this.logReprint(cn!.storeId, req?.user?.employeeId, 'credit_note', id, { code: data.code });
+    return data;
+  }
 
   /**
    * GET /api/receipts/:saleId
@@ -153,6 +226,48 @@ export class ReceiptsController {
     return { sent: true };
   }
 
+  /**
+   * POST /api/receipts/:saleId/reprint — staff reprint of a sale receipt,
+   * recorded in the per-store audit chain (the server-side reprint trail the
+   * pos-desktop local reprintLog could not provide: who, when, which ticket).
+   */
+  @Post(':saleId/reprint')
+  @UseGuards(JwtAuthGuard)
+  @SkipTenantCheck()
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Reprint a sale receipt (auth required; logged to the audit chain)' })
+  async reprintReceipt(@Param('saleId') saleId: string, @Req() req: any) {
+    const data = await this.getReceipt(saleId); // 404 if unknown
+    const sale = await this.saleRepo.findOne({ where: { id: saleId } });
+    await this.logReprint(sale!.storeId, req?.user?.employeeId, 'sale', saleId, {
+      ticketNumber: data.ticketNumber,
+    });
+    return data;
+  }
+
+  /** Append a receipt-reprint entry to the store's audit chain (non-blocking). */
+  private async logReprint(
+    storeId: string,
+    employeeId: string | undefined,
+    entityType: 'sale' | 'credit_note',
+    entityId: string,
+    details: Record<string, unknown>,
+  ): Promise<void> {
+    try {
+      await this.audit.log({
+        storeId,
+        employeeId: employeeId ?? 'unknown',
+        action: 'receipt_reprinted',
+        entityType,
+        entityId,
+        details: { ...details, reprintedAt: new Date().toISOString() },
+      });
+    } catch (e: any) {
+      // reprint must never fail because the audit append did — log and continue
+      this.logger.warn(`[RECEIPT_REPRINT audit failed] ${entityType} ${entityId}: ${e?.message}`);
+    }
+  }
+
   /** Build the self-contained HTML receipt page for a sale. */
   private async buildReceiptHtml(saleId: string): Promise<string> {
     const data = await this.getReceipt(saleId);
@@ -217,6 +332,77 @@ ${data.discount > 0 ? `<div style="display:flex;justify-content:space-between;co
 </div>
 <div class="footer">
 <p>Merci de votre visite !</p>
+<p style="margin-top:4px">${esc(data.store.name)} • ${new Date(data.date).toLocaleDateString('fr-FR')}</p>
+</div>
+</div>
+</body>
+</html>`;
+  }
+
+  /** Build the self-contained HTML page for a credit-note (avoir/refund) receipt. */
+  private async buildCreditNoteHtml(id: string): Promise<string> {
+    const data = await this.getCreditNoteReceipt(id);
+    const isAvoir = data.creditType === 'store_credit';
+    const heading = isAvoir ? 'Avoir' : 'Remboursement';
+    const badge = isAvoir ? "Avoir émis" : `Remboursé${data.refundMethod ? ' • ' + esc(data.refundMethod) : ''}`;
+
+    const itemsHtml = data.items
+      .map(
+        (i: any) =>
+          `<tr><td>${esc(i.name)}</td><td style="text-align:center">${i.quantity}</td><td style="text-align:right">${i.unitPrice.toFixed(2)} €</td><td style="text-align:right">${i.total.toFixed(2)} €</td></tr>`,
+      )
+      .join('');
+
+    return `<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${heading} ${esc(data.code)}</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f5f5f5;color:#1a1a1a;padding:16px}
+.receipt{max-width:400px;margin:0 auto;background:#fff;border-radius:16px;box-shadow:0 2px 12px rgba(0,0,0,.08);overflow:hidden}
+.header{background:linear-gradient(135deg,#b45309,#f59e0b);color:#fff;padding:24px;text-align:center}
+.header h1{font-size:14px;opacity:.85;letter-spacing:2px;text-transform:uppercase}
+.header .total{font-size:36px;font-weight:900;margin:8px 0}
+.header .ticket{font-size:12px;opacity:.75}
+.body{padding:20px}
+.store{text-align:center;margin-bottom:16px;padding-bottom:16px;border-bottom:1px dashed #e5e5e5}
+.store h2{font-size:16px;font-weight:700}
+.store p{font-size:11px;color:#666;margin-top:2px}
+table{width:100%;border-collapse:collapse;margin:12px 0}
+th{font-size:10px;color:#999;text-transform:uppercase;letter-spacing:1px;padding:4px 0;border-bottom:1px solid #eee;text-align:left}
+td{padding:8px 0;font-size:13px;border-bottom:1px solid #f5f5f5}
+.total-line{display:flex;justify-content:space-between;font-size:18px;font-weight:800;margin-top:12px;padding-top:12px;border-top:2px solid #1a1a1a}
+.footer{text-align:center;padding:16px;font-size:10px;color:#999;border-top:1px solid #f0f0f0}
+.badge{display:inline-block;background:#b45309;color:#fff;font-size:10px;font-weight:700;padding:4px 10px;border-radius:20px;margin-top:8px}
+</style>
+</head>
+<body>
+<div class="receipt">
+<div class="header">
+<h1>${heading}</h1>
+<div class="total">${data.total.toFixed(2)} €</div>
+<div class="ticket">${esc(data.code)} • ${new Date(data.date).toLocaleString('fr-FR')}</div>
+<div class="badge">↩ ${badge}</div>
+</div>
+<div class="body">
+<div class="store">
+<h2>${esc(data.store.name)}</h2>
+<p>${esc(data.store.address)}${data.store.city ? ', ' + esc(data.store.city) : ''}</p>
+${data.store.siret ? `<p>SIRET: ${esc(data.store.siret)}</p>` : ''}
+${data.originalTicketNumber ? `<p>Ticket d'origine : ${esc(data.originalTicketNumber)}</p>` : ''}
+</div>
+<table>
+<thead><tr><th>Article retourné</th><th style="text-align:center">Qté</th><th style="text-align:right">P.U.</th><th style="text-align:right">Total</th></tr></thead>
+<tbody>${itemsHtml}</tbody>
+</table>
+<div class="total-line"><span>${heading.toUpperCase()}</span><span>${data.total.toFixed(2)} €</span></div>
+${isAvoir ? `<p style="font-size:12px;color:#b45309;margin-top:8px;text-align:center">Solde restant : ${data.remaining.toFixed(2)} €</p>` : ''}
+</div>
+<div class="footer">
+<p>Document non fiscal — justificatif de ${esc(heading.toLowerCase())}.</p>
 <p style="margin-top:4px">${esc(data.store.name)} • ${new Date(data.date).toLocaleDateString('fr-FR')}</p>
 </div>
 </div>
