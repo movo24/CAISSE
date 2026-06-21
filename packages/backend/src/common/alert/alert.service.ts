@@ -25,7 +25,9 @@ export type AlertEvent =
   | 'CIRCUIT_BREAKER_OPEN'
   | 'CIRCUIT_BREAKER_CLOSED'
   | 'LOGIN_BRUTEFORCE'
-  | 'RATE_LIMIT_BURST';
+  | 'RATE_LIMIT_BURST'
+  // A stock count revealed a shortage ≥ threshold — needs human verification.
+  | 'STOCK_VARIANCE_HIGH';
 
 export interface AlertEntry {
   event: AlertEvent;
@@ -117,6 +119,7 @@ export class AlertService {
       case 'LOGIN_BRUTEFORCE':
         return 'critical';
       case 'RATE_LIMIT_BURST':
+      case 'STOCK_VARIANCE_HIGH':
         return 'warning';
       default:
         return 'info';

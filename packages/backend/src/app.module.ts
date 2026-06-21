@@ -31,6 +31,7 @@ import { UnitsModule } from './modules/units/units.module';
 import { ConnectedAppsModule } from './modules/connected-apps/connected-apps.module';
 import { InventoryScanModule } from './modules/inventory-scan/inventory-scan.module';
 import { StockLocationsModule } from './modules/stock-locations/stock-locations.module';
+import { StockReconciliationModule } from './modules/stock-reconciliation/stock-reconciliation.module';
 import { StripeModule } from './common/stripe/stripe.module';
 import { StripeTerminalModule } from './modules/stripe-terminal/stripe-terminal.module';
 import { TerminalsModule } from './modules/terminals/terminals.module';
@@ -114,6 +115,7 @@ const isProd = process.env.NODE_ENV === 'production';
     ConnectedAppsModule,
     InventoryScanModule,
     StockLocationsModule,
+    StockReconciliationModule,
     StripeModule,
     StripeTerminalModule,
     TerminalsModule,
