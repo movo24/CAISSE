@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { authApi } from '../services/api';
 import type { PaymentMethod } from '../services/paymentMachine';
+import { computePromoDiscount } from '../services/discount-policy';
 
 export interface CartItem {
   productId: string;
@@ -147,6 +148,11 @@ interface POSState {
   // Manual cart discount (decision 5) — capped 30%, requires a manager approver.
   manualDiscountMinorUnits: number;
   discountApproverId: string | null;
+  // Promo code applied at the sale (decision 6) — owner-defined; the server
+  // re-validates + redeems atomically. Discount computed live (getter) so it tracks
+  // cart changes and mirrors the server's base exactly.
+  promoCode: string | null;
+  promoDiscountInfo: { discountType: 'percentage' | 'fixed'; discountValue: number } | null;
 
   // UI
   scanMode: 'product' | 'customer' | 'employee';
@@ -174,6 +180,9 @@ interface POSState {
   removeFromCart: (productId: string) => void;
   updateQuantity: (productId: string, quantity: number) => void;
   setManualDiscount: (minorUnits: number, approverId: string | null) => void;
+  setPromoCode: (code: string, info: { discountType: 'percentage' | 'fixed'; discountValue: number }) => void;
+  clearPromoCode: () => void;
+  promoDiscount: () => number;
   setCustomer: (customer: Customer, qrCode: string) => void;
   clearCustomer: () => void;
   clearCart: () => void;
@@ -207,6 +216,8 @@ export const usePOSStore = create<POSState>((set, get) => ({
   customer: null,
   manualDiscountMinorUnits: 0,
   discountApproverId: null,
+  promoCode: null,
+  promoDiscountInfo: null,
   scanMode: 'product',
   paymentModalOpen: false,
   lastTicket: null,
@@ -289,6 +300,14 @@ export const usePOSStore = create<POSState>((set, get) => ({
     set({ manualDiscountMinorUnits: Math.max(0, Math.round(minorUnits || 0)), discountApproverId: approverId });
   },
 
+  setPromoCode: (code, info) => {
+    set({ promoCode: (code || '').trim().toUpperCase() || null, promoDiscountInfo: info });
+  },
+
+  clearPromoCode: () => {
+    set({ promoCode: null, promoDiscountInfo: null });
+  },
+
   clearCustomer: () => {
     set({ customer: null, customerQrCode: null });
   },
@@ -300,6 +319,8 @@ export const usePOSStore = create<POSState>((set, get) => ({
       customerQrCode: null,
       manualDiscountMinorUnits: 0,
       discountApproverId: null,
+      promoCode: null,
+      promoDiscountInfo: null,
       paymentModalOpen: false,
     });
   },
@@ -375,9 +396,17 @@ export const usePOSStore = create<POSState>((set, get) => ({
       (sum, i) => sum + i.unitPriceMinorUnits * i.quantity,
       0,
     ),
-  // Total discount = per-line discounts + the manual cart discount (decision 5).
+  // Promo code discount (decision 6), computed LIVE on the same base the server uses
+  // (subtotal − line discounts − manual discount) so the displayed total matches the
+  // server total exactly. Owner-defined → not subject to the 30% manual cap.
+  promoDiscount: () => {
+    const lineDiscounts = get().cartItems.reduce((sum, i) => sum + i.discountMinorUnits, 0);
+    const base = get().subtotal() - lineDiscounts - get().manualDiscountMinorUnits;
+    return computePromoDiscount(base, get().promoDiscountInfo);
+  },
+  // Total discount = per-line discounts + manual cart discount (decision 5) + promo (decision 6).
   totalDiscount: () =>
-    get().cartItems.reduce((sum, i) => sum + i.discountMinorUnits, 0) + get().manualDiscountMinorUnits,
+    get().cartItems.reduce((sum, i) => sum + i.discountMinorUnits, 0) + get().manualDiscountMinorUnits + get().promoDiscount(),
   // Business invariant: a cart total is never negative. If discounts exceed the
   // subtotal, clamp at 0 (line state + discount semantics unchanged — only the
   // final total clamps).

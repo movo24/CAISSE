@@ -15,6 +15,22 @@ export interface ManualDiscountCheck {
   approverId?: string | null;
 }
 
+/**
+ * Promo-code discount (decision 6), computed on the SAME base the server uses
+ * (subtotal − line discounts − manual discount) so the client total matches the
+ * server total exactly. Owner-defined → not subject to the 30% manual cap.
+ */
+export function computePromoDiscount(
+  baseMinor: number,
+  info: { discountType: 'percentage' | 'fixed'; discountValue: number } | null,
+): number {
+  if (!info || baseMinor <= 0) return 0;
+  const raw = info.discountType === 'percentage'
+    ? Math.floor(baseMinor * (info.discountValue / 100))
+    : Math.min(info.discountValue, baseMinor);
+  return Math.max(0, Math.min(raw, baseMinor));
+}
+
 export function validateManualDiscount(c: ManualDiscountCheck): { ok: boolean; reason?: string } {
   const discount = Math.max(0, Math.round(c.manualDiscountMinor || 0));
   if (discount === 0) return { ok: true }; // no manual discount → nothing to enforce

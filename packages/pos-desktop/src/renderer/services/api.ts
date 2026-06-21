@@ -171,6 +171,12 @@ export const salesApi = {
     api.post(`/sales/${id}/void`, undefined, idempotencyKey ? { headers: { 'Idempotency-Key': idempotencyKey } } : undefined),
 };
 
+// Promo codes (decision 6) — at-sale entry. validate() is read-only feedback; the
+// server applies + redeems the code atomically when the sale is created.
+export const promoCodesApi = {
+  validate: (code: string) => api.post('/promo-codes/validate', { code }),
+};
+
 // Receipts (digital ticket)
 export const receiptsApi = {
   email: (saleId: string, email: string) =>

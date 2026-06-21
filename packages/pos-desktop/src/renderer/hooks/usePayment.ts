@@ -170,6 +170,8 @@ export function usePayment() {
         ...(store.manualDiscountMinorUnits > 0
           ? { manualDiscountMinorUnits: store.manualDiscountMinorUnits, discountApproverId: store.discountApproverId || undefined }
           : {}),
+        // Promo code (decision 6) — server re-validates + redeems atomically.
+        ...(store.promoCode ? { promoCode: store.promoCode } : {}),
         payments: payments.map((p) => ({
           method: p.method,
           amountMinorUnits: p.amountMinorUnits,

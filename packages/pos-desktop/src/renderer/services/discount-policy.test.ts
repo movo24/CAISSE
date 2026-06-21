@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validateManualDiscount } from './discount-policy';
+import { validateManualDiscount, computePromoDiscount } from './discount-policy';
 
 describe('manual discount policy (client mirror of decision 5)', () => {
   it('no discount → always ok', () => {
@@ -24,5 +24,26 @@ describe('manual discount policy (client mirror of decision 5)', () => {
 
   it('a discount on an empty cart is refused', () => {
     expect(validateManualDiscount({ subtotalMinor: 0, manualDiscountMinor: 100, approverId: 'mgr' }).ok).toBe(false);
+  });
+});
+
+describe('promo code discount (decision 6 — mirrors the server base)', () => {
+  it('no info → 0', () => {
+    expect(computePromoDiscount(2000, null)).toBe(0);
+  });
+
+  it('percentage uses floor of base × pct', () => {
+    expect(computePromoDiscount(2000, { discountType: 'percentage', discountValue: 10 })).toBe(200);
+    expect(computePromoDiscount(1999, { discountType: 'percentage', discountValue: 10 })).toBe(199); // floor(199.9)
+  });
+
+  it('fixed is capped at the base (never makes the total negative)', () => {
+    expect(computePromoDiscount(2000, { discountType: 'fixed', discountValue: 500 })).toBe(500);
+    expect(computePromoDiscount(300, { discountType: 'fixed', discountValue: 500 })).toBe(300);
+  });
+
+  it('non-positive base → 0', () => {
+    expect(computePromoDiscount(0, { discountType: 'percentage', discountValue: 50 })).toBe(0);
+    expect(computePromoDiscount(-100, { discountType: 'fixed', discountValue: 50 })).toBe(0);
   });
 });
