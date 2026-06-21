@@ -33,5 +33,11 @@
 ### M704 — investigué, NON appliqué (env partagé)
 - `@capacitor/preferences` manquant ⇒ customer-app tsc échoue. Fix **vérifié** (install → tsc exit 0) MAIS `npm install -w` depuis le worktree a **remplacé le symlink node_modules par un dir réel incomplet** → cassé backend/backoffice/pos/mobile (2159/52/279/64 erreurs). **Recovery** : symlink restauré + churn npm (package.json/lockfile) revert → 4 packages re-✅, customer-app re-1-erreur. Conclusion : manifeste déjà correct ; à résoudre par `npm install` dans un checkout normal (hors worktree symlinké). Aucun mute du store partagé.
 
-### Prochaine action automatique
-Suite P1 correctness : M108 (spec réconciliation) → M006/M402 (verifyChain recompute + index anti-fork) → M107 (source unique stock) → M302 (RGPD).
+### M108 (commit df08a09)
+- La spec `test/stock-reconciliation.spec.ts` existait déjà (auditeur l'avait ratée — vérif source-of-truth). Ajout : boundary exact 19/20/21 % + chemin reject (no stock change, double-confirm refusé). jest 7/7.
+
+### M803 (commit c65a89e) — doc refresh CLAUDE.md (safe)
+- Inventaire factuel remis à jour : modules 37→42 (+documents/fiscal/pos-session/promo-codes/stock-reconciliation), entities 45→53, migrations 1716→1743, tests 405/49→543/81, pointeur DEBT→TECHNICAL_DEBT + bloc suivi vivant. Doc-only, aucune logique touchée.
+
+### Gate de validation (recadrage périmètre POS)
+- Safe autonome épuisé. P1 restants = SENSIBLES (fiscal verifyChain+migration / stock réel source unique / RGPD / receipts XSS) ⇒ STOP + demande de GO owner avant exécution. Plans prêts dans PROJECT_STATUS.

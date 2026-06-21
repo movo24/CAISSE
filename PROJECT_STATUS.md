@@ -53,6 +53,12 @@
 ## Parqué (STOP volontaire — ne pas construire)
 NF525 Z-seal · Comptamax export comptable · porte offline-sale · onboarding/pricing SaaS.
 
-## Prochaine action automatique
-Cluster sécurité P1 ✅ + M005 ✅ + M703 ✅ livrés. Suite P1 correctness/intégrité :
-**M108** (spec réconciliation 19/20/21 %) → **M006/M402** (verifyChain recompute + index anti-fork + specs) → **M107** (source unique stock) → **M302** (RGPD). Verify-then-fix, lots cohérents.
+## Gate de validation (périmètre POS sensible — owner décide avant exécution)
+Le safe autonome est épuisé pour ce tour. Les P1 restants touchent des flux **sensibles** (fiscal / stock réel / décision produit / migration sur table sensible) ⇒ je NE les exécute PAS sans GO :
+- **M006/M402** `verifyChain` recompute (fiscal+audit) + **migration index unique** sur `fiscal_journal`/`audit_entries` — flux fiscal déjà utilisé + migration sur table fiscale (peut échouer si dups existants en prod).
+- **M107/D11** trancher la source unique du **stock réel** (legacy column vs stock_balances) — modifie le flux de vente/stock déjà utilisé.
+- **M302/D13** effacement/anonymisation RGPD client — **décision produit/légale** + suppression de données.
+- **D9** XSS/receipts — modifier les **reçus** = sensible (je peux seulement *vérifier* en lecture).
+
+## Prochaine action automatique (safe uniquement)
+M803 ✅ livré. En attente de GO owner pour le cluster sensible ci-dessus (plans prêts). Items safe restants mineurs : barrel `entities/index.ts` (cosmétique), nit commentaire health 2s/5s.
