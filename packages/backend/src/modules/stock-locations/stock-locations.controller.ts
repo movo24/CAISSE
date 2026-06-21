@@ -99,6 +99,26 @@ export class StockLocationsController {
     });
   }
 
+  @Post('loss')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'Record a stock loss (casse / vol / périmé / inconnu) — reason required' })
+  recordLoss(
+    @Body() body: {
+      productId: string;
+      locationId: string;
+      quantity: number;
+      lossType: 'loss_breakage' | 'loss_theft' | 'loss_expired' | 'loss_unknown';
+      reason: string;
+    },
+    @Request() req: any,
+  ) {
+    return this.service.recordLoss({
+      ...body,
+      employeeId: req.user.employeeId,
+      employeeName: req.user.employeeName || req.user.employeeId,
+    });
+  }
+
   @Post('dispatch')
   @Roles('admin', 'manager')
   @ApiOperation({ summary: 'Dispatch stock from central to multiple stores' })

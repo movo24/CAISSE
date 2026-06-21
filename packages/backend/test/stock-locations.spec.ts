@@ -93,4 +93,23 @@ describe('Bloc 6 — multi-location stock (runnable via migration 1735)', () => 
   it('ADVERSE — duplicate location code is rejected', async () => {
     await expect(svc.createLocation({ name: 'dup', code: 'CENTRAL-001', type: 'central' })).rejects.toThrow(/already exists/);
   });
+
+  it('Bloc 6.2 — recordLoss decrements the location balance + writes a loss journal movement', async () => {
+    const beforeStore = await svc.getBalance(P1, store.id); // 30 on the shop floor
+    const m = await svc.recordLoss({
+      productId: P1, locationId: store.id, quantity: 4, lossType: 'loss_breakage', reason: 'cartons écrasés', ...actor,
+    });
+    expect(m.movementType).toBe('loss_breakage');
+    expect(m.fromLocationId).toBe(store.id);
+    expect(m.toLocationId).toBeNull();
+    expect(await svc.getBalance(P1, store.id)).toBe(beforeStore - 4);
+    const moves = await svc.getMovements(P1);
+    expect(moves[0]).toMatchObject({ movementType: 'loss_breakage', quantity: 4, reason: 'cartons écrasés' });
+  });
+
+  it('ADVERSE — a loss without a reason, with a bad type, or over available is rejected', async () => {
+    await expect(svc.recordLoss({ productId: P1, locationId: store.id, quantity: 1, lossType: 'loss_theft', reason: '  ', ...actor })).rejects.toThrow(/reason/);
+    await expect(svc.recordLoss({ productId: P1, locationId: store.id, quantity: 1, lossType: 'bogus' as any, reason: 'x', ...actor })).rejects.toThrow(/Invalid loss type/);
+    await expect(svc.recordLoss({ productId: P1, locationId: store.id, quantity: 9999, lossType: 'loss_theft', reason: 'vol', ...actor })).rejects.toThrow(/Insufficient stock to write off/);
+  });
 });

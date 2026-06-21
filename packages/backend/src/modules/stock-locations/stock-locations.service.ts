@@ -261,6 +261,67 @@ export class StockLocationsService {
   }
 
   /**
+   * Record a stock LOSS at a location (Bloc 6.2) — casse, vol, périmé, inconnu.
+   * The movement types existed in the journal but were unreachable. A loss
+   * decrements the location balance and writes an immutable loss movement
+   * (from=location, to=null); a reason is REQUIRED (operational accountability).
+   * Non-fiscal: this is the operational stock journal, not the fiscal chain.
+   */
+  async recordLoss(data: {
+    productId: string;
+    locationId: string;
+    quantity: number;
+    lossType: 'loss_breakage' | 'loss_theft' | 'loss_expired' | 'loss_unknown';
+    reason: string;
+    employeeId: string;
+    employeeName: string;
+  }): Promise<StockMovementEntity> {
+    if (data.quantity <= 0) throw new BadRequestException('Quantity must be positive');
+    if (!data.reason || !data.reason.trim()) {
+      throw new BadRequestException('A loss requires a reason (casse / vol / périmé / …)');
+    }
+    const allowed = ['loss_breakage', 'loss_theft', 'loss_expired', 'loss_unknown'];
+    if (!allowed.includes(data.lossType)) {
+      throw new BadRequestException(`Invalid loss type: ${data.lossType}`);
+    }
+
+    return this.dataSource.transaction(async (manager) => {
+      const balance = await manager.findOne(StockBalanceEntity, {
+        where: { productId: data.productId, locationId: data.locationId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!balance || balance.quantity < data.quantity) {
+        const available = balance?.quantity ?? 0;
+        throw new BadRequestException(
+          `Insufficient stock to write off: ${available} available, ${data.quantity} requested`,
+        );
+      }
+
+      balance.quantity -= data.quantity;
+      await manager.save(balance);
+
+      const movement = Object.assign(new StockMovementEntity(), {
+        productId: data.productId,
+        movementType: data.lossType,
+        fromLocationId: data.locationId,
+        toLocationId: null,
+        quantity: data.quantity,
+        reason: data.reason.trim(),
+        employeeId: data.employeeId,
+        employeeName: data.employeeName,
+      });
+      const saved = await manager.save(movement);
+
+      await this.syncLegacyStock(manager, data.productId);
+
+      this.logger.log(
+        `Loss ${data.lossType} ${data.quantity}x product ${data.productId} at ${data.locationId}: ${data.reason}`,
+      );
+      return saved;
+    });
+  }
+
+  /**
    * Dispatch from central to multiple stores at once.
    */
   async dispatch(data: {
