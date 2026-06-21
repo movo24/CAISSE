@@ -10,6 +10,7 @@ import { Repository, DataSource, QueryRunner } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
 import { createHash } from 'crypto';
 import { SaleEntity } from '../../database/entities/sale.entity';
+import { EmployeeEntity } from '../../database/entities/employee.entity';
 import { SaleLineItemEntity } from '../../database/entities/sale-line-item.entity';
 import { SalePaymentEntity } from '../../database/entities/sale-payment.entity';
 import { IdempotencyKeyEntity } from '../../database/entities/idempotency-key.entity';
@@ -40,6 +41,10 @@ interface CreateSaleDto {
     /** Required when method === 'store_credit': the avoir code to redeem. */
     creditNoteCode?: string;
   }[];
+  /** Manual cart discount (centimes) — capped at 30%, requires a manager approver (decision 5). */
+  manualDiscountMinorUnits?: number;
+  /** Manager/admin employee id authorising a manual discount. */
+  discountApproverId?: string;
 }
 
 export interface SaleStockAlert {
@@ -73,7 +78,12 @@ export class SalesService {
     private jackpotService: JackpotService,
     private timewinService: TimewinService,
     private realtime: RealtimeService,
+    @InjectRepository(EmployeeEntity)
+    private employeeRepo: Repository<EmployeeEntity>,
   ) {}
+
+  /** Manual store discounts are capped here (decision 5) — never above 30%. */
+  private static readonly MANUAL_DISCOUNT_MAX_PCT = 30;
 
   /** Serialize an entity to a plain JSON object for jsonb storage (dates → ISO strings). */
   private toJsonBody(entity: unknown): Record<string, unknown> {
@@ -290,7 +300,7 @@ export class SalesService {
       }
     }
 
-    // --- Enforce maxDiscount limit ---
+    // --- Enforce maxDiscount limit (governs promo/auto discounts) ---
     const maxDiscountPct = employeeSnapshot?.maxDiscount ?? 100;
     if (maxDiscountPct < 100 && subtotal > 0) {
       const maxAllowedDiscount = Math.floor(subtotal * (maxDiscountPct / 100));
@@ -299,6 +309,46 @@ export class SalesService {
           `Discount ${totalDiscount} exceeds employee limit of ${maxDiscountPct}% (max ${maxAllowedDiscount} on subtotal ${subtotal})`,
         );
       }
+    }
+
+    // --- Manual store discount (decision 5): no free seller discount; a manual
+    //     discount REQUIRES a manager/admin approver, is capped HARD at 30% of the
+    //     subtotal (never more), is distributed proportionally across the lines so
+    //     per-line tax stays consistent, and is audited with the approver id. ---
+    const manualDiscount = Math.max(0, dto.manualDiscountMinorUnits ?? 0);
+    let discountApproverId: string | null = null;
+    if (manualDiscount > 0) {
+      if (subtotal <= 0) throw new BadRequestException('Remise impossible sur un panier vide.');
+      const cap = Math.floor(subtotal * (SalesService.MANUAL_DISCOUNT_MAX_PCT / 100));
+      if (manualDiscount > cap) {
+        throw new BadRequestException(
+          `Remise (${(manualDiscount / 100).toFixed(2)}€) supérieure au plafond de ${SalesService.MANUAL_DISCOUNT_MAX_PCT}% (max ${(cap / 100).toFixed(2)}€) — refusée.`,
+        );
+      }
+      // A manual discount is never free: a manager/admin must authorise it.
+      if (!dto.discountApproverId) {
+        throw new BadRequestException('Remise manuelle : validation d’un responsable requise (code/validation responsable).');
+      }
+      const approver = await this.employeeRepo.findOne({ where: { id: dto.discountApproverId, storeId } });
+      if (!approver || !['manager', 'admin'].includes((approver.role ?? '').toLowerCase())) {
+        throw new BadRequestException('Remise refusée : approbateur invalide (un responsable est requis).');
+      }
+      discountApproverId = approver.id;
+
+      // Distribute the cart discount across lines proportionally (last line absorbs
+      // the rounding remainder so the sum is exact and no line goes negative).
+      let remaining = manualDiscount;
+      for (let idx = 0; idx < lineItems.length; idx++) {
+        const li = lineItems[idx];
+        const share = idx === lineItems.length - 1
+          ? remaining
+          : Math.min(remaining, Math.round((manualDiscount * li.lineTotalMinorUnits) / subtotal));
+        const applied = Math.min(share, li.lineTotalMinorUnits);
+        li.discountMinorUnits += applied;
+        li.lineTotalMinorUnits -= applied;
+        remaining -= applied;
+      }
+      totalDiscount += manualDiscount - remaining;
     }
 
     // Calculate totals
@@ -432,6 +482,7 @@ export class SalesService {
       sale.status = 'completed';
       sale.subtotalMinorUnits = subtotal;
       sale.discountTotalMinorUnits = totalDiscount;
+      sale.discountApproverId = discountApproverId;
       sale.taxTotalMinorUnits = taxTotal;
       sale.totalMinorUnits = totalAfterDiscount;
       sale.currencyCode = 'EUR';
@@ -569,6 +620,8 @@ export class SalesService {
             details: {
               ticketNumber,
               discountMinorUnits: totalDiscount,
+              manualDiscountMinorUnits: manualDiscount,
+              discountApproverId, // the manager/admin who authorised the manual discount (decision 5)
               subtotalMinorUnits: subtotalForPct,
               discountPct: subtotalForPct > 0
                 ? Math.round((totalDiscount / subtotalForPct) * 10000) / 100

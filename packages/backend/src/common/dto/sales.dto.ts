@@ -60,4 +60,15 @@ export class CreateSaleDto {
   @IsOptional()
   @IsString()
   customerQrCode?: string;
+
+  @ApiPropertyOptional({ example: 200, description: 'Manual cart discount (centimes) — capped at 30%, requires a manager approver' })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  manualDiscountMinorUnits?: number;
+
+  @ApiPropertyOptional({ description: 'Manager/admin employee id authorising a manual discount' })
+  @IsOptional()
+  @IsString()
+  discountApproverId?: string;
 }

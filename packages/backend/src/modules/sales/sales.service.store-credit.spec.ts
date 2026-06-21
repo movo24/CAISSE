@@ -5,6 +5,7 @@ import { BadRequestException } from '@nestjs/common';
 
 import { SalesService } from './sales.service';
 import { SaleEntity } from '../../database/entities/sale.entity';
+import { EmployeeEntity } from '../../database/entities/employee.entity';
 import { SaleLineItemEntity } from '../../database/entities/sale-line-item.entity';
 import { SalePaymentEntity } from '../../database/entities/sale-payment.entity';
 import { IdempotencyKeyEntity } from '../../database/entities/idempotency-key.entity';
@@ -39,6 +40,7 @@ describe('SalesService — applyStoreCreditRedemptions', () => {
         { provide: JackpotService, useValue: noop },
         { provide: TimewinService, useValue: noop },
         { provide: RealtimeService, useValue: { emit: jest.fn() } },
+        { provide: getRepositoryToken(EmployeeEntity), useValue: noop },
       ],
     }).compile();
     service = module.get(SalesService);

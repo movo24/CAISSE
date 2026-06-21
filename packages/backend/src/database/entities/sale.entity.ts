@@ -49,6 +49,10 @@ export class SaleEntity {
   @Column({ name: 'discount_total_minor_units', type: 'integer', default: 0 })
   discountTotalMinorUnits: number;
 
+  /** Manager/admin who authorised a manual discount on this sale (decision 5). */
+  @Column({ name: 'discount_approver_id', type: 'uuid', nullable: true })
+  discountApproverId: string | null;
+
   @Column({ name: 'tax_total_minor_units', type: 'integer', default: 0 })
   taxTotalMinorUnits: number;
 

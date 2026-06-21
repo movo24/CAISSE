@@ -5,6 +5,7 @@ import { BadRequestException } from '@nestjs/common';
 
 import { SalesService } from './sales.service';
 import { SaleEntity } from '../../database/entities/sale.entity';
+import { EmployeeEntity } from '../../database/entities/employee.entity';
 import { SaleLineItemEntity } from '../../database/entities/sale-line-item.entity';
 import { SalePaymentEntity } from '../../database/entities/sale-payment.entity';
 import { IdempotencyKeyEntity } from '../../database/entities/idempotency-key.entity';
@@ -51,6 +52,7 @@ describe('SalesService — idempotency (E1)', () => {
       providers: [
         SalesService,
         { provide: getRepositoryToken(SaleEntity), useValue: { findOne: jest.fn() } },
+        { provide: getRepositoryToken(EmployeeEntity), useValue: { findOne: jest.fn() } },
         { provide: getRepositoryToken(SaleLineItemEntity), useValue: noop },
         { provide: getRepositoryToken(SalePaymentEntity), useValue: noop },
         { provide: getRepositoryToken(IdempotencyKeyEntity), useValue: idempotencyRepo },
