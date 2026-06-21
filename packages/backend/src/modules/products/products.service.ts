@@ -12,6 +12,18 @@ import { ProductCategoryEntity } from '../../database/entities/product-category.
 import { AuditService } from '../audit/audit.service';
 import { PaginatedResult } from '../../common/dto/pagination.dto';
 import { computePriceVerdict, PriceVerdict } from './price-verdict';
+import { toCsv, parseCsvWithHeader } from '../../common/csv/csv.util';
+
+/** Canonical CSV columns — export emits these; import reads these (round-trip). */
+const CSV_COLUMNS = [
+  'ean',
+  'name',
+  'price_minor_units',
+  'tax_rate',
+  'cost_minor_units',
+  'unit_type',
+  'is_active',
+] as const;
 
 @Injectable()
 export class ProductsService {
@@ -167,6 +179,141 @@ export class ProductsService {
 
     await this.productRepo.update(id, data);
     return this.findOne(id, storeId);
+  }
+
+  /**
+   * Bloc 4i — export the store catalog as CSV (round-trippable with importCsv).
+   * Canonical columns; one row per active product. Read-only.
+   */
+  async exportCsv(storeId: string): Promise<string> {
+    const products = await this.productRepo.find({
+      where: { storeId, isActive: true },
+      order: { name: 'ASC' },
+    });
+    const rows: Array<Array<string | number | boolean | null>> = [CSV_COLUMNS as unknown as string[]];
+    for (const p of products) {
+      rows.push([
+        p.ean,
+        p.name,
+        p.priceMinorUnits,
+        p.taxRate,
+        p.costMinorUnits ?? '',
+        p.unitType,
+        p.isActive,
+      ]);
+    }
+    return toCsv(rows);
+  }
+
+  /**
+   * Bloc 4i — bulk import/update products from CSV. Per-row validation
+   * (ean+name required, price an integer ≥ 0, tax/cost numeric); a row that
+   * fails is SKIPPED and reported, never silently dropped. Upsert by (ean,
+   * store): existing → update (reuses update() so price history + audit hold),
+   * new → create. Returns an honest per-row report.
+   */
+  async importCsv(
+    storeId: string,
+    csvText: string,
+    employeeId: string,
+  ): Promise<{
+    total: number;
+    created: number;
+    updated: number;
+    skipped: number;
+    errors: Array<{ line: number; ean: string; reason: string }>;
+  }> {
+    const rows = parseCsvWithHeader(csvText);
+    let created = 0;
+    let updated = 0;
+    let skipped = 0;
+    const errors: Array<{ line: number; ean: string; reason: string }> = [];
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const line = i + 2; // +1 for header, +1 for 1-based
+      const ean = (row.ean ?? '').trim();
+      const name = (row.name ?? '').trim();
+      const priceRaw = (row.price_minor_units ?? '').trim();
+      const fail = (reason: string) => {
+        errors.push({ line, ean, reason });
+        skipped++;
+      };
+
+      if (!ean) {
+        fail('ean manquant');
+        continue;
+      }
+      if (!name) {
+        fail('name manquant');
+        continue;
+      }
+      const price = Number(priceRaw);
+      if (priceRaw === '' || !Number.isInteger(price) || price < 0) {
+        fail(`price_minor_units invalide: "${priceRaw}" (entier ≥ 0 attendu)`);
+        continue;
+      }
+      const taxRaw = (row.tax_rate ?? '').trim();
+      const taxRate = taxRaw === '' ? 20 : Number(taxRaw);
+      if (Number.isNaN(taxRate) || taxRate < 0) {
+        fail(`tax_rate invalide: "${taxRaw}"`);
+        continue;
+      }
+      const costRaw = (row.cost_minor_units ?? '').trim();
+      let costMinorUnits: number | undefined;
+      if (costRaw !== '') {
+        const cost = Number(costRaw);
+        if (!Number.isInteger(cost) || cost < 0) {
+          fail(`cost_minor_units invalide: "${costRaw}"`);
+          continue;
+        }
+        costMinorUnits = cost;
+      }
+      const unitType = (row.unit_type ?? '').trim() || undefined;
+      const activeRaw = (row.is_active ?? '').trim().toLowerCase();
+      const isActive = activeRaw === '' ? true : ['true', '1', 'yes', 'oui'].includes(activeRaw);
+
+      try {
+        const existing = await this.productRepo.findOne({ where: { ean, storeId } });
+        if (existing) {
+          await this.update(
+            existing.id,
+            {
+              name,
+              priceMinorUnits: price,
+              taxRate,
+              ...(costMinorUnits !== undefined ? { costMinorUnits } : {}),
+              ...(unitType ? { unitType } : {}),
+              isActive,
+            },
+            employeeId,
+            'CSV import',
+            storeId,
+            'csv_import',
+          );
+          updated++;
+        } else {
+          await this.create(
+            {
+              ean,
+              name,
+              priceMinorUnits: price,
+              taxRate,
+              costMinorUnits,
+              unitType,
+              isActive,
+              storeId,
+            } as Partial<ProductEntity>,
+            employeeId,
+          );
+          created++;
+        }
+      } catch (e: any) {
+        fail(e?.message ?? 'erreur inattendue');
+      }
+    }
+
+    return { total: rows.length, created, updated, skipped, errors };
   }
 
   async updateStock(

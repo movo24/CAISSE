@@ -1,0 +1,44 @@
+/**
+ * Dependency-free CSV util (Bloc 4i support). Adverse surface = the RFC-4180
+ * quoting cases pg-mem/naive split() get wrong: embedded commas, doubled quotes,
+ * embedded newlines, CRLF vs LF, no trailing newline.
+ */
+import { parseCsv, toCsv, parseCsvWithHeader } from '../src/common/csv/csv.util';
+
+describe('CSV util (RFC-4180, zero-dependency)', () => {
+  it('parses simple rows (LF and CRLF, with/without trailing newline)', () => {
+    expect(parseCsv('a,b\n1,2\n')).toEqual([['a', 'b'], ['1', '2']]);
+    expect(parseCsv('a,b\r\n1,2')).toEqual([['a', 'b'], ['1', '2']]);
+  });
+
+  it('DECISIVE — quoted fields: embedded comma, doubled quote, embedded newline', () => {
+    const text = 'name,note\r\n"Bonbon, fraise","dit ""miam""\nsuite"\r\n';
+    expect(parseCsv(text)).toEqual([
+      ['name', 'note'],
+      ['Bonbon, fraise', 'dit "miam"\nsuite'],
+    ]);
+  });
+
+  it('round-trips through toCsv → parseCsv (quoting is reversible)', () => {
+    const rows = [
+      ['ean', 'name', 'price'],
+      ['360', 'A,B', '100'],
+      ['361', 'say "hi"', '200'],
+      ['362', 'line\nbreak', '300'],
+    ];
+    expect(parseCsv(toCsv(rows))).toEqual(rows);
+  });
+
+  it('parseCsvWithHeader keys by header, trims, drops blank lines', () => {
+    const text = 'ean, name ,price\n360,Bonbon,100\n\n361,Sucette,50\n';
+    expect(parseCsvWithHeader(text)).toEqual([
+      { ean: '360', name: 'Bonbon', price: '100' },
+      { ean: '361', name: 'Sucette', price: '50' },
+    ]);
+  });
+
+  it('empty input → no rows', () => {
+    expect(parseCsv('')).toEqual([]);
+    expect(parseCsvWithHeader('')).toEqual([]);
+  });
+});
