@@ -7,6 +7,7 @@ import {
   Param,
   Body,
   Query,
+  Header,
   UseGuards,
   Request,
   NotFoundException,
@@ -83,6 +84,26 @@ export class ProductsController {
       page: query.page,
       limit: query.limit,
     });
+  }
+
+  // ── CSV bulk import/export (Bloc 4i) — static routes BEFORE :id ──
+
+  @Get('export')
+  @Roles('admin', 'manager')
+  @Header('Content-Type', 'text/csv; charset=utf-8')
+  @Header('Content-Disposition', 'attachment; filename="products.csv"')
+  @ApiOperation({ summary: 'Export the store catalog as CSV (round-trippable with import)' })
+  exportCsv(@Request() req: any, @Query('storeId') queryStoreId?: string) {
+    const effectiveStoreId =
+      req.user.role === 'admin' && queryStoreId ? queryStoreId : req.user.storeId;
+    return this.productsService.exportCsv(effectiveStoreId);
+  }
+
+  @Post('import')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'Bulk import/update products from CSV (per-row validation + report)' })
+  importCsv(@Body() body: { csv: string }, @Request() req: any) {
+    return this.productsService.importCsv(req.user.storeId, body?.csv ?? '', req.user.employeeId);
   }
 
   @Get(':id')
