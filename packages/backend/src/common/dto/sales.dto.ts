@@ -26,9 +26,9 @@ export class SaleItemDto {
 }
 
 export class SalePaymentDto {
-  @ApiProperty({ example: 'cash', enum: ['cash', 'card', 'mobile', 'check', 'voucher'] })
+  @ApiProperty({ example: 'cash', enum: ['cash', 'card', 'mobile', 'check', 'voucher', 'store_credit'] })
   @IsString()
-  @IsIn(['cash', 'card', 'mobile', 'check', 'voucher'])
+  @IsIn(['cash', 'card', 'mobile', 'check', 'voucher', 'store_credit'])
   method: string;
 
   @ApiProperty({ example: 1500, description: 'Amount in minor units (cents)' })
@@ -45,6 +45,11 @@ export class SalePaymentDto {
   @IsOptional()
   @IsBoolean()
   pendingCapture?: boolean;
+
+  @ApiPropertyOptional({ description: "Required when method === 'store_credit': the avoir/credit-note code to redeem (M005)" })
+  @IsOptional()
+  @IsString()
+  creditNoteCode?: string;
 }
 
 export class CreateSaleDto {
