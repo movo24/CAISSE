@@ -94,4 +94,33 @@ describe('Decision 7 — stock variance ≥20% requires human intervention', () 
     await svc.confirmCorrection(variance.id, STORE, 50, 'casse', MANAGER);
     await expect(svc.confirmCorrection(variance.id, STORE, 50, 'casse', MANAGER)).rejects.toThrow(/already corrected/);
   });
+
+  it('DECISIVE — exact 20% boundary: 19% applies, 20% and 21% flag (M108)', async () => {
+    // 19% shortage (100→81) is under the threshold → applied directly.
+    const a = await seedProduct(100);
+    expect((await svc.submitCount(STORE, a, 81, EMP)).requiresReview).toBe(false);
+    expect(await stockOf(a)).toBe(81);
+
+    // Exactly 20% (100→80) → flagged (>= threshold), stock untouched.
+    const b = await seedProduct(100);
+    expect((await svc.submitCount(STORE, b, 80, EMP)).requiresReview).toBe(true);
+    expect(await stockOf(b)).toBe(100);
+
+    // 21% (100→79) → flagged.
+    const c = await seedProduct(100);
+    expect((await svc.submitCount(STORE, c, 79, EMP)).requiresReview).toBe(true);
+    expect(await stockOf(c)).toBe(100);
+  });
+
+  it('reject closes a flagged variance with NO stock change (recount matched)', async () => {
+    const pid = await seedProduct(100);
+    const { variance } = (await svc.submitCount(STORE, pid, 60, EMP)) as any; // flagged
+    const rejected = await svc.reject(variance.id, STORE, MANAGER, 'recomptage OK');
+    expect(rejected.status).toBe('rejected');
+    expect(rejected.reviewedBy).toBe(MANAGER);
+    expect(await stockOf(pid)).toBe(100); // untouched
+    expect((await svc.listPending(STORE)).find((v) => v.id === variance.id)).toBeUndefined();
+    // a rejected variance can't then be confirmed
+    await expect(svc.confirmCorrection(variance.id, STORE, 60, 'vol', MANAGER)).rejects.toThrow(/already rejected/);
+  });
 });
