@@ -3,12 +3,15 @@ import {
   ConflictException,
   NotFoundException,
   BadRequestException,
+  Optional,
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
 import { PosSessionEntity } from '../../database/entities/pos-session.entity';
+import { TimewinService } from '../timewin/timewin.service';
+import { AuditService } from '../audit/audit.service';
 
 /**
  * POS Session primitive — γ-model (D1 decision: terminal-bound sessions).
@@ -44,7 +47,51 @@ export class PosSessionService {
   constructor(
     @InjectRepository(PosSessionEntity)
     private readonly repo: Repository<PosSessionEntity>,
+    // Observability is OPTIONAL by construction: a session must open/close even
+    // when TimeWin24 or the audit chain are unavailable (resilience), and the
+    // primitive's unit specs construct the service with the repo alone.
+    @Optional() private readonly timewin?: TimewinService,
+    @Optional() private readonly audit?: AuditService,
   ) {}
+
+  /**
+   * Observe a session lifecycle event (Bloc 3.4/3.5 — TimeWin hardening):
+   *  - push session.opened/closed to TimeWin24 (fire-and-forget; network never
+   *    blocks the session lifecycle);
+   *  - record a durable, attributable entry in the per-store audit chain — the
+   *    connection history (who / when / which terminal) that was missing.
+   * Both are best-effort: a failure is logged, never propagated.
+   */
+  private async observeSession(
+    session: PosSessionEntity,
+    event: 'session.opened' | 'session.closed',
+  ): Promise<void> {
+    this.timewin
+      ?.pushEvent(session.storeId, event, session.employeeId, {
+        sessionId: session.id,
+        terminalId: session.terminalId,
+      })
+      .catch((e: any) => this.logger.warn(`[timewin ${event}] ${e?.message}`));
+
+    if (this.audit) {
+      try {
+        await this.audit.log({
+          storeId: session.storeId,
+          employeeId: session.employeeId,
+          action: event === 'session.opened' ? 'pos_session_opened' : 'pos_session_closed',
+          entityType: 'pos_session',
+          entityId: session.id,
+          details: {
+            terminalId: session.terminalId,
+            employeeName: session.employeeName,
+            at: new Date().toISOString(),
+          },
+        });
+      } catch (e: any) {
+        this.logger.warn(`[audit ${event}] ${e?.message}`);
+      }
+    }
+  }
 
   /**
    * Open a new POS session on a physical terminal.
@@ -146,6 +193,7 @@ export class PosSessionService {
       `POS session opened: ${saved.id} for employee ${employeeId} ` +
         `at store ${storeId} on terminal ${options.terminalId}`,
     );
+    await this.observeSession(saved, 'session.opened');
     return saved;
   }
 
@@ -183,6 +231,7 @@ export class PosSessionService {
     session.closedAt = new Date();
     const saved = await this.repo.save(session);
     this.logger.log(`POS session closed: ${saved.id}`);
+    await this.observeSession(saved, 'session.closed');
     return saved;
   }
 

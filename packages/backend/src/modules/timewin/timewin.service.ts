@@ -170,7 +170,11 @@ export class TimewinService implements OnModuleInit {
       lastName: e.lastName,
       email: e.email,
       active: e.active,
-      posPinHash: '', // will be set below — posPin no longer returned by TimeWin24
+      // TimeWin24 no longer returns the POS PIN hash on this feed, so the cached
+      // value stays empty (offline PIN auth via the cache is not supported). The
+      // field is kept on the shape and defensively stripped by the controller
+      // before any employee object is exposed.
+      posPinHash: '',
       posRole: e.posRole,
       maxDiscountPct: e.maxDiscountPct,
       skills: e.skills || [],
