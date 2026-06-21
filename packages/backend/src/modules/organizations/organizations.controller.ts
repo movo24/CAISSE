@@ -24,12 +24,14 @@ export class OrganizationsController {
   constructor(private service: OrganizationsService) {}
 
   @Get()
+  @Roles('admin')
   @ApiOperation({ summary: 'List all organizations' })
   findAll() {
     return this.service.findAll();
   }
 
   @Get(':id')
+  @Roles('admin')
   @ApiOperation({ summary: 'Get organization by ID' })
   findOne(@Param('id') id: string) {
     return this.service.findOne(id);

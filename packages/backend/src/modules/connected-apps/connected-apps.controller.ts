@@ -25,15 +25,20 @@ export class ConnectedAppsController {
   constructor(private service: ConnectedAppsService) {}
 
   @Get()
+  @Roles('admin')
   @ApiOperation({ summary: 'List connected apps for organization' })
-  findAll(@Query('organizationId') organizationId: string) {
-    return this.service.findAll(organizationId);
+  async findAll(@Query('organizationId') organizationId: string) {
+    const apps = await this.service.findAll(organizationId);
+    // SECURITY (M406/D2): admin-only + never expose the third-party api_key over HTTP.
+    return apps.map(({ apiKey, ...rest }) => rest);
   }
 
   @Get(':id')
+  @Roles('admin')
   @ApiOperation({ summary: 'Get connected app by ID' })
-  findOne(@Param('id') id: string) {
-    return this.service.findOne(id);
+  async findOne(@Param('id') id: string) {
+    const { apiKey, ...rest } = await this.service.findOne(id);
+    return rest;
   }
 
   @Post()

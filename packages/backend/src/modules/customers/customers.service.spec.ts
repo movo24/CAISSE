@@ -74,7 +74,9 @@ describe('CustomersService', () => {
 
       expect(result.customer).toBeDefined();
       expect(result.qrCodeDataUrl).toContain('data:image/png');
-      expect(result.otpCode).toMatch(/^\d{6}$/);
+      // Security (M301/D12): the OTP is NEVER returned by the API; it lives in the store.
+      expect((result as any).otpCode).toBeUndefined();
+      expect((service as any).otpStore.get(result.customer.id).code).toMatch(/^\d{6}$/);
       expect(customerRepo.create).toHaveBeenCalled();
       expect(customerRepo.save).toHaveBeenCalled();
     });
@@ -168,7 +170,7 @@ describe('CustomersService', () => {
 
       const result = await service.verifyOtp(
         created.customer.id,
-        created.otpCode,
+        (service as any).otpStore.get(created.customer.id).code,
         'store-1',
       );
 
@@ -208,6 +210,8 @@ describe('CustomersService', () => {
         lastName: 'Out',
         storeId: 'store-1',
       });
+      // Capture the correct OTP now (the store entry may be cleared after lock-out).
+      const correctOtp = (service as any).otpStore.get(created.customer.id).code;
 
       customerRepo.findOne.mockResolvedValue({
         ...created.customer,
@@ -223,7 +227,7 @@ describe('CustomersService', () => {
 
       // 6th attempt — even with correct code, OTP should be deleted
       await expect(
-        service.verifyOtp(created.customer.id, created.otpCode, 'store-1'),
+        service.verifyOtp(created.customer.id, correctOtp, 'store-1'),
       ).rejects.toThrow(/Too many failed OTP attempts/);
     });
   });

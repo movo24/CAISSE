@@ -22,12 +22,14 @@ export class UnitsController {
   constructor(private service: UnitsService) {}
 
   @Get()
+  @Roles('admin')
   @ApiOperation({ summary: 'List all units (optionally filter by organizationId)' })
   findAll(@Query('organizationId') organizationId?: string) {
     return this.service.findAll(organizationId);
   }
 
   @Get(':id')
+  @Roles('admin')
   @ApiOperation({ summary: 'Get unit by ID' })
   findOne(@Param('id') id: string) {
     return this.service.findOne(id);

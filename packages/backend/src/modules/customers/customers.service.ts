@@ -44,7 +44,6 @@ export class CustomersService {
   }): Promise<{
     customer: CustomerEntity;
     qrCodeDataUrl: string;
-    otpCode: string;
   }> {
     const qrCode = `CLI-${uuidv4().slice(0, 8).toUpperCase()}`;
 
@@ -77,7 +76,9 @@ export class CustomersService {
       this.logger.debug(`[DEV OTP] Customer ${saved.firstName}: ${otpCode}`);
     }
 
-    return { customer: saved, qrCodeDataUrl, otpCode };
+    // SECURITY (M301/D12): never return the OTP in the API response. It is
+    // delivered out-of-band (SMS/email) and logged only in non-prod above.
+    return { customer: saved, qrCodeDataUrl };
   }
 
   /**

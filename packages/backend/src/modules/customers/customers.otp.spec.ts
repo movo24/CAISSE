@@ -33,7 +33,9 @@ describe('CustomersService — OTP delivery', () => {
     const arg = notify.mock.calls[0][0];
     expect(arg.prefer).toBe('sms');
     expect(arg.sms.to).toBe('+33600000000');
-    expect(arg.sms.body).toContain(res.otpCode);
+    // OTP is never returned by the API (security M301/D12); read it from the store.
+    const otp = (service as any).otpStore.get(res.customer.id).code;
+    expect(arg.sms.body).toContain(otp);
   });
 
   it('does not attempt delivery when the customer has neither phone nor email', async () => {

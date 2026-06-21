@@ -35,8 +35,12 @@ export class SyncController {
       'Accepts sales, customer updates, and stock adjustments ' +
       'created offline on the POS device. Returns accepted count and conflicts.',
   })
-  async push(@Body() payload: SyncPushPayload) {
-    return this.syncService.push(payload);
+  async push(@Body() payload: SyncPushPayload, @Request() req: any) {
+    // SECURITY (M403/D5): a device may only push into ITS OWN store. Non-admins
+    // cannot write into another store by spoofing payload.storeId (admins may
+    // target an explicit store). resolveStoreId throws Forbidden on mismatch.
+    const storeId = resolveStoreId(req, payload.storeId);
+    return this.syncService.push({ ...payload, storeId });
   }
 
   @Get('pull')

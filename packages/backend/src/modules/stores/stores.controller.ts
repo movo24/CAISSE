@@ -29,11 +29,14 @@ export class StoresController {
    * GET /api/stores — list all stores (for backoffice tour de controle)
    */
   @Get()
+  @Roles('admin')
   @ApiOperation({ summary: 'List all stores (optionally filter by org/unit)' })
   findAll(
     @Query('organizationId') organizationId?: string,
     @Query('unitId') unitId?: string,
   ) {
+    // SECURITY (M203): full cross-tenant store list is admin-only. Non-admins use
+    // GET /stores/accessible and GET /stores/me.
     return this.storesService.findAll({ organizationId, unitId });
   }
 
