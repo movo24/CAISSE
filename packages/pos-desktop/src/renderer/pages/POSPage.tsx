@@ -12,6 +12,7 @@ import { usePOSStore } from '../stores/posStore';
 import { productsApi, salesApi, customersApi, occupancyApi, receiptsApi } from '../services/api';
 import { computePaymentState, type PaymentMethod } from '../services/paymentMachine';
 import { FluxWidget } from '../components/FluxWidget';
+import { ManualDiscountControl } from '../components/ManualDiscountControl';
 import { useOfflineMode } from '../hooks/useOfflineMode';
 import { useWakeLock } from '../hooks/useWakeLock';
 import { EmployeePinGate } from '../components/EmployeePinGate';
@@ -1155,6 +1156,7 @@ export function POSPage() {
                 <span>Remise</span><span className="font-medium">-{formatPrice(store.totalDiscount())}</span>
               </div>
             )}
+            <ManualDiscountControl />
             <div className="h-px bg-pos-border/40" />
             <div className="flex justify-between items-end">
               <span className="text-pos-muted text-sm font-medium">Total</span>
