@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { usePOSStore } from '../stores/posStore';
 import { salesApi } from '../services/api';
+import { validateManualDiscount } from '../services/discount-policy';
 import { usePerformanceStore } from '../stores/performanceStore';
 import { posEventBus } from '../services/posEventBus';
 import { peripheralBridge, TicketData } from '../services/peripheralBridge';
@@ -143,6 +144,15 @@ export function usePayment() {
   }, []);
 
   const finalizePayment = useCallback(async (payments: PartialPayment[], changeMinor: number) => {
+    // Decision 5 mirror: refuse an impossible manual discount before the network.
+    const discCheck = validateManualDiscount({
+      subtotalMinor: store.subtotal(),
+      manualDiscountMinor: store.manualDiscountMinorUnits,
+      approverId: store.discountApproverId,
+    });
+    if (!discCheck.ok) {
+      throw new Error(discCheck.reason || 'Remise refusée');
+    }
     setProcessing(true);
     try {
     const totalAmount = store.total();
@@ -156,6 +166,10 @@ export function usePayment() {
       const res = await salesApi.create({
         items: store.cartItems.map((i) => ({ ean: i.ean, quantity: i.quantity })),
         customerQrCode: store.customerQrCode || undefined,
+        // Manual discount (decision 5) — server re-validates the 30% cap + approver.
+        ...(store.manualDiscountMinorUnits > 0
+          ? { manualDiscountMinorUnits: store.manualDiscountMinorUnits, discountApproverId: store.discountApproverId || undefined }
+          : {}),
         payments: payments.map((p) => ({
           method: p.method,
           amountMinorUnits: p.amountMinorUnits,

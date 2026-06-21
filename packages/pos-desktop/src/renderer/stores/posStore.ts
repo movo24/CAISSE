@@ -144,6 +144,9 @@ interface POSState {
   cartItems: CartItem[];
   customerQrCode: string | null;
   customer: Customer | null;
+  // Manual cart discount (decision 5) — capped 30%, requires a manager approver.
+  manualDiscountMinorUnits: number;
+  discountApproverId: string | null;
 
   // UI
   scanMode: 'product' | 'customer' | 'employee';
@@ -170,6 +173,7 @@ interface POSState {
   addToCart: (item: Omit<CartItem, 'quantity' | 'discountMinorUnits'>) => void;
   removeFromCart: (productId: string) => void;
   updateQuantity: (productId: string, quantity: number) => void;
+  setManualDiscount: (minorUnits: number, approverId: string | null) => void;
   setCustomer: (customer: Customer, qrCode: string) => void;
   clearCustomer: () => void;
   clearCart: () => void;
@@ -201,6 +205,8 @@ export const usePOSStore = create<POSState>((set, get) => ({
   cartItems: [],
   customerQrCode: null,
   customer: null,
+  manualDiscountMinorUnits: 0,
+  discountApproverId: null,
   scanMode: 'product',
   paymentModalOpen: false,
   lastTicket: null,
@@ -279,6 +285,10 @@ export const usePOSStore = create<POSState>((set, get) => ({
     set({ customer, customerQrCode: qrCode });
   },
 
+  setManualDiscount: (minorUnits, approverId) => {
+    set({ manualDiscountMinorUnits: Math.max(0, Math.round(minorUnits || 0)), discountApproverId: approverId });
+  },
+
   clearCustomer: () => {
     set({ customer: null, customerQrCode: null });
   },
@@ -288,6 +298,8 @@ export const usePOSStore = create<POSState>((set, get) => ({
       cartItems: [],
       customer: null,
       customerQrCode: null,
+      manualDiscountMinorUnits: 0,
+      discountApproverId: null,
       paymentModalOpen: false,
     });
   },
@@ -363,8 +375,9 @@ export const usePOSStore = create<POSState>((set, get) => ({
       (sum, i) => sum + i.unitPriceMinorUnits * i.quantity,
       0,
     ),
+  // Total discount = per-line discounts + the manual cart discount (decision 5).
   totalDiscount: () =>
-    get().cartItems.reduce((sum, i) => sum + i.discountMinorUnits, 0),
+    get().cartItems.reduce((sum, i) => sum + i.discountMinorUnits, 0) + get().manualDiscountMinorUnits,
   // Business invariant: a cart total is never negative. If discounts exceed the
   // subtotal, clamp at 0 (line state + discount semantics unchanged — only the
   // final total clamps).
