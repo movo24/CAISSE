@@ -11,6 +11,7 @@ import { EmployeeEntity } from '../../database/entities/employee.entity';
 import { ProductsModule } from '../products/products.module';
 import { CustomersModule } from '../customers/customers.module';
 import { PromotionsModule } from '../promotions/promotions.module';
+import { PromoCodesModule } from '../promo-codes/promo-codes.module';
 import { AuditModule } from '../audit/audit.module';
 import { StockModule } from '../stock/stock.module';
 import { JackpotModule } from '../jackpot/jackpot.module';
@@ -28,6 +29,7 @@ import { JackpotModule } from '../jackpot/jackpot.module';
     ProductsModule,
     CustomersModule,
     PromotionsModule,
+    PromoCodesModule,
     AuditModule,
     StockModule,
     JackpotModule,

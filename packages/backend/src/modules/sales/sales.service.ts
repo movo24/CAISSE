@@ -4,6 +4,7 @@ import {
   BadRequestException,
   ConflictException,
   Logger,
+  Optional,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, QueryRunner } from 'typeorm';
@@ -20,6 +21,7 @@ import { FiscalJournalEntity } from '../../database/entities/fiscal-journal.enti
 import { ProductsService } from '../products/products.service';
 import { CustomersService } from '../customers/customers.service';
 import { PromotionsService, CartItem } from '../promotions/promotions.service';
+import { PromoCodesService } from '../promo-codes/promo-codes.service';
 import { AuditService } from '../audit/audit.service';
 import { StockService } from '../stock/stock.service';
 import { JackpotService, JackpotResult } from '../jackpot/jackpot.service';
@@ -48,6 +50,8 @@ interface CreateSaleDto {
   manualDiscountMinorUnits?: number;
   /** Manager/admin employee id authorising a manual discount. */
   discountApproverId?: string;
+  /** Owner-defined promo code applied at the sale (decision 6) — server validates + redeems atomically. */
+  promoCode?: string;
 }
 
 export interface SaleStockAlert {
@@ -83,6 +87,8 @@ export class SalesService {
     private realtime: RealtimeService,
     @InjectRepository(EmployeeEntity)
     private employeeRepo: Repository<EmployeeEntity>,
+    // Optional so existing tests that don't exercise promo codes keep constructing.
+    @Optional() private promoCodesService?: PromoCodesService,
   ) {}
 
   /** Manual store discounts are capped here (decision 5) — never above 30%. */
@@ -320,6 +326,7 @@ export class SalesService {
     //     per-line tax stays consistent, and is audited with the approver id. ---
     const manualDiscount = Math.max(0, dto.manualDiscountMinorUnits ?? 0);
     let discountApproverId: string | null = null;
+    let promoMeta: { promoCodeId: string; discountApplied: number } | null = null;
     if (manualDiscount > 0) {
       if (subtotal <= 0) throw new BadRequestException('Remise impossible sur un panier vide.');
       const cap = Math.floor(subtotal * (SalesService.MANUAL_DISCOUNT_MAX_PCT / 100));
@@ -352,6 +359,40 @@ export class SalesService {
         remaining -= applied;
       }
       totalDiscount += manualDiscount - remaining;
+    }
+
+    // --- Promo code applied at the sale (decision 6): owner-defined, so NOT subject
+    //     to the seller's 30% cap or the employee maxDiscount. Validated read-only
+    //     here (to compute the discount); the use is RESERVED atomically inside the
+    //     transaction (reserveAtSale) so the cap can't be exceeded by a concurrent
+    //     sale. V1 supports store-wide codes; a product/category-scoped code is
+    //     rejected at the multi-line sale with its validation reason. ---
+    if (dto.promoCode && dto.promoCode.trim()) {
+      if (!this.promoCodesService) throw new BadRequestException('Codes promo indisponibles.');
+      const v = await this.promoCodesService.validate(dto.promoCode, storeId);
+      if (!v.valid) throw new BadRequestException(v.reason ?? 'Code promo invalide.');
+      const base = subtotal - totalDiscount; // = sum of current line totals
+      if (base <= 0) throw new BadRequestException('Code promo : aucun montant à remiser.');
+      let promoDiscount = v.discountType === 'percentage'
+        ? Math.floor(base * ((v.discountValue ?? 0) / 100))
+        : Math.min(v.discountValue ?? 0, base);
+      promoDiscount = Math.max(0, Math.min(promoDiscount, base));
+      if (promoDiscount > 0) {
+        let remaining = promoDiscount;
+        for (let idx = 0; idx < lineItems.length; idx++) {
+          const li = lineItems[idx];
+          const share = idx === lineItems.length - 1
+            ? remaining
+            : Math.min(remaining, Math.round((promoDiscount * li.lineTotalMinorUnits) / base));
+          const applied = Math.min(share, li.lineTotalMinorUnits);
+          li.discountMinorUnits += applied;
+          li.lineTotalMinorUnits -= applied;
+          remaining -= applied;
+        }
+        const applied = promoDiscount - remaining;
+        totalDiscount += applied;
+        promoMeta = { promoCodeId: v.promoCodeId!, discountApplied: applied };
+      }
     }
 
     // Calculate totals
@@ -529,6 +570,19 @@ export class SalesService {
       // --- Save sale (cascade saves lineItems + payments) ---
       const saved = await queryRunner.manager.save(SaleEntity, sale);
 
+      // --- Reserve the promo-code use atomically IN THE SAME TX (decision 6). If
+      //     the cap was hit by a concurrent sale, this throws → the whole sale rolls
+      //     back (no over-redemption, no sale committed with an unearned discount). ---
+      if (promoMeta && this.promoCodesService) {
+        await this.promoCodesService.reserveAtSale(queryRunner.manager, {
+          promoCodeId: promoMeta.promoCodeId,
+          storeId,
+          employeeId,
+          saleId: saved.id,
+          discountAppliedMinorUnits: promoMeta.discountApplied,
+        });
+      }
+
       // --- Decrement stock atomically within transaction ---
       for (const item of dto.items) {
         const product = resolvedProducts.get(item.ean)!;
@@ -637,6 +691,9 @@ export class SalesService {
               discountMinorUnits: totalDiscount,
               manualDiscountMinorUnits: manualDiscount,
               discountApproverId, // the manager/admin who authorised the manual discount (decision 5)
+              promoCode: promoMeta ? (dto.promoCode ?? '').trim().toUpperCase() : null, // decision 6
+              promoCodeId: promoMeta?.promoCodeId ?? null,
+              promoDiscountMinorUnits: promoMeta?.discountApplied ?? null,
               subtotalMinorUnits: subtotalForPct,
               discountPct: subtotalForPct > 0
                 ? Math.round((totalDiscount / subtotalForPct) * 10000) / 100

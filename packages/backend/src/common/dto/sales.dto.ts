@@ -77,4 +77,9 @@ export class CreateSaleDto {
   @IsOptional()
   @IsString()
   discountApproverId?: string;
+
+  @ApiPropertyOptional({ example: 'BIENVENUE10', description: 'Owner-defined promo code applied at the sale (decision 6)' })
+  @IsOptional()
+  @IsString()
+  promoCode?: string;
 }

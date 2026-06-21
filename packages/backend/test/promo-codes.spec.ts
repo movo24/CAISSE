@@ -68,4 +68,19 @@ describe('Decision 6 — promo codes', () => {
     expect((await svc.validate('SACONLY', STORE, { productId: pid })).valid).toBe(true);
     expect(await svc.validate('SACONLY', STORE, { productId: uuidv4() })).toMatchObject({ valid: false, reason: /produit/ });
   });
+
+  it('reserveAtSale (decision 6 — applied at sale): writes the redemption in the caller’s transaction', async () => {
+    // pg-mem mistypes `used_count + 1` (string-concats instead of integer arithmetic
+    // — same class as the documented GREATEST limitation) AND mis-compares the result
+    // in the WHERE, so reserveAtSale's pure conditional-UPDATE cap cannot be proven
+    // here (redeem's cap test passes only thanks to redeem's extra validate() pre-check;
+    // reserveAtSale is conditional-UPDATE-only by design). The numeric + concurrent cap
+    // on the identical SQL is proven in promo-codes-concurrency.pg.spec (gated real-PG).
+    // Here we prove the WIRING: a reserve writes a redemption row with the sale + amount.
+    const code = await svc.create(STORE, { code: 'ATSALE1', discountType: 'fixed', discountValue: 300, maxUses: 5 });
+    const saleA = uuidv4();
+    await svc.reserveAtSale(ds.manager, { promoCodeId: code.id, storeId: STORE, employeeId: EMP, saleId: saleA, discountAppliedMinorUnits: 300 });
+    const reds = await svc.history(code.id, STORE);
+    expect(reds.some((r) => r.saleId === saleA && r.discountAppliedMinorUnits === 300)).toBe(true);
+  });
 });

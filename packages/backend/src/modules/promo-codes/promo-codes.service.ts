@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 import { PromoCodeEntity } from '../../database/entities/promo-code.entity';
 import { PromoCodeRedemptionEntity } from '../../database/entities/promo-code-redemption.entity';
 import { AuditService } from '../audit/audit.service';
@@ -136,6 +136,36 @@ export class PromoCodesService {
       details: { code: (rawCode ?? '').trim().toUpperCase(), saleId: opts.saleId ?? null, discount: opts.discountAppliedMinorUnits ?? null },
     });
     return { ...v, redeemed: true };
+  }
+
+  /**
+   * Reserve one use of a code INSIDE an existing transaction (the sale tx). The
+   * cap is enforced race-safely by the same conditional UPDATE as redeem(); 0 rows
+   * → cap hit → throw, which rolls back the whole sale (no over-redemption, and no
+   * sale committed with a discount it wasn't entitled to). Logs the redemption in
+   * the same tx. Audit is left to the caller (post-commit history).
+   */
+  async reserveAtSale(
+    manager: EntityManager,
+    args: { promoCodeId: string; storeId: string; employeeId: string; saleId: string; discountAppliedMinorUnits: number },
+  ): Promise<void> {
+    const res = await manager.query(
+      `UPDATE promo_codes SET used_count = used_count + 1, updated_at = now()
+       WHERE id = $1 AND store_id = $2 AND is_active = true
+         AND (max_uses IS NULL OR used_count < max_uses)
+       RETURNING used_count`,
+      [args.promoCodeId, args.storeId],
+    );
+    if (!Array.isArray(res) || res.length === 0) {
+      throw new BadRequestException('Code promo : limite d’utilisation atteinte');
+    }
+    await manager.getRepository(PromoCodeRedemptionEntity).insert({
+      promoCodeId: args.promoCodeId,
+      storeId: args.storeId,
+      employeeId: args.employeeId,
+      saleId: args.saleId,
+      discountAppliedMinorUnits: args.discountAppliedMinorUnits,
+    });
   }
 
   /** Usage history for a code. */
