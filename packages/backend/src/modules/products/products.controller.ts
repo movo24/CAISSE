@@ -36,13 +36,15 @@ export class ProductsController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'List products for store (paginated, admin can filter by storeId)' })
+  @ApiOperation({ summary: 'List products for store (paginated; filter by search/brand/supplier)' })
   findAll(
     @Request() req: any,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
     @Query('search') search?: string,
     @Query('storeId') queryStoreId?: string,
+    @Query('brandId') brandId?: string,
+    @Query('supplierId') supplierId?: string,
   ) {
     const effectiveStoreId = (req.user.role === 'admin' && queryStoreId)
       ? queryStoreId
@@ -51,7 +53,37 @@ export class ProductsController {
       page: page ? parseInt(page, 10) : 1,
       limit: limit ? Math.min(parseInt(limit, 10), 100) : 50,
       search,
+      brandId,
+      supplierId,
     });
+  }
+
+  // ── Brand / supplier reference data (decision 3) — static routes before :id ──
+
+  @Get('brands')
+  @ApiOperation({ summary: 'List brands for the store' })
+  listBrands(@Request() req: any) {
+    return this.productsService.listBrands(req.user.storeId);
+  }
+
+  @Post('brands')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'Create (or get) a brand by name' })
+  createBrand(@Body() body: { name: string }, @Request() req: any) {
+    return this.productsService.getOrCreateBrand(req.user.storeId, body?.name ?? '');
+  }
+
+  @Get('suppliers')
+  @ApiOperation({ summary: 'List suppliers for the store' })
+  listSuppliers(@Request() req: any) {
+    return this.productsService.listSuppliers(req.user.storeId);
+  }
+
+  @Post('suppliers')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'Create (or get) a supplier by name' })
+  createSupplier(@Body() body: { name: string }, @Request() req: any) {
+    return this.productsService.getOrCreateSupplier(req.user.storeId, body?.name ?? '');
   }
 
   @Get('scan/:ean')

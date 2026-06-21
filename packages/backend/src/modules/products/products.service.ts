@@ -9,6 +9,8 @@ import { Repository } from 'typeorm';
 import { ProductEntity } from '../../database/entities/product.entity';
 import { PriceHistoryEntity } from '../../database/entities/price-history.entity';
 import { ProductCategoryEntity } from '../../database/entities/product-category.entity';
+import { BrandEntity } from '../../database/entities/brand.entity';
+import { SupplierEntity } from '../../database/entities/supplier.entity';
 import { AuditService } from '../audit/audit.service';
 import { PaginatedResult } from '../../common/dto/pagination.dto';
 import { computePriceVerdict, PriceVerdict } from './price-verdict';
@@ -23,6 +25,8 @@ const CSV_COLUMNS = [
   'cost_minor_units',
   'unit_type',
   'is_active',
+  'brand',
+  'supplier',
 ] as const;
 
 @Injectable()
@@ -35,7 +39,38 @@ export class ProductsService {
     @InjectRepository(ProductCategoryEntity)
     private categoryRepo: Repository<ProductCategoryEntity>,
     private auditService: AuditService,
+    @InjectRepository(BrandEntity)
+    private brandRepo: Repository<BrandEntity>,
+    @InjectRepository(SupplierEntity)
+    private supplierRepo: Repository<SupplierEntity>,
   ) {}
+
+  // ── Brand / supplier reference data (decision 3) ──
+
+  async listBrands(storeId: string): Promise<BrandEntity[]> {
+    return this.brandRepo.find({ where: { storeId, isActive: true }, order: { name: 'ASC' } });
+  }
+
+  async listSuppliers(storeId: string): Promise<SupplierEntity[]> {
+    return this.supplierRepo.find({ where: { storeId, isActive: true }, order: { name: 'ASC' } });
+  }
+
+  /** Idempotent by (store, name) — used by manual create and by CSV import. */
+  async getOrCreateBrand(storeId: string, name: string): Promise<BrandEntity> {
+    const clean = name.trim();
+    if (!clean) throw new BadRequestException('Brand name is required');
+    const existing = await this.brandRepo.findOne({ where: { storeId, name: clean } });
+    if (existing) return existing;
+    return this.brandRepo.save(this.brandRepo.create({ storeId, name: clean }));
+  }
+
+  async getOrCreateSupplier(storeId: string, name: string): Promise<SupplierEntity> {
+    const clean = name.trim();
+    if (!clean) throw new BadRequestException('Supplier name is required');
+    const existing = await this.supplierRepo.findOne({ where: { storeId, name: clean } });
+    if (existing) return existing;
+    return this.supplierRepo.save(this.supplierRepo.create({ storeId, name: clean }));
+  }
 
   async create(
     data: Partial<ProductEntity>,
@@ -58,7 +93,7 @@ export class ProductsService {
 
   async findAll(
     storeId: string,
-    options?: { page?: number; limit?: number; search?: string },
+    options?: { page?: number; limit?: number; search?: string; brandId?: string; supplierId?: string },
   ): Promise<PaginatedResult<ProductEntity>> {
     const page = options?.page || 1;
     const limit = options?.limit || 50;
@@ -75,6 +110,8 @@ export class ProductsService {
         { search: `%${options.search}%` },
       );
     }
+    if (options?.brandId) qb.andWhere('p.brand_id = :brandId', { brandId: options.brandId });
+    if (options?.supplierId) qb.andWhere('p.supplier_id = :supplierId', { supplierId: options.supplierId });
 
     qb.orderBy('p.name', 'ASC').skip(skip).take(limit);
 
@@ -190,6 +227,9 @@ export class ProductsService {
       where: { storeId, isActive: true },
       order: { name: 'ASC' },
     });
+    // Resolve brand/supplier names once (no N+1).
+    const brands = new Map((await this.brandRepo.find({ where: { storeId } })).map((b) => [b.id, b.name]));
+    const suppliers = new Map((await this.supplierRepo.find({ where: { storeId } })).map((s) => [s.id, s.name]));
     const rows: Array<Array<string | number | boolean | null>> = [CSV_COLUMNS as unknown as string[]];
     for (const p of products) {
       rows.push([
@@ -200,6 +240,8 @@ export class ProductsService {
         p.costMinorUnits ?? '',
         p.unitType,
         p.isActive,
+        p.brandId ? brands.get(p.brandId) ?? '' : '',
+        p.supplierId ? suppliers.get(p.supplierId) ?? '' : '',
       ]);
     }
     return toCsv(rows);
@@ -274,6 +316,12 @@ export class ProductsService {
       const isActive = activeRaw === '' ? true : ['true', '1', 'yes', 'oui'].includes(activeRaw);
 
       try {
+        // Resolve brand/supplier by name (created on demand, store-scoped).
+        const brandName = (row.brand ?? '').trim();
+        const supplierName = (row.supplier ?? '').trim();
+        const brandId = brandName ? (await this.getOrCreateBrand(storeId, brandName)).id : undefined;
+        const supplierId = supplierName ? (await this.getOrCreateSupplier(storeId, supplierName)).id : undefined;
+
         const existing = await this.productRepo.findOne({ where: { ean, storeId } });
         if (existing) {
           await this.update(
@@ -284,6 +332,8 @@ export class ProductsService {
               taxRate,
               ...(costMinorUnits !== undefined ? { costMinorUnits } : {}),
               ...(unitType ? { unitType } : {}),
+              ...(brandId ? { brandId } : {}),
+              ...(supplierId ? { supplierId } : {}),
               isActive,
             },
             employeeId,
@@ -301,6 +351,8 @@ export class ProductsService {
               taxRate,
               costMinorUnits,
               unitType,
+              brandId,
+              supplierId,
               isActive,
               storeId,
             } as Partial<ProductEntity>,

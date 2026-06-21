@@ -32,6 +32,12 @@ export class ProductEntity {
   @Column({ name: 'category_id', nullable: true })
   categoryId: string;
 
+  @Column({ name: 'brand_id', type: 'uuid', nullable: true })
+  brandId: string | null;
+
+  @Column({ name: 'supplier_id', type: 'uuid', nullable: true })
+  supplierId: string | null;
+
   @Column({ name: 'unit_type', default: 'unit' })
   unitType: string;
 

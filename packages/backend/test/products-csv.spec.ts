@@ -11,6 +11,8 @@ import { ProductEntity } from '../src/database/entities/product.entity';
 import { StoreEntity } from '../src/database/entities/store.entity';
 import { PriceHistoryEntity } from '../src/database/entities/price-history.entity';
 import { ProductCategoryEntity } from '../src/database/entities/product-category.entity';
+import { BrandEntity } from '../src/database/entities/brand.entity';
+import { SupplierEntity } from '../src/database/entities/supplier.entity';
 import { AuditEntryEntity } from '../src/database/entities/audit-entry.entity';
 import { AuditService } from '../src/modules/audit/audit.service';
 import { ProductsService } from '../src/modules/products/products.service';
@@ -33,6 +35,8 @@ describe('Bloc 4i — product CSV import/export', () => {
       ds.getRepository(PriceHistoryEntity),
       ds.getRepository(ProductCategoryEntity),
       new AuditService(ds.getRepository(AuditEntryEntity), ds),
+      ds.getRepository(BrandEntity),
+      ds.getRepository(SupplierEntity),
     );
   });
   afterAll(async () => {
@@ -85,7 +89,7 @@ describe('Bloc 4i — product CSV import/export', () => {
     const csv = await svc.exportCsv(STORE);
     const parsed = parseCsvWithHeader(csv);
     expect(parsed.length).toBe(before); // one row per active product
-    expect(Object.keys(parsed[0])).toEqual(['ean', 'name', 'price_minor_units', 'tax_rate', 'cost_minor_units', 'unit_type', 'is_active']);
+    expect(Object.keys(parsed[0])).toEqual(['ean', 'name', 'price_minor_units', 'tax_rate', 'cost_minor_units', 'unit_type', 'is_active', 'brand', 'supplier']);
     // re-importing the export is idempotent on count (all updates, zero creates)
     const report = await svc.importCsv(STORE, csv, EMP);
     expect(report.created).toBe(0);
