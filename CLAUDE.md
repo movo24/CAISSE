@@ -22,7 +22,7 @@ npm run docker:down      # Stop local PostgreSQL
 
 # Testing (always run before committing)
 npm run test             # All workspaces
-npm run test:backend     # Backend only (405 tests, 49 spec files)
+npm run test:backend     # Backend only (543 tests, 81 spec suites; 3 gated-PG skipped)
 
 # Code quality
 npm run lint             # ESLint (all workspaces)
@@ -70,7 +70,7 @@ or the dashboard. See `packages/backend/RUNBOOK.md` for exact curl commands.
 
 ---
 
-## Backend Modules (37)
+## Backend Modules (42)
 
 | Module | Purpose |
 |--------|---------|
@@ -111,10 +111,15 @@ or the dashboard. See `packages/backend/RUNBOOK.md` for exact curl commands.
 | `airtable-ops` | Airtable linked-record sync operations |
 | `returns` | Returns / credit notes (avoirs), NF525 chain, store-credit redemption |
 | `shift-reminders` | Cron pre-shift reminders via SMS/email providers |
+| `fiscal` | Fiscal journal + hash-chain verifier (NF525 groundwork; cert PARKED) |
+| `pos-session` | Terminal-bound cashier sessions (open/close, X-report) |
+| `stock-reconciliation` | Inventory variance ≥20% → human intervention (decision 7) |
+| `promo-codes` | Shared promo codes: validate/redeem/reserve-at-sale, usage cap (decision 6) |
+| `documents` | PDF generation (duplicata, avoir, Z-report) |
 
 ---
 
-## TypeORM Entities (45)
+## TypeORM Entities (53)
 
 Located in `packages/backend/src/database/entities/`. Key ones:
 
@@ -164,7 +169,21 @@ Current migrations (run in order):
 1713000000000-AddAirtableOpsAndSalesGuards
 1714000000000-AddCreditNotes
 1715000000000-AddGiftCards
+1716000000000-AddInventoryScanClientEntryId
+1717000000000-AddFiscalJournal
+1718000000000-AddSaleHashVersion
+1719000000000-AddPosSessionTerminalId
+1735000000000-CreateStockLocations
+1736000000000-CreateTimewinEvents
+1737000000000-CreateStockVariances
+1738000000000-CreateBrandsSuppliers
+1739000000000-CreateStoreProductPrices
+1740000000000-AddProductVariants
+1741000000000-CreatePromoCodes
+1742000000000-AddSaleDiscountApprover
+1743000000000-AddPaymentCapture
 ```
+> Saut de numérotation 1719→1735 volontaire (réservation d'une plage pour les blocs POS).
 
 ---
 
@@ -288,7 +307,7 @@ Validated at boot in `main.ts`. Missing required vars crash the server with a cl
 
 ## Tests
 
-405 tests across 49 spec files (`packages/backend/test/` + colocated `*.spec.ts`). Key suites:
+543 tests across 81 spec suites (`packages/backend/test/` + colocated `*.spec.ts`; 3 gated-PG `*.pg.spec.ts` skipped without `TEST_DATABASE_URL`). Key suites:
 
 | File | Coverage |
 |------|----------|
@@ -355,13 +374,18 @@ shared/
 
 ## Known Issues / Open Items
 
+> **Suivi vivant** : feuille de route modulaire → [`MASTER_ROADMAP.md`](MASTER_ROADMAP.md) ;
+> état + worklist P0/P1 → [`PROJECT_STATUS.md`](PROJECT_STATUS.md) ; registre de dette canonique →
+> [`TECHNICAL_DEBT.md`](TECHNICAL_DEBT.md) ; journal d'exécution → [`EXECUTION_LOG.md`](EXECUTION_LOG.md).
+> Le tableau ci-dessous est le miroir humain ; la source unique de la dette est `TECHNICAL_DEBT.md`.
+
 | Issue | Status | Fix |
 |-------|--------|-----|
 | Admin Magasins shows 0 stores | Open | `POST /api/stores/sync` must succeed. Requires `TIMEWIN24_POS_SECRET` or `TIMEWIN24_API_KEY` on Railway. |
 | Railway deploys not auto-triggered | Structural | Cross-account GitHub limit. Manual via `serviceInstanceDeployV2`. See RUNBOOK. |
 | In-memory cache (no Redis) | Low risk | Set `REDIS_URL` before multi-instance prod. |
 | Backend A untouched | Hard constraint | `api.addxintelligence.com` = prod canonical. Never touch without explicit GO. |
-| Cash-sale fiscal reversal via `createReturn` — UNCOVERED | **Named debt** | The `void-cash-realized` guard blocks voiding a sale with a realized cash leg; such a sale must be reversed via `createReturn` (cash refund), not `void`. The fiscal-chain/journal behaviour of that **createReturn-cash** path is **not yet tested/carried**. M3/M4 specs were transposed onto non-cash tenders (M3 → `store_credit`, M4 → `card`) to preserve their assertions after the guard landed. See [DEBT.md](DEBT.md). Address in a **separate fiscal-design PR** — do not let it disappear silently. |
+| Cash-sale fiscal reversal via `createReturn` — UNCOVERED | **Named debt** | The `void-cash-realized` guard blocks voiding a sale with a realized cash leg; such a sale must be reversed via `createReturn` (cash refund), not `void`. The fiscal-chain/journal behaviour of that **createReturn-cash** path is **not yet tested/carried**. M3/M4 specs were transposed onto non-cash tenders (M3 → `store_credit`, M4 → `card`) to preserve their assertions after the guard landed. See [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md) (D1). Address in a **separate fiscal-design PR** — do not let it disappear silently. |
 
 ---
 
