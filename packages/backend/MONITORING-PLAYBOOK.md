@@ -165,7 +165,8 @@ Tous doivent être 200 (sauf register = 201).
 
 ```bash
 # Vérifier l'état du custom domain dans Railway
-TOKEN=4714644a-57f8-47e1-a022-a8d9570e79ad
+# ⚠️ NE JAMAIS committer de token. Exporter depuis l'environnement local (Railway dashboard → Account → Tokens).
+TOKEN="${RAILWAY_TOKEN:?export RAILWAY_TOKEN avant de lancer}"
 curl -sS -X POST https://backboard.railway.app/graphql/v2 \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{"query":"{ service(id:\"a7b2748a-6000-4a32-802b-0e9319287f43\") { customDomains { domain status } } }"}'

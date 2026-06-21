@@ -1,3 +1,6 @@
+> ⚠️ **SUPERSÉDÉ (2026-06-21) par [`MASTER_ROADMAP.md`](MASTER_ROADMAP.md).** Snapshot historique conservé
+> (scope par app, règle de release par couches, checklist Apple). État live : `MASTER_ROADMAP.md` / `PROJECT_STATUS.md`. Ne pas mettre à jour ici.
+
 # MASTER PLAN — CAISSE POS / Inventory / TimeWin24 / Apple
 
 > Dernière mise à jour : 2026-03-28
