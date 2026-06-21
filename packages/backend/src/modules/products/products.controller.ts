@@ -144,6 +144,25 @@ export class ProductsController {
     return this.productsService.findOneForStore(id, req.user.storeId);
   }
 
+  // ── Variants / SKU (decision 5) ──
+
+  @Get(':id/variants')
+  @ApiOperation({ summary: 'List the variants of a product' })
+  listVariants(@Param('id') id: string, @Request() req: any) {
+    return this.productsService.listVariants(id, req.user.storeId);
+  }
+
+  @Post(':id/variants')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'Create a variant (own ean/sku/price/stock) under a product' })
+  createVariant(
+    @Param('id') id: string,
+    @Body() body: { ean: string; variantName: string; priceMinorUnits: number; sku?: string; stockQuantity?: number; taxRate?: number; costMinorUnits?: number },
+    @Request() req: any,
+  ) {
+    return this.productsService.createVariant(id, req.user.storeId, body, req.user.employeeId);
+  }
+
   // ── Per-store price override (decision 4) ──
 
   @Get(':id/store-price')

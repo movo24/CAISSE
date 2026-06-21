@@ -38,6 +38,16 @@ export class ProductEntity {
   @Column({ name: 'supplier_id', type: 'uuid', nullable: true })
   supplierId: string | null;
 
+  /** Variants (decision 5): a variant is a product row whose parent is set. */
+  @Column({ name: 'parent_product_id', type: 'uuid', nullable: true })
+  parentProductId: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  sku: string | null;
+
+  @Column({ name: 'variant_name', type: 'varchar', nullable: true })
+  variantName: string | null;
+
   @Column({ name: 'unit_type', default: 'unit' })
   unitType: string;
 

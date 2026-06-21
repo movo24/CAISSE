@@ -131,6 +131,57 @@ export class ProductsService {
     return { cleared: true };
   }
 
+  // ── Variants / SKU (decision 5): a variant is a product row with a parent ──
+
+  /**
+   * Create a variant under a parent product. The variant is a full product row
+   * (own ean / price / stock / active) inheriting tax/category/brand/supplier
+   * from the parent — so it sells, prices and stocks through the normal paths.
+   */
+  async createVariant(
+    parentId: string,
+    storeId: string,
+    dto: { ean: string; variantName: string; priceMinorUnits: number; sku?: string; stockQuantity?: number; taxRate?: number; costMinorUnits?: number },
+    employeeId: string,
+  ): Promise<ProductEntity> {
+    const parent = await this.findOneForStore(parentId, storeId);
+    if (parent.parentProductId) throw new BadRequestException('Cannot create a variant of a variant');
+    if (!dto.ean?.trim()) throw new BadRequestException('Variant ean is required');
+    if (!dto.variantName?.trim()) throw new BadRequestException('variantName is required');
+    if (await this.productRepo.findOne({ where: { ean: dto.ean.trim(), storeId } })) {
+      throw new BadRequestException(`EAN already used in this store: ${dto.ean}`);
+    }
+    if (dto.sku && (await this.productRepo.findOne({ where: { sku: dto.sku.trim(), storeId } }))) {
+      throw new BadRequestException(`SKU already used in this store: ${dto.sku}`);
+    }
+    return this.create(
+      {
+        ean: dto.ean.trim(),
+        name: `${parent.name} — ${dto.variantName.trim()}`,
+        variantName: dto.variantName.trim(),
+        sku: dto.sku?.trim() || null,
+        parentProductId: parent.id,
+        priceMinorUnits: dto.priceMinorUnits,
+        taxRate: dto.taxRate ?? parent.taxRate,
+        costMinorUnits: dto.costMinorUnits ?? null,
+        stockQuantity: dto.stockQuantity ?? 0,
+        categoryId: parent.categoryId,
+        brandId: parent.brandId,
+        supplierId: parent.supplierId,
+        unitType: parent.unitType,
+        isActive: true,
+        storeId,
+      } as Partial<ProductEntity>,
+      employeeId,
+    );
+  }
+
+  /** List the variants of a parent product (all statuses, for management). */
+  async listVariants(parentId: string, storeId: string): Promise<ProductEntity[]> {
+    await this.findOneForStore(parentId, storeId); // tenant guard
+    return this.productRepo.find({ where: { parentProductId: parentId, storeId }, order: { name: 'ASC' } });
+  }
+
   // ── Brand / supplier reference data (decision 3) ──
 
   async listBrands(storeId: string): Promise<BrandEntity[]> {
@@ -179,7 +230,7 @@ export class ProductsService {
 
   async findAll(
     storeId: string,
-    options?: { page?: number; limit?: number; search?: string; brandId?: string; supplierId?: string },
+    options?: { page?: number; limit?: number; search?: string; brandId?: string; supplierId?: string; topLevelOnly?: boolean },
   ): Promise<PaginatedResult<ProductEntity>> {
     const page = options?.page || 1;
     const limit = options?.limit || 50;
@@ -198,6 +249,7 @@ export class ProductsService {
     }
     if (options?.brandId) qb.andWhere('p.brand_id = :brandId', { brandId: options.brandId });
     if (options?.supplierId) qb.andWhere('p.supplier_id = :supplierId', { supplierId: options.supplierId });
+    if (options?.topLevelOnly) qb.andWhere('p.parent_product_id IS NULL'); // exclude variants
 
     qb.orderBy('p.name', 'ASC').skip(skip).take(limit);
 
