@@ -34,7 +34,7 @@
 - [ ] **M006** fiscal : `verifyChain` recompute + index unique anti-fork + spec
 - [ ] **M402** audit : `verifyChain` recompute + persister payload + index unique + spec tamper
 - [ ] **M107** stock multi-emplacements : trancher source unique + `CHECK(quantity>=0)` + specs
-- [ ] **M108** réconciliation stock : spec 19/20/21 % + reject
+- [x] **M108** réconciliation stock : spec déjà présente (auditeur l'a ratée) + ajout boundary 19/20/21 % & reject (commit df08a09)
 - [ ] **M302** RGPD : anonymisation/soft-delete customer
 
 ### P1 — Build / front
