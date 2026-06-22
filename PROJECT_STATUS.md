@@ -62,7 +62,7 @@ NF525 Z-seal · Comptamax export comptable · porte offline-sale · onboarding/p
 
 ## Reste vraiment bloqué (vrai danger / décision / credential — pas prudence administrative)
 - **M107 réconciliation one-shot** : ÉCRIT le stock réel → **validation prod requise** avant exécution (le diagnostic read-only est livré). + **choix A/B/C** = décision archi.
-- **D16 archi globale** (in-tx fail-closed vs out-of-band) : gated **D17** périmètre NF525 — interim alerte + classe-3 déjà livrés ⇒ pas de blocage opérationnel.
+- ✅ **D16/D17 RATIFIÉS** (owner 2026-06-22) : fiscal_journal in-band fail-closed (NF525) ; AuditService out-of-band best-effort + alerte (hors NF525) ; event opposable → fiscal_journal. Modèle = contrat ; classe-3 cohérente. CLOSED.
 - **D6/D8** rotations de secrets (token Railway, clés historique git) · **D7** séparation bases prod · **DNS/déploiement** : credential/accès prod owner.
 - **#3** diagnostic fork audit prod : besoin accès prod (requête read-only fournie).
 - **M310/M509** Stripe billing = PARQUÉ + env absent.
