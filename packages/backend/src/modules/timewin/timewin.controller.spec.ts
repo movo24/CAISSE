@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { HttpException } from '@nestjs/common';
+import { HttpException, ForbiddenException } from '@nestjs/common';
 import { TimewinController } from './timewin.controller';
 import { TimewinService } from './timewin.service';
 
@@ -17,6 +17,8 @@ import { TimewinService } from './timewin.service';
 describe('TimewinController', () => {
   let controller: TimewinController;
   let service: jest.Mocked<TimewinService>;
+  // Admin req → resolveStoreId returns the passed storeId (admin may target any store).
+  const ADMIN_REQ = { user: { role: 'admin', storeId: 'S1' } } as any;
 
   beforeEach(async () => {
     const serviceMock: Partial<jest.Mocked<TimewinService>> = {
@@ -107,7 +109,7 @@ describe('TimewinController', () => {
           cachedAt: 123,
         } as any,
       ]);
-      const res = await controller.syncEmployees('S1');
+      const res = await controller.syncEmployees('S1', ADMIN_REQ);
       expect(res.count).toBe(1);
       const emp = res.employees[0] as any;
       expect(emp.firstName).toBe('Jean');
@@ -122,7 +124,7 @@ describe('TimewinController', () => {
       service.getCachedEmployees.mockReturnValue([
         { id: 'E1', firstName: 'Cache', posPin: 'x' } as any,
       ]);
-      const res = await controller.syncEmployees('S1');
+      const res = await controller.syncEmployees('S1', ADMIN_REQ);
       expect(res.fromCache).toBe(true);
       expect((res.employees[0] as any).posPin).toBeUndefined();
     });
@@ -130,7 +132,30 @@ describe('TimewinController', () => {
     it('throws when sync fails and no cache exists', async () => {
       service.syncEmployees.mockRejectedValue(Object.assign(new Error('down'), { status: 503 }));
       service.getCachedEmployees.mockReturnValue(null);
-      await expect(controller.syncEmployees('S1')).rejects.toBeInstanceOf(HttpException);
+      await expect(controller.syncEmployees('S1', ADMIN_REQ)).rejects.toBeInstanceOf(HttpException);
+    });
+  });
+
+  // ── tenant scoping (M203 follow-up: /timewin/* storeId resolution) ────────
+  describe('tenant scoping of storeId-param endpoints', () => {
+    const CASHIER_S1 = { user: { role: 'cashier', storeId: 'S1' } } as any;
+    it('a non-admin targeting their OWN store passes through', async () => {
+      service.getStoreConfig.mockResolvedValue({ ok: true } as any);
+      await controller.storeConfig('S1', CASHIER_S1);
+      expect(service.getStoreConfig).toHaveBeenCalledWith('S1');
+    });
+    it('DECISIVE — a non-admin targeting ANOTHER store is refused (403)', async () => {
+      await expect(controller.storeConfig('S2', CASHIER_S1)).rejects.toBeInstanceOf(ForbiddenException);
+      expect(service.getStoreConfig).not.toHaveBeenCalled();
+    });
+    it('an admin may target any store', async () => {
+      service.getStoreConfig.mockResolvedValue({ ok: true } as any);
+      await controller.storeConfig('S2', ADMIN_REQ);
+      expect(service.getStoreConfig).toHaveBeenCalledWith('S2');
+    });
+    it('a non-admin cannot WRITE another store schedule (403)', async () => {
+      await expect(controller.updateStoreSchedule('S2', { schedules: [] }, CASHIER_S1)).rejects.toBeInstanceOf(ForbiddenException);
+      expect(service.updateStoreSchedule).not.toHaveBeenCalled();
     });
   });
 
@@ -138,26 +163,26 @@ describe('TimewinController', () => {
   describe('store-schedule', () => {
     it('GET delegates to getStoreSchedule with storeId', async () => {
       service.getStoreSchedule.mockResolvedValue({ schedules: [] });
-      await controller.getStoreSchedule('S1');
+      await controller.getStoreSchedule('S1', ADMIN_REQ);
       expect(service.getStoreSchedule).toHaveBeenCalledWith('S1');
     });
 
     it('PUT delegates schedules array to updateStoreSchedule', async () => {
       service.updateStoreSchedule.mockResolvedValue({ ok: true });
       const schedules = [{ day: 1, open: '09:00', close: '19:00' }];
-      await controller.updateStoreSchedule('S1', { schedules });
+      await controller.updateStoreSchedule('S1', { schedules }, ADMIN_REQ);
       expect(service.updateStoreSchedule).toHaveBeenCalledWith('S1', schedules);
     });
 
     it('PUT tolerates a missing schedules field (defaults to [])', async () => {
       service.updateStoreSchedule.mockResolvedValue({ ok: true });
-      await controller.updateStoreSchedule('S1', {} as any);
+      await controller.updateStoreSchedule('S1', {} as any, ADMIN_REQ);
       expect(service.updateStoreSchedule).toHaveBeenCalledWith('S1', []);
     });
 
     it('GET maps upstream error to HttpException', async () => {
       service.getStoreSchedule.mockRejectedValue(Object.assign(new Error('x'), { status: 500 }));
-      await expect(controller.getStoreSchedule('S1')).rejects.toBeInstanceOf(HttpException);
+      await expect(controller.getStoreSchedule('S1', ADMIN_REQ)).rejects.toBeInstanceOf(HttpException);
     });
   });
 

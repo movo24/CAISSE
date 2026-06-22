@@ -1,6 +1,23 @@
-import { Controller, Get, Post, Put, Body, Param, Query, HttpException, Logger, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Body, Param, Query, Request, HttpException, ForbiddenException, Logger, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { RolesGuard, Roles } from '../../common/guards/roles.guard';
 import { TimewinService } from './timewin.service';
+
+/**
+ * Tenant scoping (M203 follow-up): a non-admin may only target their OWN store.
+ * Admin may override via the query param. A non-admin passing another store → 403.
+ * Mirrors sync.controller's resolveStoreId so /timewin/* can't be used to read or
+ * write another store's data with a caller-supplied storeId.
+ */
+function resolveStoreId(req: any, queryStoreId?: string): string {
+  const role = req?.user?.role;
+  const userStore = req?.user?.storeId;
+  if (role === 'admin' && queryStoreId) return queryStoreId;
+  if (queryStoreId && queryStoreId !== userStore) {
+    throw new ForbiddenException('Accès interdit à ce magasin.');
+  }
+  return queryStoreId || userStore;
+}
 
 /**
  * Strips sensitive fields (posPin, posQrCode) from employee objects
@@ -72,7 +89,8 @@ export class TimewinController {
 
   @UseGuards(JwtAuthGuard)
   @Get('employees/sync')
-  async syncEmployees(@Query('storeId') storeId: string) {
+  async syncEmployees(@Query('storeId') queryStoreId: string, @Request() req: any) {
+    const storeId = resolveStoreId(req, queryStoreId);
     try {
       const employees = await this.tw.syncEmployees(storeId);
       return { count: employees.length, employees: sanitizeEmployees(employees) };
@@ -91,7 +109,8 @@ export class TimewinController {
 
   @UseGuards(JwtAuthGuard)
   @Get('today-shifts')
-  async todayShifts(@Query('storeId') storeId: string) {
+  async todayShifts(@Query('storeId') queryStoreId: string, @Request() req: any) {
+    const storeId = resolveStoreId(req, queryStoreId);
     try {
       return await this.tw.getTodayShifts(storeId);
     } catch (err: any) {
@@ -105,7 +124,8 @@ export class TimewinController {
   // Monthly payroll / worked hours for a store (TimeWin24 feed). Auth required (HR data).
   @UseGuards(JwtAuthGuard)
   @Get('payroll')
-  async payroll(@Query('storeId') storeId: string, @Query('month') month: string) {
+  async payroll(@Query('storeId') queryStoreId: string, @Query('month') month: string, @Request() req: any) {
+    const storeId = resolveStoreId(req, queryStoreId);
     try {
       return await this.tw.getMonthlyPayroll(storeId, month);
     } catch (err: any) {
@@ -115,7 +135,8 @@ export class TimewinController {
 
   @UseGuards(JwtAuthGuard)
   @Get('store-config')
-  async storeConfig(@Query('storeId') storeId: string) {
+  async storeConfig(@Query('storeId') queryStoreId: string, @Request() req: any) {
+    const storeId = resolveStoreId(req, queryStoreId);
     try {
       return await this.tw.getStoreConfig(storeId);
     } catch (err: any) {
@@ -130,7 +151,8 @@ export class TimewinController {
 
   @UseGuards(JwtAuthGuard)
   @Get('store-schedule')
-  async getStoreSchedule(@Query('storeId') storeId: string) {
+  async getStoreSchedule(@Query('storeId') queryStoreId: string, @Request() req: any) {
+    const storeId = resolveStoreId(req, queryStoreId);
     try {
       return await this.tw.getStoreSchedule(storeId);
     } catch (err: any) {
@@ -144,9 +166,11 @@ export class TimewinController {
   @UseGuards(JwtAuthGuard)
   @Put('store-schedule')
   async updateStoreSchedule(
-    @Query('storeId') storeId: string,
+    @Query('storeId') queryStoreId: string,
     @Body() body: { schedules: any[] },
+    @Request() req: any,
   ) {
+    const storeId = resolveStoreId(req, queryStoreId);
     try {
       return await this.tw.updateStoreSchedule(storeId, body?.schedules ?? []);
     } catch (err: any) {
@@ -159,7 +183,10 @@ export class TimewinController {
 
   /* ── Stores feed (TimeWin24 is source of truth for stores) ── */
 
-  @UseGuards(JwtAuthGuard)
+  // Full cross-tenant store list (TimeWin24 feed) → admin only (M203 follow-up).
+  // Non-admins get their own store via GET /stores/me + /stores/accessible.
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
   @Get('stores')
   async stores() {
     try {
