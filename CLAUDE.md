@@ -401,3 +401,19 @@ shared/
 | Web | Backoffice | Web only | — |
 
 **Never submit everything at once. One app at a time.**
+
+---
+
+## POS Caisse execution protocol
+
+Use the `information` skill for all POS Caisse development work.
+
+Default behavior:
+- execute validated modules autonomously;
+- protect payment, fiscal, discount, stock and sync invariants;
+- never mark uncaptured card payments as paid;
+- enforce responsible-code discount cap at 30%;
+- forbid duplicate events;
+- validate through typecheck, lint, tests and build where applicable;
+- stop only for real blockers;
+- continue automatically to the next validated module.
