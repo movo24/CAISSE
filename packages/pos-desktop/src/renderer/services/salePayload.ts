@@ -36,6 +36,26 @@ export function toWirePayments(payments: PartialPaymentLike[]): WirePayment[] {
   }));
 }
 
+/**
+ * Reshape a QUEUED offline ticket payload into the exact CreateSaleDto the backend
+ * accepts on sync (M603 fix). The offline queue entry also carries display-only extras
+ * (ticketNumber, totalMinorUnits, item name/unitPrice) for the pending-sales UI; the
+ * backend uses `forbidNonWhitelisted: true`, so those extras would 400 the sync. This
+ * strips them and maps items to {ean, quantity}, keeping payments + discount/promo.
+ */
+export function toSyncCreateBody(p: any): Record<string, unknown> {
+  return {
+    items: (p?.items ?? []).map((i: any) => ({ ean: i.ean, quantity: i.quantity })),
+    ...(p?.customerQrCode ? { customerQrCode: p.customerQrCode } : {}),
+    ...toSaleDiscountFields({
+      manualDiscountMinorUnits: p?.manualDiscountMinorUnits ?? 0,
+      discountApproverId: p?.discountApproverId ?? null,
+      promoCode: p?.promoCode ?? null,
+    }),
+    payments: p?.payments ?? [],
+  };
+}
+
 /** Sale-level discount/promo fields (decisions 5/6), spread into the payload when present. */
 export function toSaleDiscountFields(s: {
   manualDiscountMinorUnits: number;

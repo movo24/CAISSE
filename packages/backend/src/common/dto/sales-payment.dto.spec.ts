@@ -25,4 +25,12 @@ describe('SalePaymentDto — tender whitelist (M005)', () => {
     const errors = await validateDto({ method: 'bitcoin', amountMinorUnits: 100 });
     expect(errors.length).toBeGreaterThan(0);
   });
+
+  it('accepts a card leg carrying Stripe reader/terminal refs (whitelisted — no 400 online or on sync)', async () => {
+    const errors = await validateDto({
+      method: 'card', amountMinorUnits: 1200,
+      stripePaymentIntentId: 'pi_1', stripeReaderId: 'rd_1', terminalId: 'tm_1',
+    });
+    expect(errors).toHaveLength(0);
+  });
 });

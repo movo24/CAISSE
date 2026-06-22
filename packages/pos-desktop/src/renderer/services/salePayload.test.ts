@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { toWirePayments, toSaleDiscountFields } from './salePayload';
+import { toWirePayments, toSaleDiscountFields, toSyncCreateBody } from './salePayload';
 
 /**
  * M603 — the offline enqueue used to map payments to {method, amountMinorUnits} only,
@@ -42,5 +42,30 @@ describe('toSaleDiscountFields (decisions 5/6 carried through offline)', () => {
   it('includes the promo code when present', () => {
     expect(toSaleDiscountFields({ manualDiscountMinorUnits: 0, discountApproverId: null, promoCode: 'BIENVENUE' }))
       .toEqual({ promoCode: 'BIENVENUE' });
+  });
+});
+
+describe('toSyncCreateBody (M603 — offline queue → clean CreateSaleDto)', () => {
+  const offlinePayload = {
+    ticketNumber: 'OFF-ABC',        // display-only — must be stripped (would 400)
+    totalMinorUnits: 700,           // display-only — must be stripped
+    customerQrCode: 'CLI-1',
+    promoCode: 'BIENVENUE',
+    items: [{ ean: '111', quantity: 2, name: 'Bonbon', unitPriceMinorUnits: 350 }], // name/unitPrice stripped
+    payments: [{ method: 'store_credit', amountMinorUnits: 700, creditNoteCode: 'AV-1' }],
+  };
+
+  it('strips display-only extras and reshapes items to {ean,quantity}', () => {
+    const body = toSyncCreateBody(offlinePayload) as any;
+    expect(body).not.toHaveProperty('ticketNumber');
+    expect(body).not.toHaveProperty('totalMinorUnits');
+    expect(body.items).toEqual([{ ean: '111', quantity: 2 }]); // no name/unitPrice
+  });
+
+  it('keeps payments (with creditNoteCode), customerQrCode and promo/discount', () => {
+    const body = toSyncCreateBody(offlinePayload) as any;
+    expect(body.payments[0]).toMatchObject({ method: 'store_credit', creditNoteCode: 'AV-1' });
+    expect(body.customerQrCode).toBe('CLI-1');
+    expect(body.promoCode).toBe('BIENVENUE');
   });
 });

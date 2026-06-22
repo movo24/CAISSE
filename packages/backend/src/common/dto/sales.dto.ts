@@ -41,6 +41,16 @@ export class SalePaymentDto {
   @IsString()
   stripePaymentIntentId?: string;
 
+  @ApiPropertyOptional({ description: 'Stripe Terminal reader id (card payments)' })
+  @IsOptional()
+  @IsString()
+  stripeReaderId?: string;
+
+  @ApiPropertyOptional({ description: 'Physical payment terminal id (card payments)' })
+  @IsOptional()
+  @IsString()
+  terminalId?: string;
+
   @ApiPropertyOptional({ description: 'Card leg not really captured yet → sale stays payment_pending until regularised' })
   @IsOptional()
   @IsBoolean()

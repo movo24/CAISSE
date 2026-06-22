@@ -1,6 +1,7 @@
 import { useOfflineStore, OfflineQueueEntry } from '../stores/offlineStore';
 import { signSyncRequest, markAsSent, unmarkSent, isAlreadySent, idempotencyKeyFor, logSecurityEvent } from './hmacSecurity';
 import { salesApi, timewinApi, returnsApi } from './api';
+import { toSyncCreateBody } from './salePayload';
 import { API_URL } from '../utils/apiConfig';
 
 /* ═══════════════════════════════════════════════════════════════
@@ -139,7 +140,10 @@ async function syncEntry(entry: OfflineQueueEntry): Promise<{ success: boolean; 
     // Sync by type — actual API calls
     switch (entry.type) {
       case 'ticket':
-        await salesApi.create(entry.payload, idemKey);
+        // M603: reshape the queued payload to the exact CreateSaleDto — the offline
+        // entry carries display-only extras (ticketNumber/totalMinorUnits/item names)
+        // that forbidNonWhitelisted would 400. Keeps items/payments/discount/promo.
+        await salesApi.create(toSyncCreateBody(entry.payload), idemKey);
         console.log(`[SYNC] Ticket ${entry.payload.ticketNumber} synced to server`);
         break;
 
