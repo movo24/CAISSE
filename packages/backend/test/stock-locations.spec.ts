@@ -112,4 +112,27 @@ describe('Bloc 6 — multi-location stock (runnable via migration 1735)', () => 
     await expect(svc.recordLoss({ productId: P1, locationId: store.id, quantity: 1, lossType: 'bogus' as any, reason: 'x', ...actor })).rejects.toThrow(/Invalid loss type/);
     await expect(svc.recordLoss({ productId: P1, locationId: store.id, quantity: 9999, lossType: 'loss_theft', reason: 'vol', ...actor })).rejects.toThrow(/Insufficient stock to write off/);
   });
+
+  it('M107 — findStockDivergences reports legacy vs balances mismatches (read-only, no mutation)', async () => {
+    const pRepo = ds.getRepository(ProductEntity);
+    const bRepo = ds.getRepository(StockBalanceEntity);
+    // Diverged: legacy column 100 but a location balance of 70 (set directly to bypass syncLegacyStock).
+    const pDiv = await pRepo.save({ id: uuidv4(), storeId: STORE, ean: 'DIV-1', name: 'Diverged', priceMinorUnits: 500, taxRate: 20, stockQuantity: 100, isActive: true } as any);
+    await bRepo.save({ productId: pDiv.id, locationId: store.id, quantity: 70 } as any);
+    // Aligned: legacy 50 == balance 50 → must NOT be reported.
+    const pOk = await pRepo.save({ id: uuidv4(), storeId: STORE, ean: 'OK-1', name: 'Aligned', priceMinorUnits: 500, taxRate: 20, stockQuantity: 50, isActive: true } as any);
+    await bRepo.save({ productId: pOk.id, locationId: store.id, quantity: 50 } as any);
+    // Legacy-only (no balance row) → not a divergence, simply not multi-location.
+    const pLegacy = await pRepo.save({ id: uuidv4(), storeId: STORE, ean: 'LEG-1', name: 'LegacyOnly', priceMinorUnits: 500, taxRate: 20, stockQuantity: 30, isActive: true } as any);
+
+    const report = await svc.findStockDivergences(STORE);
+    const ids = report.map((r) => r.productId);
+    expect(ids).toContain(pDiv.id);
+    expect(ids).not.toContain(pOk.id);
+    expect(ids).not.toContain(pLegacy.id);
+    const div = report.find((r) => r.productId === pDiv.id)!;
+    expect(div).toMatchObject({ legacyQuantity: 100, balancesQuantity: 70, delta: 30 });
+    // read-only: the report did not change the product's stock
+    expect((await pRepo.findOneByOrFail({ id: pDiv.id })).stockQuantity).toBe(100);
+  });
 });
