@@ -51,6 +51,17 @@ describe('M402 — audit chain verifyChain (recompute + linkage)', () => {
     expect(res.brokenAt).toBe(e.id);
   });
 
+  it('DECISIVE — re-attribution (rewriting employee_id) is detected', async () => {
+    const store = uuidv4();
+    const e = await svc.log({ storeId: store, employeeId: 'cashier-self', action: 'discount_applied', entityType: 'sale', entityId: 'sX', details: { pct: 30 } });
+    // Blame a coworker for a self-approved action — chain linkage intact.
+    await repo.update(e.id, { employeeId: 'innocent-coworker' });
+    const res = await svc.verifyChain(store);
+    expect(res.valid).toBe(false);
+    expect(res.reason).toBe('hash_mismatch');
+    expect(res.brokenAt).toBe(e.id);
+  });
+
   it('detects a LINKAGE break (a deleted middle entry)', async () => {
     const store = uuidv4();
     await svc.log({ storeId: store, employeeId: 'm', action: 'a1', entityType: 'sale', entityId: '1', details: {} });

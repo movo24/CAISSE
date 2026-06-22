@@ -39,13 +39,15 @@ function canonicalize(value: unknown): string {
 }
 
 /**
- * v2 audit hash (M402): fully covers action/entityType/entityId/details + the exact
- * hashed ISO timestamp, via a canonical (recursively key-sorted) serialisation.
- * Recomputable from the stored row → detects content tampering of `details`.
+ * v2 audit hash (M402): covers storeId/employeeId/action/entityType/entityId/details +
+ * the exact hashed ISO timestamp, via a canonical (recursively key-sorted) serialisation.
+ * Recomputable from the stored row → detects content tampering of `details` AND
+ * re-attribution (rewriting employee_id to blame a coworker — covered since the
+ * adversarial review, no prod v2 rows exist yet so no version bump needed).
  */
 export function computeAuditHashV2(
   previousHash: string,
-  data: { action: string; entityType: string; entityId: string; details: unknown; timestamp: string },
+  data: { storeId: string; employeeId: string; action: string; entityType: string; entityId: string; details: unknown; timestamp: string },
 ): string {
   return sha256(previousHash + canonicalize(data));
 }
@@ -118,6 +120,8 @@ export class AuditService {
       const ts = new Date();
       const hashedAt = ts.toISOString();
       const currentHash = computeAuditHashV2(previousHash, {
+        storeId: params.storeId,
+        employeeId: params.employeeId,
         action: params.action,
         entityType: params.entityType,
         entityId: params.entityId,
@@ -195,6 +199,8 @@ export class AuditService {
       }
       if (entry.hashedAt != null) {
         const recomputed = computeAuditHashV2(entry.previousHash, {
+          storeId: entry.storeId,
+          employeeId: entry.employeeId,
           action: entry.action,
           entityType: entry.entityType,
           entityId: entry.entityId,
