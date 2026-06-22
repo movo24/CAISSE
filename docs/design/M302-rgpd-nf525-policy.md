@@ -28,6 +28,21 @@ Hypothèse porteuse confirmée champ par champ (2026-06-22) :
 - Endpoint admin `@Roles('admin')` + audit. Migration : colonnes déjà présentes → probablement **aucune migration** (à confirmer) ⇒ changement additif, réversible côté code.
 - Tests : anonymize scrubbe la PII + garde `customer_id` ; une vente existante reste lisible/inchangée (hash inchangé) après anonymisation du client (preuve NF525 × RGPD compatibles).
 
+## ⚠️ STATUT : endpoint GELÉ (commit suit) — code livré sous gate, désormais OFF par défaut
+`POST /customers/:id/anonymize` + `CustomersService.anonymize` sont **gelés** derrière
+`CUSTOMER_ANONYMIZE_ENABLED` (défaut `false` → `ForbiddenException`). Le code (shippé à tort
+en `1e07f51` sous un gate « pas de code avant décision ») reste en place mais **inerte** jusqu'à
+ratification de la politique. À l'activation, on audite le code *contre* la politique.
+
+## Sous-erase (fuite de PII résiduelle) — VÉRIFIÉ LITTÉRALEMENT cross-entités (2026-06-22)
+- La PII client (`first_name/last_name/email/phone`) n'existe **que** dans la table `customers`. Recherche `first_name|email` hors `customer.entity` → seulement `employee.entity` (PII *employé*, hors sujet).
+- Tables de paiement (`sale_payment`, `payment_terminal`) : **uniquement des identifiants** (`stripe_payment_intent_id`, `stripe_reader_id`, `terminal_id`, `serial_number`) — aucun nom/email payeur/porteur.
+- **Stripe** : aucun objet Stripe `Customer` créé pour le client fidélité (le seul `stripe.customers.create` est dans `subscriptions` = facturation SaaS du **marchand**, domaine PARQUÉ). Donc pas de PII client fidélité côté Stripe via nous (les données carte transitent en PaymentIntent, rétention Stripe propre).
+- ⇒ **Risque de sous-erase ≈ nul** : `anonymize(customer)` scrub la seule ligne porteuse de PII. L'effacement local est complet.
+
+## Sur-erase (carve-out factures) — LA décision restante
+C'est le vrai verrou : définir les champs effaçables vs conservés, et la règle « pas d'effacement d'une identité portée par une pièce à conservation légale ». Portée réelle nulle aujourd'hui (aucune facture nominative générée) mais la règle doit être posée avant d'activer le flag.
+
 ## Valeur de rétention PROPOSÉE (hypothèse — À CONFIRMER COMPTABLE)
 Pour ne pas bloquer le chantier, hypothèse conforme à pinner avec l'expert-comptable :
 - **Documents légalement porteurs de l'identité client (factures nominatives) : conservation 10 ans** — base : Code de commerce art. L123-22 (livres & pièces comptables). Le fiscal pur (LPF art. L102B) impose 6 ans ; on retient **10 ans** (le plafond contraignant) par prudence.

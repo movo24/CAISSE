@@ -55,6 +55,18 @@ export class CustomersService {
    * Idempotent: a second call on an already-anonymised customer is a no-op.
    */
   async anonymize(id: string, actorEmployeeId?: string): Promise<CustomerEntity> {
+    // FROZEN by default (M302) — gated OFF until the owner ratifies the policy. Two
+    // unresolved risks make running this on the current assumptions a legal exposure:
+    //   (a) under-erasure: the "zero customer PII outside customer_id" assumption is not
+    //       yet literally confirmed across payment-provider integration data;
+    //   (b) over-erasure: no carve-out for fields carried by legally-retained invoices.
+    // Enable only once the field policy + invoice-retention carve-out are set, via
+    // CUSTOMER_ANONYMIZE_ENABLED=true. The logic below is then audited AGAINST the policy.
+    if (process.env.CUSTOMER_ANONYMIZE_ENABLED !== 'true') {
+      throw new ForbiddenException(
+        'Anonymisation RGPD gelée (M302) : politique champ + carve-out factures non ratifiés.',
+      );
+    }
     const customer = await this.customerRepo.findOne({ where: { id } });
     if (!customer) throw new NotFoundException('Client introuvable');
     if (customer.anonymizedAt) return customer; // already anonymised → idempotent

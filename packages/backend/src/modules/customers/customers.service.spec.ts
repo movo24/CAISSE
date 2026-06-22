@@ -254,6 +254,18 @@ describe('CustomersService', () => {
   });
 
   describe('anonymize (M302 — GDPR erasure)', () => {
+    // The endpoint is FROZEN by default (policy not ratified). Enable the flag to test
+    // the logic; one test asserts the frozen-by-default behaviour.
+    const prev = process.env.CUSTOMER_ANONYMIZE_ENABLED;
+    beforeEach(() => { process.env.CUSTOMER_ANONYMIZE_ENABLED = 'true'; });
+    afterAll(() => { if (prev === undefined) delete process.env.CUSTOMER_ANONYMIZE_ENABLED; else process.env.CUSTOMER_ANONYMIZE_ENABLED = prev; });
+
+    it('FROZEN by default — refuses to run without CUSTOMER_ANONYMIZE_ENABLED (M302 policy gate)', async () => {
+      delete process.env.CUSTOMER_ANONYMIZE_ENABLED;
+      await expect(service.anonymize('c1')).rejects.toThrow(ForbiddenException);
+      expect(customerRepo.findOne).not.toHaveBeenCalled(); // frozen before touching data
+    });
+
     it('scrubs PII, neutralises qr_code, sets markers, keeps non-PII aggregates', async () => {
       const cust: any = {
         id: 'c1abc999', firstName: 'Jean', lastName: 'Dupont', phone: '+33600000000',
