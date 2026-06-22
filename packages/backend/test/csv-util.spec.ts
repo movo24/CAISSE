@@ -41,4 +41,25 @@ describe('CSV util (RFC-4180, zero-dependency)', () => {
     expect(parseCsv('')).toEqual([]);
     expect(parseCsvWithHeader('')).toEqual([]);
   });
+
+  it('DECISIVE — neutralises CSV formula injection in STRING cells, leaves numbers intact (CWE-1236)', () => {
+    const parsed = parseCsv(
+      toCsv([
+        ['=SUM(A1)'], // formula → guarded
+        ['+ping'],    // guarded
+        ['@cmd'],     // guarded
+        ['-5'],       // string starting with '-' → guarded
+        [-7],         // NUMBER → must stay numeric, NOT guarded
+        ['Normal'],   // untouched
+      ]),
+    );
+    expect(parsed).toEqual([
+      [`'=SUM(A1)`],
+      [`'+ping`],
+      [`'@cmd`],
+      [`'-5`],
+      ['-7'], // number was not prefixed
+      ['Normal'],
+    ]);
+  });
 });

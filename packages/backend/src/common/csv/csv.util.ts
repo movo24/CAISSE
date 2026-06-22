@@ -68,7 +68,13 @@ export function parseCsv(text: string): string[][] {
 /** Serialize rows to CSV (CRLF line endings, minimal quoting). */
 export function toCsv(rows: Array<Array<string | number | boolean | null | undefined>>): string {
   const esc = (v: string | number | boolean | null | undefined): string => {
-    const s = v == null ? '' : String(v);
+    const isStr = typeof v === 'string';
+    let s = v == null ? '' : String(v);
+    // CSV formula-injection guard (CWE-1236): a STRING cell a spreadsheet would read
+    // as a formula (=, +, -, @, tab, CR) is prefixed with an apostrophe so opening the
+    // export in Excel/Sheets can't execute it. Numbers/booleans are left intact (a
+    // negative number must stay a number), so numeric columns round-trip unchanged.
+    if (isStr && /^[=+\-@\t\r]/.test(s)) s = `'${s}`;
     return /["\,\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
   };
   return rows.map((r) => r.map(esc).join(',')).join('\r\n') + '\r\n';
