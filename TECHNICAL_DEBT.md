@@ -74,8 +74,8 @@ Statuts : OPEN · IN PROGRESS · BLOCKED (owner/accès) · CLOSED (PR retire l'e
 ## D13 — Effacement RGPD client  (M302) — ✅ CLOSED (commit 1e07f51)
 **Fermé** : `CustomersService.anonymize(id)` scrub la PII EN PLACE (first/last/phone/email/password_hash + qr_code neutralisé `ANON-<id8>`), soft-delete (`deleted_at`+`anonymized_at`, colonnes déjà en mig 1712), idempotent, endpoint `POST /customers/:id/anonymize` admin-only + audité (metadata only). **Aucun enregistrement fiscal touché** (vérifié : ventes = customer_id seul). Tests : scrub+markers+conserve, idempotence, NotFound. **Reste (non bloquant)** : (P2) export de portabilité RGPD ; carve-out factures nominatives **seulement si** on génère des factures nominatives (durée 10 ans proposée, à confirmer comptable).
 
-## D14 — Jackpot fallback silencieux  (AUDIT-COMPLET, M306)
-**Status:** VERIFY · **P2.** Faiblesse sécurité notée (403 vs fallback silencieux). **Ferme :** confirmer + durcir le chemin d'autorisation.
+## D14 — Jackpot « fallback silencieux »  (AUDIT-COMPLET, M306) — ✅ VÉRIFIÉ (lecture, 2026-06-22) : faux positif
+**Vérifié** : `rollLottery` est **côté serveur**, **fail-closed** (pas de config / inactif → `no_win` enregistré, jamais de grant silencieux), borné par quota jour + densité + probabilité ; la config est `@Roles('admin')`. Le « fallback » = no_win = sûr. **Résiduels faible sévérité** (jeu **marketing**, pas d'argent/fiscal) : `Math.random()` (acceptable ici ; à durcir uniquement si un gain mappe une vraie valeur monétaire) ; `GET :storeId/config` non scopé tenant (config non sensible : URLs vidéo + probabilités). **Pas un trou >60%.** Aucun changement requis ; durcissements optionnels notés.
 
 ## D15 — Dérive doc CLAUDE.md + nits  (M803)
 **Status:** OPEN · **P3.** Counts stale (37/45/405/mig1715 vs 42/53/543/1743) ; promo-codes & stock-reconciliation non documentés ; barrel `entities/index.ts` omet 11 entités (inoffensif) ; seeds PIN 1234/5678 littéraux ; `migration:run` pointe un chemin typeorm/cli.js inexistant ; health "2s" vs 5s ; Z vs KPI colonnes date différentes. **Ferme :** rafraîchir CLAUDE.md + corriger les nits.
