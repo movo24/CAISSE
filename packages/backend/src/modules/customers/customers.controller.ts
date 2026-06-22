@@ -11,6 +11,7 @@ import {
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { CustomersService } from './customers.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { RolesGuard, Roles } from '../../common/guards/roles.guard';
 import { CreateCustomerDto, VerifyOtpDto, PaginationQueryDto } from '../../common/dto';
 
 @ApiTags('customers')
@@ -55,5 +56,15 @@ export class CustomersController {
     @Request() req: any,
   ) {
     return this.customersService.verifyOtp(id, dto.otpCode, req.user.storeId);
+  }
+
+  // GDPR erasure (M302): admin-only + audited. Anonymises PII in place; never
+  // hard-deletes and never touches a fiscal record (sales hold only customer_id).
+  @Post(':id/anonymize')
+  @UseGuards(RolesGuard)
+  @Roles('admin')
+  @ApiOperation({ summary: 'Anonymise a customer (GDPR erasure — admin only, audited)' })
+  anonymize(@Param('id') id: string, @Request() req: any) {
+    return this.customersService.anonymize(id, req.user?.employeeId);
   }
 }

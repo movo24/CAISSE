@@ -252,4 +252,41 @@ describe('CustomersService', () => {
       ).rejects.toThrow(ForbiddenException);
     });
   });
+
+  describe('anonymize (M302 — GDPR erasure)', () => {
+    it('scrubs PII, neutralises qr_code, sets markers, keeps non-PII aggregates', async () => {
+      const cust: any = {
+        id: 'c1abc999', firstName: 'Jean', lastName: 'Dupont', phone: '+33600000000',
+        email: 'jean@example.com', passwordHash: 'hash', qrCode: 'CLI-ABC', loyaltyPoints: 120,
+        visitCount: 7, storeId: 's1', anonymizedAt: null, deletedAt: null,
+      };
+      customerRepo.findOne.mockResolvedValue(cust);
+      const res = await service.anonymize('c1abc999', 'emp-1');
+      expect(res.firstName).toBe('');
+      expect(res.lastName).toBe('');
+      expect(res.phone).toBeNull();
+      expect(res.email).toBeNull();
+      expect(res.passwordHash).toBeNull();
+      expect(res.qrCode).toBe('ANON-c1abc999');
+      expect(res.anonymizedAt).toBeInstanceOf(Date);
+      expect(res.deletedAt).toBeInstanceOf(Date);
+      // non-PII aggregates conserved
+      expect(res.loyaltyPoints).toBe(120);
+      expect(res.visitCount).toBe(7);
+      expect(customerRepo.save).toHaveBeenCalled();
+    });
+
+    it('is idempotent — a second call does not re-scrub / re-save', async () => {
+      const already: any = { id: 'c1', firstName: '', anonymizedAt: new Date(), deletedAt: new Date() };
+      customerRepo.findOne.mockResolvedValue(already);
+      const res = await service.anonymize('c1');
+      expect(res).toBe(already);
+      expect(customerRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFound for an unknown customer', async () => {
+      customerRepo.findOne.mockResolvedValue(null);
+      await expect(service.anonymize('nope')).rejects.toThrow(NotFoundException);
+    });
+  });
 });

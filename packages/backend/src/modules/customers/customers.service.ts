@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   BadRequestException,
   Logger,
+  Optional,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -13,6 +14,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { CustomerEntity } from '../../database/entities/customer.entity';
 import { PaginatedResult } from '../../common/dto/pagination.dto';
 import { NotificationService } from '../../common/messaging/notification.service';
+import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class CustomersService {
@@ -33,7 +35,57 @@ export class CustomersService {
     @InjectRepository(CustomerEntity)
     private customerRepo: Repository<CustomerEntity>,
     private readonly notifications: NotificationService,
+    // @Optional so unit tests that don't exercise anonymisation keep constructing.
+    @Optional() private readonly audit?: AuditService,
   ) {}
+
+  /**
+   * GDPR erasure (M302): anonymise a customer IN PLACE — scrub PII, keep the row.
+   *
+   * Conservative policy (RGPD × NF525): NEVER hard-delete and NEVER touch a fiscal
+   * record. Sales reference the customer only by `customer_id` (verified: zero PII in
+   * sales/payments/line-items/credit-notes), so scrubbing the customer row leaves the
+   * fiscal chain intact with a now-pseudonymous id. Invoices that legally embed the
+   * client identity (none today) would fall under legal retention — out of scope here.
+   *
+   * Field policy:
+   *   SCRUB    first_name, last_name, phone, email, password_hash, qr_code (neutralised)
+   *   CONSERVE loyalty_points, visit_count, is_verified, store ids (non-PII aggregates)
+   *   markers  anonymized_at + deleted_at (soft-delete; the row stays for fiscal FK)
+   * Idempotent: a second call on an already-anonymised customer is a no-op.
+   */
+  async anonymize(id: string, actorEmployeeId?: string): Promise<CustomerEntity> {
+    const customer = await this.customerRepo.findOne({ where: { id } });
+    if (!customer) throw new NotFoundException('Client introuvable');
+    if (customer.anonymizedAt) return customer; // already anonymised → idempotent
+
+    const now = new Date();
+    customer.firstName = '';
+    customer.lastName = '';
+    customer.phone = null as any;
+    customer.email = null as any;
+    customer.passwordHash = null as any;
+    // qr_code is UNIQUE + identifies the customer → neutralise (keep uniqueness, drop link).
+    customer.qrCode = `ANON-${id.slice(0, 8)}`;
+    customer.anonymizedAt = now;
+    customer.deletedAt = now;
+    const saved = await this.customerRepo.save(customer);
+
+    // Audit the action (metadata only — no PII), best-effort. NO fiscal record touched.
+    try {
+      await this.audit?.log({
+        storeId: saved.storeId ?? 'system',
+        employeeId: actorEmployeeId ?? 'system',
+        action: 'customer_anonymized',
+        entityType: 'customer',
+        entityId: id,
+        details: { anonymizedAt: now.toISOString(), softDeleted: true },
+      });
+    } catch (e: any) {
+      this.logger.warn(`Audit (customer_anonymized) failed: ${e?.message}`);
+    }
+    return saved;
+  }
 
   async create(data: {
     firstName: string;
