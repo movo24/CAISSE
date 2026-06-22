@@ -40,6 +40,11 @@ ratification de la politique. À l'activation, on audite le code *contre* la pol
 - **Stripe** : aucun objet Stripe `Customer` créé pour le client fidélité (le seul `stripe.customers.create` est dans `subscriptions` = facturation SaaS du **marchand**, domaine PARQUÉ). Donc pas de PII client fidélité côté Stripe via nous (les données carte transitent en PaymentIntent, rétention Stripe propre).
 - ⇒ **Risque de sous-erase ≈ nul** : `anonymize(customer)` scrub la seule ligne porteuse de PII. L'effacement local est complet.
 
+## Élargissement par la revue adversariale (avant d'activer le flag)
+Le scrub couvre la ligne `customers`, mais deux **sinks PII hors table** restent (le mot « ALL » était surestimé) :
+1. **`notifications_log.body`** (text) : `notifications.service` y écrit `customerName = "${firstName} ${lastName}"`. Une ligne de push loggée garde le nom après anonymisation. → la politique doit décider : scrub/null du `body` (ou du nom) pour le `customer_id` anonymisé, ou ne jamais y embarquer le nom.
+2. **2ᵉ chemin d'effacement** : `mobile-auth DELETE /me` ne fait qu'un soft-delete (`deleted_at`) — il **n'anonymise pas** (le Swagger « anonymized after 30j » était trompeur → corrigé). À l'activation : router `deleteMe` vers le pipeline d'anonymisation gelé (ou implémenter le scrubber 30j promis).
+
 ## Sur-erase (carve-out factures) — LA décision restante
 C'est le vrai verrou : définir les champs effaçables vs conservés, et la règle « pas d'effacement d'une identité portée par une pièce à conservation légale ». Portée réelle nulle aujourd'hui (aucune facture nominative générée) mais la règle doit être posée avant d'activer le flag.
 

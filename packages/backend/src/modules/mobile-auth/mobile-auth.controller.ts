@@ -76,7 +76,10 @@ export class MobileAuthController {
   @ApiBearerAuth()
   @UseGuards(MobileAuthGuard)
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Soft-delete my account (RGPD, anonymized after 30j)' })
+  // Honesty fix (M302/D13): this only SOFT-DELETES (sets deleted_at). It does NOT
+  // anonymise — RGPD anonymisation is M302, gated OFF until the field policy + invoice
+  // carve-out are ratified. Once un-frozen, route this to the gated anonymise pipeline.
+  @ApiOperation({ summary: 'Soft-delete my account (sets deleted_at; RGPD anonymisation pending — M302)' })
   async deleteMe(@Request() req: any) {
     return this.authService.deleteMe(req.customer.id);
   }
