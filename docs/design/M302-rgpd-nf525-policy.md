@@ -4,8 +4,14 @@
 > M302 n'est pas une tâche de build : il faut trancher la *politique* avant tout code, sinon
 > le code heurte la chaîne fiscale. Réf dette : `TECHNICAL_DEBT.md` D13.
 
-## Constat clé (vérifié) — la collision est PLUS ÉTROITE qu'attendu
-- **Les enregistrements fiscaux ne contiennent PAS de PII client.** `sale.entity` référence le client par **`customer_id` seulement** (`@Index(['customerId'])`, colonne `customer_id`) ; aucun snapshot de nom/téléphone/email client (les snapshots existants sont *employé* : `employee_name_snapshot`...). Recherche `customerName/customer_name` dans les entités = **0**.
+## Constat clé (vérifié LITTÉRALEMENT sur toute la surface fiscale) — la collision est PLUS ÉTROITE qu'attendu
+Hypothèse porteuse confirmée champ par champ (2026-06-22) :
+- `sale` : seul `customer_id` (pas de nom/email/téléphone client). Snapshots = **employé** (`employee_name_snapshot/role/maxDiscount`).
+- `sale_payment` : `method, amount, currency, stripe_payment_intent_id, stripe_reader_id, terminal_id, captured…` → **aucun nom de payeur/porteur** ; les champs Stripe sont des **identifiants**, pas de la PII. Le champ générique `reference` n'est **rempli nulle part** (recherche = 0) → aucun risque.
+- `sale_line_item` : `product_id, product_name, qty, prix, promo_id, tax_rate` → aucune PII client.
+- `credit_note` / `credit_note_line` : `store_id, original_sale_id, original_ticket_number, refund_method, totals, hash` → **aucun nom/email/téléphone client**.
+- Recherche `payer|cardholder|holder|metadata|jsonb|customerName` dans les entités fiscales = **0**.
+⇒ **Le seul lien client dans tout enregistrement fiscal = `customer_id` (pseudonyme).** Seule identité embarquée = `employee_name_snapshot` (caissier) = donnée **employé**, conservée pour l'identification de l'opérateur (base légale distincte), **hors** droit à l'effacement client.
 - ⇒ **Anonymiser un client (scrub nom/téléphone/email) ne modifie AUCUN enregistrement fiscal.** Le `customer_id` reste comme **clé pseudonyme** dans les ventes → l'inaltérabilité NF525 est préservée, et le droit à l'effacement RGPD est satisfait (la PII disparaît, l'ID devient un pseudonyme).
 - **Le schéma est à moitié là** : `customer.entity` a déjà `deleted_at` et `anonymized_at` (l.58, 61) **mais aucune logique** ne les utilise (recherche `anonymiz/deletedAt` dans `modules/customers/` = 0). Donc : colonnes présentes, comportement absent.
 
