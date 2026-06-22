@@ -54,6 +54,12 @@
 ## Parqué (STOP volontaire — ne pas construire)
 NF525 Z-seal · Comptamax export comptable · porte offline-sale · onboarding/pricing SaaS.
 
+## Salve audit read-only secondaire (continuité, 2026-06-22)
+- [x] **M303** loyalty QR token : vérifié sain (HMAC/TTL/constant-time) + spec sécurité (487ceb1)
+- [x] **M105** CSV : garde anti formula-injection CWE-1236 dans `toCsv` (d8ea297) ; round-trip+brand/supplier déjà testés
+- [x] **M306/D14** jackpot : vérifié read-only → faux positif (fail-closed serveur)
+- [⛔] **M207/D18** stores.hardDelete : ~20 tables `store_id` orphelines dont fiscal → **décision owner/comptable** (destructif+fiscal+rétention légale), non touché
+
 ## Reste vraiment bloqué (vrai danger / décision / credential — pas prudence administrative)
 - **M107 réconciliation one-shot** : ÉCRIT le stock réel → **validation prod requise** avant exécution (le diagnostic read-only est livré). + **choix A/B/C** = décision archi.
 - **D16 archi globale** (in-tx fail-closed vs out-of-band) : gated **D17** périmètre NF525 — interim alerte + classe-3 déjà livrés ⇒ pas de blocage opérationnel.

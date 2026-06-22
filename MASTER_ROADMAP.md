@@ -44,8 +44,7 @@ NF525 certification / Z-seal signature fiscale · Comptamax export/mapping compt
 - **Statut** ✅ · **P1** · Clé idempotence transactionnelle, replay = même réponse. **Tests** `sales.service.idempotency.spec.ts`.
 
 ### M005 — Sales : tender `store_credit` accessible via HTTP
-- **Statut** 🔄 · **P1** · Le service+receipts gèrent `store_credit` mais `SalePaymentDto.method @IsIn` ne le whiteliste pas (+ `creditNoteCode` absent du DTO) ⇒ leg inatteignable par l'API.
-- **Fichiers** `common/dto/sales.dto.ts` · **Action** ajouter `store_credit` à l'`@IsIn`, `@IsOptional @IsString creditNoteCode` + test contrôleur e2e.
+- **Statut** ✅ · **P1** · `store_credit` whitelisté + `creditNoteCode` ajouté au DTO + spec contrat (commit b9fdebe).
 
 ### M006 — Fiscal : vérificateur de chaîne + journal
 - **Statut** ✅ · **P1** · `FiscalVerifyService` fait un recompute **AUTORITATIF** de `fiscal_journal` (payload verbatim) + linkage (fork/orphan/unreachable/genesis) ; spec `test/fiscal-verify.spec.ts` (clean/tamper/linkage). Différé : index anti-fork fiscal_journal (toucherait la tx de void sans retry) ; recompute autoritatif sales/credit_notes = NF525 PARQUÉ.
@@ -76,13 +75,12 @@ NF525 certification / Z-seal signature fiscale · Comptamax export/mapping compt
 ### M103 — Prix par magasin (decision 4)  ✅ P2 · override effectif avant pricing. mig 1739.
 ### M104 — Marques / Fournisseurs (decision 3)  ✅ P2 · mig 1738, CSV résout par nom.
 ### M105 — CSV import/export (Bloc 4i)
-- **Statut** ⚠️ · **P2** · util RFC-4180 zéro-dep présent ; vérifier round-trip + colonnes brand/supplier. **Action** test import/export.
+- **Statut** ✅ · **P2** · round-trip + brand/supplier testés (`test/products-csv.spec.ts`) ; **garde anti formula-injection** (CWE-1236) ajoutée dans `toCsv` (commit d8ea297).
 ### M106 — Stock : décrément/ajust mono-table (race-safe)  ✅ P1 · `GREATEST(0, …)` en tx.
 ### M107 — Stock multi-emplacements (stock-locations)
-- **Statut** ⚠️ · **P1** · **Double source de vérité** : `product.stockQuantity` (legacy) vs `stock_balances` peuvent diverger silencieusement (syncLegacyStock).
-- **Action** trancher+documenter la source unique ; `CHECK (quantity >= 0)` ; specs transfer/dispatch/recordLoss/insufficient. mig 1735.
+- **Statut** 🔄 · **P1** · Double source de vérité (D11). **Diagnostic read-only livré** : `findStockDivergences` + `GET /stock-locations/divergences` (commit 0123cca). Reste : décision A/B/C + réconciliation one-shot (écrit stock réel = prod-gated) ; `CHECK(quantity>=0)`. mig 1735.
 ### M108 — Réconciliation stock / écart ≥20 % (decision 7)
-- **Statut** ⚠️ · **P1** · Logique présente (flag pending_review, raison obligatoire, alerte) mais **sans spec**. **Action** spec 19 % applique / 20 % flag / 21 % flag / reject = pas de mouvement. mig 1737.
+- **Statut** ✅ · **P1** · Logique + spec (existait + ajout boundary 19/20/21 % & reject, commit df08a09). mig 1737.
 ### M109 — Inventory scan  ✅ P2 · capture code-barres idempotente.
 ### M110 — Promo codes (decision 6)  ✅ P1 · validate/redeem/reserveAtSale (cap race-safe, applied-at-sale). mig 1741. **Tests** `promo-codes.spec.ts` (+gated pg).
 ### M111 — Promotions (règles auto panier)  ✅ P2 · percentage/fixed/buy_x/first_purchase.
@@ -95,16 +93,14 @@ NF525 certification / Z-seal signature fiscale · Comptamax export/mapping compt
 ### M201 — Auth (JWT employé / PIN / rotation)  ✅ P1
 ### M202 — RBAC (RolesGuard + matrice)  ✅ P1
 ### M203 — Isolation tenant (TenantInterceptor)
-- **Statut** ⚠️ · **P1** · **Fuite** : `GET /organizations`, `/units`, `/stores` (list) sans `@Roles('admin')` ⇒ un caissier lit tout le graphe multi-tenant.
-- **Action** `@Roles('admin')` (ou scoping org) sur ces GET ; étendre l'interceptor au scoping liste non-admin.
+- **Statut** ✅ · **P1** · `@Roles('admin')` sur GET org/units/stores (commit a128bfd) ; non-admins → `/stores/me|accessible`. (scoping org par token = P2.)
 ### M204 — Employees (CRUD / PIN)  ✅ P1
 ### M205 — TimeWin event idempotency (decision 1)  ✅ P1 · outbox UNIQUE idempotency_key. mig 1736.
 ### M206 — TimeWin proxy + résilience  ✅ P2
 ### M207 — Stores (CRUD / lifecycle / schedule)
-- **Statut** ⚠️ · **P1** · `hardDelete` maintient une liste de tables à la main (risque d'oubli d'une table `store_id`) ; `syncFromTimeWin` sans garde anti-désactivation massive.
-- **Action** test couverture tables / FK CASCADE ; garde sync.
+- **Statut** ⚠️/⛔ · **P1** · `hardDelete` : **~20 tables `store_id` non purgées dont fiscal** (D18) → orphelins ; modifier = destructif+fiscal+rétention légale = **décision owner/comptable**. `syncFromTimeWin` sans garde anti-désactivation massive (à câbler).
 ### M208 — Organizations & Units
-- **Statut** 🔄 · **P1** · mêmes GET non gardés que M203 ; pas de reactivate. **Action** `@Roles('admin')` + reactivate documenté.
+- **Statut** ✅ · **P1** · `@Roles('admin')` sur GET org/units (commit a128bfd). Reste P2 : reactivate documenté.
 ### M209 — Mobile-auth (identité client)  ✅ P2
 ### M210 — Shift reminders  ✅ P3
 
@@ -113,14 +109,13 @@ NF525 certification / Z-seal signature fiscale · Comptamax export/mapping compt
 ## Domaine D — Client / Fidélité / Engagement  (M301–M310)
 
 ### M301 — Customers (inscription, OTP, QR, points)
-- **Statut** ⚠️ · **P1** · `POST /customers` **renvoie `otpCode`** dans la réponse (fuite OTP) ; store OTP en mémoire (multi-instance TODO).
-- **Action** ne renvoyer que customer + qrCodeDataUrl (log dev-only) ; Redis pour OTP (P2).
+- **Statut** ✅ · **P1** · `otpCode` retiré de la réponse (commit a128bfd). Reste P2 : OTP en Redis (multi-instance).
 ### M302 — Customer PII / RGPD effacement
-- **Statut** ⬜ · **P1** · Pas d'anonymisation/soft-delete RGPD. **Action** `anonymizeCustomer(id)` (scrub PII + anonymizedAt) + soft-delete + endpoint admin audité ; export portabilité (P2).
-### M303 — Loyalty card + QR HMAC  ⚠️ P2 · vérifier signature/TTL token.
+- **Statut** ✅ · **P1** · `anonymize(id)` scrub PII en place + soft-delete + endpoint admin audité (commit 1e07f51) ; zéro enregistrement fiscal touché. Reste P2 : export portabilité ; carve-out factures (rétention 10 ans à confirmer comptable).
+### M303 — Loyalty card + QR HMAC  ✅ P2 · HMAC-SHA256 + TTL 60s + compare constant-time + rotation ; spec sécurité ajoutée (commit 487ceb1).
 ### M304 — Customer visits (anti-doublon scan)  ⚠️ P2
 ### M305 — Loyalty admin (cycles, coupons, analytics)  ⚠️ P2
-### M306 — Jackpot (Smart-Foule)  ⚠️ P2 · vérifier le fallback silencieux (faille notée AUDIT-COMPLET → D-entry).
+### M306 — Jackpot (Smart-Foule)  ✅ P2 · vérifié read-only (D14) : roll serveur fail-closed + quotas/proba + config admin → faux positif.
 ### M307 — Occupancy (radar live-count)  ⚠️ P2
 ### M308 — Notifications (rappels + alertes, read-only)  ⚠️ P2
 ### M309 — Documents (PDF duplicata/avoir/Z)  ✅ P3
