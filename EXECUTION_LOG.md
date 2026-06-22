@@ -90,5 +90,20 @@
 - **D18 / M207 stores.hardDelete** : finding réel documenté (purge ~16 tables, **~20 tables store_id non couvertes dont fiscal credit_notes/fiscal_journal**) → **non touché** (op destructive + fiscal + question rétention légale = décision owner/comptable).
 - Vérifs à chaque étape : tsc clean + jest (jusqu'à **81 suites / 567**, zéro régression).
 
+### Vérification adversariale (workflow 11 agents) + corrections — salve majeure
+Revue adversariale de TOUS les fixes de la campagne (chaque agent tente de RÉFUTER) :
+- ✅ confirmés : connected-apps api_key (GET), customers otpCode, store_credit path, M402 details-tamper, classe-3 phantom, M607 dead-claim.
+- ❌ 3 vrais bugs trouvés + CORRIGÉS :
+  - **A (af0fa24)** tenant : `/timewin/stores` (+ store-config/schedule/payroll) JWT-only → fuite multi-tenant + write cross-store schedule. Fix : `/stores` admin-only + resolveStoreId sur les endpoints storeId-param. +4 tests.
+  - **B (73a2c23)** sync : per-row `storeId` sauvé verbatim → forge de ventes/clients cross-store. Fix : force storeId sur insert (dedup unscoped) + refus client cross-store. +3 tests.
+  - **C (4f92555)** offline sync : payload non-DTO (ticketNumber/extras) → 400 forbidNonWhitelisted → ventes offline perdues ; + DTO ne whitelistait pas stripeReaderId/terminalId (400 carte même online). Fix : whitelist + `toSyncCreateBody` reshape. +tests be/pos.
+- ⚠️ 4 caveats CORRIGÉS :
+  - **D (5ed969f)** M402 : v2 hash couvre désormais storeId+employeeId → détecte la ré-attribution (pas de v3, v2 non déployé). +test.
+  - **E (28c6493)** M105 : `stripFormulaGuard` à l'import → round-trip lossless (-40% Promo). +tests.
+  - **F (28c6493)** M406 : api_key retiré aussi des réponses create/update/deactivate.
+  - **G (4a4eb96)** M302 : Swagger mobile-auth DELETE /me trompeur corrigé ; PII cross-table (notifications_log.body + 2e chemin) documentée avant dé-gel.
+- **D20** : mouvements stock-locations non audités (couverture) → documenté, additif.
+- Vérifs : backend tsc clean, jest **81 suites / 583** ; pos tsc + vitest **82** ; zéro régression. ~7 commits.
+
 ### Prochaine action automatique (continuité)
 Safe restant : audit read-only des modules ⚠️ (jackpot/loyalty/etc.) → confirmer/infirmer, garde-fous additifs + tests si bug évident. Vrais blocages : M107 réconciliation prod / décision A-B-C, D16-D17 archi, secrets/prod (#3, D6/D8/D7), Stripe parqué.
