@@ -33,9 +33,10 @@
 - [x] **M005** sales DTO : `store_credit` whitelisté + `creditNoteCode` (commit b9fdebe)
 - [x] **M402** audit : v2 recompute (couvre `details`) + `hashed_at` + index unique anti-fork + retry + migration 1744 + spec (commit 4355922) — GO owner
 - [x] **M006** fiscal : recompute `fiscal_journal` autoritatif + spec **déjà présents** (auditeur les a ratés) ; sous-item index anti-fork fiscal_journal **différé** (toucherait la tx de void sans retry) ; recompute sales/credit_notes = NF525 PARQUÉ
-- [ ] **M107** stock multi-emplacements : trancher source unique + `CHECK(quantity>=0)` + specs — ⏸ attente GO
+- [~] **M107** stock source unique : **pré-design livré** `docs/design/M107-stock-source-of-truth.md` (divergence caractérisée, options A/B/C, reco) — ⏸ attente choix owner avant code
 - [x] **M108** réconciliation stock : spec déjà présente (auditeur l'a ratée) + ajout boundary 19/20/21 % & reject (commit df08a09)
-- [ ] **M302** RGPD : anonymisation/soft-delete customer — ⏸ attente GO (décision produit/légale)
+- [~] **M302** RGPD : **note de politique livrée** `docs/design/M302-rgpd-nf525-policy.md` (constat : ventes = `customer_id` seul, zéro PII ⇒ pas de heurt fiscal ; colonnes déjà là, logique absente) — ⏸ attente décision politique owner
+- [x] **D16 interim** : alerte `AUDIT_WRITE_FAILED` sur audit perdu (commit 419b2fd) ; décision couplage txn reste owner
 
 ### P1 — Build / front
 - [x] **M703** mobile : tsc réparé (commit 6ce722c) — vite-env.d.ts, vitest 5/5

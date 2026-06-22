@@ -61,5 +61,12 @@
 - **#5 → D4 reframe** : anti-fork fiscal = LOT OUVERT (design concurrence du void), pas « couvert ».
 - **D9 (vérif lecture, autorisée)** : S2 XSS **remédié** (`esc()` correct sur toutes les chaînes des 2 builders HTML) ; résiduel non-exploitable `<title>` ticketNumber non-esc ; S3 public = par design (QR/UUID opaque, reprint/email authed). Aucun patch (lecture seule).
 
+### D16 interim (commit 419b2fd) — alerte sur audit perdu (sûr, sans changer le couplage)
+- `AlertService` : event `AUDIT_WRITE_FAILED` (severity critical). `doLog` : sur épuisement des retries anti-fork, **fire l'alerte avant de throw** (au lieu d'un simple WARN caller). Flux retry simplifié (erreurs non-conflit propagées immédiatement). Ne change PAS le couplage txn (décision archi D16 reste owner). Spec : l'alerte est levée à l'épuisement. tsc clean, jest **80 suites / 554** (zéro régression).
+
+### Notes de décision produites (lecture seule, AUCUN code sensible touché)
+- `docs/design/M107-stock-source-of-truth.md` : mécanisme exact de la divergence (ventes décrémentent la colonne legacy l.591 ; `syncLegacyStock` l.435 écrase `stock_quantity = SUM(balances)` → décréments de vente perdus). Stock hors chaîne fiscale. Options A/B/C + reco A+garde C. GO owner requis (choix + ce que lit le Z).
+- `docs/design/M302-rgpd-nf525-policy.md` : **constat clé** — les ventes ne portent que `customer_id` (zéro PII) ⇒ anonymiser un client ne touche aucun enregistrement fiscal ; colonnes `deleted_at/anonymized_at` présentes mais sans logique. Décisions de politique à trancher (champs scrub, pseudonymisation, rétention, PII dans docs). GO owner requis (politique d'abord).
+
 ### Prochaine action automatique
-En attente owner : (a) décision archi D16 (couplage audit) ; (b) périmètre NF525 D17 ; (c) GO sur M107 (pré-design stock×fiscal d'abord), M302 (politique RGPD×NF525 d'abord), patch D9 `<title>`/expiry. Rien de sensible exécuté sans GO.
+En attente décisions owner : (a) D16 couplage txn (interim alerte déjà en place) ; (b) périmètre NF525 D17 ; (c) GO M107 (choix A/B/C) ; (d) GO M302 (politique). Diagnostic fork prod (#3) à lancer avec accès prod. Rien de sensible sans GO.
