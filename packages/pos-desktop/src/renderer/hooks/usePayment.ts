@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { usePOSStore } from '../stores/posStore';
 import { salesApi } from '../services/api';
 import { validateManualDiscount } from '../services/discount-policy';
+import { toWirePayments, toSaleDiscountFields } from '../services/salePayload';
 import { usePerformanceStore } from '../stores/performanceStore';
 import { posEventBus } from '../services/posEventBus';
 import { peripheralBridge, TicketData } from '../services/peripheralBridge';
@@ -166,20 +167,9 @@ export function usePayment() {
       const res = await salesApi.create({
         items: store.cartItems.map((i) => ({ ean: i.ean, quantity: i.quantity })),
         customerQrCode: store.customerQrCode || undefined,
-        // Manual discount (decision 5) — server re-validates the 30% cap + approver.
-        ...(store.manualDiscountMinorUnits > 0
-          ? { manualDiscountMinorUnits: store.manualDiscountMinorUnits, discountApproverId: store.discountApproverId || undefined }
-          : {}),
-        // Promo code (decision 6) — server re-validates + redeems atomically.
-        ...(store.promoCode ? { promoCode: store.promoCode } : {}),
-        payments: payments.map((p) => ({
-          method: p.method,
-          amountMinorUnits: p.amountMinorUnits,
-          stripePaymentIntentId: p.stripePaymentIntentId,
-          stripeReaderId: p.stripeReaderId,
-          terminalId: p.terminalId,
-          creditNoteCode: p.creditNoteCode,
-        })),
+        // Manual discount (decision 5) + promo (decision 6) — server re-validates.
+        ...toSaleDiscountFields(store),
+        payments: toWirePayments(payments),
       });
       ticketNumber = res.data.ticketNumber || `T-${Date.now().toString().slice(-6)}`;
       // Store sale ID for QR receipt generation
@@ -210,9 +200,12 @@ export function usePayment() {
           payload: {
             ticketNumber,
             items: store.cartItems.map((i) => ({ ean: i.ean, quantity: i.quantity, name: i.name, unitPriceMinorUnits: i.unitPriceMinorUnits })),
-            payments: payments.map((p) => ({ method: p.method, amountMinorUnits: p.amountMinorUnits })),
+            // M603: mirror the ONLINE payload so an offline store_credit / card sale syncs
+            // faithfully — creditNoteCode + Stripe/terminal refs + discount/promo preserved.
+            payments: toWirePayments(payments),
             totalMinorUnits: totalAmount,
             customerQrCode: store.customerQrCode || undefined,
+            ...toSaleDiscountFields(store),
           },
           cashierId: store.employee?.id || 'unknown',
           cashierName,
