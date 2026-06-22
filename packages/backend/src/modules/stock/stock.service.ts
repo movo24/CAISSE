@@ -115,8 +115,11 @@ export class StockService {
     reason: string,
     mode: 'absolute' | 'delta' = 'absolute',
   ): Promise<ProductEntity> {
-    // Use transaction with pessimistic lock to prevent race conditions
-    return this.dataSource.transaction(async (manager) => {
+    // Use transaction with pessimistic lock to prevent race conditions.
+    // Phantom-audit fix (D16 class 3): the audit is emitted AFTER this transaction
+    // commits — never inside the open tx — so a rolled-back adjustment can no longer
+    // leave a committed audit entry behind. Amounts/quantities/logic are unchanged.
+    const { saved, oldQty } = await this.dataSource.transaction(async (manager) => {
       const product = await manager.findOne(ProductEntity, {
         where: { id: productId, storeId },
         lock: { mode: 'pessimistic_write' },
@@ -144,7 +147,12 @@ export class StockService {
         `Stock adjusted: ${product.name} (${product.ean}) ${oldQty} → ${saved.stockQuantity} (mode=${mode}, value=${quantity}, reason=${reason})`,
       );
 
-      // Audit
+      return { saved, oldQty };
+    });
+
+    // Audit AFTER commit, best-effort (an audit failure must never roll back or fail
+    // an adjustment that already committed — same pattern as the sales/sync audits).
+    try {
       await this.auditService.log({
         storeId,
         employeeId,
@@ -157,12 +165,14 @@ export class StockService {
           inputValue: quantity,
           mode,
           reason,
-          productName: product.name,
+          productName: saved.name,
         },
       });
+    } catch (auditErr: any) {
+      this.logger.warn(`Audit (stock_adjustment) failed: ${auditErr?.message}`);
+    }
 
-      return saved;
-    });
+    return saved;
   }
 
   async updateDefaultThresholds(

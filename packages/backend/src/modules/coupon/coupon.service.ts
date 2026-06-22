@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   NotFoundException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, IsNull } from 'typeorm';
@@ -38,6 +39,8 @@ export interface RedeemPayload {
 
 @Injectable()
 export class CouponService {
+  private readonly logger = new Logger(CouponService.name);
+
   constructor(
     @InjectRepository(CouponEntity)
     private readonly couponRepo: Repository<CouponEntity>,
@@ -236,13 +239,21 @@ export class CouponService {
       throw new BadRequestException('Idempotency-Key requis');
     }
 
-    return this.dataSource.transaction(async (mgr) => {
+    // Phantom-audit fix (D16 class 3): the transaction RETURNS its audit payload; the
+    // audit is emitted only AFTER commit. A cache replay returns null → not re-audited;
+    // a rolled-back redemption leaves no audit.
+    type RedeemAudit = {
+      storeId: string; employeeId: string; couponId: string; customerId: string;
+      ticketId: string; discountPercent: number; terminalId?: string;
+    };
+    const { response: result, auditPayload } = await this.dataSource.transaction(
+      async (mgr): Promise<{ response: any; auditPayload: RedeemAudit | null }> => {
       // 1. Idempotency cache check
       const cached = await mgr.findOne(IdempotencyKeyEntity, {
         where: { key: idempotencyKey },
       });
       if (cached) {
-        return cached.responseBody as any;
+        return { response: cached.responseBody as any, auditPayload: null };
       }
 
       // 2. Lock coupon
@@ -319,21 +330,16 @@ export class CouponService {
         [payload.customerId],
       );
 
-      // 7. Audit
-      await this.auditService.log({
+      // 7. Audit payload captured here, emitted AFTER commit (see below).
+      const auditPayload: RedeemAudit = {
         storeId: payload.storeId,
         employeeId: payload.cashierEmployeeId ?? 'system',
-        action: 'COUPON_REDEEMED',
-        entityType: 'coupon',
-        entityId: coupon.id,
-        details: {
-          actorType: 'POS',
-          customerId: payload.customerId,
-          ticketId: payload.ticketId,
-          discountPercent: coupon.discount_value,
-          terminalId: payload.terminalId,
-        },
-      });
+        couponId: coupon.id,
+        customerId: payload.customerId,
+        ticketId: payload.ticketId,
+        discountPercent: coupon.discount_value,
+        terminalId: payload.terminalId,
+      };
 
       const response = {
         success: true as const,
@@ -353,8 +359,34 @@ export class CouponService {
         expiresAt,
       });
 
-      return response;
+      return { response, auditPayload };
     });
+
+    // Audit AFTER commit, best-effort: a real redemption only (cache replay → null),
+    // and an audit failure never rolls back the committed redemption.
+    if (auditPayload) {
+      const ap = auditPayload;
+      try {
+        await this.auditService.log({
+          storeId: ap.storeId,
+          employeeId: ap.employeeId,
+          action: 'COUPON_REDEEMED',
+          entityType: 'coupon',
+          entityId: ap.couponId,
+          details: {
+            actorType: 'POS',
+            customerId: ap.customerId,
+            ticketId: ap.ticketId,
+            discountPercent: ap.discountPercent,
+            terminalId: ap.terminalId,
+          },
+        });
+      } catch (auditErr: any) {
+        this.logger.warn(`Audit (COUPON_REDEEMED) failed: ${auditErr?.message}`);
+      }
+    }
+
+    return result;
   }
 
   /**

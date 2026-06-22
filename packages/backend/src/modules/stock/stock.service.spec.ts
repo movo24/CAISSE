@@ -62,4 +62,14 @@ describe('StockService — adjustStock', () => {
       }),
     );
   });
+
+  it('PHANTOM-FIX (D16 class 3) — audit is post-commit best-effort: an audit failure does NOT fail/roll back the adjustment', async () => {
+    audit.log.mockRejectedValueOnce(new Error('audit down'));
+    // Before the fix, audit ran INSIDE the tx → a throw rolled the adjustment back and
+    // adjustStock rejected. Now audit is emitted AFTER commit (best-effort) → the
+    // adjustment still applies and the call resolves.
+    const res = await service.adjustStock('p1', 42, 's1', 'e1', 'inventaire', 'absolute');
+    expect(res.stockQuantity).toBe(42);
+    expect(manager.save).toHaveBeenCalled();
+  });
 });

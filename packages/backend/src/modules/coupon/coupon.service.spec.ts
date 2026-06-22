@@ -187,3 +187,60 @@ describe('CouponService', () => {
     });
   });
 });
+
+describe('CouponService.redeem — D16 phantom-audit fix', () => {
+  let service: CouponService;
+  let audit: { log: jest.Mock };
+  let mgr: any;
+
+  const couponRow = () => ({ id: 'cp1', customer_id: 'c1', status: 'AVAILABLE', valid_until: null, discount_value: 5 });
+  const payload: any = { customerId: 'c1', couponId: 'cp1', storeId: 's1', ticketId: 't1', ticketAmountCents: 1000, cashierEmployeeId: 'e1' };
+
+  const build = async () => {
+    mgr = {
+      findOne: jest.fn().mockResolvedValue(null), // idempotency cache: none (real redemption)
+      query: jest.fn().mockImplementation((sql: string) =>
+        /SELECT \* FROM coupons/i.test(sql) ? Promise.resolve([couponRow()]) : Promise.resolve([]),
+      ),
+      createQueryBuilder: jest.fn(() => ({
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue(null), // no prior USED coupon → no cooldown
+      })),
+      update: jest.fn().mockResolvedValue({}),
+      insert: jest.fn().mockResolvedValue({}),
+    };
+    audit = { log: jest.fn().mockResolvedValue(undefined) };
+    const moduleRef = await Test.createTestingModule({
+      providers: [
+        CouponService,
+        { provide: getRepositoryToken(CouponEntity), useValue: {} },
+        { provide: getRepositoryToken(CustomerVisitEntity), useValue: {} },
+        { provide: getRepositoryToken(LoyaltyRewardCycleEntity), useValue: {} },
+        { provide: getRepositoryToken(IdempotencyKeyEntity), useValue: {} },
+        { provide: getRepositoryToken(CustomerEntity), useValue: {} },
+        { provide: DataSource, useValue: { transaction: (fn: any) => fn(mgr) } },
+        { provide: AuditService, useValue: audit },
+      ],
+    }).compile();
+    service = moduleRef.get(CouponService);
+  };
+
+  it('PHANTOM-FIX — audit is post-commit best-effort: an audit failure does NOT roll back the redemption', async () => {
+    await build();
+    audit.log.mockRejectedValueOnce(new Error('audit down'));
+    const res = await service.redeem(payload, 'idem-key-123456');
+    expect(res.success).toBe(true);             // committed despite the audit failure
+    expect(mgr.update).toHaveBeenCalled();      // coupon was marked USED
+    expect(audit.log).toHaveBeenCalledTimes(1); // attempted once, AFTER commit
+  });
+
+  it('a cache REPLAY returns the cached response and does NOT re-audit (no phantom)', async () => {
+    await build();
+    mgr.findOne.mockResolvedValue({ responseBody: { success: true, discountPercent: 5, couponId: 'cp1' } });
+    const res = await service.redeem(payload, 'idem-key-123456');
+    expect(res.success).toBe(true);
+    expect(audit.log).not.toHaveBeenCalled();   // replay path captures no audit payload
+  });
+});
