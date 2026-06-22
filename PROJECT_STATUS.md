@@ -55,11 +55,12 @@
 NF525 Z-seal · Comptamax export comptable · porte offline-sale · onboarding/pricing SaaS.
 
 ## Gate de validation (périmètre POS sensible — owner décide avant exécution)
-Le safe autonome est épuisé pour ce tour. Les P1 restants touchent des flux **sensibles** (fiscal / stock réel / décision produit / migration sur table sensible) ⇒ je NE les exécute PAS sans GO :
-- **M006/M402** `verifyChain` recompute (fiscal+audit) + **migration index unique** sur `fiscal_journal`/`audit_entries` — flux fiscal déjà utilisé + migration sur table fiscale (peut échouer si dups existants en prod).
-- **M107/D11** trancher la source unique du **stock réel** (legacy column vs stock_balances) — modifie le flux de vente/stock déjà utilisé.
-- **M302/D13** effacement/anonymisation RGPD client — **décision produit/légale** + suppression de données.
-- **D9** XSS/receipts — modifier les **reçus** = sensible (je peux seulement *vérifier* en lecture).
+Livré sous GO : M402 (audit recompute), M006 (déjà couvert), D16 classe-3 (audit fantôme). **Reste gated** :
+- **D16 archi globale** : in-tx fail-closed vs out-of-band best-effort — gated **D17** (périmètre NF525 de `AuditService`). Interim alerte + fix classe-3 déjà en place ⇒ pas de blocage opérationnel.
+- **M107/D11** source unique du **stock réel** — choix A/B/C + **réconciliation one-shot** (valeurs déjà dérivées) ; Z fiscal non concerné, mais valorisation analytique + garde de vente le sont. Note prête.
+- **M302/D13** anonymisation RGPD client — politique (champs à scrubber) ; rétention factures 10 ans **à confirmer comptable** ; portée fiscale nulle ⇒ implémentable sans attendre dès que les champs sont posés. Note prête.
+- **D9** patch reçus (`<title>` esc / expiry) — modif reçus = sensible.
+- **#3** diagnostic fork prod — **besoin accès prod** (requête read-only fournie).
 
 ## Prochaine action automatique (safe uniquement)
-M803 ✅ livré. En attente de GO owner pour le cluster sensible ci-dessus (plans prêts). Items safe restants mineurs : barrel `entities/index.ts` (cosmétique), nit commentaire health 2s/5s.
+Périmètre safe + GO encadré épuisé proprement (notes de décision prêtes, classe-3 corrigée). En attente d'une décision owner parmi : champs M302, choix M107, périmètre D17, patch D9, ou accès prod #3. Items safe résiduels mineurs : barrel `entities/index.ts` (cosmétique, inoffensif), nit commentaire health 2s/5s.
