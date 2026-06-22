@@ -132,7 +132,8 @@ NF525 certification / Z-seal signature fiscale · Comptamax export/mapping compt
 
 ### M401 — Reports : X-report + Z-report  ✅ P2 · **Note** Z vs KPI utilisent des colonnes date différentes (created_at vs completedAt) — divergence possible à minuit.
 ### M402 — Audit / hash-chain
-- **Statut** ✅ · **P1** · (commit 4355922, GO owner) v1 hachait `details` comme `{}` (bug replacer) ⇒ tamper indétectable. Fix : `computeAuditHashV2` (canonicalisation récursive) + `hashed_at` persisté + recompute v2 dans `verifyChain` (v1 = linkage-only) + index unique anti-fork + retry doLog + migration 1744. Spec `test/audit-chain-verify.spec.ts`.
+- **Statut** 🔄 (détection ✅ / couplage write = lot ouvert) · **P1** · (commit 4355922, GO owner) DÉTECTION durcie : v1 hachait `details` comme `{}` (bug replacer) ⇒ tamper indétectable ; fix `computeAuditHashV2` (canonicalisation récursive) + `hashed_at` persisté + recompute v2 (v1 = linkage-only) + index unique anti-fork (genesis = sentinel `0×64`, pas NULL → mono-genesis garanti) + retry doLog + migration 1744 (pré-check fork). Spec `test/audit-chain-verify.spec.ts`.
+- **Reste (D16/D17)** : couplage « op⟺audit » NON garanti (audit out-of-band best-effort post-commit, pré-existant) → décision archi owner (in-tx fail-closed vs alerte-sur-drop) ; frontière v1 non-vérifiable + périmètre NF525 à trancher.
 - **Fichiers** `modules/audit/audit.service.ts`, `entities/audit-entry.entity.ts`, mig 1744.
 ### M403 — Sync : file offline push-pull
 - **Statut** ✅(base)/⚠️(authz) · **P1** · `POST /sync/push` fait confiance à `payload.storeId` sans le confronter à `req.user` ⇒ un device peut écrire dans un autre magasin (pull/status corrects). **Action** scoper storeId à req.user. **Note** porte offline-sale PARQUÉE (distincte).

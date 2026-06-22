@@ -51,5 +51,15 @@
 - **Différé volontairement** (sensible, sans GO spécifique) : index anti-fork sur `fiscal_journal` (toucherait la tx de void sans retry) ; recompute autoritatif sales/credit_notes (NF525 PARQUÉ).
 - **Vérifs** : backend tsc clean, jest **80 suites / 553** (zéro régression).
 
+### Revue owner M402 (2026-06-22) — sémantique d'échec confirmée + cadrage
+- **#1 (décisif) CONFIRMÉ par code** : `AuditService.log` = **transaction séparée**, appels **post-commit** en vente, `try/catch → logger.warn`. ⇒ « op⟺audit » non garanti (pré-existant). M402 a changé fork-silencieux → retry+drop-loggué, sans toucher le couplage. Statut M402 **rétrogradé** : détection ✅ / couplage = lot ouvert (**D16** : décision archi in-tx vs alerte-sur-drop).
+- **#2 CONFIRMÉ** : genesis = sentinel `'0'×64` (colonne `previous_hash` NOT NULL), pas NULL ⇒ index unique garantit bien mono-genesis/magasin. Réserve NULL non applicable.
+- **#3 diagnostic prod (read-only, à exécuter avec accès prod — non dispo ici)** :
+  `SELECT store_id, previous_hash, COUNT(*) FROM audit_entries GROUP BY 1,2 HAVING COUNT(*)>1;`
+  (= détecte un fork d'audit DÉJÀ présent, appends concurrents passés ; conditionne aussi l'applicabilité de mig 1744). À lancer avant deploy. **D7-like : besoin accès prod.**
+- **#4 → D17** : frontière v1 non-vérifiable documentée + question périmètre NF525 de la chaîne audit (owner/expert-comptable).
+- **#5 → D4 reframe** : anti-fork fiscal = LOT OUVERT (design concurrence du void), pas « couvert ».
+- **D9 (vérif lecture, autorisée)** : S2 XSS **remédié** (`esc()` correct sur toutes les chaînes des 2 builders HTML) ; résiduel non-exploitable `<title>` ticketNumber non-esc ; S3 public = par design (QR/UUID opaque, reprint/email authed). Aucun patch (lecture seule).
+
 ### Prochaine action automatique
-M006/M402 livrés. Reste P1 = SENSIBLE en attente de GO (M107 stock, M302 RGPD, D9 receipts). Safe restant mineur uniquement.
+En attente owner : (a) décision archi D16 (couplage audit) ; (b) périmètre NF525 D17 ; (c) GO sur M107 (pré-design stock×fiscal d'abord), M302 (politique RGPD×NF525 d'abord), patch D9 `<title>`/expiry. Rien de sensible exécuté sans GO.
