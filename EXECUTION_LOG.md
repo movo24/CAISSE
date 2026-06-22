@@ -77,5 +77,11 @@
 - **M107** : ajout « Consommateurs de stock_quantity » — valorisation analytique (`product-analytics.util:143` valeurStockMinorUnits), **garde de vente** (`sales.service:240`), alertes seuils ; **Z fiscal NON concerné** (agrège les ventes). ⇒ divergence = incident gestion/survente, pas fiscal ; nécessite **réconciliation one-shot** (valeurs déjà dérivées) = sensible, GO + human-validated.
 - **M302** : ajout valeur de rétention **proposée 10 ans** (Code com. L123-22) **à confirmer comptable** ; portée réelle nulle aujourd'hui (zéro PII fiscale) ⇒ anonymisation implémentable sans attendre, carve-out factures seulement si factures nominatives générées.
 
-### Prochaine action automatique
-En attente décisions owner : (a) D16 archi globale (interim alerte + classe-3 fix déjà livrés) ; (b) D17 périmètre NF525 ; (c) GO M107 (choix A/B/C + réconciliation one-shot) ; (d) GO M302 (liste champs scrub ; rétention 10 ans à confirmer comptable). Diagnostic fork prod (#3) = besoin accès prod. Rien de sensible sans GO.
+### Continuité opérationnelle (nouvelle règle owner) — exécution autonome du réversible/testable
+- **M302 (commit 1e07f51)** : `CustomersService.anonymize` (scrub PII en place + soft-delete + endpoint admin audité, @Optional audit). Zéro enregistrement fiscal touché (ventes = customer_id). 3 tests. Pas de migration (colonnes en 1712).
+- **D9 (commit 5309908)** : `<title>` reçu vente échappé (`esc(ticketNumber)`) — S2 clos+durci. Non exploitable (valeur serveur), defense-in-depth.
+- **M107 diagnostic (commit 0123cca)** : `findStockDivergences()` read-only + `GET /stock-locations/divergences` + spec. SQL plain SUM/GROUP BY (pg-mem-safe), delta/filter/sort en JS. Réconciliation one-shot (écrit le stock) reste prod-gated.
+- **Vérifs** : à chaque étape backend tsc clean + jest (jusqu'à **80 suites / 561**, zéro régression). 5 commits séparés ce tour (class-3 f2b39b9, M302, D9, M107-diag + docs).
+
+### Prochaine action automatique (continuité)
+Safe restant : audit read-only des modules ⚠️ (jackpot/loyalty/etc.) → confirmer/infirmer, garde-fous additifs + tests si bug évident. Vrais blocages : M107 réconciliation prod / décision A-B-C, D16-D17 archi, secrets/prod (#3, D6/D8/D7), Stripe parqué.

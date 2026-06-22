@@ -46,7 +46,7 @@ Statuts : OPEN · IN PROGRESS · BLOCKED (owner/accès) · CLOSED (PR retire l'e
 **Status:** BLOCKED (owner). Clés réelles committées (`docker/.env.production.example` historique). **Ferme :** rotation des clés (accès secrets) + décision purge historique. Action owner.
 
 ## D9 — XSS receipts + endpoint receipts public  (AUDIT-FINAL S2/S3) — ✅ S2 remédié (vérif lecture 2026-06-22)
-**S2 XSS = REMÉDIÉ.** `receipts.controller.ts` : `esc()` (échappe `& < > " '`) est appliqué à **toutes** les chaînes contrôlables (nom produit, nom magasin, adresse, SIRET, méthode paiement, ticketNumber dans le corps, refundMethod) dans les DEUX builders HTML (vente + avoir). Numériques/dates = bruts (sûrs). **Résiduel (non exploitable)** : `<title>Reçu ${data.ticketNumber}</title>` non-esc dans les 2 builders — mais `ticketNumber` est généré serveur (`T-NNNNNN`), pas contrôlable. *Recommandé* : `esc()` aussi dans `<title>` (cohérence/defense-in-depth) — patch reçus = sensible, attend GO.
+**S2 XSS = REMÉDIÉ + durci (commit 5309908).** `esc()` (échappe `& < > " '`) appliqué à toutes les chaînes contrôlables des DEUX builders HTML ; le résiduel `<title>` (vente) est désormais `esc(data.ticketNumber)` (le builder avoir l'échappait déjà). Numériques/dates bruts (sûrs). S2 clos.
 **S3 « receipts public » = PAR DESIGN** : reçu accessible par QR via UUID opaque (inguessable) ; reprint/email sont authentifiés. Acceptable ; note : toute personne avec l'UUID lit les données du reçu (nom caissier, SIRET). Si jugé sensible → rate-limit/expiry = décision produit.
 
 ## D16 — Couplage `audit.log` ⟂ transaction métier : NON UNIFORME (M402 review) — fait établi
@@ -65,14 +65,14 @@ Statuts : OPEN · IN PROGRESS · BLOCKED (owner/accès) · CLOSED (PR retire l'e
 ## D10 — Stripe : idempotency `Date.now()`, intent non lié, conflict no-op, EUR/taxRate20 en dur  (AUDIT-COMPLET)
 **Status:** VERIFY/OPEN · **P1/P2.** Findings de mars à reconfirmer contre le code actuel (capture decision 6 a déjà touché ce chemin). **Ferme :** vérifier chaque point ; idempotency déterministe ; lier `stripePaymentIntentId` ; devise/taux depuis le store.
 
-## D11 — Double source de vérité stock (legacy column vs stock_balances)  (M107)
-**Status:** OPEN · **P1.** `product.stockQuantity` et `stock_balances` peuvent diverger (syncLegacyStock). **Ferme :** trancher+documenter la source unique + `CHECK(quantity>=0)` + specs.
+## D11 — Double source de vérité stock (legacy column vs stock_balances)  (M107) — diagnostic ✅, décision + réconciliation gated
+**Status:** IN PROGRESS · **P1.** `product.stockQuantity` (décrémenté par les ventes) et `stock_balances` (écrasé dans la colonne par `syncLegacyStock`) divergent silencieusement. **Consommateurs** (vérifié) : valorisation analytique + garde de vente ; **Z fiscal NON concerné**. **Livré (commit 0123cca)** : `findStockDivergences()` read-only + endpoint `GET /stock-locations/divergences` (admin/manager) + spec → rapport d'écart sans mutation. **Reste** : (a) **décision** source unique A/B/C (`docs/design/M107-stock-source-of-truth.md`) = archi ; (b) **réconciliation one-shot** qui ÉCRIT le stock réel = **prod-gated** (validation avant exécution) ; (c) `CHECK(quantity>=0)`.
 
 ## D12 — customers `POST` renvoie `otpCode`  (M301)
 **Status:** OPEN · **P1 SÉCU.** L'OTP est renvoyé dans la réponse de création. **Ferme :** ne renvoyer que customer + qrCodeDataUrl (log dev-only). (P2 : store OTP en Redis pour multi-instance.)
 
-## D13 — Pas d'effacement RGPD client  (M302)
-**Status:** OPEN · **P1.** Aucune anonymisation/soft-delete des PII client. **Ferme :** `anonymizeCustomer` + soft-delete + endpoint admin audité (+ export portabilité).
+## D13 — Effacement RGPD client  (M302) — ✅ CLOSED (commit 1e07f51)
+**Fermé** : `CustomersService.anonymize(id)` scrub la PII EN PLACE (first/last/phone/email/password_hash + qr_code neutralisé `ANON-<id8>`), soft-delete (`deleted_at`+`anonymized_at`, colonnes déjà en mig 1712), idempotent, endpoint `POST /customers/:id/anonymize` admin-only + audité (metadata only). **Aucun enregistrement fiscal touché** (vérifié : ventes = customer_id seul). Tests : scrub+markers+conserve, idempotence, NotFound. **Reste (non bloquant)** : (P2) export de portabilité RGPD ; carve-out factures nominatives **seulement si** on génère des factures nominatives (durée 10 ans proposée, à confirmer comptable).
 
 ## D14 — Jackpot fallback silencieux  (AUDIT-COMPLET, M306)
 **Status:** VERIFY · **P2.** Faiblesse sécurité notée (403 vs fallback silencieux). **Ferme :** confirmer + durcir le chemin d'autorisation.
