@@ -128,6 +128,59 @@ export class StockLocationsService {
     `);
   }
 
+  /**
+   * M107 — READ-ONLY divergence diagnostic. Reports products whose legacy
+   * `products.stock_quantity` disagrees with `SUM(stock_balances.quantity)`.
+   *
+   * Sales decrement the legacy column directly while stock-locations ops overwrite it
+   * with SUM(balances) via syncLegacyStock → the two can silently diverge. This is the
+   * gap report (no mutation, no correction). Only products that HAVE balance rows are
+   * considered (INNER JOIN) — legacy-only products are not "diverged", they simply
+   * don't use multi-location. A one-shot reconciliation that WRITES stock is a separate,
+   * prod-validated step (it touches real stock).
+   */
+  async findStockDivergences(storeId?: string): Promise<{
+    productId: string;
+    ean: string;
+    name: string;
+    storeId: string;
+    legacyQuantity: number;
+    balancesQuantity: number;
+    delta: number;
+  }[]> {
+    const where = storeId ? 'WHERE p.store_id = $1' : '';
+    const params = storeId ? [storeId] : [];
+    // SQL kept to plain SUM + GROUP BY (no arithmetic/HAVING/ORDER-BY-expr) so it
+    // behaves identically on real PG and the pg-mem test harness; the divergence
+    // filter, delta and sort are computed in JS.
+    const rows = await this.dataSource.query(
+      `SELECT p.id AS "productId", p.ean, p.name, p.store_id AS "storeId",
+              p.stock_quantity AS "legacyQuantity",
+              SUM(sb.quantity) AS "balancesQuantity"
+         FROM products p
+         JOIN stock_balances sb ON sb.product_id = p.id
+         ${where}
+         GROUP BY p.id, p.ean, p.name, p.store_id, p.stock_quantity`,
+      params,
+    );
+    return (Array.isArray(rows) ? rows : [])
+      .map((r: any) => {
+        const legacyQuantity = Number(r.legacyQuantity);
+        const balancesQuantity = Number(r.balancesQuantity);
+        return {
+          productId: r.productId,
+          ean: r.ean,
+          name: r.name,
+          storeId: r.storeId,
+          legacyQuantity,
+          balancesQuantity,
+          delta: legacyQuantity - balancesQuantity,
+        };
+      })
+      .filter((r) => r.delta !== 0)
+      .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+  }
+
   // ─── MOVEMENTS (the core) ─────────────────────────────────────
 
   /**

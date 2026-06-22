@@ -44,6 +44,15 @@ export class StockLocationsController {
     return this.service.getNetworkStock();
   }
 
+  // M107 — READ-ONLY: products whose legacy stock_quantity disagrees with the sum of
+  // their location balances. Diagnostic only (no mutation, no correction).
+  @Get('divergences')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'Read-only report: legacy stock_quantity vs SUM(stock_balances) divergences (M107)' })
+  getStockDivergences(@Query('storeId') storeId?: string) {
+    return this.service.findStockDivergences(storeId);
+  }
+
   @Get('product/:productId/balances')
   @ApiOperation({ summary: 'Stock balances for a product across all locations' })
   getProductBalances(@Param('productId') productId: string) {
