@@ -285,7 +285,7 @@ export class ReceiptsController {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Reçu ${data.ticketNumber}</title>
+<title>Reçu ${esc(data.ticketNumber)}</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f5f5f5;color:#1a1a1a;padding:16px}
