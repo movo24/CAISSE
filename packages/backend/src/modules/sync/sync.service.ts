@@ -118,6 +118,12 @@ export class SyncService {
           const CHUNK_SIZE = 100;
           for (let i = 0; i < newSales.length; i += CHUNK_SIZE) {
             const chunk = newSales.slice(i, i + CHUNK_SIZE);
+            // SECURITY (M403 follow-up): a synced sale may only land in the device's
+            // resolved store. Force storeId on every inserted row, ignoring any
+            // client-supplied per-row storeId → no cross-store fiscal-record forgery.
+            // (Dedup stays UNSCOPED by id: a forged id matching an existing sale is
+            // skipped above, never upserted into another store.)
+            chunk.forEach((s: any) => { s.storeId = payload.storeId; });
             await queryRunner.manager.save(SaleEntity, chunk);
           }
           accepted += newSales.length;
@@ -151,6 +157,21 @@ export class SyncService {
           if (!customer.id) continue;
           const existing = existingMap.get(customer.id);
 
+          // SECURITY (M403 follow-up): never touch a customer owned by ANOTHER store
+          // (id-guessing hijack). The find is unscoped (to detect the collision); a
+          // cross-store id is refused, never upserted.
+          if (existing && existing.storeId && existing.storeId !== payload.storeId) {
+            conflicts.push({
+              entity: 'customer',
+              entityId: customer.id,
+              field: 'storeId',
+              localValue: payload.storeId,
+              serverValue: existing.storeId,
+              resolution: 'server_wins',
+            });
+            continue;
+          }
+
           if (existing && existing.updatedAt > sinceDate) {
             conflicts.push({
               entity: 'customer',
@@ -161,7 +182,8 @@ export class SyncService {
               resolution: 'server_wins',
             });
           } else {
-            toSave.push(customer);
+            // Force the resolved store on every saved row (new or same-store update).
+            toSave.push({ ...customer, storeId: payload.storeId });
           }
         }
 

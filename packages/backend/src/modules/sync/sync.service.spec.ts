@@ -73,4 +73,26 @@ describe('SyncService — push', () => {
     expect(res.conflicts).toHaveLength(1);
     expect(res.conflicts[0]).toMatchObject({ entity: 'customer', entityId: 'c1', resolution: 'server_wins' });
   });
+
+  // ── SECURITY (M403 follow-up): per-row storeId cannot forge cross-store writes ──
+  it('DECISIVE — forces a synced sale into the payload store (ignores a claimed other store)', async () => {
+    const res = await service.push(basePayload({ storeId: 's1', sales: [{ id: 'x', storeId: 's2', totalMinorUnits: 999 } as any] }));
+    expect(res.accepted).toBe(1);
+    const saved = qr.manager.save.mock.calls.find((c: any[]) => c[0] === SaleEntity)?.[1];
+    expect(saved[0].storeId).toBe('s1'); // forged 's2' overwritten with the resolved store
+  });
+
+  it('DECISIVE — refuses to touch a customer owned by ANOTHER store (id-guessing hijack)', async () => {
+    existingCustomers = [{ id: 'c2', storeId: 's2', loyaltyPoints: 5, updatedAt: new Date('2020-01-01T00:00:00Z') }];
+    const res = await service.push(basePayload({ storeId: 's1', customers: [{ id: 'c2', loyaltyPoints: 99999 } as any] }));
+    expect(res.conflicts.some((c) => c.entityId === 'c2' && c.field === 'storeId')).toBe(true);
+    expect(qr.manager.save.mock.calls.find((c: any[]) => c[0] === CustomerEntity)).toBeUndefined(); // never saved
+  });
+
+  it('forces storeId on a NEW synced customer', async () => {
+    const res = await service.push(basePayload({ storeId: 's1', customers: [{ id: 'cnew', loyaltyPoints: 3 } as any] }));
+    expect(res.accepted).toBe(1);
+    const saved = qr.manager.save.mock.calls.find((c: any[]) => c[0] === CustomerEntity)?.[1];
+    expect(saved[0].storeId).toBe('s1');
+  });
 });
