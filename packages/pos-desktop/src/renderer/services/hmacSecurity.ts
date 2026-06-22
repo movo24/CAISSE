@@ -1,9 +1,17 @@
 /* ═══════════════════════════════════════════════════════════════
-   HMAC SECURITY — Signature et protection des requetes
-   - Token par magasin
-   - Signature HMAC-SHA256 de chaque requete sync
-   - Nonce + timestamp pour anti-replay
-   - Dedup par idempotency key
+   HMAC SECURITY — helpers de signature des requêtes sync
+
+   ⚠️ NON CÂBLÉ END-TO-END (voir TECHNICAL_DEBT D19, M607). Ces helpers existent
+   mais la couche n'est PAS active :
+     - `setStoreToken` n'est jamais appelé → `getStoreToken()` renvoie null →
+       `signSyncRequest` renvoie null → AUCUNE requête n'est signée ;
+     - syncEngine ne pose PAS la signature en header (commentaire seulement) ;
+     - le backend `/sync` ne vérifie AUCUNE signature.
+   Les requêtes sync restent authentifiées par le JWT employé (axios bearer) — ce
+   n'est donc pas un trou ouvert, mais NE PAS lire ce fichier comme « le sync est
+   signé HMAC ». Câbler la couche = feature coordonnée (provisioning token +
+   attach header + vérif backend + anti-replay) — décision/design (chemin d'écriture sync).
+   Contenu : token par magasin · HMAC-SHA256 · nonce/timestamp anti-replay · dedup idempotency.
    ═══════════════════════════════════════════════════════════════ */
 
 // ── Types ──

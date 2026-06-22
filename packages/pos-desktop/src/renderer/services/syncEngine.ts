@@ -95,10 +95,13 @@ async function syncEntry(entry: OfflineQueueEntry): Promise<{ success: boolean; 
       return { success: true };
     }
 
-    // HMAC signature for production requests
+    // HMAC device-signing layer — ⚠️ NON CÂBLÉ (TECHNICAL_DEBT D19, M607).
+    // signSyncRequest renvoie toujours null aujourd'hui (token jamais provisionné) et,
+    // même non-null, la signature N'EST PAS posée en header ci-dessous ni vérifiée
+    // côté backend. Les requêtes sync restent authentifiées par le JWT employé.
+    // Câbler la couche = feature coordonnée (provisioning + attach + vérif + anti-replay).
     const signed = await signSyncRequest(entry.payload, entry.type, entry.id);
     if (signed) {
-      // In production: attach signed.signature, signed.nonce, signed.timestamp to request headers
       logSecurityEvent('sync_signed', { type: entry.type, idempotencyKey: signed.idempotencyKey });
     }
 

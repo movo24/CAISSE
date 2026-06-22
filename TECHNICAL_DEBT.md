@@ -88,5 +88,14 @@ Statuts : OPEN · IN PROGRESS · BLOCKED (owner/accès) · CLOSED (PR retire l'e
 **Direction du fix (IMPORTANT — pas « compléter la liste »)** : sous NF525 les pièces fiscales sont à **conserver**. « Finir la liste des tables purgées » (réflexe naïf) **aggrave** : un `hardDelete` qui purge `fiscal_journal`/`credit_notes`/`sales` est probablement déjà une violation de rétention, orphelins ou pas. Le fix va dans l'**autre sens** : `hardDelete` doit **refuser / anonymize-and-retain** le fiscal (archivage du magasin, pas suppression des pièces). Ne **pas** ajouter de `DELETE FROM` fiscal.
 **Ferme (owner + comptable)** : décider (a) si un `hardDelete` total doit exister pour un magasin à historique fiscal (vs soft-archive + rétention), (b) ce qui est purgeable (données non-fiscales orphelines : `customer_visits`, `price_history`, `airtable_*`…) vs **conservé** (tout le fiscal), (c) une fois tranché : implémentation + drift-guard test (les non-fiscales `store_id` sont couvertes ; les fiscales sont explicitement exclues).
 
+## D19 — Couche HMAC sync = échafaudage MORT (sécurité-théâtre)  (M607) — ⚠️ feature gated
+**Status:** OPEN · **P2.** Vérifié (2026-06-22, pos-desktop + backend) : `hmacSecurity.ts` annonce « Signature HMAC-SHA256 de chaque requête sync » mais la couche n'est **active nulle part** :
+- `setStoreToken` **jamais appelé** → `getStoreToken()` = null → `signSyncRequest` renvoie **toujours null** → aucune requête signée ;
+- `syncEngine` **ne pose pas** la signature en header (commentaire « In production: attach… » seulement, puis `salesApi.create(payload, idemKey)` sans signature) ;
+- backend `/sync` ne **vérifie aucune** signature (aucun hmac/timingSafeEqual dans `modules/sync`).
+**Pas un trou ouvert** : les requêtes sync portent le **JWT employé** (axios bearer) → authentifiées ; et le spoof `storeId` est déjà fermé serveur (D5/M403). Le risque réel = **faux sens de sécurité** (le code laisse croire que le sync est signé device-level). 
+**Fait cette passe (sûr, non-fonctionnel)** : commentaires de `hmacSecurity.ts` + `syncEngine.ts` corrigés pour dire « NON CÂBLÉ → D19 ».
+**Ferme (décision/design, chemin d'écriture sync — pas autonome)** : soit câbler end-to-end (provisioning token au login magasin + attach header + **vérif backend** + anti-replay nonce/timestamp + gestion du secret), soit retirer l'échafaudage si la device-signature n'est pas requise (JWT suffit). Toucher la vérif backend = chemin d'écriture sync → owner.
+
 ## D15 — Dérive doc CLAUDE.md + nits  (M803)
 **Status:** OPEN · **P3.** Counts stale (37/45/405/mig1715 vs 42/53/543/1743) ; promo-codes & stock-reconciliation non documentés ; barrel `entities/index.ts` omet 11 entités (inoffensif) ; seeds PIN 1234/5678 littéraux ; `migration:run` pointe un chemin typeorm/cli.js inexistant ; health "2s" vs 5s ; Z vs KPI colonnes date différentes. **Ferme :** rafraîchir CLAUDE.md + corriger les nits.
