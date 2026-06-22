@@ -48,8 +48,8 @@ NF525 certification / Z-seal signature fiscale · Comptamax export/mapping compt
 - **Fichiers** `common/dto/sales.dto.ts` · **Action** ajouter `store_credit` à l'`@IsIn`, `@IsOptional @IsString creditNoteCode` + test contrôleur e2e.
 
 ### M006 — Fiscal : vérificateur de chaîne + journal
-- **Statut** ⚠️ · **P1** · `verifyChain` valide le **lien** prev→current mais ne **recalcule pas** le hash depuis le contenu ⇒ falsification de `details` indétectable ; pas d'index unique anti-fork.
-- **Fichiers** `modules/fiscal/*`, `entities/fiscal-journal.entity.ts` (mig 1717) · **Action** recompute + index unique `(store_id, previous_hash)` + spec (chaîne OK / row falsifiée / fork). **Note** NF525 Z-seal PARQUÉ.
+- **Statut** ✅ · **P1** · `FiscalVerifyService` fait un recompute **AUTORITATIF** de `fiscal_journal` (payload verbatim) + linkage (fork/orphan/unreachable/genesis) ; spec `test/fiscal-verify.spec.ts` (clean/tamper/linkage). Différé : index anti-fork fiscal_journal (toucherait la tx de void sans retry) ; recompute autoritatif sales/credit_notes = NF525 PARQUÉ.
+- **Fichiers** `modules/fiscal/fiscal-verify.service.ts`, `entities/fiscal-journal.entity.ts` (mig 1717).
 
 ### M007 — Returns : avoirs + cartes cadeaux (hachés)
 - **Statut** ✅ · **P1** · Avoirs hash-chaînés, reprint audité. **Tests** `avoir-m1-m3.spec.ts`, `credit-note-receipt.spec.ts`. **Dette** D1 (retour cash fiscal).
@@ -132,8 +132,8 @@ NF525 certification / Z-seal signature fiscale · Comptamax export/mapping compt
 
 ### M401 — Reports : X-report + Z-report  ✅ P2 · **Note** Z vs KPI utilisent des colonnes date différentes (created_at vs completedAt) — divergence possible à minuit.
 ### M402 — Audit / hash-chain
-- **Statut** ⚠️ · **P1** · `verifyChain` ne recalcule pas `currentHash` (lien seulement) ; payload ISO non persisté ⇒ tamper de `details` indétectable ; mutex in-process only.
-- **Action** recompute + persister payload canonique + index unique `(store_id, previous_hash)` + spec tamper.
+- **Statut** ✅ · **P1** · (commit 4355922, GO owner) v1 hachait `details` comme `{}` (bug replacer) ⇒ tamper indétectable. Fix : `computeAuditHashV2` (canonicalisation récursive) + `hashed_at` persisté + recompute v2 dans `verifyChain` (v1 = linkage-only) + index unique anti-fork + retry doLog + migration 1744. Spec `test/audit-chain-verify.spec.ts`.
+- **Fichiers** `modules/audit/audit.service.ts`, `entities/audit-entry.entity.ts`, mig 1744.
 ### M403 — Sync : file offline push-pull
 - **Statut** ✅(base)/⚠️(authz) · **P1** · `POST /sync/push` fait confiance à `payload.storeId` sans le confronter à `req.user` ⇒ un device peut écrire dans un autre magasin (pull/status corrects). **Action** scoper storeId à req.user. **Note** porte offline-sale PARQUÉE (distincte).
 ### M404 — Health checks  ✅ P2 · (commentaire "2s" vs timeout 5s — nit).

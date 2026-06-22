@@ -31,11 +31,11 @@
 
 ### P1 — Correctness / intégrité
 - [x] **M005** sales DTO : `store_credit` whitelisté + `creditNoteCode` (commit b9fdebe)
-- [ ] **M006** fiscal : `verifyChain` recompute + index unique anti-fork + spec
-- [ ] **M402** audit : `verifyChain` recompute + persister payload + index unique + spec tamper
-- [ ] **M107** stock multi-emplacements : trancher source unique + `CHECK(quantity>=0)` + specs
+- [x] **M402** audit : v2 recompute (couvre `details`) + `hashed_at` + index unique anti-fork + retry + migration 1744 + spec (commit 4355922) — GO owner
+- [x] **M006** fiscal : recompute `fiscal_journal` autoritatif + spec **déjà présents** (auditeur les a ratés) ; sous-item index anti-fork fiscal_journal **différé** (toucherait la tx de void sans retry) ; recompute sales/credit_notes = NF525 PARQUÉ
+- [ ] **M107** stock multi-emplacements : trancher source unique + `CHECK(quantity>=0)` + specs — ⏸ attente GO
 - [x] **M108** réconciliation stock : spec déjà présente (auditeur l'a ratée) + ajout boundary 19/20/21 % & reject (commit df08a09)
-- [ ] **M302** RGPD : anonymisation/soft-delete customer
+- [ ] **M302** RGPD : anonymisation/soft-delete customer — ⏸ attente GO (décision produit/légale)
 
 ### P1 — Build / front
 - [x] **M703** mobile : tsc réparé (commit 6ce722c) — vite-env.d.ts, vitest 5/5

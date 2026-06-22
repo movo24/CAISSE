@@ -40,4 +40,16 @@
 - Inventaire factuel remis à jour : modules 37→42 (+documents/fiscal/pos-session/promo-codes/stock-reconciliation), entities 45→53, migrations 1716→1743, tests 405/49→543/81, pointeur DEBT→TECHNICAL_DEBT + bloc suivi vivant. Doc-only, aucune logique touchée.
 
 ### Gate de validation (recadrage périmètre POS)
-- Safe autonome épuisé. P1 restants = SENSIBLES (fiscal verifyChain+migration / stock réel source unique / RGPD / receipts XSS) ⇒ STOP + demande de GO owner avant exécution. Plans prêts dans PROJECT_STATUS.
+- Safe autonome épuisé. P1 restants = SENSIBLES (fiscal verifyChain+migration / stock réel source unique / RGPD / receipts XSS) ⇒ STOP + demande de GO owner avant exécution.
+- **GO owner reçu pour M006/M402 uniquement** (les 3 autres restent en attente, non touchés).
+
+### M803 (commit c65a89e) — déjà journalisé plus haut.
+
+### M006/M402 (commit 4355922) — durcissement chaîne, GO owner
+- **Vérif source-of-truth** : le verifier fiscal (`FiscalVerifyService`) faisait DÉJÀ un recompute AUTORITATIF de `fiscal_journal` (payload verbatim) + détection fork/linkage, et `test/fiscal-verify.spec.ts` existait déjà (auditeur l'avait raté). Donc M006 = déjà couvert ; rien dupliqué.
+- **M402 (vraie lacune)** : la v1 hachait `details` comme `{}` (bug replacer-array → tamper indétectable) + timestamp haché non persisté. Fix : `computeAuditHashV2` (canonicalisation récursive) + `hashed_at` persisté + recompute v2 dans `verifyChain` (v1 = linkage-only) + index unique anti-fork `(store_id, previous_hash)` + retry doLog + migration 1744 (avec pré-check anti-fork qui échoue bruyamment). Spec `test/audit-chain-verify.spec.ts` (tamper `details` détecté, linkage, v1 linkage-only, retry).
+- **Différé volontairement** (sensible, sans GO spécifique) : index anti-fork sur `fiscal_journal` (toucherait la tx de void sans retry) ; recompute autoritatif sales/credit_notes (NF525 PARQUÉ).
+- **Vérifs** : backend tsc clean, jest **80 suites / 553** (zéro régression).
+
+### Prochaine action automatique
+M006/M402 livrés. Reste P1 = SENSIBLE en attente de GO (M107 stock, M302 RGPD, D9 receipts). Safe restant mineur uniquement.

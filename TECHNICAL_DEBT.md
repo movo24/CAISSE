@@ -27,12 +27,11 @@ Statuts : OPEN · IN PROGRESS · BLOCKED (owner/accès) · CLOSED (PR retire l'e
 **Status:** OPEN · **P1 SÉCU.** `GET /connected-apps` (findAll/findOne) renvoie `api_key` en clair et n'est pas scopé à `req.user.organizationId` ⇒ un caissier lit les credentials tiers de n'importe quelle organisation.
 **Ferme :** `@Exclude` sur la colonne (ou DTO de réponse sans `api_key`) + `@Roles` + scoping org ; à terme colonne chiffrée (pattern airtable-ops). Confirmé par be-platform + xcut.
 
-## D3 — audit `verifyChain` ne recalcule pas le hash  (M402)
-**Status:** OPEN · **P1 INTÉGRITÉ.** `verifyChain` valide seulement le lien prev→current ; ne recompute pas `currentHash` depuis le contenu, et le timestamp ISO haché n'est pas persisté ⇒ une falsification de `details` est indétectable. Mutex par magasin in-process only (pas d'index DB anti-fork multi-instance).
-**Ferme :** recompute depuis champs stockés + persister le payload canonique + index unique `(store_id, previous_hash)` + spec détectant un `details` falsifié.
+## D3 — audit `verifyChain` ne recalcule pas le hash  (M402) — ✅ CLOSED (commit 4355922)
+**Fermé** : la v1 hachait `details` comme `{}` (bug de replacer-array) ⇒ tamper indétectable, et le timestamp haché n'était pas persisté. M402 : `computeAuditHashV2` (canonicalisation récursive) + `hashed_at` persisté ⇒ `verifyChain` recompute les lignes v2 et détecte le tamper de `details` ; v1 = linkage-only (pas de faux positif) ; index unique `(store_id, previous_hash)` anti-fork + retry dans doLog ; migration 1744. Spec `test/audit-chain-verify.spec.ts`.
 
-## D4 — fiscal `verifyChain` (fiscal_journal) idem D3 + portée journal  (M006)
-**Status:** OPEN · **P1.** Même faiblesse recompute que D3 côté `fiscal_journal` ; décision ouverte : toutes les ventes/retours doivent-ils s'ajouter au journal (pas seulement les voids) ? payload canonique à persister pour recompute autoritatif. **Note :** NF525 Z-seal **PARQUÉ** — ne pas construire la certif.
+## D4 — fiscal `verifyChain` (fiscal_journal)  (M006) — ✅ recompute autoritatif + spec présents ; sous-item index PARQUÉ
+**Recompute `fiscal_journal` AUTORITATIF** (payload stocké verbatim) + détection fork/linkage : déjà en place dans `FiscalVerifyService`, prouvé par `test/fiscal-verify.spec.ts` (clean-pass + tamper champ + rupture linkage). **Reste (différé volontairement)** : (a) index unique anti-fork sur `fiscal_journal (store_id, hash_chain_prev)` — NON ajouté car il ferait échouer la **transaction de void** sur un fork concurrent sans retry (flux fiscal sensible) ; à concevoir avec un retry dédié + validation prod ; (b) recompute autoritatif `sales`/`credit_notes` (persister le payload canonique) — **NF525-adjacent, PARQUÉ**.
 
 ## D5 — sync `POST /push` fait confiance à `payload.storeId`  (M403)
 **Status:** OPEN · **P1 AUTHZ.** L'endpoint déjà livré ne confronte pas `payload.storeId` à `req.user` (pull/status le font via resolveStoreId) ⇒ un device peut écrire dans un autre magasin. **Ferme :** scoper/valider storeId contre l'utilisateur. (Distinct de la porte offline-sale PARQUÉE.)
