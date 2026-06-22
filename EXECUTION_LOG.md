@@ -68,5 +68,14 @@
 - `docs/design/M107-stock-source-of-truth.md` : mécanisme exact de la divergence (ventes décrémentent la colonne legacy l.591 ; `syncLegacyStock` l.435 écrase `stock_quantity = SUM(balances)` → décréments de vente perdus). Stock hors chaîne fiscale. Options A/B/C + reco A+garde C. GO owner requis (choix + ce que lit le Z).
 - `docs/design/M302-rgpd-nf525-policy.md` : **constat clé** — les ventes ne portent que `customer_id` (zéro PII) ⇒ anonymiser un client ne touche aucun enregistrement fiscal ; colonnes `deleted_at/anonymized_at` présentes mais sans logique. Décisions de politique à trancher (champs scrub, pseudonymisation, rétention, PII dans docs). GO owner requis (politique d'abord).
 
+### Fix classe 3 — audit fantôme (commit f2b39b9, GO encadré owner)
+- `stock.adjustStock` : la tx renvoie `{saved, oldQty}` ; audit émis APRÈS commit, best-effort.
+- `coupon.redeemCoupon` : la tx renvoie `{response, auditPayload}` ; audit APRÈS commit, best-effort, UNIQUEMENT vraie redemption (replay cache → auditPayload null → pas de ré-audit).
+- Non touché : montants/quantités/paiement/reçus/fiscal/archi. Tests avant/après : échec d'audit ne roll back plus l'op (stock+coupon), replay coupon ne ré-audite pas. tsc clean, jest **80 suites / 557** (zéro régression).
+
+### Consolidation notes décision (lecture seule)
+- **M107** : ajout « Consommateurs de stock_quantity » — valorisation analytique (`product-analytics.util:143` valeurStockMinorUnits), **garde de vente** (`sales.service:240`), alertes seuils ; **Z fiscal NON concerné** (agrège les ventes). ⇒ divergence = incident gestion/survente, pas fiscal ; nécessite **réconciliation one-shot** (valeurs déjà dérivées) = sensible, GO + human-validated.
+- **M302** : ajout valeur de rétention **proposée 10 ans** (Code com. L123-22) **à confirmer comptable** ; portée réelle nulle aujourd'hui (zéro PII fiscale) ⇒ anonymisation implémentable sans attendre, carve-out factures seulement si factures nominatives générées.
+
 ### Prochaine action automatique
-En attente décisions owner : (a) D16 couplage txn (interim alerte déjà en place) ; (b) périmètre NF525 D17 ; (c) GO M107 (choix A/B/C) ; (d) GO M302 (politique). Diagnostic fork prod (#3) à lancer avec accès prod. Rien de sensible sans GO.
+En attente décisions owner : (a) D16 archi globale (interim alerte + classe-3 fix déjà livrés) ; (b) D17 périmètre NF525 ; (c) GO M107 (choix A/B/C + réconciliation one-shot) ; (d) GO M302 (liste champs scrub ; rétention 10 ans à confirmer comptable). Diagnostic fork prod (#3) = besoin accès prod. Rien de sensible sans GO.

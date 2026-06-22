@@ -19,6 +19,15 @@ Deux écritures concurrentes sur `products.stock_quantity`, sans source unique :
 ### Conséquence (divergence silencieuse)
 Après des ventes (colonne décrémentée, balances inchangées), la **première** op stock-locations qui appelle `syncLegacyStock` **réécrit** `stock_quantity = SUM(balances)` → **les décréments de vente depuis le dernier sync sont perdus** (le stock « remonte »). Inverse aussi vrai : les balances ignorent les ventes. Aucune des deux n'est faisant autorité ; elles se contredisent.
 
+## Qui LIT `stock_quantity` (consommateurs — vérifié en lecture, 2026-06-22)
+Ce qui fixe la vraie gravité (cf. ta question #3) :
+- **Valorisation du stock (analytique management)** : `reports/product-analytics.util.ts:143` → `valeurStockMinorUnits = stockQuantity × priceMinorUnits` (+ stockout, réappro, classification dormant). ⇒ une colonne fausse = **valorisation de stock fausse** = **chiffres de gestion publiés faux**.
+- **Garde de disponibilité à la vente** : `sales.service.ts:240` → `if (product.stockQuantity < qty) refuse`. ⇒ une colonne gonflée (décréments perdus après un sync) peut **autoriser une survente** (ou bloquer à tort).
+- **Alertes stock bas/critique** : `stock.service.decrementStock` (seuils).
+- **Le Z-report FISCAL n'est PAS concerné** : il agrège les **ventes** (`reports.service`), pas le stock. ⇒ la divergence est un **incident de gestion/opérationnel (valorisation + garde de vente)**, **pas** un incident de chiffre fiscal.
+
+**Conséquence sur le plan** : (1) gravité = reporting de gestion + survente possible, pas fiscal ; (2) les valeurs ont **déjà dérivé** à chaque sync passé ⇒ le correctif demande une **réconciliation one-shot** (recompter/recaler), pas seulement une correction en avant. La réconciliation = opération sur le **stock réel** ⇒ sensible, GO + procédé human-validated (cohérent décision 7), jamais de correction silencieuse de masse.
+
 ## Interaction fiscale (important pour le périmètre)
 - Le **niveau de stock n'entre PAS dans la chaîne de hachage** des ventes (le hash couvre items/quantités/montants/paiements, pas le stock courant). Donc changer la source de vérité du stock **ne modifie pas** la chaîne fiscale.
 - MAIS le décrément de stock se fait **dans la transaction de vente**. Toute option qui change ce que la tx de vente écrit (option B) touche un **flux déjà utilisé** → sensible, à tester avec soin (atomicité, race, rollback).

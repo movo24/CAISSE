@@ -36,7 +36,7 @@
 - [~] **M107** stock source unique : **pré-design livré** `docs/design/M107-stock-source-of-truth.md` (divergence caractérisée, options A/B/C, reco) — ⏸ attente choix owner avant code
 - [x] **M108** réconciliation stock : spec déjà présente (auditeur l'a ratée) + ajout boundary 19/20/21 % & reject (commit df08a09)
 - [~] **M302** RGPD : **note de politique livrée** `docs/design/M302-rgpd-nf525-policy.md` (constat : ventes = `customer_id` seul, zéro PII ⇒ pas de heurt fiscal ; colonnes déjà là, logique absente) — ⏸ attente décision politique owner
-- [x] **D16 interim** : alerte `AUDIT_WRITE_FAILED` sur audit perdu (commit 419b2fd) ; décision couplage txn reste owner
+- [x] **D16 interim** : alerte `AUDIT_WRITE_FAILED` (419b2fd) + **fix classe-3 audit fantôme** (f2b39b9, stock.adjustStock + coupon.redeem → audit post-commit) ; décision archi globale reste owner
 
 ### P1 — Build / front
 - [x] **M703** mobile : tsc réparé (commit 6ce722c) — vite-env.d.ts, vitest 5/5

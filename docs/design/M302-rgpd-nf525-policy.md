@@ -28,5 +28,13 @@ Hypothèse porteuse confirmée champ par champ (2026-06-22) :
 - Endpoint admin `@Roles('admin')` + audit. Migration : colonnes déjà présentes → probablement **aucune migration** (à confirmer) ⇒ changement additif, réversible côté code.
 - Tests : anonymize scrubbe la PII + garde `customer_id` ; une vente existante reste lisible/inchangée (hash inchangé) après anonymisation du client (preuve NF525 × RGPD compatibles).
 
+## Valeur de rétention PROPOSÉE (hypothèse — À CONFIRMER COMPTABLE)
+Pour ne pas bloquer le chantier, hypothèse conforme à pinner avec l'expert-comptable :
+- **Documents légalement porteurs de l'identité client (factures nominatives) : conservation 10 ans** — base : Code de commerce art. L123-22 (livres & pièces comptables). Le fiscal pur (LPF art. L102B) impose 6 ans ; on retient **10 ans** (le plafond contraignant) par prudence.
+- Pendant cette durée, ces documents **échappent à l'effacement** (la rétention légale prime sur le droit à l'effacement RGPD) ; après expiration → purge/anonymisation.
+- **Portée réelle aujourd'hui = nulle** : aucun enregistrement fiscal n'embarque de PII client (vérifié ci-dessus) et les reçus n'impriment pas le nom client (D9) ⇒ le carve-out ne **mord** que si/quand des **factures nominatives** (ex. B2B) sont générées. Donc : anonymisation client implémentable **sans attendre** la confirmation comptable ; le carve-out factures est à câbler **seulement** le jour où on génère des factures nominatives.
+
+**⚠️ À confirmer comptable** : durée exacte (10 ans retenu) + liste des documents sous obligation de conservation nominative.
+
 ## Ce qu'il faut de l'owner
 Trancher (1)–(4) — surtout la **liste des champs effaçables vs conservés** et la règle « pas de PII client dans un document fiscal immuable ». Une fois la politique fixée, l'implémentation est petite, additive et testable, et **ne touche pas la chaîne fiscale** (confirmé : pas de PII dans les ventes).
