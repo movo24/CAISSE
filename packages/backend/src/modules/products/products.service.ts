@@ -15,7 +15,7 @@ import { StoreProductPriceEntity } from '../../database/entities/store-product-p
 import { AuditService } from '../audit/audit.service';
 import { PaginatedResult } from '../../common/dto/pagination.dto';
 import { computePriceVerdict, PriceVerdict } from './price-verdict';
-import { toCsv, parseCsvWithHeader } from '../../common/csv/csv.util';
+import { toCsv, parseCsvWithHeader, stripFormulaGuard } from '../../common/csv/csv.util';
 
 /** Canonical CSV columns — export emits these; import reads these (round-trip). */
 const CSV_COLUMNS = [
@@ -413,7 +413,8 @@ export class ProductsService {
       const row = rows[i];
       const line = i + 2; // +1 for header, +1 for 1-based
       const ean = (row.ean ?? '').trim();
-      const name = (row.name ?? '').trim();
+      // strip the export formula-guard apostrophe so round-trip is lossless (M105)
+      const name = stripFormulaGuard((row.name ?? '').trim());
       const priceRaw = (row.price_minor_units ?? '').trim();
       const fail = (reason: string) => {
         errors.push({ line, ean, reason });
@@ -455,8 +456,8 @@ export class ProductsService {
 
       try {
         // Resolve brand/supplier by name (created on demand, store-scoped).
-        const brandName = (row.brand ?? '').trim();
-        const supplierName = (row.supplier ?? '').trim();
+        const brandName = stripFormulaGuard((row.brand ?? '').trim());
+        const supplierName = stripFormulaGuard((row.supplier ?? '').trim());
         const brandId = brandName ? (await this.getOrCreateBrand(storeId, brandName)).id : undefined;
         const supplierId = supplierName ? (await this.getOrCreateSupplier(storeId, supplierName)).id : undefined;
 

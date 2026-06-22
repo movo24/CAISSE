@@ -81,6 +81,15 @@ export function toCsv(rows: Array<Array<string | number | boolean | null | undef
 }
 
 /**
+ * Inverse of the formula-injection guard in toCsv: strip a single leading apostrophe
+ * that precedes a formula-trigger char, so an export→import round-trip is lossless for
+ * names like "-40% Promo" / "@Home". Apply per-field on import (M105 round-trip fix).
+ */
+export function stripFormulaGuard(s: string): string {
+  return s.replace(/^'(?=[=+\-@\t\r])/, '');
+}
+
+/**
  * Parse a CSV with a header row into objects keyed by header name.
  * Fully-empty rows are dropped. Header cells are trimmed.
  */

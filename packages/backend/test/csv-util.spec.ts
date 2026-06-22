@@ -3,7 +3,7 @@
  * quoting cases pg-mem/naive split() get wrong: embedded commas, doubled quotes,
  * embedded newlines, CRLF vs LF, no trailing newline.
  */
-import { parseCsv, toCsv, parseCsvWithHeader } from '../src/common/csv/csv.util';
+import { parseCsv, toCsv, parseCsvWithHeader, stripFormulaGuard } from '../src/common/csv/csv.util';
 
 describe('CSV util (RFC-4180, zero-dependency)', () => {
   it('parses simple rows (LF and CRLF, with/without trailing newline)', () => {
@@ -40,6 +40,20 @@ describe('CSV util (RFC-4180, zero-dependency)', () => {
   it('empty input → no rows', () => {
     expect(parseCsv('')).toEqual([]);
     expect(parseCsvWithHeader('')).toEqual([]);
+  });
+
+  it('stripFormulaGuard reverses the export guard → lossless round-trip for "-40% Promo" / "@Home" (M105)', () => {
+    for (const name of ['-40% Promo', '@Home', '=Total', '+Energy']) {
+      const guarded = toCsv([[name]]).trim();           // export adds the apostrophe
+      expect(guarded.startsWith("'")).toBe(true);
+      const parsed = parseCsv(guarded + '\r\n')[0][0];  // raw cell still has the apostrophe
+      expect(stripFormulaGuard(parsed)).toBe(name);      // import strips it → original restored
+    }
+  });
+
+  it('stripFormulaGuard leaves a normal value (and a lone apostrophe) untouched', () => {
+    expect(stripFormulaGuard('Bonbon')).toBe('Bonbon');
+    expect(stripFormulaGuard("O'Neill")).toBe("O'Neill"); // apostrophe not before a formula char
   });
 
   it('DECISIVE — neutralises CSV formula injection in STRING cells, leaves numbers intact (CWE-1236)', () => {

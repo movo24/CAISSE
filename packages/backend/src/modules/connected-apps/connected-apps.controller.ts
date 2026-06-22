@@ -44,21 +44,24 @@ export class ConnectedAppsController {
   @Post()
   @Roles('admin')
   @ApiOperation({ summary: 'Register a connected app' })
-  create(@Body() dto: CreateConnectedAppDto) {
-    return this.service.create(dto);
+  async create(@Body() dto: CreateConnectedAppDto) {
+    const { apiKey, ...rest } = await this.service.create(dto);
+    return rest; // never echo api_key over HTTP (M406 defense-in-depth)
   }
 
   @Put(':id')
   @Roles('admin')
   @ApiOperation({ summary: 'Update a connected app' })
-  update(@Param('id') id: string, @Body() dto: UpdateConnectedAppDto) {
-    return this.service.update(id, dto);
+  async update(@Param('id') id: string, @Body() dto: UpdateConnectedAppDto) {
+    const { apiKey, ...rest } = await this.service.update(id, dto);
+    return rest;
   }
 
   @Put(':id/deactivate')
   @Roles('admin')
   @ApiOperation({ summary: 'Deactivate a connected app' })
-  deactivate(@Param('id') id: string) {
-    return this.service.deactivate(id);
+  async deactivate(@Param('id') id: string) {
+    const { apiKey, ...rest } = await this.service.deactivate(id);
+    return rest;
   }
 }
