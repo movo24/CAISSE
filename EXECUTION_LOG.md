@@ -83,5 +83,12 @@
 - **M107 diagnostic (commit 0123cca)** : `findStockDivergences()` read-only + `GET /stock-locations/divergences` + spec. SQL plain SUM/GROUP BY (pg-mem-safe), delta/filter/sort en JS. Réconciliation one-shot (écrit le stock) reste prod-gated.
 - **Vérifs** : à chaque étape backend tsc clean + jest (jusqu'à **80 suites / 561**, zéro régression). 5 commits séparés ce tour (class-3 f2b39b9, M302, D9, M107-diag + docs).
 
+### Salve audit read-only secondaire (continuité)
+- **M303 (commit 487ceb1)** : LoyaltyTokenService déjà solide (HMAC-SHA256, TTL 60s, payload sans PII, compare constant-time) → spec sécurité ajoutée (round-trip, sig falsifiée, mauvais secret/rotation, expiré, malformé). 5 tests.
+- **M105 (commit d8ea297)** : garde anti **CSV formula injection** (CWE-1236) dans `toCsv` (cellule string commençant par = + - @ TAB CR → préfixe `'` ; nombres intacts) ; round-trip + brand/supplier déjà testés. Test ajouté.
+- **D14 jackpot (commit 0f86f46)** : vérifié read-only → faux positif (roll serveur fail-closed, quotas/proba, config admin).
+- **D18 / M207 stores.hardDelete** : finding réel documenté (purge ~16 tables, **~20 tables store_id non couvertes dont fiscal credit_notes/fiscal_journal**) → **non touché** (op destructive + fiscal + question rétention légale = décision owner/comptable).
+- Vérifs à chaque étape : tsc clean + jest (jusqu'à **81 suites / 567**, zéro régression).
+
 ### Prochaine action automatique (continuité)
 Safe restant : audit read-only des modules ⚠️ (jackpot/loyalty/etc.) → confirmer/infirmer, garde-fous additifs + tests si bug évident. Vrais blocages : M107 réconciliation prod / décision A-B-C, D16-D17 archi, secrets/prod (#3, D6/D8/D7), Stripe parqué.
