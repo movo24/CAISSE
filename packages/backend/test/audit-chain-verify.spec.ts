@@ -10,6 +10,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { createPgMemDataSource } from './helpers/pgmem';
 import { AuditEntryEntity } from '../src/database/entities/audit-entry.entity';
 import { AuditService } from '../src/modules/audit/audit.service';
+import { AlertService } from '../src/common/alert/alert.service';
 
 describe('M402 — audit chain verifyChain (recompute + linkage)', () => {
   let ds: DataSource;
@@ -83,5 +84,18 @@ describe('M402 — audit chain verifyChain (recompute + linkage)', () => {
     expect(entry.id).toBeTruthy();      // retry succeeded
     saveSpy.mockRestore();
     expect((await svc.verifyChain(store)).valid).toBe(true);
+  });
+
+  it('D16 — when retries are EXHAUSTED, the dropped audit fires a critical alert (not a silent warn)', async () => {
+    const fireSpy = jest.spyOn(AlertService.instance, 'fire').mockImplementation(() => {});
+    const saveSpy = jest
+      .spyOn(repo as any, 'save')
+      .mockImplementation(async () => { throw { code: '23505', message: 'duplicate key' }; }); // every attempt conflicts
+    await expect(
+      svc.log({ storeId: uuidv4(), employeeId: 'm', action: 'race', entityType: 'sale', entityId: 'R', details: {} }),
+    ).rejects.toBeTruthy();
+    expect(fireSpy).toHaveBeenCalledWith('AUDIT_WRITE_FAILED', expect.stringContaining('dropped'));
+    saveSpy.mockRestore();
+    fireSpy.mockRestore();
   });
 });

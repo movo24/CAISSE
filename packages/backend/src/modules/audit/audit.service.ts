@@ -4,6 +4,7 @@ import { Repository, DataSource } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
 import { createHash } from 'crypto';
 import { AuditEntryEntity } from '../../database/entities/audit-entry.entity';
+import { AlertService } from '../../common/alert/alert.service';
 
 const GENESIS_HASH =
   '0000000000000000000000000000000000000000000000000000000000000000';
@@ -136,13 +137,18 @@ export class AuditService {
       try {
         return await this.auditRepo.save(entry);
       } catch (e: unknown) {
-        if (this.isUniqueViolation(e) && attempt < MAX_ATTEMPTS - 1) {
-          lastErr = e;
-          continue; // head moved under us → retry with the new head
-        }
-        throw e;
+        if (!this.isUniqueViolation(e)) throw e; // non-conflict error → propagate now
+        lastErr = e; // anti-fork conflict: head moved under us → retry with the new head
       }
     }
+    // D16 interim safety: retries exhausted → this audit entry is about to be DROPPED
+    // (callers swallow audit failures post-commit). Make it LOUD (critical alert), not a
+    // silent WARN, so the integrity gap is acted on. The in-tx-vs-out-of-band coupling
+    // decision remains open (see TECHNICAL_DEBT D16); this only raises visibility.
+    AlertService.instance.fire(
+      'AUDIT_WRITE_FAILED',
+      `Audit append dropped after ${MAX_ATTEMPTS} attempts — store ${params.storeId}, action ${params.action}, entity ${params.entityType}:${params.entityId}`,
+    );
     throw lastErr;
   }
 
