@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import Stripe from 'stripe';
 import { SubscriptionEntity } from '../../database/entities/subscription.entity';
 import { StoreEntity } from '../../database/entities/store.entity';
+import { v4 as uuidv4 } from 'uuid';
 import { PLAN_CATALOG } from './subscriptions.service';
 import { IdempotencyKeyEntity } from '../../database/entities/idempotency-key.entity';
 
@@ -57,11 +58,16 @@ export class StripeBillingService {
     let customerId = sub?.stripeCustomerId;
 
     if (!customerId) {
-      const customer = await this.stripe.customers.create({
-        name: store?.name || `Store ${storeId}`,
-        email: store?.email || undefined,
-        metadata: { storeId, plan },
-      });
+      const customer = await this.stripe.customers.create(
+        {
+          name: store?.name || `Store ${storeId}`,
+          email: store?.email || undefined,
+          metadata: { storeId, plan },
+        },
+        // Idempotent per store → a retry reuses the same Stripe customer instead of
+        // creating a duplicate (and losing the id when no local sub row exists yet).
+        { idempotencyKey: `sub-customer-${storeId}` },
+      );
       customerId = customer.id;
 
       // Persist Stripe customer ID
@@ -219,12 +225,6 @@ export class StripeBillingService {
       return;
     }
 
-    const sub = await this.subRepo.findOne({ where: { storeId } });
-    if (!sub) {
-      this.logger.warn(`No subscription found for store ${storeId}`);
-      return;
-    }
-
     const planDef = PLAN_CATALOG[plan];
     if (!planDef) return;
 
@@ -252,6 +252,15 @@ export class StripeBillingService {
         `Checkout ${session.id} currency ${session.currency} != eur — no activation`,
       );
       return;
+    }
+
+    // Upsert: a verified-paid checkout MUST yield entitlement, even if no local sub row
+    // existed yet (e.g. the store skipped the trial). Creation happens only AFTER the
+    // capture guards above have passed.
+    let sub = await this.subRepo.findOne({ where: { storeId } });
+    if (!sub) {
+      this.logger.warn(`No subscription row for store ${storeId} — creating one for the paid checkout`);
+      sub = this.subRepo.create({ id: uuidv4(), storeId, currencyCode: 'EUR' });
     }
 
     // Update subscription to active with Stripe IDs
