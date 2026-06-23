@@ -98,15 +98,24 @@ export class CurrencyService {
       throw new Error(`Unsupported currency: ${fromCurrency} or ${toCurrency}`);
     }
 
-    // `rate` is a `decimal` column → TypeORM hydrates it as a string on Postgres.
-    // Coerce once so the arithmetic and the declared `rate: number` return contract
-    // both hold (a raw string would leak out as `rate` and break number consumers).
+    // `rate` is a `decimal(12,6)` column → TypeORM hydrates it as a string on Postgres.
+    // Coerce once for the returned `rate: number` contract (a raw string would leak out).
     const rate = Number(fxRate.rate);
 
-    // Convert: from minor -> major -> apply rate -> to minor
-    const majorFrom = amountMinorUnits / Math.pow(10, fromConfig.precision);
-    const majorTo = majorFrom * rate;
-    const minorTo = Math.round(majorTo * Math.pow(10, toConfig.precision));
+    // Money conversion via EXACT integer (BigInt) arithmetic. Float64 mis-rounds
+    // ~1/8000 of the POS domain by one minor unit at large amounts (e.g. a high-value
+    // JPY→USD conversion), so we never go through Number multiplication here.
+    //   minorTo = round( amount × micros × 10^toPrec / 10^(fromPrec + 6) )
+    // micros = rate × 10^6 is an exact integer (column scale is 6); Math.round absorbs
+    // the sub-0.5 float error of Number()×1e6 before it ever reaches the BigInt math.
+    const micros = BigInt(Math.round(rate * 1e6));
+    const num = BigInt(amountMinorUnits) * micros * 10n ** BigInt(toConfig.precision);
+    const den = 10n ** BigInt(fromConfig.precision + 6);
+    // round-half-up; handle sign defensively though amounts are non-negative.
+    const neg = num < 0n;
+    const mag = neg ? -num : num;
+    const rounded = (mag + den / 2n) / den;
+    const minorTo = Number(neg ? -rounded : rounded);
 
     return {
       amountMinorUnits: minorTo,
