@@ -46,12 +46,33 @@ then execute it directly.
 
 Do not interrupt the user for validation.
 
-## Decision threshold
+## Decision threshold — by operation CLASS, not a risk percentage
 
-- If estimated risk is below 60%, continue without asking for validation.
-- If estimated risk is 60% or above, stop and request explicit confirmation.
-- Theoretical, minor, standard, or non-material risks are not blockers.
-- If you identify an option yourself as recommended, safe and testable, execute it directly.
+A numeric "risk %" is not reliably computable by an agent and becomes self-justification.
+Decide by the **class** of the operation. When an op is ambiguous between the two lists,
+treat it as STOP.
+
+EXECUTE directly (no validation ask) — additive, reversible, test-covered:
+
+- read-only audit / diagnosis / dry-run;
+- adding or fixing tests;
+- documentation / registry updates;
+- a local, reversible, test-covered code fix;
+- an additive guardrail (a new check that does not change behaviour for valid input);
+- a non-functional refactor with the suite staying green;
+- a clearly-scoped option you yourself assessed as safe and testable.
+
+STOP and get explicit GO — sensitive mutations + the real-blocker list below:
+
+- anything in "Stop only for real blockers";
+- modifying live encaissement / payment-capture behaviour;
+- writing real stock in production (read-only/dry-run is fine; a prod write is not);
+- a structural fiscal change (sale/journal hashing, Z-report, NF525);
+- a DB migration on sales / payments / stock / products, or any destructive migration;
+- a change that can break a live environment or lose/corrupt data.
+
+The 30% manual-discount cap is a **hard business invariant** (computable as
+`discount / subtotal ≤ 0.30`), not a risk metric — enforce it always, never relax it.
 
 ## POS Caisse mandatory business rules
 

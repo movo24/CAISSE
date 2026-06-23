@@ -1,0 +1,35 @@
+#!/bin/sh
+# Prevent-at-write guard (addresses the M107 miss: `git add <dir>` silently dropped a
+# sibling spec in test/, so the test shipped uncommitted). Refuse the commit when a
+# modified-but-unstaged or untracked test file exists — you almost always meant to
+# stage it alongside the code it covers.
+#
+# Override (use ONLY when the unstaged specs are intentionally another WIP / a deliberate
+# split, not part of this commit):
+#   ALLOW_UNSTAGED_SPECS=1 git commit ...
+#
+# Activate once per clone/worktree:  git config core.hooksPath .githooks
+set -e
+
+if [ "$ALLOW_UNSTAGED_SPECS" = "1" ]; then
+  exit 0
+fi
+
+patterns='*.spec.ts *.test.ts *.spec.tsx *.test.tsx'
+# Tracked test files modified but not staged:
+unstaged=$(git diff --name-only --diff-filter=ACMR -- $patterns || true)
+# Brand-new untracked test files:
+untracked=$(git ls-files --others --exclude-standard -- $patterns || true)
+flagged=$(printf '%s\n%s\n' "$unstaged" "$untracked" | sed '/^$/d' | sort -u)
+
+if [ -n "$flagged" ]; then
+  echo "✋ pre-commit: test files are modified/new but NOT staged:"
+  echo "$flagged" | sed 's/^/   - /'
+  echo ""
+  echo "  → Stage them:   git add <file>"
+  echo "  → Or, if they belong to other WIP / a deliberate split:"
+  echo "                  ALLOW_UNSTAGED_SPECS=1 git commit ..."
+  exit 1
+fi
+
+exit 0
