@@ -55,6 +55,11 @@ export class CustomerEntity {
   @Column({ name: 'last_visit_at', type: 'timestamp', nullable: true })
   lastVisitAt: Date | null;
 
+  // Bumped on logout / soft-delete / security reset → invalidates every previously
+  // issued token (the JWT carries `tv` and the guard rejects a stale version).
+  @Column({ name: 'token_version', type: 'int', default: 0 })
+  tokenVersion: number;
+
   @Column({ name: 'deleted_at', type: 'timestamp', nullable: true })
   deletedAt: Date | null;
 

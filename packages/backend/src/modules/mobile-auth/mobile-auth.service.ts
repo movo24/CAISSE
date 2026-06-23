@@ -90,12 +90,16 @@ export class MobileAuthService {
     try {
       const payload = jwt.verify(refreshToken, secret, {
         audience: 'mobile-app',
-      }) as { sub: string };
+      }) as { sub: string; tv?: number };
 
       const customer = await this.customerRepo.findOne({
         where: { id: payload.sub, deletedAt: IsNull() } as any,
       });
       if (!customer) throw new UnauthorizedException();
+      // Revoked refresh tokens (logout / delete / reset bumped the version) cannot mint new tokens.
+      if ((payload.tv ?? -1) !== customer.tokenVersion) {
+        throw new UnauthorizedException('Token révoqué');
+      }
 
       return this.buildAuthResponse(customer);
     } catch {
@@ -135,12 +139,25 @@ export class MobileAuthService {
     return this.getMe(customerId);
   }
 
+  /** Logout — server-side: bump tokenVersion so every issued token is rejected. */
+  async logout(customerId: string): Promise<{ success: boolean }> {
+    const c = await this.customerRepo.findOne({ where: { id: customerId } });
+    if (c) {
+      c.tokenVersion = (c.tokenVersion ?? 0) + 1;
+      await this.customerRepo.save(c);
+    }
+    return { success: true };
+  }
+
   /** Soft-delete (RGPD). The anonymization cron will scrub PII after 30 days. */
   async deleteMe(customerId: string) {
-    await this.customerRepo.update(
-      { id: customerId },
-      { deletedAt: new Date() },
-    );
+    const c = await this.customerRepo.findOne({ where: { id: customerId } });
+    if (c) {
+      c.deletedAt = new Date();
+      // Invalidate outstanding tokens immediately (the guard also rejects deleted accounts).
+      c.tokenVersion = (c.tokenVersion ?? 0) + 1;
+      await this.customerRepo.save(c);
+    }
     return { success: true };
   }
 
@@ -152,12 +169,12 @@ export class MobileAuthService {
     // the same registered claim is set both in the payload and via options.
     // The `audience` option below adds `aud: 'mobile-app'` to the issued JWT.
     const accessToken = jwt.sign(
-      { sub: customer.id, email: customer.email },
+      { sub: customer.id, email: customer.email, tv: customer.tokenVersion },
       accessSecret,
       { expiresIn: ACCESS_TOKEN_TTL, audience: 'mobile-app' },
     );
     const refreshToken = jwt.sign(
-      { sub: customer.id },
+      { sub: customer.id, tv: customer.tokenVersion },
       refreshSecret,
       { expiresIn: REFRESH_TOKEN_TTL, audience: 'mobile-app' },
     );

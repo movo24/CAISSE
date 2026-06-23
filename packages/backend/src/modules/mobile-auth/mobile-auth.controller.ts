@@ -50,10 +50,12 @@ export class MobileAuthController {
   }
 
   @Post('auth/logout')
+  @ApiBearerAuth()
+  @UseGuards(MobileAuthGuard)
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Logout (client-side token discard)' })
-  async logout() {
-    return { success: true };
+  @ApiOperation({ summary: 'Logout — invalidates all of the caller\'s tokens server-side' })
+  async logout(@Request() req: any) {
+    return this.authService.logout(req.customer.id);
   }
 
   @Get('me')
