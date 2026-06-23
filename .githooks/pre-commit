@@ -4,31 +4,52 @@
 # modified-but-unstaged or untracked test file exists — you almost always meant to
 # stage it alongside the code it covers.
 #
-# Override (use ONLY when the unstaged specs are intentionally another WIP / a deliberate
-# split, not part of this commit):
+# Deliberate split (e.g. per-module commits where sibling specs land in their own
+# commits): you must DECLARE every deferred spec in a manifest. Any flagged spec NOT
+# staged and NOT in the manifest still blocks — so a forgotten/new spec is still caught
+# even mid-split (this is what plain "disable the guard" failed to do):
+#   ALLOW_UNSTAGED_SPECS="test/a.spec.ts test/b.spec.ts" git commit ...
+# (whitespace- or comma-separated, paths as git reports them).
+#
+# Legacy blanket bypass (discouraged — reopens the M107 hole, warns loudly):
 #   ALLOW_UNSTAGED_SPECS=1 git commit ...
 #
 # Activate once per clone/worktree:  git config core.hooksPath .githooks
 set -e
 
-if [ "$ALLOW_UNSTAGED_SPECS" = "1" ]; then
-  exit 0
-fi
-
 patterns='*.spec.ts *.test.ts *.spec.tsx *.test.tsx'
-# Tracked test files modified but not staged:
+# Tracked test files modified but not staged + brand-new untracked test files:
 unstaged=$(git diff --name-only --diff-filter=ACMR -- $patterns || true)
-# Brand-new untracked test files:
 untracked=$(git ls-files --others --exclude-standard -- $patterns || true)
 flagged=$(printf '%s\n%s\n' "$unstaged" "$untracked" | sed '/^$/d' | sort -u)
 
-if [ -n "$flagged" ]; then
-  echo "✋ pre-commit: test files are modified/new but NOT staged:"
-  echo "$flagged" | sed 's/^/   - /'
+[ -z "$flagged" ] && exit 0
+
+manifest=$(printf '%s' "${ALLOW_UNSTAGED_SPECS:-}" | tr ',' ' ')
+
+if [ "$manifest" = "1" ]; then
+  echo "⚠ pre-commit: ALLOW_UNSTAGED_SPECS=1 blanket-bypassed the unstaged-spec guard"
+  echo "  (a forgotten new spec would NOT be caught — prefer the explicit manifest form)."
+  exit 0
+fi
+
+undeclared=""
+for f in $flagged; do
+  case " $manifest " in
+    *" $f "*) : ;;                       # explicitly declared as deferred → allowed
+    *) undeclared="$undeclared
+$f" ;;
+  esac
+done
+undeclared=$(printf '%s' "$undeclared" | sed '/^$/d')
+
+if [ -n "$undeclared" ]; then
+  echo "✋ pre-commit: these modified/new test files are neither staged nor declared deferred:"
+  echo "$undeclared" | sed 's/^/   - /'
   echo ""
-  echo "  → Stage them:   git add <file>"
-  echo "  → Or, if they belong to other WIP / a deliberate split:"
-  echo "                  ALLOW_UNSTAGED_SPECS=1 git commit ..."
+  echo "  → Stage them:         git add <file>"
+  echo "  → Or declare a split: ALLOW_UNSTAGED_SPECS=\"$(echo $undeclared)\" git commit ..."
+  echo "    (every deferred spec must be listed — a forgotten new spec still blocks)"
   exit 1
 fi
 
