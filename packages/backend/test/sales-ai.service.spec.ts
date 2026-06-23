@@ -368,6 +368,30 @@ describe('SalesAiService', () => {
       expect(alert!.evidence).toContain('stock actuel: 2');
     });
 
+    it('does NOT raise a stock alert for an INACTIVE associated product (alert query is active-scoped)', async () => {
+      const storeId = await makeStore();
+      const a = await makeProduct(storeId, { name: 'Cafe', stockQuantity: 100 });
+      // Discontinued product, low stock — must be excluded from stock alerts.
+      const inactiveLowB = await makeProduct(storeId, {
+        name: 'Sucre',
+        stockQuantity: 2,
+        stockAlertThreshold: 5,
+        isActive: false,
+      });
+      jest.spyOn(svc, 'computeAssociations').mockResolvedValue([
+        baseAssoc({
+          productA: a.id,
+          productAName: 'Cafe',
+          productB: inactiveLowB.id,
+          productBName: 'Sucre',
+          confidence: 0.9,
+        }),
+      ]);
+
+      const res = await svc.getRecommendations(storeId, []);
+      expect(res.find((r) => r.type === 'alert' && r.productId === inactiveLowB.id)).toBeUndefined();
+    });
+
     it('does NOT raise a stock alert when the associated product is well stocked', async () => {
       const storeId = await makeStore();
       const a = await makeProduct(storeId, { name: 'Cafe', stockQuantity: 100 });

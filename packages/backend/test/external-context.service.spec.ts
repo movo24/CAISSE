@@ -236,6 +236,7 @@ describe('ExternalContextService', () => {
       );
       const t = await service.getTransport('Auber');
       expect(t.available).toBe(true);
+      expect(t.stationName).toBe('Auber'); // success path echoes the requested station, not a default
       expect(t.hasDisruptions).toBe(true);
       expect(t.disruptions).toHaveLength(1);
       expect(t.disruptions[0]).toEqual({

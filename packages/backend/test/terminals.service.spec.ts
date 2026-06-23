@@ -295,5 +295,18 @@ describe('TerminalsService — POS terminal registry', () => {
       expect(stripe.createLocation).toHaveBeenCalledTimes(1);
       expect(locId).toBe('loc_fresh');
     });
+
+    it('does NOT reuse another store\'s location — the reuse lookup is store-scoped (tenant isolation)', async () => {
+      // STORE_B already has a Stripe location; STORE_A has none. A non-scoped reuse
+      // query would leak loc_B into STORE_A. Must create STORE_A its own location.
+      await seed({ storeId: STORE_B, stripeLocationId: 'loc_B' });
+      stripe.createLocation.mockResolvedValue({ id: 'loc_A_new' });
+
+      const locId = await svc.ensureStripeLocation(STORE_A, 'Store A');
+
+      expect(locId).not.toBe('loc_B');
+      expect(locId).toBe('loc_A_new');
+      expect(stripe.createLocation).toHaveBeenCalledWith('Store A', 'FR');
+    });
   });
 });

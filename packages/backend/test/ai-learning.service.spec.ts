@@ -333,5 +333,17 @@ describe('AiLearningService', () => {
       const kpi = await svc.getKPI(STORE);
       expect(kpi.totalRecos).toBe(0);
     });
+
+    it('classifies a 3–5% CTR / 20+ display product as penalized with the matching performanceScore', async () => {
+      const mid = uuidv4();
+      // 1 click / 25 displays = 4% CTR (in [3%,5%)), 0 conversions → penalized, not blacklisted.
+      await seed({ suggestedProductId: mid, suggestedProductName: 'Mid', count: 25, clicked: 1 });
+
+      const kpi = await svc.getKPI(STORE);
+      const entry = kpi.worstPerformers.find((p) => p.suggestedProductId === mid);
+      expect(entry).toBeDefined();
+      expect(entry!.status).toBe('penalized'); // ctr>=3% (not blacklisted), ctr<5% & 20+ displays (not active)
+      expect(entry!.performanceScore).toBeCloseTo(0.2, 5); // min(1, 0.04*5 + 0*3)
+    });
   });
 });
