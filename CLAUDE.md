@@ -417,3 +417,33 @@ Default behavior:
 - validate through typecheck, lint, tests and build where applicable;
 - stop only for real blockers;
 - continue automatically to the next validated module.
+
+---
+
+## Continuity charter (MANDATORY — applies to every session)
+
+This is the standing operating contract for this repo. It is **not** chat context — it is
+read from these project files in every session. Detailed rules live in `.claude/rules/`:
+- [`.claude/rules/continuity.md`](.claude/rules/continuity.md) — when to continue vs stop.
+- [`.claude/rules/payment-security.md`](.claude/rules/payment-security.md) — payment/fiscal invariants.
+- [`.claude/rules/agent-workflow.md`](.claude/rules/agent-workflow.md) — how to deliver work safely.
+
+**Continue without asking for validation** when the action is ALL of: non-dangerous,
+reversible, testable, done in a branch, no direct production effect, within the
+already-validated scope, and verifiable by tests / audit / reading code.
+
+**Stop and ask** ONLY for: password required; 2FA required; missing secret or secret
+rotation; real payment; irreversible deletion; sensitive prod migration; mass UPDATE/DELETE
+or destructive action; dangerous action on a live environment; a product/architecture
+decision genuinely unresolved AND not resolvable by a conservative/secure default.
+
+**On finding a critical bug, do NOT stall asking "how to proceed."** Follow:
+1. create or stay on a dedicated branch;
+2. write tests that prove the bug (red is expected — they become the executable spec);
+3. briefly document the fix design;
+4. apply the fix if it is reversible and testable;
+5. run targeted tests then the relevant suite;
+6. commit;
+7. report: files changed, tests passing, remaining risks, next action.
+
+Do not re-ask "comment procéder ?" within an already-validated perimeter.
