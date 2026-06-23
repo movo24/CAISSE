@@ -5,6 +5,7 @@ import Stripe from 'stripe';
 import { SubscriptionEntity } from '../../database/entities/subscription.entity';
 import { StoreEntity } from '../../database/entities/store.entity';
 import { PLAN_CATALOG } from './subscriptions.service';
+import { IdempotencyKeyEntity } from '../../database/entities/idempotency-key.entity';
 
 /**
  * Stripe Billing Service — handles Checkout Sessions, Customer Portal,
@@ -16,7 +17,6 @@ import { PLAN_CATALOG } from './subscriptions.service';
 @Injectable()
 export class StripeBillingService {
   private readonly logger = new Logger(StripeBillingService.name);
-  private readonly processedEvents = new Set<string>();
 
   constructor(
     @Inject('STRIPE') private readonly stripe: Stripe,
@@ -24,6 +24,8 @@ export class StripeBillingService {
     private readonly subRepo: Repository<SubscriptionEntity>,
     @InjectRepository(StoreEntity)
     private readonly storeRepo: Repository<StoreEntity>,
+    @InjectRepository(IdempotencyKeyEntity)
+    private readonly idempotencyRepo: Repository<IdempotencyKeyEntity>,
   ) {}
 
   /**
@@ -150,18 +152,14 @@ export class StripeBillingService {
 
     this.logger.log(`Stripe webhook received: ${event.type} (${event.id})`);
 
-    // Deduplicate: skip already-processed events (Stripe can retry)
-    const eventCacheKey = `stripe_event:${event.id}`;
-    const alreadyProcessed = this.processedEvents.has(event.id);
-    if (alreadyProcessed) {
+    // Durable idempotency (survives restart / multi-instance), replacing the old
+    // in-memory Set. The key is persisted only AFTER the handler succeeds, so a thrown
+    // handler is NOT marked done and Stripe's retry re-processes it.
+    const idemKey = `stripe_event:${event.id}`;
+    const seen = await this.idempotencyRepo.findOne({ where: { key: idemKey } });
+    if (seen) {
       this.logger.log(`Webhook event ${event.id} already processed — skipping`);
       return;
-    }
-    this.processedEvents.add(event.id);
-    // Cleanup old events (keep last 1000)
-    if (this.processedEvents.size > 1000) {
-      const entries = Array.from(this.processedEvents);
-      entries.slice(0, entries.length - 1000).forEach((e) => this.processedEvents.delete(e));
     }
 
     switch (event.type) {
@@ -196,6 +194,15 @@ export class StripeBillingService {
       default:
         this.logger.log(`Unhandled event type: ${event.type}`);
     }
+
+    // Mark processed only after the handler above completed without throwing.
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 30);
+    await this.idempotencyRepo.save({
+      key: idemKey,
+      endpoint: 'stripe_webhook',
+      expiresAt,
+    } as any);
   }
 
   // -----------------------------------------------------------------------
@@ -225,6 +232,27 @@ export class StripeBillingService {
       billingCycle === 'yearly'
         ? planDef.priceYearlyMinorUnits
         : planDef.priceMonthlyMinorUnits;
+
+    // CAPTURE INVARIANT: never grant entitlements without a confirmed, amount-matching
+    // payment. Trust the verified Stripe session's payment_status, not the client metadata.
+    if (session.payment_status !== 'paid') {
+      this.logger.warn(
+        `Checkout ${session.id} for store ${storeId} not paid (payment_status=${session.payment_status}) — no activation`,
+      );
+      return;
+    }
+    if (typeof session.amount_total === 'number' && session.amount_total !== price) {
+      this.logger.error(
+        `Checkout ${session.id} amount ${session.amount_total} != expected ${price} for ${plan}/${billingCycle} — no activation`,
+      );
+      return;
+    }
+    if (session.currency && session.currency.toLowerCase() !== 'eur') {
+      this.logger.error(
+        `Checkout ${session.id} currency ${session.currency} != eur — no activation`,
+      );
+      return;
+    }
 
     // Update subscription to active with Stripe IDs
     sub.plan = plan as any;

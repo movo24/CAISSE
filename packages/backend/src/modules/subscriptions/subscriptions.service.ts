@@ -170,6 +170,17 @@ export class SubscriptionsService {
         ? planDef.priceYearlyMinorUnits
         : planDef.priceMonthlyMinorUnits;
 
+    // Capture invariant: a PAID plan is never activated directly here — that would
+    // grant entitlements without a confirmed payment. Paid activation must come from
+    // a verified, paid Stripe webhook (StripeBillingService.handleCheckoutCompleted).
+    // Only free/trial changes are handled locally.
+    if (price > 0) {
+      throw new BadRequestException(
+        `Paid plan "${newPlan}" cannot be activated directly — use Stripe Checkout ` +
+          `(POST /subscriptions/${storeId}/checkout). Activation occurs on confirmed payment.`,
+      );
+    }
+
     // Set new period
     const now = new Date();
     const periodEnd = new Date(now);

@@ -60,6 +60,7 @@ export class SubscriptionsController {
 
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
   @Post(':storeId/change-plan')
   @ApiOperation({ summary: 'Upgrade or downgrade subscription plan' })
   @ApiBody({
@@ -90,6 +91,7 @@ export class SubscriptionsController {
 
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
   @Post(':storeId/cancel')
   @ApiOperation({
     summary: 'Cancel subscription (access until end of current period)',
@@ -100,6 +102,7 @@ export class SubscriptionsController {
 
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
   @Post(':storeId/trial')
   @ApiOperation({ summary: 'Create a 14-day trial subscription for a new store' })
   async createTrial(@Param('storeId') storeId: string) {
