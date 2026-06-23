@@ -98,14 +98,19 @@ export class CurrencyService {
       throw new Error(`Unsupported currency: ${fromCurrency} or ${toCurrency}`);
     }
 
+    // `rate` is a `decimal` column → TypeORM hydrates it as a string on Postgres.
+    // Coerce once so the arithmetic and the declared `rate: number` return contract
+    // both hold (a raw string would leak out as `rate` and break number consumers).
+    const rate = Number(fxRate.rate);
+
     // Convert: from minor -> major -> apply rate -> to minor
     const majorFrom = amountMinorUnits / Math.pow(10, fromConfig.precision);
-    const majorTo = majorFrom * fxRate.rate;
+    const majorTo = majorFrom * rate;
     const minorTo = Math.round(majorTo * Math.pow(10, toConfig.precision));
 
     return {
       amountMinorUnits: minorTo,
-      rate: fxRate.rate,
+      rate,
       rateTimestamp: fxRate.timestamp,
     };
   }
