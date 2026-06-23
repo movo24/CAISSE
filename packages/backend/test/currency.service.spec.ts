@@ -84,6 +84,35 @@ describe('M112 — CurrencyService (service/DB layer)', () => {
     });
   });
 
+  describe('convert — exact integer precision (regression guards)', () => {
+    // The service converts via BigInt; these pin EXACT minor-unit results so a
+    // regression back to float64 multiplication is caught.
+    it('pins high-significance conversions to exact minor units', async () => {
+      await seed('EUR', 'USD', 1.0856, '2026-01-01T00:00:00Z');
+      await seed('EUR', 'JPY', 160.123456, '2026-01-01T00:00:00Z');
+      expect((await svc.convert(999999, 'EUR', 'USD')).amountMinorUnits).toBe(1085599); // 9999.99 €
+      expect((await svc.convert(123456, 'EUR', 'JPY')).amountMinorUnits).toBe(197682); // 1234.56 €
+      expect((await svc.convert(7, 'EUR', 'USD')).amountMinorUnits).toBe(8); // 0.07 €
+    });
+
+    it('rounds a large conversion like EXACT decimal, not float64 (RED on float64)', async () => {
+      // ¥18,898,300 × 0.12965 = $2,450,164.60 exactly → 245016460 minor USD.
+      // The float64 path yields 245016459 (off by one cent); BigInt yields 245016460.
+      await seed('JPY', 'USD', 0.12965, '2026-01-01T00:00:00Z');
+      expect((await svc.convert(18898300, 'JPY', 'USD')).amountMinorUnits).toBe(245016460);
+    });
+
+    it('does not accumulate drift across summed conversions', async () => {
+      await seed('EUR', 'USD', 1.0856, '2026-01-01T00:00:00Z');
+      const converted: number[] = [];
+      for (const a of [199, 299, 399]) {
+        converted.push((await svc.convert(a, 'EUR', 'USD')).amountMinorUnits);
+      }
+      expect(converted).toEqual([216, 325, 433]);
+      expect(converted.reduce((s, x) => s + x, 0)).toBe(974);
+    });
+  });
+
   describe('getLatestRate', () => {
     it('returns the most recent rate by timestamp', async () => {
       await seed('EUR', 'USD', 1.0, '2026-01-01T00:00:00Z');
