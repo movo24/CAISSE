@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { CustomerEntity } from '../../database/entities/customer.entity';
@@ -255,7 +255,7 @@ export class NotificationsService {
     });
 
     if (!customer) {
-      throw new Error(`Customer ${customerId} not found in store ${storeId}`);
+      throw new NotFoundException(`Customer ${customerId} not found in store ${storeId}`);
     }
 
     const hasFirstPurchase = customer.isFirstPurchase;
