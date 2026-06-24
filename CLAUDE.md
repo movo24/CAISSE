@@ -417,3 +417,23 @@ Default behavior:
 - validate through typecheck, lint, tests and build where applicable;
 - stop only for real blockers;
 - continue automatically to the next validated module.
+
+---
+
+## Operating charter (subordinated — Tier-2 supreme)
+
+Full text: [`.claude/rules/continuity.md`](.claude/rules/continuity.md). Ratified by the
+owner; **repo-persisted only**, never loaded as cross-session memory that pre-authorizes
+autonomy. The continue-default below is **subordinate** to the Tier-2 gate.
+
+- **Tier-2 always requires an explicit, per-action owner GO.** A "continue", a "go", or a
+  reference to an earlier message **never** opens a Tier-2 action. Tier-2 = secrets/2FA,
+  real payment/capture, irreversible deletion/purge, dangerous prod, sensitive/irreversible
+  migration (incl. sales/payments/stock/products), mass UPDATE/DELETE, fiscal/NF525-structural
+  change, merge to `main`, non-trivial Git conflict, unresolved product/architecture decision.
+- **A Tier-2 (esp. fiscal/payment) gate closes only on the owner's explicit words in-channel** —
+  never on the agent's citation of a prior message.
+- **Continue-default applies only to actions that are** non-dangerous, reversible, testable,
+  in a branch, without direct production effect, and within already-validated scope.
+- This charter is **persisted in the repo only**, not as permanent cross-session memory that
+  pre-authorizes autonomy.
