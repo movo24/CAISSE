@@ -795,6 +795,22 @@ export function IPadPOSLayout() {
                   </div>
                   <span className="text-sm font-mono text-pos-muted">{payment.tpeCountdown}s</span>
                 </div>
+                {/* M601: cashier validates the standalone-terminal result (success/refused). */}
+                <p className="text-xs text-pos-muted mb-2">Validez le résultat affiché sur le terminal :</p>
+                <div className="grid grid-cols-2 gap-2 mb-2">
+                  <button
+                    className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-emerald-500/10 text-emerald-600 font-semibold text-sm product-card-touch"
+                    onClick={() => payment.handleTpeResponse('success')}
+                  >
+                    <CheckCircle2 size={16} /> Paiement accepté
+                  </button>
+                  <button
+                    className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-red-500/10 text-red-600 font-semibold text-sm product-card-touch"
+                    onClick={() => payment.handleTpeResponse('refused')}
+                  >
+                    <XCircle size={16} /> Refusé
+                  </button>
+                </div>
                 <button className="w-full py-3 rounded-xl text-sm font-medium text-pos-muted hover:bg-pos-subtle" onClick={payment.cancelTpeWaiting}>Annuler</button>
               </>
             )}

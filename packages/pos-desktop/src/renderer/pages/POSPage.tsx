@@ -11,6 +11,7 @@ import {
 import { usePOSStore } from '../stores/posStore';
 import { productsApi, salesApi, customersApi, occupancyApi, receiptsApi } from '../services/api';
 import { computePaymentState, type PaymentMethod } from '../services/paymentMachine';
+import { decideTpeOutcome } from '../services/tpeOutcome';
 import { FluxWidget } from '../components/FluxWidget';
 import { ManualDiscountControl } from '../components/ManualDiscountControl';
 import { PromoCodeControl } from '../components/PromoCodeControl';
@@ -584,9 +585,10 @@ export function POSPage() {
 
     // Read from ref to avoid stale closure on tpeWaiting state
     const currentTpe = tpeWaitingRef.current;
+    const outcome = decideTpeOutcome(result, currentTpe?.context);
 
-    if (result === 'success' && currentTpe) {
-      const { amountMinorUnits, context } = currentTpe;
+    if (outcome.finalizesSale && currentTpe) {
+      const { amountMinorUnits } = currentTpe;
 
       // TPE approved → show green success 2s, then clear overlay and finalize
       setTimeout(() => {
@@ -597,7 +599,7 @@ export function POSPage() {
 
         // Small delay to let React flush the overlay removal, then show confirmation
         setTimeout(() => {
-          if (context === 'quick') {
+          if (outcome.mode === 'quick') {
             const totalAmount = store.total();
             finalizePayment([{ id: `pay-${Date.now()}`, method: 'card', amountMinorUnits: totalAmount }], 0);
           } else {
@@ -606,8 +608,8 @@ export function POSPage() {
         }, 100);
       }, 2000);
     }
-    // Refused / Timeout → overlay stays visible with retry/cash buttons (no auto-dismiss)
-    // The user must explicitly choose: retry, switch to cash, or cancel
+    // Refused / Timeout → overlay stays visible with retry/cash buttons (no auto-dismiss).
+    // The user must explicitly choose: retry, switch to cash, or cancel.
   };
 
   const cancelTpeWaiting = () => {
@@ -1493,6 +1495,22 @@ export function POSPage() {
                   <div className="w-2.5 h-2.5 rounded-full bg-pos-accent animate-bounce" style={{ animationDelay: '300ms' }} />
                 </div>
 
+                {/* M601: cashier validates the standalone-terminal result (success/refused). */}
+                <p className="text-xs text-pos-muted mb-3">Validez le résultat affiché sur le terminal :</p>
+                <div className="grid grid-cols-2 gap-2 mb-3">
+                  <button
+                    className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-emerald-500/10 text-emerald-600 font-semibold text-sm"
+                    onClick={() => handleTpeResponse('success')}
+                  >
+                    <CheckCircle2 size={16} /> Paiement accepté
+                  </button>
+                  <button
+                    className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-red-500/10 text-red-600 font-semibold text-sm"
+                    onClick={() => handleTpeResponse('refused')}
+                  >
+                    <XCircle size={16} /> Refusé
+                  </button>
+                </div>
                 <button
                   className="btn-ghost w-full text-sm"
                   onClick={cancelTpeWaiting}

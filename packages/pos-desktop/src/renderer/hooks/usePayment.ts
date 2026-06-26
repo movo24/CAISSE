@@ -3,6 +3,7 @@ import { usePOSStore } from '../stores/posStore';
 import { salesApi } from '../services/api';
 import { validateManualDiscount } from '../services/discount-policy';
 import { toWirePayments, toSaleDiscountFields } from '../services/salePayload';
+import { decideTpeOutcome } from '../services/tpeOutcome';
 import { usePerformanceStore } from '../stores/performanceStore';
 import { posEventBus } from '../services/posEventBus';
 import { peripheralBridge, TicketData } from '../services/peripheralBridge';
@@ -340,18 +341,22 @@ export function usePayment() {
     }
   }, [partialPayments, store, finalizePayment]);
 
+  // M601: triggered by the cashier's "Paiement accepté/Refusé" buttons in the TPE overlay
+  // (standalone 4G TPE), or — for an integrated reader — could be driven by a real capture
+  // event. Only a confirmed success finalizes (decideTpeOutcome / decision-6).
   const handleTpeResponse = useCallback((result: 'success' | 'refused' | 'timeout') => {
     clearTpeTimers();
     setTpeResult(result);
     const currentTpe = tpeWaitingRef.current;
-    if (result === 'success' && currentTpe) {
-      const { amountMinorUnits, context } = currentTpe;
+    const outcome = decideTpeOutcome(result, currentTpe?.context);
+    if (outcome.finalizesSale && currentTpe) {
+      const { amountMinorUnits } = currentTpe;
       setTimeout(() => {
         setTpeWaiting(null);
         setTpeResult(null);
         tpeWaitingRef.current = null;
         setTimeout(() => {
-          if (context === 'quick') {
+          if (outcome.mode === 'quick') {
             const totalAmount = store.total();
             finalizePayment([{ id: `pay-${Date.now()}`, method: 'card', amountMinorUnits: totalAmount }], 0);
           } else {
@@ -360,6 +365,7 @@ export function usePayment() {
         }, 100);
       }, 2000);
     }
+    // refused / timeout → overlay stays for retry / cash fallback (no finalize).
   }, [clearTpeTimers, store, finalizePayment, commitPartialPayment]);
 
   const startTpeWaiting = useCallback((amountMinor: number, context: 'quick' | 'split') => {
@@ -375,7 +381,7 @@ export function usePayment() {
         return prev - 1;
       });
     }, 1000);
-    // Real TPE response comes via peripheralBridge event
+    // Real TPE result arrives via the cashier's accept/refuse buttons → handleTpeResponse (M601).
   }, [clearTpeTimers, handleTpeResponse]);
 
   const cancelTpeWaiting = useCallback(() => {
