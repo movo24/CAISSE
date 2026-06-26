@@ -84,7 +84,7 @@ NF525 certification / Z-seal signature fiscale · Comptamax export/mapping compt
 ### M109 — Inventory scan  ✅ P2 · capture code-barres idempotente.
 ### M110 — Promo codes (decision 6)  ✅ P1 · validate/redeem/reserveAtSale (cap race-safe, applied-at-sale). mig 1741. **Tests** `promo-codes.spec.ts` (+gated pg).
 ### M111 — Promotions (règles auto panier)  ✅ P2 · percentage/fixed/buy_x/first_purchase.
-### M112 — Currency / FX  ⚠️ P3 · conversion multi-devise à vérifier.
+### M112 — Currency / FX  ✅ P3 · conversion **BigInt exacte** (arrondi half-up = chaîne fiscale, ratifié owner) + `rate→number` + couverture service ; `convert()` = endpoint quote, non persisté. (main 8cbf5d8)
 
 ---
 
@@ -158,12 +158,12 @@ NF525 certification / Z-seal signature fiscale · Comptamax export/mapping compt
 ## Domaine G — Front POS (pos-desktop)  (M601–M610)
 
 ### M601 — Complétion paiement carte/TPE
-- **Statut** 🔄 · **P1** · Branche succès du TPE **non câblée** (pas de trigger appelant `handleTpeResponse('success')`).
-- **Action** câbler `useStripeTerminal.collectPayment` OU bouton caissier "Paiement validé/refusé" ; trancher modèle TPE (autonome vs Stripe reader) ; test branche succès.
+- **Statut** 🔄 · **P1** · **gap confirmé sur `main` 8cbf5d8 (cf D21)** : `handleTpeResponse('success'|'refused')` n'est **jamais déclenché** (seul `'timeout'` via timer) ⇒ une CB approuvée time out ; branche succès = code mort. Présent en double (`usePayment.ts` + `POSPage.tsx`, cf D22).
+- **Action** bouton caissier "Paiement accepté/Refusé" dans l'overlay TPE → `handleTpeResponse('success'|'refused')` (réaliste TPE 4G autonome) ; couvrir les deux chemins ; tests succès/timeout/refus/annulation ; respecter decision-6. **Fix en cours : branche `fix/pos-tpe-card-success-2026-06` (non mergé).**
 ### M602 — Machine à états tender (pure)  ✅ P2 · testée.
 ### M603 — Paiement scindé/mixte + finalize
-- **Statut** ⚠️ · **P1** · `creditNoteCode` non inclus dans l'enqueue offline ⇒ redemptions store_credit perdues hors-ligne ; logique paiement dupliquée POSPage vs usePayment.
-- **Action** inclure creditNoteCode offline ; tests finalize (online/offline/4xx).
+- **Statut** ✅ (offline) / ⚠️ (dup) · **P1** · **`creditNoteCode` + refs Stripe/terminal préservés offline** via builders partagés `salePayload.ts` (online+offline) + `toSyncCreateBody` reshape DTO ⇒ **offline store_credit sync = OK (fermé sur main 8cbf5d8)**. Reste : **logique paiement dupliquée `POSPage` ⟂ `usePayment` = D22** (P2).
+- **Action** (offline) fait. (dup) consolider la logique paiement (D22).
 ### M604 — Contrôle remise manuelle (miroir decision 5)  ✅ P2
 ### M605 — Contrôle code promo (decision 6)  ✅ P2
 ### M606 — File offline + persistance + garde-fraude  ✅ P2
