@@ -3,6 +3,25 @@
 > Tableau de bord du chantier modulaire. Détail modules : `MASTER_ROADMAP.md`. Dette : `TECHNICAL_DEBT.md`. Journal : `EXECUTION_LOG.md`.
 > Dernière reconstruction : **2026-06-21** (audit 10 agents + vérification centrale). Branche : `feat/pos-caisse-build`.
 
+## Consolidation → `main` (2026-06-24, SHA `8cbf5d8`)
+> Le snapshot **2026-06-21** plus bas reste l'audit historique. Cette section reconcilie l'**état réel sur `main`** après la campagne + la consolidation. `main` == `feat/pos-caisse-build` == `8cbf5d8`.
+
+**Mergé sur `main` :**
+- **M112 currency** : conversion exacte **BigInt** (arrondi half-up, cohérent chaîne fiscale NF525 — ratifié owner) + `rate→number` + couverture service. `convert()` = endpoint **quote**, non persisté (pas de rupture sur données comptabilisées).
+- **Sweep couverture services (7 modules)** : occupancy (M307), customer-visits (M304), loyalty-card (M305), terminals, connected-apps (M406), sales-ai (×3) + **durcissement mutation** (6 survivants fermés, prouvés rouge).
+- **M308 notifications** : `NotFoundException` (404) au lieu de `Error` (500).
+- **M603** : `creditNoteCode` + refs Stripe/terminal préservés dans l'enqueue offline (builders partagés `salePayload.ts`, online+offline ; `toSyncCreateBody` reshape le DTO). **Offline store_credit sync = OK → M603 fermé.**
+- **Charte opérationnelle subordonnée** (Tier-2 supreme) persistée : `.claude/rules/continuity.md` + section CLAUDE.md.
+- **Hygiène git** : symlink `packages/backend/node_modules` retiré du tracking + `.gitignore` durci (`node_modules`, `**/node_modules`).
+
+**Vérification centrale (2026-06-24)** : backend **jest 748** (91 suites, 3 gated-PG skipped), **tsc 0**. (Baseline 2026-06-21 = 543.)
+
+**P1 POS encore OUVERT — M601** : branche succès TPE non câblée. `handleTpeResponse('success')` n'est **jamais déclenché** (seul `'timeout'`, via timer) ; aucun listener terminal/peripheralBridge, aucun bouton confirm. Fix = **Tier-2 paiement (GO requis)** + doit couvrir `usePayment` **et** `POSPage` (logique paiement dupliquée).
+
+**Diagnostiqué, NON mergé (Tier-2, GO par action)** : payments-hardening (`payment_status==='paid'`, `@Roles('admin')`, idempotency webhook **atomique**, réconciliation amount/currency/plan) sur `fix/payments-hardening-round2` ; mobile-auth revocation (`tokenVersion`) + décision re-login deploy sur `fix/mobile-auth-revocation`.
+
+---
+
 ## Vérification centrale (faits objectifs, 2026-06-21)
 | Package | tsc | tests | note |
 |---|---|---|---|

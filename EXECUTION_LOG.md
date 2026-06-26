@@ -107,3 +107,11 @@ Revue adversariale de TOUS les fixes de la campagne (chaque agent tente de RÉFU
 
 ### Prochaine action automatique (continuité)
 Safe restant : audit read-only des modules ⚠️ (jackpot/loyalty/etc.) → confirmer/infirmer, garde-fous additifs + tests si bug évident. Vrais blocages : M107 réconciliation prod / décision A-B-C, D16-D17 archi, secrets/prod (#3, D6/D8/D7), Stripe parqué.
+
+### Consolidation campagne → `main` + reconciliation registres (2026-06-24)
+Sous charte subordonnée (Tier-2 supreme), GO owner par action :
+- **Consolidation trunk** (`feat/pos-caisse-build`) : merges A=docs GO-prep (`984598b`), B=currency BigInt/notif404 (`35ab60f`), C=sweep couverture+hardening (`06c0893`), charte subordonnée (`4ee4b9d`), puis cleanup symlink `node_modules` + `.gitignore` (`8cbf5d8`). Chaque merge : tests + tsc + `git status`, zéro régression. backend jest **748**, tsc 0.
+- **trunk → `main`** : `--ff-only` après CI-green confirmée owner (`8cbf5d8`). `main` == trunk == `8cbf5d8`. Aucun deploy/migration déclenché (CI = verify-only ; Railway manuel).
+- **Charte** : `chore/subordinated-operating-charter` mergé ; `.claude/rules/continuity.md` + section CLAUDE.md. Note auto-memory cross-session retirée (pas d'autonomie pré-autorisée).
+- **Diagnostics read-only** : M603 = **fermé** sur `main` (offline `creditNoteCode` préservé via `salePayload.ts`) ; M601 = **gap réel** (succès TPE non câblé → D21) ; duplication paiement `POSPage`⟂`usePayment` (D22). Registres reconciliés (PROJECT_STATUS + TECHNICAL_DEBT D21/D22).
+- **Gated, non mergé** : `fix/payments-hardening-round2` (capture/RBAC/idempotency atomique/réconciliation), `fix/mobile-auth-revocation` (`tokenVersion` + décision re-login). voidSale WIP parqué `stash@{0}` (poscaisse). Branche `chore/continuity-charter-2026-06` (ancienne charte non-subordonnée) superseded.
