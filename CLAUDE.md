@@ -1,7 +1,9 @@
 # CLAUDE.md — Development Guide
 
-> Last updated: 2026-05-26 (full audit pass)
+> Last updated: 2026-06-28 (full audit pass — counts re-verified against code)
 > Rule: **Audit → Plan → Execute**. Each change must be minimal, targeted, testable and reversible.
+> Governance files at repo root: `PROJECT_STATUS.md`, `MASTER_ROADMAP.md`, `POS_BLOCKS.md`, `POS_*` maps, `TECHNICAL_DEBT.md`, `EXECUTION_LOG.md`.
+> Undocumented-but-present modules added since last audit: `documents`, `fiscal`, `pos-session`.
 
 ---
 
@@ -70,7 +72,7 @@ or the dashboard. See `packages/backend/RUNBOOK.md` for exact curl commands.
 
 ---
 
-## Backend Modules (37)
+## Backend Modules (40)
 
 | Module | Purpose |
 |--------|---------|
@@ -114,7 +116,7 @@ or the dashboard. See `packages/backend/RUNBOOK.md` for exact curl commands.
 
 ---
 
-## TypeORM Entities (45)
+## TypeORM Entities (47)
 
 Located in `packages/backend/src/database/entities/`. Key ones:
 
@@ -288,7 +290,7 @@ Validated at boot in `main.ts`. Missing required vars crash the server with a cl
 
 ## Tests
 
-405 tests across 49 spec files (`packages/backend/test/` + colocated `*.spec.ts`). Key suites:
+~488 test cases across 66 spec files (`packages/backend/test/` + colocated `*.spec.ts`). Key suites:
 
 | File | Coverage |
 |------|----------|
@@ -328,7 +330,7 @@ packages/backend/
   src/app.module.ts                             Module registry, TypeORM, rate-limit tiers
   src/database/typeorm.config.ts                Migration CLI config
   src/database/entities/                        45 TypeORM entities
-  src/database/migrations/                      11 versioned migrations
+  src/database/migrations/                      16 versioned migrations
   src/common/guards/roles.guard.ts              Role hierarchy (admin > manager > cashier)
   src/common/guards/jwt-auth.guard.ts           JWT authentication guard
   src/common/interceptors/tenant.interceptor.ts Multi-tenant storeId enforcement
