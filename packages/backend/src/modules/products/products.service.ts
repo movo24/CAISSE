@@ -14,6 +14,7 @@ import { PaginatedResult } from '../../common/dto/pagination.dto';
 import { computePriceVerdict, PriceVerdict } from './price-verdict';
 import { ConflictException } from '@nestjs/common';
 import { normalizeName } from './name-normalize';
+import { buildEan13, INTERNAL_EAN_PREFIX } from './ean13';
 
 @Injectable()
 export class ProductsService {
@@ -512,14 +513,9 @@ export class ProductsService {
     do {
       // 290 + 9 random digits + 1 check digit = 13 chars
       const random = String(Math.floor(Math.random() * 1_000_000_000)).padStart(9, '0');
-      const partial = `290${random}`;
-      // EAN-13 check digit
-      let sum = 0;
-      for (let i = 0; i < 12; i++) {
-        sum += parseInt(partial[i]) * (i % 2 === 0 ? 1 : 3);
-      }
-      const checkDigit = (10 - (sum % 10)) % 10;
-      ean = `${partial}${checkDigit}`;
+      const partial = `${INTERNAL_EAN_PREFIX}${random}`;
+      // EAN-13 check digit (pure helper — see ean13.ts)
+      ean = buildEan13(partial);
 
       // Verify uniqueness
       const existing = await this.productRepo.findOne({ where: { ean, storeId } });
