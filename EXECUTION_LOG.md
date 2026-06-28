@@ -771,4 +771,7 @@ Décisions produit tranchées par l'utilisateur. 5 blocs enchaînés.
 - `tsc --noEmit` → **EXIT 0**. Helper testé ; runtime DB endpoint à valider local.
 - Consolidé dans le commit réel (re-bundle après ce paquet).
 
-**Prochain paquet** : PAQUET 37 — subscriptions ou occupancy (helper pur testable). Sur GO.
+## PAQUET 37 — Occupancy level (cockpit/radar)
+- `occupancy/occupancy-level.ts` (`occupancyLevel` empty/low/medium/high/full/unknown ; `isOccupancyStale`) + spec **5/5**. Service `getView(storeId, capacity)` câblé. `tsc` EXIT 0. Seuils ratio = défauts opérationnels (tunables). Commité réel + re-bundle.
+
+**Prochain paquet** : PAQUET 38 — subscriptions (plan/billing helper) ou consolidation. Sur GO.

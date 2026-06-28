@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { occupancyLevel, isOccupancyStale, OccupancyLevel } from './occupancy-level';
 
 export interface OccupancyData {
   liveCount: number;
@@ -39,5 +40,20 @@ export class OccupancyService {
 
   getLiveCount(storeId: string): number {
     return this.getOccupancy(storeId).liveCount;
+  }
+
+  /** Occupancy view with level + staleness (pure helpers). `capacity` optional → level 'unknown'. */
+  getView(
+    storeId: string,
+    capacity?: number,
+    now: Date = new Date(),
+  ): { liveCount: number; level: OccupancyLevel; stale: boolean; lastUpdate: Date } {
+    const data = this.getOccupancy(storeId);
+    return {
+      liveCount: data.liveCount,
+      level: occupancyLevel(data.liveCount, capacity),
+      stale: isOccupancyStale(data.lastUpdate, undefined, now),
+      lastUpdate: data.lastUpdate,
+    };
   }
 }
