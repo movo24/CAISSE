@@ -13,6 +13,7 @@ import * as bcrypt from 'bcrypt';
 import { v4 as uuidv4 } from 'uuid';
 import { EmployeeEntity } from '../../database/entities/employee.entity';
 import { AuditService } from '../audit/audit.service';
+import { isValidPinFormat } from './pin-policy';
 
 // ── Role-based defaults ──
 const ROLE_RIGHTS: Record<string, any> = {
@@ -68,7 +69,7 @@ export class EmployeesService {
    * single-digit values.
    */
   private validatePinFormat(pin: string): void {
-    if (typeof pin !== 'string' || !/^\d{4,8}$/.test(pin)) {
+    if (!isValidPinFormat(pin)) {
       throw new BadRequestException('Le code PIN doit comporter de 4 à 8 chiffres.');
     }
   }
