@@ -1,14 +1,22 @@
-import { Injectable } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { CustomerVisitEntity } from '../../database/entities/customer-visit.entity';
+import { CustomerEntity } from '../../database/entities/customer.entity';
 import { computeVisitFrequency } from './visit-frequency';
+import { canAccessCustomer } from './customer-access';
 
 @Injectable()
 export class CustomerVisitsService {
   constructor(
     @InjectRepository(CustomerVisitEntity)
     private readonly visitRepo: Repository<CustomerVisitEntity>,
+    @InjectRepository(CustomerEntity)
+    private readonly customerRepo: Repository<CustomerEntity>,
     private readonly dataSource: DataSource,
   ) {}
 
@@ -77,5 +85,22 @@ export class CustomerVisitsService {
       visits.map((v) => v.visitedAt),
       now,
     );
+  }
+
+  /**
+   * POS-094 — secured frequency read: fail-closed RBAC handled at the controller (manager+),
+   * plus anti-IDOR ownership check here (customer must belong to the caller's store, admin bypass).
+   */
+  async getFrequencySecured(
+    customerId: string,
+    callerStoreId: string | null | undefined,
+    role: string | null | undefined,
+  ) {
+    const customer = await this.customerRepo.findOne({ where: { id: customerId } });
+    if (!customer) throw new NotFoundException('Client introuvable');
+    if (!canAccessCustomer(customer.storeId, callerStoreId, role)) {
+      throw new ForbiddenException('Accès au client refusé (hors périmètre magasin).');
+    }
+    return this.getFrequency(customerId);
   }
 }

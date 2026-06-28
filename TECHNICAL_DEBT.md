@@ -48,7 +48,7 @@
 
 | TD-055-QUIET-HOURS-WIRING | Helper quiet-hours/fériés testé mais non branché dans le sweep `shift-reminders` (fenêtre + calendrier fériés = config/décision). | 🟡 | `shift-reminders/quiet-hours.ts`, `shift-reminder.service.ts` | Ouvert |
 
-| TD-094-FREQ-ENDPOINT | Endpoint **fréquence client NON livré** (BLOC 67) : seul `customer-visits.service.getFrequency` existe, **aucun controller** `customer-visits`, méthode **non consommée** (vérifié grep). À finir : `GET` read-only **fail-closed** + RBAC + contrôle d'appartenance `customerId` (anti-IDOR, règle `/self/payslips`). | 🟠 | `customer-visits.service.ts` (méthode), pas de route | Différé (pas "fait") |
+| TD-094-FREQ-ENDPOINT | ~~Endpoint non livré~~. **Résolu (PAQUET 36)** : `GET /api/customer-visits/:customerId/frequency` (JwtAuthGuard+RolesGuard `manager` fail-closed) + anti-IDOR `canAccessCustomer` (4/4, customer hors store → Forbidden, admin bypass) + `getFrequencySecured`. tsc clean. Runtime DB à valider local. | ✅ | `customer-visits.controller.ts`, `customer-access.ts`, `customer-visits.service.ts` | Résolu |
 | TD-VISIT-SEGMENT-THRESHOLDS | Seuils segment `new/regular/occasional/at_risk` = **défauts provisoires à ratifier** (décision produit). Vérifié : `segment` **non consommé** pour piloter un comportement (reporting-only). Ne PAS l'utiliser pour fidélité/relance sans ratification. | 🟡 | `customer-visits/visit-frequency.ts` | Ouvert — à ratifier |
 | TD-GIT-DANGLING | Paquets 2→35 **non commités sur branche** : working tree (source de vérité) + commits **pendants** non référencés (FUSE bloque `index.lock`/`HEAD.lock`). Branche = `c55e6c5` (PAQUET 1). | 🔴 | `git status`/`reflog` (cf. GIT_RECOVERY.md) | Ouvert — résoudre en local AVANT tout nouveau paquet |
 

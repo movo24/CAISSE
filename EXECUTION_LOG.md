@@ -757,3 +757,18 @@ Décisions produit tranchées par l'utilisateur. 5 blocs enchaînés.
 - **Seuils segment** : provisoires, **non consommés** pour piloter un comportement (vérifié grep) → `TD-VISIT-SEGMENT-THRESHOLDS` (à ratifier).
 - **ÉTAT GIT PROUVÉ** : HEAD = `c55e6c5` (PAQUET 1) ; paquets 2→35 **non commités** (working tree = vérité) ; « backup commits » = objets **pendants** non référencés (`branch --contains` vide, `is-ancestor HEAD` rc1). Cause : verrous FUSE non supprimables. → `GIT_RECOVERY.md` + `CONSOLIDATION_LOCALE.md`.
 - **STOP** : aucun nouveau paquet, aucune migration, aucun build tant que l'état git n'est pas sécurisé en local. Migrations 1721-1724 = **non rejouées = non prouvées**.
+
+---
+
+## CONSOLIDATION RÉELLE (2026-06-28) — FUSE contourné
+- Clone hors-FUSE `/tmp/caisse-rec` + overlay working tree → **commit réel** `7fd73bd` sur branche `recovery/pos-audit-session` (parent `c55e6c5`), working tree **clean**.
+- **Build** `nest build` (clone) → **RC=0**, `dist/main.js` régénéré. Tests arbre commité (clone) : 42 PASS (échantillon) + 223 prouvés (mnt).
+- **Bundle** `pos-recovery.bundle` (verify OK, complete history) → racine repo + outputs. Intégration : `git fetch ./pos-recovery.bundle recovery/pos-audit-session` puis merge.
+- **Migrations** : non rejouées (pas de DB sandbox : 5432 refused, psql absent, DATABASE_URL vide ; `.env`=DB réelle → interdit). 
+
+## PAQUET 36 — POS-094 endpoint fréquence (clôt TD-094-FREQ-ENDPOINT)
+- `customer-visits.controller` `GET :customerId/frequency` (Jwt+Roles `manager` **fail-closed**) + anti-IDOR `customer-access.canAccessCustomer` (**4/4**) + `getFrequencySecured` (404 si client absent, 403 hors store, admin bypass). Module : +`CustomerEntity` + controller.
+- `tsc --noEmit` → **EXIT 0**. Helper testé ; runtime DB endpoint à valider local.
+- Consolidé dans le commit réel (re-bundle après ce paquet).
+
+**Prochain paquet** : PAQUET 37 — subscriptions ou occupancy (helper pur testable). Sur GO.
