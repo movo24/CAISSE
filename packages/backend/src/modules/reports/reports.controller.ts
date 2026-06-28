@@ -91,4 +91,54 @@ export class ReportsController {
       req.user.role === 'admin' && queryStoreId ? queryStoreId : req.user.storeId;
     return this.productAnalytics.getSalesTrend(effectiveStoreId);
   }
+
+  @Get('sales-by-employee')
+  @Roles('admin', 'manager')
+  @ApiOperation({
+    summary: 'POS-094 — sales per employee for a store/day (count, revenue, discount, avg basket)',
+  })
+  getSalesByEmployee(
+    @Request() req: any,
+    @Query('date') date: string,
+    @Query('storeId') queryStoreId?: string,
+  ) {
+    const effectiveStoreId =
+      req.user.role === 'admin' && queryStoreId ? queryStoreId : req.user.storeId;
+    return this.reportsService.getSalesByEmployee(effectiveStoreId, date);
+  }
+
+  @Get('accounting-export')
+  @Roles('admin', 'manager')
+  @ApiOperation({
+    summary: 'POS-100 — local accounting export from the frozen Z-report (?format=csv|json). No external send.',
+  })
+  getAccountingExport(
+    @Request() req: any,
+    @Query('date') date: string,
+    @Query('format') format?: string,
+    @Query('storeId') queryStoreId?: string,
+  ) {
+    const effectiveStoreId =
+      req.user.role === 'admin' && queryStoreId ? queryStoreId : req.user.storeId;
+    return this.reportsService.getAccountingExport(
+      effectiveStoreId,
+      date,
+      format === 'csv' ? 'csv' : 'json',
+    );
+  }
+
+  @Get('payments-breakdown')
+  @Roles('admin', 'manager')
+  @ApiOperation({
+    summary: 'POS-102 — payments breakdown by method for a store/day (reconciliation)',
+  })
+  getPaymentsBreakdown(
+    @Request() req: any,
+    @Query('date') date: string,
+    @Query('storeId') queryStoreId?: string,
+  ) {
+    const effectiveStoreId =
+      req.user.role === 'admin' && queryStoreId ? queryStoreId : req.user.storeId;
+    return this.reportsService.getPaymentsBreakdown(effectiveStoreId, date);
+  }
 }

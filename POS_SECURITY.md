@@ -25,7 +25,7 @@
 | S1 | PIN login 500 prod | 🔴 | re-tester `POST /api/auth/login/pin` |
 | S2 | Clés API potentiellement dans historique git (`docker/.env.production.example`) | 🔴 | scanner historique ; rotation si confirmé |
 | S3 | Receipts publics sans auth | 🟠 | exiger auth sur `/api/receipts/:id` |
-| S4 | XSS receipts HTML (échappement) | 🟠 | échapper noms produits/employés/magasins |
+| S4 | XSS receipts HTML (échappement) | ✅ résolu | `escapeHtml` testé (5/5) appliqué à tous les champs du reçu (`receipts.controller`) |
 | S5 | Erreurs avalées front (StockAlerts, Labels) | 🟠 | remonter erreurs UI |
 | S6 | Redis "unknown" prod (revocation multi-instance) | 🟠 | `REDIS_URL` |
 

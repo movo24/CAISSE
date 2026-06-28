@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { FxRateEntity } from '../../database/entities/fx-rate.entity';
+import { convertMinor } from './convert-amount';
 
 // Re-export currency configs for convenience
 export { CURRENCY_CONFIGS } from '../../common/types/currency';
@@ -98,10 +99,13 @@ export class CurrencyService {
       throw new Error(`Unsupported currency: ${fromCurrency} or ${toCurrency}`);
     }
 
-    // Convert: from minor -> major -> apply rate -> to minor
-    const majorFrom = amountMinorUnits / Math.pow(10, fromConfig.precision);
-    const majorTo = majorFrom * fxRate.rate;
-    const minorTo = Math.round(majorTo * Math.pow(10, toConfig.precision));
+    // Convert: from minor -> major -> apply rate -> to minor (pure, unit-tested helper).
+    const minorTo = convertMinor(
+      amountMinorUnits,
+      fxRate.rate,
+      fromConfig.precision,
+      toConfig.precision,
+    );
 
     return {
       amountMinorUnits: minorTo,

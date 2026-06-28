@@ -5,6 +5,7 @@ import { SaleEntity } from '../../database/entities/sale.entity';
 import { ProductEntity } from '../../database/entities/product.entity';
 import { CustomerEntity } from '../../database/entities/customer.entity';
 import { AuditService } from '../audit/audit.service';
+import { resolveCustomerSync } from './conflict';
 
 // ---------------------------------------------------------------------------
 // Sync payload interfaces
@@ -151,15 +152,14 @@ export class SyncService {
           if (!customer.id) continue;
           const existing = existingMap.get(customer.id);
 
-          if (existing && existing.updatedAt > sinceDate) {
-            conflicts.push({
-              entity: 'customer',
-              entityId: customer.id,
-              field: 'loyaltyPoints',
-              localValue: customer.loyaltyPoints,
-              serverValue: existing.loyaltyPoints,
-              resolution: 'server_wins',
-            });
+          // POS-049/086 — pure, unit-tested conflict resolution (server-wins).
+          const decision = resolveCustomerSync(
+            { id: customer.id, loyaltyPoints: customer.loyaltyPoints },
+            existing,
+            sinceDate,
+          );
+          if (decision.conflict) {
+            conflicts.push(decision.conflict as any);
           } else {
             toSave.push(customer);
           }

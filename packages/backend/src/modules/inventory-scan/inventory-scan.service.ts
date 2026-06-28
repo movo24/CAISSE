@@ -7,6 +7,7 @@ import { StoreEntity } from '../../database/entities/store.entity';
 import { BusinessError } from '../../common/errors/business-error';
 import { StockService } from '../stock/stock.service';
 import { CreateInventoryScanDto } from '../../common/dto';
+import { applyStockAdjustment } from './inventory-adjust';
 
 @Injectable()
 export class InventoryScanService {
@@ -151,9 +152,11 @@ export class InventoryScanService {
         }
 
         const oldQty = product.stockQuantity ?? 0;
-        product.stockQuantity = config.mode === 'delta'
-          ? Math.max(0, oldQty + scan.quantity)
-          : Math.max(0, scan.quantity);
+        product.stockQuantity = applyStockAdjustment(
+          config.mode,
+          oldQty,
+          scan.quantity,
+        );
 
         await queryRunner.manager.save(ProductEntity, product);
 

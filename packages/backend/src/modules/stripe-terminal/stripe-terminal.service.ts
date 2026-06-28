@@ -1,6 +1,6 @@
 import { Injectable, Inject, Logger, BadRequestException } from '@nestjs/common';
 import Stripe from 'stripe';
-import { createHash } from 'crypto';
+import { paymentIntentIdempotencyKey } from './payment-intent-key';
 
 @Injectable()
 export class StripeTerminalService {
@@ -35,12 +35,15 @@ export class StripeTerminalService {
   ): Promise<{ clientSecret: string; paymentIntentId: string }> {
     this.assertStripe();
 
-    // Idempotency key: prevents double charge on network retry
-    // DETERMINISTIC — same inputs always produce the same key
-    // A retry with identical (store, ticket, amount, currency, employee) reuses the same PaymentIntent
-    const idempotencyKey = createHash('sha256')
-      .update(`${storeId}:${ticketNumber}:${amount}:${currency}:${employeeId || ''}`)
-      .digest('hex');
+    // Idempotency key: prevents double charge on network retry (pure, unit-tested helper).
+    // A retry with identical (store, ticket, amount, currency, employee) reuses the same PaymentIntent.
+    const idempotencyKey = paymentIntentIdempotencyKey(
+      storeId,
+      ticketNumber,
+      amount,
+      currency,
+      employeeId,
+    );
 
     const pi = await this.stripe.paymentIntents.create(
       {

@@ -2,24 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
-import { createHash } from 'crypto';
 import { AuditEntryEntity } from '../../database/entities/audit-entry.entity';
-
-const GENESIS_HASH =
-  '0000000000000000000000000000000000000000000000000000000000000000';
-
-function sha256(data: string): string {
-  return createHash('sha256').update(data).digest('hex');
-}
-
-function computeAuditHash(
-  previousHash: string,
-  entryData: Record<string, unknown>,
-): string {
-  const payload =
-    previousHash + JSON.stringify(entryData, Object.keys(entryData).sort());
-  return sha256(payload);
-}
+import { GENESIS_HASH, computeAuditHash } from './audit-hash';
 
 @Injectable()
 export class AuditService {

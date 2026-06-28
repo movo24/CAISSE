@@ -1,7 +1,24 @@
 # PROJECT_STATUS.md — État réel du projet POS Caisse The Wesley
 
-> Généré par audit read-only le **2026-06-28**.
+> Généré par audit read-only le **2026-06-28**, enrichi au fil des paquets.
 > Règle d'honnêteté : rien n'est déclaré "fait/testé/branché" sans preuve. Voir `EXECUTION_LOG.md`.
+
+## 0. Bilan session 2026-06-28 (paquets 1→28, blocs jusqu'à #61)
+
+**Vérifié dans le sandbox** : **223 tests PASS** sur 33 suites (helpers purs + DTO + services à repo mocké), `tsc --noEmit` **EXIT 0** à chaque paquet.
+- Lot A (helpers purs) 13 suites / 106 · Lot B (helpers+DTO) 13 / 60 · Lot C (services mockés) 7 / 57.
+
+**Livré & branché (prouvé tests + tsc)** : POS-054 remises (caisse 30% strict + justif 21-30% + back-office 100% admin), POS-083 alerte stock 20% baseline, POS-066 dédup nom normalisé, POS-061 override prix magasin, POS-073 anti-cumul + plafond usage (exclusion), POS-018/018b historique+DTO validé, POS-132 anti-XSS, POS-085 inventaire/écart, POS-122 Z-report, POS-094 ventes/employé (endpoint), POS-100 export compta local (CSV), POS-102 rapprochement paiements, TimeWin24 HMAC+mapping. **Bug corrigé** : `store_credit` rejeté à la validation (avoirs).
+
+**Migrations réversibles ajoutées** : 1721 (stock baseline), 1722 (normalized_name), 1723 (price override), 1724 (promo usage). **NON exécutées dans le sandbox** → `npm run migration:run` en local.
+
+**Modules créés** : `backoffice-discounts`, `mobile-cockpit` (42 modules).
+
+**Limites honnêtes** : suites lourdes (sale-transaction/fiscal/pg-mem) non exécutables ici (cap 45 s) → à confirmer vertes en local ; runtime DB des nouveaux endpoints à valider local ; **Paywin24 / Comptamax24 (envoi) non branchés** ; connectivité TimeWin24 live non testée.
+
+**Git** : ref bloquée (mount FUSE — `index.lock`/`HEAD.lock` non supprimables). Tout le travail est sur disque + objet commit `4ff20b3` (dangling, paquets 2→28) + `_BACKUP_PAQUET_2-28.patch`. Récupération : `GIT_RECOVERY.md`.
+
+**Gates / décisions ouvertes** : `TD-STOCK-TWO-SYSTEMS` (unification stock), `TD-073-USAGE-INCREMENT`, `TD-COMPTAMAX`/Paywin24, `TD-055-QUIET-HOURS-WIRING`.
 
 ## 1. Méthode
 
@@ -39,7 +56,7 @@ Audit → Plan → Exécution par paquets de 5 blocs. Référentiel des blocs : 
 | Stripe Terminal | Service backend + hooks POS présents. Paiement réel **non testé** (interdit en audit). |
 | Paywin24 (paie) | **Aucune référence dans le code** → futur / non branché. |
 | Comptamax24 (compta) | **Aucune référence dans le code** → futur / non branché. |
-| Cockpit mobile `GET /api/mobile/v1/alerts` | **Inexistant**. Controllers `mobile` présents (auth, coupons) mais pas d'endpoint alertes. À créer. |
+| Cockpit mobile `GET /api/mobile/v1/alerts` | **Créé** (PAQUET 9) : module `mobile-cockpit`, read-only, manager/admin, agrège stock + anomalies. Shaper testé 6/6, tsc clean. Runtime DB à valider en local. |
 | ESC/POS | Côté POS uniquement (`useBluetoothPrinter`). Pas de backend (normal). |
 
 ## 5. Risques ouverts hérités (à re-vérifier — issus de AUDIT-FINAL-2026-04-01)

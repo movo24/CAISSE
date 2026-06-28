@@ -6,6 +6,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { PromoRuleEntity } from '../../database/entities/promo-rule.entity';
+import { dedupeBestPerProduct } from './promo-policy';
 
 export interface CartItem {
   productId: string;
@@ -80,6 +81,8 @@ export class PromotionsService {
       .andWhere('p.is_active = true')
       .andWhere('p.start_date <= :now', { now })
       .andWhere('(p.end_date IS NULL OR p.end_date >= :now)', { now })
+      // POS-073 — exclude promos that reached their usage cap (NULL limit = unlimited).
+      .andWhere('(p.usage_limit IS NULL OR p.usage_count < p.usage_limit)')
       .getMany();
   }
 
@@ -162,7 +165,9 @@ export class PromotionsService {
       }
     }
 
-    return results;
+    // POS-073 anti-cumul: at most one promo (the largest discount) per product.
+    // Prevents two active promos from stacking on the same product downstream.
+    return dedupeBestPerProduct(results);
   }
 
   private isPromoApplicable(promo: PromoRuleEntity, item: CartItem): boolean {

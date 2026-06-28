@@ -1,25 +1,15 @@
 import { Injectable, CanActivate, ExecutionContext, SetMetadata, ForbiddenException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { roleSatisfies } from './role-hierarchy';
 
 export const ROLES_KEY = 'roles';
 export const Roles = (...roles: string[]) => SetMetadata(ROLES_KEY, roles);
 
 /**
- * Role hierarchy: admin > manager > cashier
- *
- * Mapping to business roles:
- *   admin        = super_admin / org_admin (full access, multi-store)
- *   manager      = store_manager (assigned stores, operational access)
- *   cashier      = employee (POS only, read-only backoffice)
- *
+ * Role hierarchy: admin > manager > cashier (see ./role-hierarchy.ts, unit-tested).
  * A higher role always inherits lower role permissions.
  * Example: @Roles('manager') allows both 'manager' and 'admin'.
  */
-const ROLE_HIERARCHY: Record<string, number> = {
-  cashier: 0,
-  manager: 1,
-  admin: 2,
-};
 
 @Injectable()
 export class RolesGuard implements CanActivate {
@@ -37,11 +27,8 @@ export class RolesGuard implements CanActivate {
       throw new ForbiddenException('Authentification requise.');
     }
 
-    const userLevel = ROLE_HIERARCHY[user.role] ?? -1;
-    // User passes if their level >= any required role level
-    const hasAccess = requiredRoles.some(
-      (role) => userLevel >= (ROLE_HIERARCHY[role] ?? Infinity),
-    );
+    // User passes if their role level >= any required role level (admin>manager>cashier).
+    const hasAccess = roleSatisfies(user.role, requiredRoles);
 
     if (!hasAccess) {
       throw new ForbiddenException(

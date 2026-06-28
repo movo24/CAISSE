@@ -1,7 +1,9 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createHmac, randomUUID } from 'crypto';
+import { randomUUID } from 'crypto';
 import { AlertService } from '../../common/alert/alert.service';
+import { buildPosHmacHeaders } from './pos-hmac';
+import { mapTimewinEmployee } from './employee-map';
 
 /* ── Types ── */
 
@@ -163,19 +165,10 @@ export class TimewinService implements OnModuleInit {
 
   async syncEmployees(storeId: string): Promise<CachedEmployee[]> {
     const data = await this.fetchWithPosSecret(`/api/pos-feed/employees?storeId=${storeId}`);
-    const employees: CachedEmployee[] = (data.employees || []).map((e: any) => ({
-      id: e.id,
-      employeeCode: e.employeeCode,
-      firstName: e.firstName,
-      lastName: e.lastName,
-      email: e.email,
-      active: e.active,
-      posPinHash: '', // will be set below — posPin no longer returned by TimeWin24
-      posRole: e.posRole,
-      maxDiscountPct: e.maxDiscountPct,
-      skills: e.skills || [],
-      cachedAt: Date.now(),
-    }));
+    const now = Date.now();
+    const employees: CachedEmployee[] = (data.employees || []).map(
+      (e: any) => mapTimewinEmployee(e, now) as CachedEmployee,
+    );
     this.employeeCache.set(storeId, employees);
     return employees;
   }
@@ -376,17 +369,14 @@ export class TimewinService implements OnModuleInit {
     const headers: Record<string, string> = { ...opts?.headers };
 
     if (this.posSecret && this.posKeyId) {
-      // HMAC SHA-256 authentication
+      // HMAC SHA-256 authentication (pure, unit-tested helper).
       const timestamp = String(Date.now());
       const nonce = randomUUID();
       const bodyStr = opts?.body ? JSON.stringify(opts.body) : '';
-      const payload = `${timestamp}.${nonce}.${bodyStr}`;
-      const signature = createHmac('sha256', this.posSecret).update(payload).digest('hex');
-
-      headers['X-POS-Timestamp'] = timestamp;
-      headers['X-POS-Nonce'] = nonce;
-      headers['X-POS-Signature'] = signature;
-      headers['X-POS-Key-Id'] = this.posKeyId;
+      Object.assign(
+        headers,
+        buildPosHmacHeaders(this.posSecret, this.posKeyId, timestamp, nonce, bodyStr),
+      );
     } else if (this.apiKey) {
       headers['Authorization'] = `Bearer ${this.apiKey}`;
     }

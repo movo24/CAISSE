@@ -12,6 +12,8 @@ import { ProductCategoryEntity } from '../../database/entities/product-category.
 import { AuditService } from '../audit/audit.service';
 import { PaginatedResult } from '../../common/dto/pagination.dto';
 import { computePriceVerdict, PriceVerdict } from './price-verdict';
+import { ConflictException } from '@nestjs/common';
+import { normalizeName } from './name-normalize';
 
 @Injectable()
 export class ProductsService {
@@ -29,6 +31,21 @@ export class ProductsService {
     data: Partial<ProductEntity>,
     employeeId: string,
   ): Promise<ProductEntity> {
+    // POS-066 — per-store duplicate detection by NORMALIZED name (accents/case/space folded).
+    // Decision (2026-06-28): same normalized name in the same store = duplicate → refused.
+    if (data.name && data.storeId) {
+      const normalizedName = normalizeName(data.name);
+      const duplicate = await this.productRepo.findOne({
+        where: { storeId: data.storeId, normalizedName },
+      });
+      if (duplicate) {
+        throw new ConflictException(
+          `Un produit avec un nom équivalent existe déjà dans ce magasin : « ${duplicate.name} ».`,
+        );
+      }
+      data = { ...data, normalizedName };
+    }
+
     const product = this.productRepo.create(data);
     const saved = await this.productRepo.save(product);
 
@@ -163,6 +180,11 @@ export class ProductsService {
           reason,
         },
       });
+    }
+
+    // POS-066 — keep normalized_name in sync on rename (so dedup stays correct).
+    if (data.name) {
+      data = { ...data, normalizedName: normalizeName(data.name) };
     }
 
     await this.productRepo.update(id, data);

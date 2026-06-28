@@ -9,6 +9,7 @@ import { SaleEntity } from '../../database/entities/sale.entity';
 import { IdempotencyKeyEntity } from '../../database/entities/idempotency-key.entity';
 import { AuditService } from '../audit/audit.service';
 import { PaginatedResult } from '../../common/dto/pagination.dto';
+import { returnableQuantity, computeLineRefund } from './returns-policy';
 
 const GENESIS = '0'.repeat(64);
 function sha256(s: string): string {
@@ -103,13 +104,13 @@ export class ReturnsService {
       if (!Number.isInteger(item.quantity) || item.quantity <= 0) {
         throw new BadRequestException('Quantité de retour invalide');
       }
-      const remaining = li.quantity - (alreadyReturned[li.id] || 0);
+      const remaining = returnableQuantity(li.quantity, alreadyReturned[li.id] || 0);
       if (item.quantity > remaining) {
         throw new BadRequestException(
           `Quantité retournée (${item.quantity}) dépasse le retournable (${remaining}) pour ${li.productName}`,
         );
       }
-      const lineRefund = Math.round((li.lineTotalMinorUnits * item.quantity) / li.quantity);
+      const lineRefund = computeLineRefund(li.lineTotalMinorUnits, item.quantity, li.quantity);
       total += lineRefund;
       returnLines.push({
         originalLineItemId: li.id,

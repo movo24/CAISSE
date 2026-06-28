@@ -18,6 +18,7 @@ import { SalePaymentEntity } from '../../database/entities/sale-payment.entity';
 import { StoreEntity } from '../../database/entities/store.entity';
 import { SkipTenantCheck } from '../../common/interceptors/tenant.interceptor';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { escapeHtml } from '../../common/html-escape';
 import { MailService } from '../../common/messaging/mail.service';
 
 /** Human labels for payment methods on the receipt. */
@@ -30,11 +31,8 @@ const PAYMENT_LABELS: Record<string, string> = {
   mixed: 'Mixte',
 };
 
-/** Escape HTML to prevent XSS — all user-controlled data must pass through this */
-function esc(str: string | null | undefined): string {
-  if (!str) return '';
-  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#x27;');
-}
+/** POS-132 — XSS escaping. Delegates to the shared, unit-tested helper. */
+const esc = escapeHtml;
 
 /**
  * Public receipt endpoint — no auth required.

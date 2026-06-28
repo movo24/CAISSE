@@ -4,6 +4,10 @@ import { Repository } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
 import { SaleEntity } from '../../database/entities/sale.entity';
 import { ZReportEntity } from '../../database/entities/z-report.entity';
+import { aggregateZReport } from './z-report-aggregate';
+import { aggregateSalesByEmployee } from './sales-by-employee';
+import { buildDailyAccountingExport, toAccountingCsv } from './accounting-export';
+import { aggregatePaymentsByMethod } from './payments-breakdown';
 
 @Injectable()
 export class ReportsService {
@@ -43,83 +47,25 @@ export class ReportsService {
       .andWhere('s.status = :status', { status: 'voided' })
       .getCount();
 
-    // Calculate totals
-    let totalRevenue = 0;
-    let totalTax = 0;
-    let totalDiscount = 0;
-    let cashTotal = 0;
-    let cardTotal = 0;
-    const productSales: Record<
-      string,
-      { name: string; quantity: number; revenue: number }
-    > = {};
-    const hourCounts: Record<number, number> = {};
-
-    for (const sale of sales) {
-      totalRevenue += sale.totalMinorUnits;
-      totalTax += sale.taxTotalMinorUnits;
-      totalDiscount += sale.discountTotalMinorUnits;
-
-      for (const payment of sale.payments) {
-        if (payment.method === 'cash') cashTotal += payment.amountMinorUnits;
-        else if (payment.method === 'card')
-          cardTotal += payment.amountMinorUnits;
-      }
-
-      for (const item of sale.lineItems) {
-        if (!productSales[item.productId]) {
-          productSales[item.productId] = {
-            name: item.productName,
-            quantity: 0,
-            revenue: 0,
-          };
-        }
-        productSales[item.productId].quantity += item.quantity;
-        productSales[item.productId].revenue += item.lineTotalMinorUnits;
-      }
-
-      const hour = new Date(sale.createdAt).getHours();
-      hourCounts[hour] = (hourCounts[hour] || 0) + 1;
-    }
-
-    // Top products by revenue
-    const topProducts = Object.entries(productSales)
-      .map(([productId, data]) => ({
-        productId,
-        name: data.name,
-        quantity: data.quantity,
-        revenueMinorUnits: data.revenue,
-      }))
-      .sort((a, b) => b.revenueMinorUnits - a.revenueMinorUnits)
-      .slice(0, 10);
-
-    // Peak hours
-    const peakHours = Object.entries(hourCounts)
-      .map(([hour, count]) => ({
-        hour: parseInt(hour),
-        transactionCount: count,
-      }))
-      .sort((a, b) => b.transactionCount - a.transactionCount);
-
-    const avgBasket =
-      sales.length > 0 ? Math.round(totalRevenue / sales.length) : 0;
+    // Calculate totals (pure, unit-tested aggregator — POS-122).
+    const agg = aggregateZReport(sales as any);
 
     const zReport = this.zReportRepo.create({
       id: uuidv4(),
       storeId,
       date,
       employeeId,
-      totalRevenueMinorUnits: totalRevenue,
-      totalTaxMinorUnits: totalTax,
+      totalRevenueMinorUnits: agg.totalRevenueMinorUnits,
+      totalTaxMinorUnits: agg.totalTaxMinorUnits,
       currencyCode: 'EUR',
-      cashTotalMinorUnits: cashTotal,
-      cardTotalMinorUnits: cardTotal,
-      transactionCount: sales.length,
-      averageBasketMinorUnits: avgBasket,
-      topProducts,
+      cashTotalMinorUnits: agg.cashTotalMinorUnits,
+      cardTotalMinorUnits: agg.cardTotalMinorUnits,
+      transactionCount: agg.transactionCount,
+      averageBasketMinorUnits: agg.averageBasketMinorUnits,
+      topProducts: agg.topProducts,
       voidCount: voidedCount,
-      discountTotalMinorUnits: totalDiscount,
-      peakHours,
+      discountTotalMinorUnits: agg.totalDiscountMinorUnits,
+      peakHours: agg.peakHours,
     });
 
     return this.zReportRepo.save(zReport);
@@ -173,5 +119,62 @@ export class ReportsService {
       discountTotalMinorUnits: parseInt(result?.discountTotalMinorUnits || '0', 10),
       averageBasketMinorUnits: avgBasket,
     };
+  }
+
+  /**
+   * POS-094 — sales aggregated per employee for a store/day (read-only reporting).
+   * Uses the pure, unit-tested aggregator.
+   */
+  async getSalesByEmployee(storeId: string, date: string) {
+    const sales = await this.saleRepo
+      .createQueryBuilder('s')
+      .where('s.store_id = :storeId', { storeId })
+      .andWhere('DATE(s.created_at) = :date', { date })
+      .andWhere('s.status = :status', { status: 'completed' })
+      .getMany();
+    return aggregateSalesByEmployee(sales as any);
+  }
+
+  /**
+   * POS-100 — local accounting export derived from the FROZEN Z-report (comptable).
+   * Requires the Z-report to exist for the date. `format: 'csv'` returns a CSV string.
+   * Sending to Comptamax24 is NOT implemented (external — see POS_INTEGRATIONS).
+   */
+  async getAccountingExport(
+    storeId: string,
+    date: string,
+    format: 'json' | 'csv' = 'json',
+  ) {
+    const z = await this.zReportRepo.findOne({ where: { storeId, date } });
+    if (!z) {
+      throw new BadRequestException(
+        'Aucun Z-report pour cette date — générez-le avant l’export comptable.',
+      );
+    }
+    const row = buildDailyAccountingExport({
+      date,
+      storeId,
+      totalRevenueMinorUnits: z.totalRevenueMinorUnits,
+      totalTaxMinorUnits: z.totalTaxMinorUnits,
+      cashTotalMinorUnits: z.cashTotalMinorUnits,
+      cardTotalMinorUnits: z.cardTotalMinorUnits,
+      discountTotalMinorUnits: z.discountTotalMinorUnits,
+      transactionCount: z.transactionCount,
+    });
+    return format === 'csv' ? { csv: toAccountingCsv([row]) } : row;
+  }
+
+  /**
+   * POS-102 — payments breakdown by method for a store/day (reconciliation / pre-accounting).
+   */
+  async getPaymentsBreakdown(storeId: string, date: string) {
+    const sales = await this.saleRepo
+      .createQueryBuilder('s')
+      .leftJoinAndSelect('s.payments', 'p')
+      .where('s.store_id = :storeId', { storeId })
+      .andWhere('DATE(s.created_at) = :date', { date })
+      .andWhere('s.status = :status', { status: 'completed' })
+      .getMany();
+    return aggregatePaymentsByMethod(sales as any);
   }
 }

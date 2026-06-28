@@ -73,3 +73,51 @@ describe('ProductsService — getStockAlerts pagination', () => {
     expect(res.limit).toBe(10);
   });
 });
+
+/**
+ * POS-066 — per-store duplicate detection by normalized name on create.
+ */
+describe('ProductsService — create dedup (POS-066)', () => {
+  let service: ProductsService;
+  let productRepo: any;
+
+  beforeEach(async () => {
+    productRepo = {
+      findOne: jest.fn(),
+      create: jest.fn((d) => d),
+      save: jest.fn((d) => Promise.resolve({ id: 'p1', ...d })),
+    };
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        ProductsService,
+        { provide: getRepositoryToken(ProductEntity), useValue: productRepo },
+        { provide: getRepositoryToken(PriceHistoryEntity), useValue: {} },
+        { provide: getRepositoryToken(ProductCategoryEntity), useValue: {} },
+        { provide: AuditService, useValue: { log: jest.fn() } },
+      ],
+    }).compile();
+    service = module.get(ProductsService);
+  });
+
+  it('refuses a product whose normalized name already exists in the store', async () => {
+    productRepo.findOne.mockResolvedValue({ id: 'x', name: 'Café' });
+    await expect(
+      service.create({ name: '  CAFE ', storeId: 's1', priceMinorUnits: 100 }, 'emp1'),
+    ).rejects.toThrow(/existe déjà/);
+    expect(productRepo.save).not.toHaveBeenCalled();
+    // dedup query uses the normalized form
+    expect(productRepo.findOne).toHaveBeenCalledWith({
+      where: { storeId: 's1', normalizedName: 'cafe' },
+    });
+  });
+
+  it('creates and stores the normalized name when no duplicate', async () => {
+    productRepo.findOne.mockResolvedValue(null);
+    const saved = await service.create(
+      { name: 'Crème Brûlée', storeId: 's1', priceMinorUnits: 100 },
+      'emp1',
+    );
+    expect(productRepo.save).toHaveBeenCalled();
+    expect((saved as any).normalizedName).toBe('creme brulee');
+  });
+});

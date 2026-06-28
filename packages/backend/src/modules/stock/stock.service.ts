@@ -7,6 +7,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { ProductEntity } from '../../database/entities/product.entity';
 import { AuditService } from '../audit/audit.service';
+import { crossedDownward, effectiveAlertThreshold } from './stock-level';
 
 @Injectable()
 export class StockService {
@@ -59,10 +60,9 @@ export class StockService {
     const saved = await this.findProductForStore(productId, storeId);
     const estimatedOldQty = saved.stockQuantity + quantity;
 
-    // Check thresholds and emit alerts
+    // Check thresholds and emit alerts (only at the moment of crossing — POS-083).
     if (
-      saved.stockQuantity <= saved.stockCriticalThreshold &&
-      estimatedOldQty > saved.stockCriticalThreshold
+      crossedDownward(estimatedOldQty, saved.stockQuantity, saved.stockCriticalThreshold)
     ) {
       this.logger.warn(
         `CRITICAL STOCK: ${saved.name} (${saved.ean}) = ${saved.stockQuantity} units (threshold: ${saved.stockCriticalThreshold})`,
@@ -82,11 +82,18 @@ export class StockService {
         },
       });
     } else if (
-      saved.stockQuantity <= saved.stockAlertThreshold &&
-      estimatedOldQty > saved.stockAlertThreshold
+      crossedDownward(
+        estimatedOldQty,
+        saved.stockQuantity,
+        effectiveAlertThreshold(saved.stockBaselineQuantity, saved.stockAlertThreshold),
+      )
     ) {
+      const alertThreshold = effectiveAlertThreshold(
+        saved.stockBaselineQuantity,
+        saved.stockAlertThreshold,
+      );
       this.logger.warn(
-        `LOW STOCK: ${saved.name} (${saved.ean}) = ${saved.stockQuantity} units (threshold: ${saved.stockAlertThreshold})`,
+        `LOW STOCK: ${saved.name} (${saved.ean}) = ${saved.stockQuantity} units (threshold: ${alertThreshold})`,
       );
       await this.auditService.log({
         storeId,
@@ -99,7 +106,8 @@ export class StockService {
           productName: saved.name,
           ean: saved.ean,
           stockQuantity: saved.stockQuantity,
-          threshold: saved.stockAlertThreshold,
+          threshold: alertThreshold,
+          baselineQuantity: saved.stockBaselineQuantity ?? null,
         },
       });
     }
@@ -204,12 +212,16 @@ export class StockService {
       .orderBy('p.stock_quantity', 'ASC')
       .getMany();
 
-    // Alert: stock <= alert threshold AND stock > critical threshold
+    // Alert: stock <= effective alert threshold AND stock > critical threshold.
+    // POS-083: effective threshold = 20% of the par/max baseline when set, else the
+    // absolute `stock_alert_threshold` (COALESCE fallback → no change when baseline NULL).
     const alert = await this.productRepo
       .createQueryBuilder('p')
       .where('p.store_id = :storeId', { storeId })
       .andWhere('p.is_active = true')
-      .andWhere('p.stock_quantity <= p.stock_alert_threshold')
+      .andWhere(
+        'p.stock_quantity <= COALESCE(CEIL(p.stock_baseline_quantity * 0.2), p.stock_alert_threshold)',
+      )
       .andWhere('p.stock_quantity > p.stock_critical_threshold')
       .orderBy('p.stock_quantity', 'ASC')
       .getMany();

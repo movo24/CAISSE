@@ -216,5 +216,100 @@ describe('PromotionsService', () => {
       const results = await service.applyPromos('store-1', cartItems);
       expect(results).toHaveLength(0);
     });
+
+    // POS-073 anti-cumul: two promos on the same product → only the largest is kept.
+    it('should NOT stack two promos on the same product (keeps the largest)', async () => {
+      const big: Partial<PromoRuleEntity> = {
+        id: 'promo-big',
+        storeId: 'store-1',
+        name: '-50% prod-A',
+        type: 'percentage',
+        discountPercent: 50, // 50% of 2x1000 = 1000
+        isActive: true,
+        startDate: new Date(now.getTime() - 86400000),
+        applicableProductIds: ['prod-A'],
+        applicableCategoryIds: [],
+      };
+      const small: Partial<PromoRuleEntity> = {
+        id: 'promo-small',
+        storeId: 'store-1',
+        name: '-2EUR prod-A',
+        type: 'fixed_amount',
+        discountFixedMinorUnits: 200,
+        isActive: true,
+        startDate: new Date(now.getTime() - 86400000),
+        applicableProductIds: ['prod-A'],
+        applicableCategoryIds: [],
+      };
+      promoRepo.createQueryBuilder.mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue([big, small]),
+      });
+
+      const results = await service.applyPromos('store-1', cartItems);
+      const prodA = results.filter((r) => r.productId === 'prod-A');
+      expect(prodA).toHaveLength(1); // not stacked
+      expect(prodA[0].discountMinorUnits).toBe(1000); // largest kept
+    });
+  });
+
+  // POS-071 — scope by product / category, and out-of-scope exclusion.
+  describe('applyPromos — scope (POS-071)', () => {
+    const catPromo: Partial<PromoRuleEntity> = {
+      id: 'promo-cat',
+      storeId: 'store-1',
+      name: '-10% cat-X',
+      type: 'percentage',
+      discountPercent: 10,
+      isActive: true,
+      startDate: new Date(now.getTime() - 86400000),
+      applicableProductIds: [],
+      applicableCategoryIds: ['cat-X'],
+    };
+
+    it('applies a category-scoped promo only to items in that category', async () => {
+      promoRepo.createQueryBuilder.mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue([catPromo]),
+      });
+      const cart: CartItem[] = [
+        { productId: 'p1', categoryId: 'cat-X', quantity: 1, unitPriceMinorUnits: 1000 },
+        { productId: 'p2', categoryId: 'cat-Y', quantity: 1, unitPriceMinorUnits: 1000 },
+      ];
+      const results = await service.applyPromos('store-1', cart);
+      expect(results).toHaveLength(1);
+      expect(results[0].productId).toBe('p1');
+      expect(results[0].discountMinorUnits).toBe(100);
+    });
+
+    it('does NOT apply a product-scoped promo to a different product (out of scope)', async () => {
+      promoRepo.createQueryBuilder.mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue([mockFixedPromo]), // scoped to prod-A
+      });
+      const cart: CartItem[] = [
+        { productId: 'prod-C', quantity: 1, unitPriceMinorUnits: 1000 },
+      ];
+      const results = await service.applyPromos('store-1', cart);
+      expect(results).toHaveLength(0);
+    });
+  });
+
+  // POS-073 — getActivePromos must exclude promos that reached their usage cap.
+  describe('getActivePromos usage cap (POS-073)', () => {
+    it('adds the usage_limit exclusion clause to the query', async () => {
+      const andWhere = jest.fn().mockReturnThis();
+      promoRepo.createQueryBuilder.mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        andWhere,
+        getMany: jest.fn().mockResolvedValue([]),
+      });
+      await service.getActivePromos('store-1');
+      const clauses = andWhere.mock.calls.map((c) => String(c[0]));
+      expect(clauses.some((c) => c.includes('usage_limit') && c.includes('usage_count'))).toBe(true);
+    });
   });
 });

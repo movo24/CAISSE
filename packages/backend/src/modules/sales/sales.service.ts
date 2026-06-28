@@ -9,6 +9,18 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, QueryRunner } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
 import { createHash } from 'crypto';
+import * as bcrypt from 'bcrypt';
+import {
+  evaluateManualDiscount,
+  distributeManualDiscount,
+  DiscountPolicyViolation,
+} from './discount-policy';
+import { validatePayments, PaymentPolicyViolation } from './payment-policy';
+import { sumLineTax } from './tax';
+import { resolveEffectivePrice } from '../products/price-resolve';
+import { formatTicketNumber } from './ticket-number';
+import { loyaltyPointsEarned } from './loyalty-points';
+import { EmployeeEntity } from '../../database/entities/employee.entity';
 import { SaleEntity } from '../../database/entities/sale.entity';
 import { SaleLineItemEntity } from '../../database/entities/sale-line-item.entity';
 import { SalePaymentEntity } from '../../database/entities/sale-payment.entity';
@@ -40,6 +52,12 @@ interface CreateSaleDto {
     /** Required when method === 'store_credit': the avoir code to redeem. */
     creditNoteCode?: string;
   }[];
+  /** POS-054b — optional manual cashier discount (centimes), on top of promotions. */
+  manualDiscountMinorUnits?: number;
+  /** POS-054c — responsable PIN authorizing the manual discount (verified server-side). */
+  responsablePin?: string;
+  /** POS-054 — written justification (mandatory for 21%-30% manual discounts). */
+  discountJustification?: string;
 }
 
 export interface SaleStockAlert {
@@ -64,6 +82,8 @@ export class SalesService {
     private paymentRepo: Repository<SalePaymentEntity>,
     @InjectRepository(IdempotencyKeyEntity)
     private idempotencyRepo: Repository<IdempotencyKeyEntity>,
+    @InjectRepository(EmployeeEntity)
+    private employeeRepo: Repository<EmployeeEntity>,
     private dataSource: DataSource,
     private productsService: ProductsService,
     private customersService: CustomersService,
@@ -78,6 +98,54 @@ export class SalesService {
   /** Serialize an entity to a plain JSON object for jsonb storage (dates → ISO strings). */
   private toJsonBody(entity: unknown): Record<string, unknown> {
     return JSON.parse(JSON.stringify(entity));
+  }
+
+  /**
+   * POS-054c — verify a responsable (manager/admin) PIN for the store. Read-only.
+   * Returns the responsable identity on match, else null.
+   *
+   * NOTE: there is no separate "responsable code" store — a manager/admin employee PIN
+   * (bcrypt `pin_hash`) IS the authorization mechanism. This reuses the existing employee
+   * model; it does not introduce a new secret. Not declared "security-complete": rate
+   * limiting / lockout on PIN attempts is a follow-up (see TECHNICAL_DEBT TD-RESP-PIN).
+   */
+  private async verifyResponsablePin(
+    storeId: string,
+    pin?: string,
+  ): Promise<{ id: string; name: string; role: string } | null> {
+    if (!pin || !/^\d{4,8}$/.test(pin)) return null;
+    const candidates = await this.employeeRepo.find({
+      where: { storeId, isActive: true },
+    });
+    for (const emp of candidates) {
+      if (!emp.pinHash) continue;
+      if (emp.role !== 'manager' && emp.role !== 'admin') continue;
+      if (await bcrypt.compare(pin, emp.pinHash)) {
+        const name = `${emp.firstName ?? ''} ${emp.lastName ?? ''}`.trim();
+        return { id: emp.id, name, role: emp.role };
+      }
+    }
+    return null;
+  }
+
+  /** POS-054d — append-only audit of a BLOCKED manual-discount attempt (never blocks the flow). */
+  private async auditManualDiscountBlocked(
+    storeId: string,
+    employeeId: string,
+    details: Record<string, unknown>,
+  ): Promise<void> {
+    try {
+      await this.auditService.log({
+        storeId,
+        employeeId,
+        action: 'manual_discount_blocked',
+        entityType: 'sale',
+        entityId: 'n/a', // blocked before sale creation — no sale id exists yet
+        details,
+      });
+    } catch (e: any) {
+      this.logger.warn(`Audit (manual_discount_blocked) failed: ${e?.message}`);
+    }
   }
 
   /**
@@ -242,7 +310,13 @@ export class SalesService {
 
     for (const item of dto.items) {
       const product = resolvedProducts.get(item.ean)!;
-      const lineTotal = product.priceMinorUnits * item.quantity;
+      // POS-061 — store override price takes priority over the global price.
+      // Nullable override → falls back to the global price (no behavior change when unset).
+      const unitPrice = resolveEffectivePrice(
+        product.priceMinorUnits,
+        product.priceOverrideMinorUnits,
+      );
+      const lineTotal = unitPrice * item.quantity;
       subtotal += lineTotal;
 
       const lineItem = new SaleLineItemEntity();
@@ -251,7 +325,7 @@ export class SalesService {
       lineItem.productName = product.name;
       lineItem.ean = product.ean;
       lineItem.quantity = item.quantity;
-      lineItem.unitPriceMinorUnits = product.priceMinorUnits;
+      lineItem.unitPriceMinorUnits = unitPrice;
       lineItem.taxRate = product.taxRate;
       lineItem.discountMinorUnits = 0;
       lineItem.lineTotalMinorUnits = lineTotal;
@@ -261,7 +335,7 @@ export class SalesService {
         productId: product.id,
         categoryId: product.categoryId,
         quantity: item.quantity,
-        unitPriceMinorUnits: product.priceMinorUnits,
+        unitPriceMinorUnits: unitPrice,
       });
     }
 
@@ -297,40 +371,79 @@ export class SalesService {
       }
     }
 
+    // --- POS-054b: manual cashier discount (on top of promotions) ---
+    // Channel = 'pos' (this endpoint is the store terminal): hard 30% cap, responsable
+    // PIN required, justification mandatory 21%-30%. Distributed across post-promo line
+    // nets so the per-line tax base stays consistent (NF525). A blocked attempt (>30% or
+    // missing justification/code) is recorded append-only, then refused. Promotions are
+    // NOT affected — only the explicit manual discount is policed here.
+    let manualDiscountAudit:
+      | {
+          responsableId: string;
+          responsableName: string;
+          discountPct: number;
+          manualDiscountMinorUnits: number;
+          justification: string | null;
+        }
+      | null = null;
+
+    const manualDiscount = dto.manualDiscountMinorUnits ?? 0;
+    if (manualDiscount > 0) {
+      const responsable = await this.verifyResponsablePin(storeId, dto.responsablePin);
+      try {
+        const verdict = evaluateManualDiscount({
+          channel: 'pos',
+          subtotalMinorUnits: subtotal,
+          manualDiscountMinorUnits: manualDiscount,
+          responsableCodeProvided: !!responsable,
+          justification: dto.discountJustification,
+          actorRole: employeeSnapshot?.employeeRole,
+        });
+        const nets = lineItems.map((li) => li.lineTotalMinorUnits);
+        const alloc = distributeManualDiscount(nets, manualDiscount);
+        lineItems.forEach((li, i) => {
+          li.discountMinorUnits += alloc[i];
+          li.lineTotalMinorUnits -= alloc[i];
+        });
+        totalDiscount += manualDiscount;
+        manualDiscountAudit = {
+          responsableId: responsable!.id,
+          responsableName: responsable!.name,
+          discountPct: verdict.discountPct,
+          manualDiscountMinorUnits: manualDiscount,
+          justification: dto.discountJustification ?? null,
+        };
+      } catch (e) {
+        if (e instanceof DiscountPolicyViolation) {
+          await this.auditManualDiscountBlocked(storeId, employeeId, {
+            code: e.code,
+            manualDiscountMinorUnits: manualDiscount,
+            subtotalMinorUnits: subtotal,
+            responsableId: responsable?.id ?? null,
+            justificationProvided: !!dto.discountJustification,
+            employeeRole: employeeSnapshot?.employeeRole ?? null,
+          });
+          if (e.code === 'POS_OVER_CAP') throw new ConflictException(e.message);
+          throw new BadRequestException(e.message);
+        }
+        throw e;
+      }
+    }
+
     // Calculate totals
     const totalAfterDiscount = subtotal - totalDiscount;
-    let taxTotal = 0;
-    for (const li of lineItems) {
-      // Extract tax from gross (TTC → TVA component)
-      const taxAmount = Math.round(
-        li.lineTotalMinorUnits * (li.taxRate / (100 + li.taxRate)),
-      );
-      taxTotal += taxAmount;
-    }
+    // POS-063 — VAT extracted from gross (TTC) per line; same formula bound into the
+    // fiscal hash (see ./tax.ts). Behavior-preserving extraction.
+    const taxTotal = sumLineTax(lineItems);
 
-    // Validate payments cover the total
-    const paymentTotal = dto.payments.reduce(
-      (sum, p) => sum + p.amountMinorUnits,
-      0,
-    );
-    if (paymentTotal < totalAfterDiscount) {
-      throw new BadRequestException(
-        `Payment total ${paymentTotal} < sale total ${totalAfterDiscount}`,
-      );
-    }
-
-    // --- M1: an avoir (store_credit) can only cover the RESIDUAL due, never more.
-    // Never trust the client's split: cap server-side so a sale can never debit an
-    // avoir beyond what cash/card/other tenders left to pay (no value destruction). ---
-    const storeCreditRequested = dto.payments
-      .filter((p) => p.method === 'store_credit')
-      .reduce((sum, p) => sum + p.amountMinorUnits, 0);
-    const nonStoreCreditPaid = paymentTotal - storeCreditRequested;
-    const storeCreditAllowed = Math.max(0, totalAfterDiscount - nonStoreCreditPaid);
-    if (storeCreditRequested > storeCreditAllowed) {
-      throw new BadRequestException(
-        `Montant d'avoir (${storeCreditRequested}) dépasse le reste dû (${storeCreditAllowed})`,
-      );
+    // Validate payments (POS-040/043/044/048) — coverage + store-credit residual cap.
+    // Extracted to a pure, unit-tested policy; mapped to BadRequestException with the
+    // SAME messages (behavior-preserving). M1: an avoir can only cover the residual due.
+    try {
+      validatePayments(dto.payments, totalAfterDiscount);
+    } catch (e) {
+      if (e instanceof PaymentPolicyViolation) throw new BadRequestException(e.message);
+      throw e;
     }
 
     // =====================================================================
@@ -376,7 +489,7 @@ export class SalesService {
         [storeId],
       );
       const saleSeq = Number(nextSeqResult[0].next_seq);
-      const ticketNumber = `T-${String(saleSeq).padStart(6, '0')}`;
+      const ticketNumber = formatTicketNumber(saleSeq);
 
       // --- Hash chain head: the row with the greatest sale_seq for this store.
       // Ordered by the SAME integer cursor as the generator (never the lexical
@@ -492,7 +605,7 @@ export class SalesService {
 
       // --- Add loyalty points ---
       if (customerId) {
-        const pointsEarned = Math.floor(totalAfterDiscount / 100);
+        const pointsEarned = loyaltyPointsEarned(totalAfterDiscount);
         if (pointsEarned > 0) {
           await queryRunner.query(
             `UPDATE customers
@@ -582,6 +695,35 @@ export class SalesService {
           });
         } catch (auditErr: any) {
           this.logger.warn(`Audit (discount_applied) failed: ${auditErr?.message}`);
+        }
+      }
+
+      // ── POS-054d: dedicated append-only audit for a MANUAL discount ──
+      // Records who validated (responsable), the cashier, %, motif, ticket, store.
+      // (Terminal/caisse id is not available in this createSale signature — see POS-054d
+      // follow-up; it is carried by pos-session, not yet threaded here.)
+      if (manualDiscountAudit) {
+        try {
+          await this.auditService.log({
+            storeId,
+            employeeId,
+            action: 'manual_discount_applied',
+            entityType: 'sale',
+            entityId: saved.id,
+            details: {
+              ticketNumber,
+              discountType: 'manual_pos',
+              discountPct: manualDiscountAudit.discountPct,
+              manualDiscountMinorUnits: manualDiscountAudit.manualDiscountMinorUnits,
+              cashierId: employeeId,
+              responsableId: manualDiscountAudit.responsableId,
+              responsableName: manualDiscountAudit.responsableName,
+              justification: manualDiscountAudit.justification,
+              storeId,
+            },
+          });
+        } catch (auditErr: any) {
+          this.logger.warn(`Audit (manual_discount_applied) failed: ${auditErr?.message}`);
         }
       }
 
@@ -850,17 +992,20 @@ export class SalesService {
 
   async findByStore(
     storeId: string,
-    options?: { page?: number; limit?: number; date?: string },
+    options?: {
+      page?: number;
+      limit?: number;
+      date?: string;
+      // POS-018: additive optional filters (backward-compatible).
+      employeeId?: string;
+      from?: string; // ISO date (YYYY-MM-DD) inclusive lower bound
+      to?: string; // ISO date (YYYY-MM-DD) inclusive upper bound
+      status?: string; // 'completed' | 'voided' | ...
+    },
   ): Promise<PaginatedResult<SaleEntity>> {
     const page = options?.page || 1;
     const limit = options?.limit || 50;
     const skip = (page - 1) * limit;
-
-    const where: any = { storeId };
-    if (options?.date) {
-      // Filter by date using raw SQL for DATE() function
-      where.createdAt = undefined; // will use qb below
-    }
 
     const qb = this.saleRepo
       .createQueryBuilder('s')
@@ -871,6 +1016,19 @@ export class SalesService {
 
     if (options?.date) {
       qb.andWhere('DATE(s.createdAt) = :date', { date: options.date });
+    }
+    // POS-018 additive filters — applied only when provided.
+    if (options?.employeeId) {
+      qb.andWhere('s.employeeId = :employeeId', { employeeId: options.employeeId });
+    }
+    if (options?.from) {
+      qb.andWhere('DATE(s.createdAt) >= :from', { from: options.from });
+    }
+    if (options?.to) {
+      qb.andWhere('DATE(s.createdAt) <= :to', { to: options.to });
+    }
+    if (options?.status) {
+      qb.andWhere('s.status = :status', { status: options.status });
     }
 
     qb.skip(skip).take(limit);

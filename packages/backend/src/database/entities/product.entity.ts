@@ -26,6 +26,15 @@ export class ProductEntity {
   @Column()
   name: string;
 
+  /**
+   * POS-066 — normalized name (accents/case/whitespace folded) for per-store
+   * duplicate detection. Set on create/update via normalizeName(). Nullable for
+   * legacy rows (backfilled with lower(trim(name)) — accents not folded for legacy).
+   * Explicit type required by the TypeORM nullable-union rule (CLAUDE.md).
+   */
+  @Column({ name: 'normalized_name', type: 'varchar', nullable: true })
+  normalizedName: string | null;
+
   @Column({ nullable: true })
   description: string;
 
@@ -37,6 +46,14 @@ export class ProductEntity {
 
   @Column({ name: 'price_minor_units', type: 'integer' })
   priceMinorUnits: number;
+
+  /**
+   * POS-061 — store-specific price override. When set, it takes PRIORITY over the
+   * global `price_minor_units`. Nullable → no override = global price used (no change).
+   * Explicit type required by the TypeORM nullable-union rule (CLAUDE.md).
+   */
+  @Column({ name: 'price_override_minor_units', type: 'integer', nullable: true })
+  priceOverrideMinorUnits: number | null;
 
   @Column({ name: 'old_price_minor_units', type: 'integer', nullable: true })
   oldPriceMinorUnits: number | null;
@@ -61,6 +78,14 @@ export class ProductEntity {
 
   @Column({ name: 'stock_critical_threshold', type: 'integer', default: 5 })
   stockCriticalThreshold: number;
+
+  /**
+   * POS-083 — par/max baseline used to derive the relative low-stock alert (20% of this).
+   * Nullable: when unset, the absolute `stock_alert_threshold` is used (no behavior change).
+   * Explicit `type` required by the TypeORM nullable-union rule (CLAUDE.md).
+   */
+  @Column({ name: 'stock_baseline_quantity', type: 'integer', nullable: true })
+  stockBaselineQuantity: number | null;
 
   @Column({ name: 'is_active', default: true })
   isActive: boolean;

@@ -7,6 +7,7 @@ import { SaleLineItemEntity } from '../../database/entities/sale-line-item.entit
 import { SalePaymentEntity } from '../../database/entities/sale-payment.entity';
 import { IdempotencyKeyEntity } from '../../database/entities/idempotency-key.entity';
 import { FiscalJournalEntity } from '../../database/entities/fiscal-journal.entity';
+import { EmployeeEntity } from '../../database/entities/employee.entity';
 import { ProductsModule } from '../products/products.module';
 import { CustomersModule } from '../customers/customers.module';
 import { PromotionsModule } from '../promotions/promotions.module';
@@ -22,6 +23,7 @@ import { JackpotModule } from '../jackpot/jackpot.module';
       SalePaymentEntity,
       IdempotencyKeyEntity,
       FiscalJournalEntity,
+      EmployeeEntity,
     ]),
     ProductsModule,
     CustomersModule,

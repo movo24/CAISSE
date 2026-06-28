@@ -4,14 +4,32 @@
     {
       "name": "caisse-backend",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "start:dev"],
+      "runtimeArgs": ["run", "start:dev", "-w", "packages/backend"],
       "port": 3001
     },
     {
       "name": "caisse-backoffice",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev:backoffice"],
+      "runtimeArgs": ["run", "dev", "-w", "packages/backoffice-web"],
       "port": 5173
+    },
+    {
+      "name": "caisse-pos",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "-w", "packages/pos-desktop"],
+      "port": 5175
+    },
+    {
+      "name": "caisse-mobile",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "-w", "packages/mobile"],
+      "port": 5176
+    },
+    {
+      "name": "caisse-customer",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "-w", "packages/customer-app"],
+      "port": 5177
     }
   ]
 }

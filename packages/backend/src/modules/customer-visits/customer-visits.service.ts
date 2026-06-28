@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { CustomerVisitEntity } from '../../database/entities/customer-visit.entity';
+import { computeVisitFrequency } from './visit-frequency';
 
 @Injectable()
 export class CustomerVisitsService {
@@ -64,5 +65,17 @@ export class CustomerVisitsService {
       order: { visitedAt: 'DESC' },
       take: limit,
     });
+  }
+
+  /** Visit frequency analytics for a customer (count, interval, recency, segment). */
+  async getFrequency(customerId: string, now: Date = new Date()) {
+    const visits = await this.visitRepo.find({
+      where: { customerId },
+      order: { visitedAt: 'ASC' },
+    });
+    return computeVisitFrequency(
+      visits.map((v) => v.visitedAt),
+      now,
+    );
   }
 }

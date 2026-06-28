@@ -13,6 +13,14 @@ import { LoyaltyRewardCycleEntity } from '../../database/entities/loyalty-reward
 import { IdempotencyKeyEntity } from '../../database/entities/idempotency-key.entity';
 import { CustomerEntity } from '../../database/entities/customer.entity';
 import { AuditService } from '../audit/audit.service';
+import {
+  isValidIdempotencyKey,
+  isCouponAvailable,
+  isCouponExpired,
+  isInCooldown,
+  cooldownEnd,
+  daysRemainingInCooldown,
+} from './coupon-policy';
 
 const COOLDOWN_DAYS = 15;
 const WELCOME_DISCOUNT = 5;
@@ -133,16 +141,13 @@ export class CouponService {
       };
     }
 
-    const cooldownEnd = new Date(lastUsed.usedAt);
-    cooldownEnd.setDate(cooldownEnd.getDate() + COOLDOWN_DAYS);
-
-    if (cooldownEnd > new Date()) {
-      const msRemaining = cooldownEnd.getTime() - Date.now();
-      const daysRemaining = Math.ceil(msRemaining / (1000 * 60 * 60 * 24));
+    if (isInCooldown(lastUsed.usedAt, COOLDOWN_DAYS)) {
+      const end = cooldownEnd(lastUsed.usedAt, COOLDOWN_DAYS);
+      const daysRemaining = daysRemainingInCooldown(lastUsed.usedAt, COOLDOWN_DAYS);
       return {
         eligible: false,
         daysRemaining,
-        nextAvailableAt: cooldownEnd.toISOString(),
+        nextAvailableAt: end.toISOString(),
         reason: `Prochain avantage disponible dans ${daysRemaining} jour${daysRemaining > 1 ? 's' : ''}.`,
       };
     }
@@ -232,7 +237,7 @@ export class CouponService {
     payload: RedeemPayload,
     idempotencyKey: string,
   ): Promise<{ success: true; discountPercent: number; couponId: string }> {
-    if (!idempotencyKey || idempotencyKey.length < 10) {
+    if (!isValidIdempotencyKey(idempotencyKey)) {
       throw new BadRequestException('Idempotency-Key requis');
     }
 
@@ -259,15 +264,12 @@ export class CouponService {
       if (coupon.customer_id !== payload.customerId) {
         throw new ForbiddenException('Coupon ne correspond pas au client');
       }
-      if (coupon.status !== 'AVAILABLE') {
+      if (!isCouponAvailable(coupon.status)) {
         throw new ConflictException(
           `Coupon non disponible (${coupon.status.toLowerCase()})`,
         );
       }
-      if (
-        coupon.valid_until &&
-        new Date(coupon.valid_until).getTime() < Date.now()
-      ) {
+      if (isCouponExpired(coupon.valid_until)) {
         throw new ConflictException('Coupon expiré');
       }
 
@@ -281,14 +283,12 @@ export class CouponService {
         .orderBy('c.usedAt', 'DESC')
         .getOne();
 
-      if (lastUsed?.usedAt) {
-        const cooldownEnd = new Date(lastUsed.usedAt);
-        cooldownEnd.setDate(cooldownEnd.getDate() + COOLDOWN_DAYS);
-        if (cooldownEnd > new Date()) {
-          throw new ConflictException(
-            `Cooldown 15 jours non respecté (prochain avantage : ${cooldownEnd.toISOString()})`,
-          );
-        }
+      if (lastUsed?.usedAt && isInCooldown(lastUsed.usedAt, COOLDOWN_DAYS)) {
+        const end = new Date(lastUsed.usedAt);
+        end.setDate(end.getDate() + COOLDOWN_DAYS);
+        throw new ConflictException(
+          `Cooldown 15 jours non respecté (prochain avantage : ${end.toISOString()})`,
+        );
       }
 
       // 4. Mark USED

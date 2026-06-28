@@ -39,6 +39,17 @@ export class PromoRuleEntity {
   @Column({ name: 'is_active', default: true })
   isActive: boolean;
 
+  /**
+   * POS-073 — usage cap. `usageLimit` null = unlimited. `usageCount` increments on
+   * each application (increment wiring is a follow-up; the exclusion filter is enforced
+   * in getActivePromos). Explicit type required by the TypeORM nullable-union rule.
+   */
+  @Column({ name: 'usage_limit', type: 'integer', nullable: true })
+  usageLimit: number | null;
+
+  @Column({ name: 'usage_count', type: 'integer', default: 0 })
+  usageCount: number;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 }

@@ -15,6 +15,7 @@ import { SalesService } from './sales.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard, Roles } from '../../common/guards/roles.guard';
 import { CreateSaleDto } from '../../common/dto';
+import { ListSalesQueryDto } from './dto/list-sales-query.dto';
 
 @ApiTags('sales')
 @ApiBearerAuth()
@@ -45,21 +46,19 @@ export class SalesController {
 
   @Get()
   @ApiOperation({ summary: 'List sales for store (paginated, optionally filter by date)' })
-  findAll(
-    @Request() req: any,
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
-    @Query('date') date?: string,
-    @Query('storeId') queryStoreId?: string,
-  ) {
+  findAll(@Request() req: any, @Query() q: ListSalesQueryDto) {
     // Admin can query any store via ?storeId=xxx
-    const effectiveStoreId = (req.user.role === 'admin' && queryStoreId)
-      ? queryStoreId
+    const effectiveStoreId = (req.user.role === 'admin' && q.storeId)
+      ? q.storeId
       : req.user.storeId;
     return this.salesService.findByStore(effectiveStoreId, {
-      page: page ? parseInt(page, 10) : 1,
-      limit: limit ? Math.min(parseInt(limit, 10), 100) : 50,
-      date,
+      page: q.page ?? 1,
+      limit: q.limit ? Math.min(q.limit, 100) : 50,
+      date: q.date,
+      employeeId: q.employeeId,
+      from: q.from,
+      to: q.to,
+      status: q.status,
     });
   }
 

@@ -9,6 +9,7 @@ import { Repository, Between } from 'typeorm';
 import { JackpotConfigEntity } from '../../database/entities/jackpot-config.entity';
 import { JackpotWinEntity } from '../../database/entities/jackpot-win.entity';
 import { OccupancyService } from '../occupancy/occupancy.service';
+import { decideJackpotOutcome } from './jackpot-decision';
 
 export type JackpotResultType = 'mega_jackpot' | 'small_win' | 'no_win';
 
@@ -214,52 +215,30 @@ export class JackpotService {
     }
 
     const usage = await this.getUsageToday(storeId);
-    const roll = Math.random() * 100; // 0-100
 
-    // --- MEGA JACKPOT CHECK ---
-    const megaQuotaAvailable =
-      usage.megaWon < config.megaJackpotQuotaPerDay;
-    const densityMet = liveCount >= config.densityThresholdForMega;
+    // Decision tree extracted to a pure, unit-tested function (rolls injected here).
+    const outcome = decideJackpotOutcome({
+      active: config.isActive,
+      liveCount,
+      densityThresholdForMega: config.densityThresholdForMega,
+      megaQuotaPerDay: config.megaJackpotQuotaPerDay,
+      megaWonToday: usage.megaWon,
+      megaProbabilityPercent: Number(config.megaProbabilityPercent),
+      smallWinQuotaPerDay: config.smallWinQuotaPerDay,
+      smallWonToday: usage.smallWon,
+      smallWinProbabilityPercent: Number(config.smallWinProbabilityPercent),
+      megaRoll: Math.random() * 100,
+      smallRoll: Math.random() * 100,
+    });
 
-    if (megaQuotaAvailable && densityMet) {
-      if (roll < Number(config.megaProbabilityPercent)) {
-        this.logger.warn(
-          `MEGA JACKPOT! store=${storeId} sale=${saleId} ` +
-            `liveCount=${liveCount} roll=${roll.toFixed(2)}`,
-        );
-        await this.recordWin(storeId, saleId, 'mega_jackpot', liveCount);
-        return {
-          type: 'mega_jackpot',
-          liveCountAtRoll: liveCount,
-          config: noWinResult.config,
-        };
-      }
+    if (outcome === 'mega_jackpot') {
+      this.logger.warn(`MEGA JACKPOT! store=${storeId} sale=${saleId} liveCount=${liveCount}`);
+    } else if (outcome === 'small_win') {
+      this.logger.log(`Small win: store=${storeId} sale=${saleId} liveCount=${liveCount}`);
     }
 
-    // --- SMALL WIN CHECK ---
-    const smallQuotaAvailable =
-      usage.smallWon < config.smallWinQuotaPerDay;
-
-    if (smallQuotaAvailable) {
-      // Use a second independent roll for small win
-      const smallRoll = Math.random() * 100;
-      if (smallRoll < Number(config.smallWinProbabilityPercent)) {
-        this.logger.log(
-          `Small win: store=${storeId} sale=${saleId} ` +
-            `liveCount=${liveCount} roll=${smallRoll.toFixed(2)}`,
-        );
-        await this.recordWin(storeId, saleId, 'small_win', liveCount);
-        return {
-          type: 'small_win',
-          liveCountAtRoll: liveCount,
-          config: noWinResult.config,
-        };
-      }
-    }
-
-    // --- NO WIN ---
-    await this.recordWin(storeId, saleId, 'no_win', liveCount);
-    return noWinResult;
+    await this.recordWin(storeId, saleId, outcome, liveCount);
+    return { type: outcome, liveCountAtRoll: liveCount, config: noWinResult.config };
   }
 
   // -----------------------------------------------------------------------

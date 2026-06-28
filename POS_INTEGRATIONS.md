@@ -27,9 +27,9 @@
 
 | Lien | État | Preuve / Décision |
 |---|---|---|
-| POS ↔ TimeWin24 (planning, HR source of truth) | 🟡 | `modules/timewin/timewin.service.ts` ; circuit breaker OPEN signalé en avril → re-vérifier |
+| POS ↔ TimeWin24 (planning, HR source of truth) | 🟡 | `timewin.service.ts` (HMAC pos-feed **testé** `pos-hmac` 5/5 ; mapping employés **testé** `employee-map` 3/3 ; circuit breaker). Connectivité live non testée ici ; OPEN signalé avril → re-vérifier en local. |
 | POS ↔ Paywin24 (paie) | ⛔ | **Aucune référence code**. À spécifier : quelles données employé/heures viennent de Paywin24 ; ne PAS dupliquer les données critiques côté POS |
-| POS ↔ Comptamax24 (compta) | ⛔ | **Aucune référence code**. À créer : exports ventes/paiements/TVA/caisse/espèces/remboursements + format API ou événement |
+| POS ↔ Comptamax24 (compta) | 🟡 export local / ⛔ envoi | **Export local prêt** : `reports/accounting-export.ts` + `GET /api/reports/accounting-export` (JSON/CSV depuis Z-report figé). **Envoi vers Comptamax24** toujours ⛔ (externe, non branché — `TD-COMPTAMAX`). |
 | POS ↔ cockpit mobile | ⛔ | `GET /api/mobile/v1/alerts` **inexistant** ; à créer (lecture seule) |
 
 ## Règles d'intégration (à documenter au fur et à mesure)

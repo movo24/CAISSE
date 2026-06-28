@@ -72,7 +72,12 @@ or the dashboard. See `packages/backend/RUNBOOK.md` for exact curl commands.
 
 ---
 
-## Backend Modules (40)
+## Backend Modules (42)
+
+> POS-054 (2026-06-28): manual cashier discounts are policed by `sales/discount-policy.ts`
+> — POS terminal hard cap **30%** (responsable PIN + justification 21-30%); back-office
+> channel up to **100%** (admin-only) via the new `backoffice-discounts` module.
+
 
 | Module | Purpose |
 |--------|---------|
@@ -113,6 +118,8 @@ or the dashboard. See `packages/backend/RUNBOOK.md` for exact curl commands.
 | `airtable-ops` | Airtable linked-record sync operations |
 | `returns` | Returns / credit notes (avoirs), NF525 chain, store-credit redemption |
 | `shift-reminders` | Cron pre-shift reminders via SMS/email providers |
+| `backoffice-discounts` | POS-054e — admin-only back-office discount authorization (≤100%, motif+audit), separate from caisse |
+| `mobile-cockpit` | POS-110/112 — read-only supervision alerts `GET /api/mobile/v1/alerts` (stock + sale anomalies; manager/admin, tenant-scoped) |
 
 ---
 
@@ -166,6 +173,15 @@ Current migrations (run in order):
 1713000000000-AddAirtableOpsAndSalesGuards
 1714000000000-AddCreditNotes
 1715000000000-AddGiftCards
+1716000000000-AddInventoryScanClientEntryId
+1717000000000-AddFiscalJournal
+1718000000000-AddSaleHashVersion
+1719000000000-AddPosSessionTerminalId
+1720000000000-AddSaleSeqCursor
+1721000000000-AddStockBaseline   # POS-083 — par/max baseline for relative 20% low-stock alert
+1722000000000-AddProductNormalizedName  # POS-066 — per-store name dedup
+1723000000000-AddProductPriceOverride   # POS-061 — store price override (priority over global)
+1724000000000-AddPromoUsageLimit        # POS-073 — promo usage cap (limit/count)
 ```
 
 ---
@@ -330,7 +346,7 @@ packages/backend/
   src/app.module.ts                             Module registry, TypeORM, rate-limit tiers
   src/database/typeorm.config.ts                Migration CLI config
   src/database/entities/                        45 TypeORM entities
-  src/database/migrations/                      16 versioned migrations
+  src/database/migrations/                      20 versioned migrations
   src/common/guards/roles.guard.ts              Role hierarchy (admin > manager > cashier)
   src/common/guards/jwt-auth.guard.ts           JWT authentication guard
   src/common/interceptors/tenant.interceptor.ts Multi-tenant storeId enforcement
