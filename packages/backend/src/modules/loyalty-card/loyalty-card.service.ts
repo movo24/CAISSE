@@ -8,6 +8,7 @@ import { Repository } from 'typeorm';
 import { LoyaltyCardEntity } from '../../database/entities/loyalty-card.entity';
 import { CouponEntity } from '../../database/entities/coupon.entity';
 import { LoyaltyTokenService } from './loyalty-token.service';
+import { isCardActive } from './qr-token';
 
 @Injectable()
 export class LoyaltyCardService {
@@ -48,7 +49,7 @@ export class LoyaltyCardService {
   async getCardView(customerId: string) {
     const card = await this.cardRepo.findOne({ where: { customerId } });
     if (!card) throw new NotFoundException('Carte fidélité introuvable');
-    if (card.status !== 'ACTIVE') {
+    if (!isCardActive(card.status)) {
       throw new ForbiddenException(`Carte ${card.status.toLowerCase()}`);
     }
 
@@ -110,7 +111,7 @@ export class LoyaltyCardService {
 
     const card = await this.cardRepo.findOne({ where: { id: cardId } });
     if (!card) throw new ForbiddenException('Carte introuvable');
-    if (card.status !== 'ACTIVE') {
+    if (!isCardActive(card.status)) {
       throw new ForbiddenException(`Carte ${card.status.toLowerCase()}`);
     }
 

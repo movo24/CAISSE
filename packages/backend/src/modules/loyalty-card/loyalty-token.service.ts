@@ -1,7 +1,11 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { createHmac, randomBytes } from 'crypto';
-
-const QR_TTL_SECONDS = 60;
+import {
+  tokenExpiresAt,
+  isTokenExpired,
+  constantTimeEqual,
+  hasRequiredClaims,
+} from './qr-token';
 
 export interface LoyaltyTokenPayload {
   customerId: string;
@@ -29,7 +33,7 @@ export class LoyaltyTokenService {
     cardId: string,
     cardSecret: string,
   ): { token: string; expiresAt: Date } {
-    const expiresAt = Date.now() + QR_TTL_SECONDS * 1000;
+    const expiresAt = tokenExpiresAt(Date.now());
     const payload: LoyaltyTokenPayload = {
       customerId,
       cardId,
@@ -78,15 +82,15 @@ export class LoyaltyTokenService {
       .digest('base64url');
 
     // Constant-time comparison to prevent timing attacks
-    if (!this.constantTimeEqual(providedSig, expectedSig)) {
+    if (!constantTimeEqual(providedSig, expectedSig)) {
       throw new BadRequestException('QR invalide');
     }
 
-    if (Date.now() > payload.expiresAt) {
+    if (isTokenExpired(payload.expiresAt)) {
       throw new BadRequestException('QR expiré — affichez à nouveau votre carte');
     }
 
-    if (!payload.customerId || !payload.cardId) {
+    if (!hasRequiredClaims(payload)) {
       throw new BadRequestException('QR invalide');
     }
 
@@ -100,14 +104,5 @@ export class LoyaltyTokenService {
    */
   generateCardSecret(): string {
     return randomBytes(32).toString('base64url');
-  }
-
-  private constantTimeEqual(a: string, b: string): boolean {
-    if (a.length !== b.length) return false;
-    let res = 0;
-    for (let i = 0; i < a.length; i++) {
-      res |= a.charCodeAt(i) ^ b.charCodeAt(i);
-    }
-    return res === 0;
   }
 }
