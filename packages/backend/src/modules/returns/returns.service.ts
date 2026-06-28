@@ -10,6 +10,12 @@ import { IdempotencyKeyEntity } from '../../database/entities/idempotency-key.en
 import { AuditService } from '../audit/audit.service';
 import { PaginatedResult } from '../../common/dto/pagination.dto';
 import { returnableQuantity, computeLineRefund } from './returns-policy';
+import {
+  normalizeCreditCode,
+  formatCreditCode,
+  AVOIR_PREFIX,
+  GIFT_PREFIX,
+} from './credit-code';
 
 const GENESIS = '0'.repeat(64);
 function sha256(s: string): string {
@@ -48,7 +54,7 @@ export class ReturnsService {
   }
 
   private genCode(): string {
-    return 'AV-' + randomBytes(5).toString('hex').toUpperCase().slice(0, 10);
+    return formatCreditCode(AVOIR_PREFIX, randomBytes(5).toString('hex'));
   }
 
   /** Returned quantity already credited per original line item for a sale. */
@@ -249,7 +255,7 @@ export class ReturnsService {
   }
 
   private genGiftCode(): string {
-    return 'GC-' + randomBytes(5).toString('hex').toUpperCase().slice(0, 10);
+    return formatCreditCode(GIFT_PREFIX, randomBytes(5).toString('hex'));
   }
 
   /**
@@ -295,7 +301,7 @@ export class ReturnsService {
           [storeId],
         );
         const prevHash = lastCn.length > 0 ? lastCn[0].hash_chain_current : GENESIS;
-        const code = (data.code?.trim().toUpperCase()) || this.genGiftCode();
+        const code = normalizeCreditCode(data.code) || this.genGiftCode();
         const currentHash = sha256(prevHash + JSON.stringify({ code, storeId, amount, origin: 'gift_card' }));
 
         const cn = new CreditNoteEntity();
@@ -413,7 +419,7 @@ export class ReturnsService {
     code: string,
     storeId: string,
   ): Promise<{ code: string; type: string; status: string; remainingMinorUnits: number; spendable: boolean }> {
-    const cn = await this.cnRepo.findOne({ where: { code: code.trim().toUpperCase(), storeId } });
+    const cn = await this.cnRepo.findOne({ where: { code: normalizeCreditCode(code), storeId } });
     if (!cn) throw new NotFoundException('Avoir introuvable');
     const spendable =
       cn.type === 'store_credit' &&
