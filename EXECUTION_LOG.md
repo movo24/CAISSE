@@ -777,4 +777,22 @@ Décisions produit tranchées par l'utilisateur. 5 blocs enchaînés.
 ## PAQUET 38 — Subscriptions policy
 - `subscriptions/subscription-policy.ts` (`isUnlimited`, `isWithinLimit`, `subscriptionAccessDenial` suspended/expired) + spec **7/7**. Branché : `enforceProductLimit`/`enforceEmployeeLimit` (limites) + `assertActive` (denial) — comportement préservé. `tsc` EXIT 0. Commité réel + re-bundle.
 
-**Prochain paquet** : PAQUET 39 — loyalty-card ou stock-locations (helper pur) ou consolidation finale. Sur GO.
+## PAQUET 39 — EAN-13 check digit (produits)
+- `products/ean13.ts` (`ean13CheckDigit` mod-10 GS1, `isValidEan13`, `buildEan13`, `isInternalEan`, `INTERNAL_EAN_PREFIX`) + spec **9/9**. Branché : `generateBarcode` (remplace le calcul inline, comportement préservé). `tsc` EXIT 0. Commit réel `8864aa6`.
+
+## PAQUET 40 — PIN policy (employés)
+- `employees/pin-policy.ts` (`isValidPinFormat` 4–8 chiffres ; `isWeakPin` **advisory, non branché**) + spec **6/6**. Branché : `validatePinFormat`. `tsc` EXIT 0. Commit réel `c0e490c`. TD : `isWeakPin` disponible mais non appliqué (changerait les PIN acceptés).
+
+## PAQUET 41 — code avoir/gift (returns)
+- `returns/credit-code.ts` (`normalizeCreditCode` trim+upper, `formatCreditCode` prefix+10 hex, `isGeneratedCreditCode`, `AVOIR_PREFIX`/`GIFT_PREFIX`) + spec **6/6**. Branché : `genCode`, `genGiftCode`, normalisation gift code + lookup redemption (comportement préservé). `tsc` EXIT 0. Commit réel `88a7f3f`.
+
+## PAQUET 42 — loyalty QR token expiry
+- `loyalty-card/qr-token.ts` (`tokenExpiresAt`, `isTokenExpired` strict `>`, `constantTimeEqual`, `hasRequiredClaims`, `isCardActive`, `QR_TTL_SECONDS`) + spec **8/8**. Branché : `LoyaltyTokenService.generate/verify` (TTL, expiry, compare const-time, claims) + `LoyaltyCardService` (garde `isCardActive` ×2). `tsc` EXIT 0. Commit réel `f8ff602`.
+
+## PAQUET 43 — consolidation finale (39→42)
+- Vérif globale : `tsc --noEmit` **EXIT 0** ; 4 nouvelles suites ensemble **29/29 PASS**.
+- Chaîne de commits réels : `f8ff602` → `88a7f3f` → `c0e490c` → `8864aa6` → `b3d74d3` (PAQUET 38) … → `c55e6c5` (PAQUET 1). Branche `recovery/pos-audit-session`, working tree **clean**.
+- **Bundle** `pos-recovery.bundle` rafraîchi (verify OK) → racine + outputs.
+- **Non prouvé (honnête)** : suites lourdes ts-jest/pg-mem, migrations 1721-1724, `npm run build:backend` complet → à valider en local (pas de DB/temps en sandbox).
+
+**Prochain paquet** : PAQUET 44 — stock-locations (transfert) ou autre domaine à faible couverture (helper pur), même protocole (commit réel + bundle). Sur GO.
