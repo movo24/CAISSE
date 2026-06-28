@@ -774,4 +774,7 @@ Décisions produit tranchées par l'utilisateur. 5 blocs enchaînés.
 ## PAQUET 37 — Occupancy level (cockpit/radar)
 - `occupancy/occupancy-level.ts` (`occupancyLevel` empty/low/medium/high/full/unknown ; `isOccupancyStale`) + spec **5/5**. Service `getView(storeId, capacity)` câblé. `tsc` EXIT 0. Seuils ratio = défauts opérationnels (tunables). Commité réel + re-bundle.
 
-**Prochain paquet** : PAQUET 38 — subscriptions (plan/billing helper) ou consolidation. Sur GO.
+## PAQUET 38 — Subscriptions policy
+- `subscriptions/subscription-policy.ts` (`isUnlimited`, `isWithinLimit`, `subscriptionAccessDenial` suspended/expired) + spec **7/7**. Branché : `enforceProductLimit`/`enforceEmployeeLimit` (limites) + `assertActive` (denial) — comportement préservé. `tsc` EXIT 0. Commité réel + re-bundle.
+
+**Prochain paquet** : PAQUET 39 — loyalty-card ou stock-locations (helper pur) ou consolidation finale. Sur GO.
