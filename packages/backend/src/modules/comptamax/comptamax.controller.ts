@@ -37,6 +37,16 @@ export class ComptamaxController {
       : this.comptamax.buildDayJournal(storeId, date);
   }
 
+  @Get('cash-control')
+  @Roles('admin', 'manager')
+  @ApiOperation({
+    summary:
+      'POS-INT-111 — cash control / écart de caisse for a day (?date=YYYY-MM-DD): reconciles captured payments vs the frozen Z-report totals by tender bucket (cash/card/other). Tenant-scoped, read-only.',
+  })
+  async cashControl(@Request() req: any, @Query('date') date: string) {
+    return this.comptamax.buildCashControl(req.user.storeId, date);
+  }
+
   @Get('social')
   @Roles('admin', 'manager')
   @ApiOperation({

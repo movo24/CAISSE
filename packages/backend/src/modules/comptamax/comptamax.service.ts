@@ -21,6 +21,7 @@ import {
 } from './social-preaccounting';
 import { toEmployeePeriodInputs } from './payroll-adapter';
 import { dayRangeUtc, inclusiveRangeUtc } from './journal-range';
+import { reconcileCashControl, CashControlResult, CapturedPayment } from './cash-control';
 import { TimewinService } from '../timewin/timewin.service';
 
 export interface DayJournal {
@@ -197,5 +198,42 @@ export class ComptamaxService {
   async buildDayJournalCsv(storeId: string, date: string): Promise<string> {
     const journal = await this.buildDayJournal(storeId, date);
     return journalToCsv(journal.lines);
+  }
+
+  /**
+   * POS-INT-111 — cash control for a store/day: reconcile captured payments
+   * against the frozen Z-report declared totals. Read-only; tenant-scoped.
+   */
+  async buildCashControl(
+    storeId: string,
+    date: string,
+  ): Promise<CashControlResult & { storeId: string; date: string; zReportCount: number }> {
+    const { start, end } = dayRangeUtc(date);
+    const rows = await this.events.find({
+      where: {
+        storeId,
+        occurredAt: Between(start, end),
+        type: In(['payment.captured', 'cash_session.closed']),
+      },
+      order: { occurredAt: 'ASC', id: 'ASC' },
+    });
+
+    const captured: CapturedPayment[] = [];
+    let cashTotalMinorUnits = 0;
+    let cardTotalMinorUnits = 0;
+    let zReportCount = 0;
+    for (const e of rows) {
+      const p = e.payload as any;
+      if (e.type === 'payment.captured') {
+        captured.push({ method: String(p.method), amountMinorUnits: Number(p.amountMinorUnits) || 0 });
+      } else {
+        zReportCount += 1;
+        cashTotalMinorUnits += Number(p.cashTotalMinorUnits) || 0;
+        cardTotalMinorUnits += Number(p.cardTotalMinorUnits) || 0;
+      }
+    }
+
+    const result = reconcileCashControl(captured, { cashTotalMinorUnits, cardTotalMinorUnits });
+    return { storeId, date, zReportCount, ...result };
   }
 }

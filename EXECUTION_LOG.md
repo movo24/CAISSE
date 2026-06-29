@@ -1093,3 +1093,11 @@ Décisions produit tranchées par l'utilisateur. 5 blocs enchaînés.
 - Preuve tests : `cash-control.spec.ts` ⇒ 1 suite / 5 tests PASS.
 - Preuve typecheck/build : `tsc --noEmit` EXIT 0 ; `nest build` RC=0.
 - Dette : inchangée.
+
+## PAQUET 111 — Endpoint /comptamax/cash-control (POS-INT-111)
+- Objectif : exposer le contrôle d'écart de caisse P110 — `GET /comptamax/cash-control?date=YYYY-MM-DD` (capturé vs Z déclaré par bucket). Tenant-scoped (storeId JWT, anti-IDOR), rôles admin/manager.
+- Fichiers : `comptamax.service.ts` (`buildCashControl` : lit payment.captured + cash_session.closed du jour, agrège cash/card déclarés, applique reconcileCashControl, renvoie zReportCount), `comptamax.controller.ts` (route).
+- Honnêteté : logique pure testée P110 ; méthode service = glue lecture-DB validée tsc+build (test DB runtime = gate local).
+- Preuve tests (non-régression) : agrégat 16 suites / 112 tests PASS.
+- Preuve typecheck/build : `tsc --noEmit` EXIT 0 ; `nest build` RC=0.
+- Dette inchangée. Cumul épic : 41 paquets (71→111).
