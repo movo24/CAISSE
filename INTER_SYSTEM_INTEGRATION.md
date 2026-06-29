@@ -181,3 +181,20 @@ Chaque paquet : objectif · fichiers · test · typecheck/build · git · dette 
 
 ### Contrat consommateur (imposé pour exactly-once + sans perte)
 Paginer le feed avec le `nextCursor` composite renvoyé (jamais le seul timestamp) **et** dédupliquer par `id` (`dedupeBatch`). Les deux ensemble ⇒ livraison sans saut **et** sans doublon.
+
+## I. JALON PAQUET 115 (2026-06-30) — consolidation v6 (sécurité exports)
+
+**Couche intégration : 25 suites / 173 tests verts ensemble · `tsc` EXIT 0 · `nest build` RC=0.**
+
+- **P109/P112 — exports CSV** : amplitude de poste (`/integration/shifts?format=csv`) et contrôle de caisse (`/comptamax/cash-control?format=csv`).
+- **P110/P111 — contrôle d'écart de caisse** : `reconcileCashControl` (Z vs `payment.captured` par bucket cash/card/other) + endpoint read-only.
+- **P113/P114 — durcissement anti-injection CSV** : garde partagée `common/csv/csv-safe.ts` (`csvSafeCell`/`csvSafeRow`) neutralisant `= + - @` / tab / CR / LF en tête sur les cellules **texte** (préfixe `'`), quoting RFC4180 ; **nombres verbatim** (montants centimes intacts). Branchée sur **5/5 producteurs CSV** : `journalToCsv`, `workforceToCsv`, `cashControlToCsv`, `shiftsToCsv`, `toAccountingCsv`. Tests d'injection dédiés (`=cmd`, `=HYPERLINK`, etc.).
+
+### Exports CSV — tous gardés (anti CSV-injection)
+| Export | Endpoint | Champs texte gardés |
+|---|---|---|
+| Journal compta | `/comptamax/journal?format=csv` | account, label |
+| Justificatif RH | `/comptamax/social?format=csv` | employeeId, employeeName |
+| Contrôle de caisse | `/comptamax/cash-control?format=csv` | (enums seulement) |
+| Amplitude poste | `/integration/shifts?format=csv` | sessionId, employeeId, terminalId |
+| Export compta POS-100 | `/reports/...export?format=csv` | date, storeId |

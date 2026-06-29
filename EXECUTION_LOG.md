@@ -1125,3 +1125,10 @@ Décisions produit tranchées par l'utilisateur. 5 blocs enchaînés.
 - Preuve tests : `accounting-export.spec.ts` ⇒ 1 suite / 6 tests PASS (verbeux collé).
 - Preuve typecheck/build : `tsc --noEmit` EXIT 0 ; `nest build` RC=0.
 - Dette inchangée. Cumul épic : 44 paquets (71→114).
+
+## PAQUET 115 — Consolidation v6 (sécurité exports) (POS-INT-115)
+- Agrégat couche intégration : 25 suites / 173 tests PASS ensemble (ajout common/csv + reports/accounting-export aux suites du jalon v5).
+- Preuve typecheck/build : `tsc --noEmit` EXIT 0 ; `nest build` RC=0.
+- Doc : section §I ajoutée à INTER_SYSTEM_INTEGRATION.md (récap P109–114, table des 5 exports CSV gardés + champs texte).
+- Dette inchangée : TD-INT-SOCIAL-ENTRIES, publisher HTTP réel = secrets, migration 1725 + DB runtime = gate local.
+- Cumul épic intégration : 45 paquets (71→115).
