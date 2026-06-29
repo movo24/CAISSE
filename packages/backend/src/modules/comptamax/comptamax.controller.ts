@@ -29,4 +29,22 @@ export class ComptamaxController {
     }
     return this.comptamax.buildDayJournal(storeId, date);
   }
+
+  @Get('social')
+  @Roles('admin', 'manager')
+  @ApiOperation({
+    summary:
+      'POS-INT-84 — TimeWin→Comptamax social pre-accounting export (HR justificatif: hours/absences/lateness). ?period=YYYY-MM&format=csv|json. Best-effort (degrades if TW24 down). NOT real social entries.',
+  })
+  async social(
+    @Request() req: any,
+    @Query('period') period: string,
+    @Query('format') format?: string,
+  ) {
+    const storeId = req.user.storeId;
+    if (format === 'csv') {
+      return this.comptamax.buildSocialExportCsv(storeId, period);
+    }
+    return this.comptamax.buildSocialExport(storeId, period);
+  }
 }

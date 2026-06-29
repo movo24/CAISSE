@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Between, In, Repository } from 'typeorm';
 import { IntegrationEventEntity } from '../../database/entities/integration-event.entity';
@@ -11,6 +11,13 @@ import {
   journalToCsv,
   JournalLine,
 } from './pre-accounting';
+import {
+  summarizeWorkforcePeriod,
+  workforceToCsv,
+  WorkforcePeriodSummary,
+} from './social-preaccounting';
+import { toEmployeePeriodInputs } from './payroll-adapter';
+import { TimewinService } from '../timewin/timewin.service';
 
 export interface DayJournal {
   storeId: string;
@@ -30,10 +37,39 @@ export interface DayJournal {
  */
 @Injectable()
 export class ComptamaxService {
+  private readonly logger = new Logger(ComptamaxService.name);
+
   constructor(
     @InjectRepository(IntegrationEventEntity)
     private readonly events: Repository<IntegrationEventEntity>,
+    private readonly timewin: TimewinService,
   ) {}
+
+  /**
+   * Social pre-accounting export (TimeWin→Comptamax). Fetches the TW24 monthly
+   * payroll feed best-effort (degrades to an empty summary if TW24 is down),
+   * normalizes it and consolidates HR variables. Read-only justificatif — NOT
+   * real social journal entries (gate TD-INT-SOCIAL-ENTRIES).
+   */
+  async buildSocialExport(
+    storeId: string,
+    period: string,
+  ): Promise<WorkforcePeriodSummary & { timewinReachable: boolean }> {
+    let employees = [] as ReturnType<typeof toEmployeePeriodInputs>;
+    let timewinReachable = true;
+    try {
+      employees = toEmployeePeriodInputs(await this.timewin.getMonthlyPayroll(storeId, period));
+    } catch (e: any) {
+      timewinReachable = false;
+      this.logger.warn(`TimeWin24 payroll unreachable for ${storeId}/${period}: ${e?.message}`);
+    }
+    const summary = summarizeWorkforcePeriod({ period, storeId, employees });
+    return { ...summary, timewinReachable };
+  }
+
+  async buildSocialExportCsv(storeId: string, period: string): Promise<string> {
+    return workforceToCsv(await this.buildSocialExport(storeId, period));
+  }
 
   async buildDayJournal(storeId: string, date: string): Promise<DayJournal> {
     const start = new Date(`${date}T00:00:00.000Z`);
