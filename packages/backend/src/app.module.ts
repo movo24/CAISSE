@@ -16,6 +16,7 @@ import { CustomersModule } from './modules/customers/customers.module';
 import { StoresModule } from './modules/stores/stores.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { ComptamaxModule } from './modules/comptamax/comptamax.module';
+import { IntegrationModule } from './modules/integration/integration.module';
 import { PromotionsModule } from './modules/promotions/promotions.module';
 import { StockModule } from './modules/stock/stock.module';
 import { AuditModule } from './modules/audit/audit.module';
@@ -103,6 +104,7 @@ const isProd = process.env.NODE_ENV === 'production';
     StoresModule,
     ReportsModule,
     ComptamaxModule,
+    IntegrationModule,
     PromotionsModule,
     StockModule,
     AuditModule,
