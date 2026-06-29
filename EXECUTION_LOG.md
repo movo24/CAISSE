@@ -924,3 +924,21 @@ Décisions produit tranchées par l'utilisateur. 5 blocs enchaînés.
 - **Non prouvé sandbox** : migration 1725, relais réel Comptamax/TimeWin (secrets/endpoints distants), suites lourdes → local.
 
 **Prochain (sur GO)** : PAQUET 78 — relais outbox (poller pending→published) en simulation locale OU thread `organizationId`/`terminalId` OU endpoint export RH `GET /comptamax/social`.
+
+## PAQUET 78 — Relais outbox (simulation)
+- `common/integration/outbox-relay.ts` (policy pure : `isEligibleForRelay`/`relayBackoffMs`/`relayOutcome`) + `OutboxRelayService` + publisher **simulation** + `POST /integration/relay` (admin). **6/6**, build RC=0. Commit `cb4cbfb`.
+
+## PAQUET 79 — Events stock/rupture (Analytik R)
+- `stock/stock-events.ts` (`stock.movement`/`stock.depleted`) branché decrement (best-effort) + adjust (post-commit best-effort). **3/3**, build RC=0. Commit `9b25c65`.
+
+## PAQUET 80 — Feed consommateur Analytik R
+- `integration/events-query.ts` (normaliseur pur) + `OutboxQueryService` + `GET /integration/events` (curseur `occurredAt`, type, tenant). **4/4**, build RC=0. Commit `92d7447`.
+
+## PAQUET 81 — Rapprochement présence branché
+- `timewin/shift-adapter.ts` (pur, tolérant TW24) + `ReconciliationService` (POS DB + TW24 best-effort, dégradé gracieux) + `GET /integration/reconciliation`. **5/5**, build RC=0. Commit `1121faa`.
+
+## PAQUET 82 — Consolidation intégration v2
+- Agrégat **12 suites / 59 tests** intégration PASS ; `tsc --noEmit` **EXIT 0** ; `INTER_SYSTEM_INTEGRATION.md` addendum v2 + endpoints + gates. Commit réel + bundle.
+- **Non prouvé sandbox** : migration 1725, publisher réel (secrets), suites lourdes → local.
+
+**Prochain (sur GO)** : PAQUET 83 — publisher HTTP réel (gate secrets) OU thread org/terminal (TD-INT-ORG/TERMINAL) OU rapprochement par employé (TD-INT-RECON-PEREMP) OU scheduled task relais.

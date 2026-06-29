@@ -116,3 +116,16 @@ Chaque paquet : objectif · fichiers · test · typecheck/build · git · dette 
 - `TD-INT-SOCIAL-ENTRIES` : écritures sociales réelles (641/645/431…) = décision compta/produit ; seule la **prépa** est faite.
 - **Migration 1725** : non rejouée en sandbox (pas de DB) → `migration:run` en local.
 - **Analytik R** : aucun couplage ajouté ; consommera l'outbox normalisé — **jamais bloqueur**.
+
+### Addendum v2 (paquets 78→82)
+| Paquet | Livré | Preuve |
+|---|---|---|
+| 78 | **Relais outbox** : policy pure (éligibilité/backoff/outcome) + `OutboxRelayService` + publisher **simulation** + `POST /integration/relay` (admin) | 6/6, build RC=0 |
+| 79 | **Events stock/rupture** `stock.movement`/`stock.depleted` (decrement best-effort + adjust post-commit) — Analytik R | 3/3, build RC=0 |
+| 80 | **Feed consommateur Analytik R** `GET /integration/events?since&type&limit` (curseur `occurredAt`, tenant) + normaliseur pur | 4/4, build RC=0 |
+| 81 | **Rapprochement branché** : `shift-adapter` TW24 pur (tolérant) + `ReconciliationService` (POS DB + TW24 best-effort, dégradé) + `GET /integration/reconciliation` | 5/5, build RC=0 |
+| 82 | Consolidation v2 : agrégat **12 suites / 59 tests** intégration, tsc 0 | — |
+
+**Endpoints intégration livrés** : `GET /api/comptamax/journal` (pré-compta) · `POST /api/integration/relay` (flush simulation) · `GET /api/integration/events` (consommateur Analytik R) · `GET /api/integration/reconciliation` (présence POS↔TimeWin). Tous JWT + RBAC + tenant.
+
+**Gates inchangés** : `TD-INT-RELAY` (publisher réel = simulation pour l'instant ; bascule prod = injecter un publisher HTTP, secrets requis) · `TD-INT-SOCIAL-ENTRIES` · migrations 1725 + suites lourdes = local. **Filtre par employé du rapprochement** = niveau magasin/jour pour l'instant (TW24 today-shifts store-scoped) → `TD-INT-RECON-PEREMP`.
