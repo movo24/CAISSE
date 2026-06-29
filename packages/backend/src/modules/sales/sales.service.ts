@@ -18,6 +18,7 @@ import {
 import { validatePayments, PaymentPolicyViolation } from './payment-policy';
 import { sumLineTax } from './tax';
 import { computeMaxAllowedDiscount, discountPercentOfSubtotal } from './discount-totals';
+import { applyStockAdjustment } from '../stock/stock-level';
 import { resolveEffectivePrice } from '../products/price-resolve';
 import { formatTicketNumber } from './ticket-number';
 import { loyaltyPointsEarned } from './loyalty-points';
@@ -892,7 +893,8 @@ export class SalesService {
     for (const item of items) {
       const product = products.get(item.ean);
       if (!product) continue;
-      const newQty = Math.max(0, product.stockQuantity - item.quantity);
+      // Decrement = delta adjustment, clamped ≥ 0 (shared pure helper).
+      const newQty = applyStockAdjustment(product.stockQuantity, -item.quantity, 'delta');
 
       if (newQty <= 0) {
         alerts.push({
