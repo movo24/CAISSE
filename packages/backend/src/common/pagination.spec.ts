@@ -1,4 +1,4 @@
-import { normalizePage, normalizeLimit } from './pagination';
+import { normalizePage, normalizeLimit, totalPages } from './pagination';
 
 describe('POS common pagination', () => {
   describe('normalizePage', () => {
@@ -22,6 +22,17 @@ describe('POS common pagination', () => {
     it('honours custom default/max', () => {
       expect(normalizeLimit(undefined, 20, 200)).toBe(20);
       expect(normalizeLimit(500, 20, 200)).toBe(200);
+    });
+  });
+
+  describe('totalPages', () => {
+    it('ceils total / limit', () => {
+      expect(totalPages(100, 50)).toBe(2);
+      expect(totalPages(101, 50)).toBe(3);
+      expect(totalPages(0, 50)).toBe(0);
+    });
+    it('0 when limit <= 0 (no division by zero)', () => {
+      expect(totalPages(10, 0)).toBe(0);
     });
   });
 });

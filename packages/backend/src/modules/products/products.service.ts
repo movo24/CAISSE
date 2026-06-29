@@ -22,7 +22,7 @@ import {
   marginPercentOf,
   deltaPct,
 } from './product-analytics';
-import { normalizePage, normalizeLimit } from '../../common/pagination';
+import { normalizePage, normalizeLimit, totalPages } from '../../common/pagination';
 
 @Injectable()
 export class ProductsService {
@@ -100,7 +100,7 @@ export class ProductsService {
         page,
         limit,
         total,
-        totalPages: Math.ceil(total / limit),
+        totalPages: totalPages(total, limit),
       },
     };
   }

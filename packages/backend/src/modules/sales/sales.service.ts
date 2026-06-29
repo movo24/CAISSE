@@ -37,6 +37,7 @@ import { StockService } from '../stock/stock.service';
 import { JackpotService, JackpotResult } from '../jackpot/jackpot.service';
 import { TimewinService } from '../timewin/timewin.service';
 import { PaginatedResult } from '../../common/dto/pagination.dto';
+import { totalPages } from '../../common/pagination';
 import { logBusinessEvent } from '../../common/business-logger';
 import { RealtimeService } from '../../common/realtime/realtime.service';
 
@@ -1042,7 +1043,7 @@ export class SalesService {
         page,
         limit,
         total,
-        totalPages: Math.ceil(total / limit),
+        totalPages: totalPages(total, limit),
       },
     };
   }

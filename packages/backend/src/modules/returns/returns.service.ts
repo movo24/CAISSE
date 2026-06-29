@@ -21,7 +21,7 @@ import {
   creditNoteRefundState,
   isSpendableStoreCredit,
 } from './refund-policy';
-import { normalizePage, normalizeLimit } from '../../common/pagination';
+import { normalizePage, normalizeLimit, totalPages } from '../../common/pagination';
 
 const GENESIS = '0'.repeat(64);
 function sha256(s: string): string {
@@ -408,7 +408,7 @@ export class ReturnsService {
       take: limit,
       skip: (page - 1) * limit,
     });
-    return { data, meta: { page, limit, total, totalPages: Math.ceil(total / limit) } };
+    return { data, meta: { page, limit, total, totalPages: totalPages(total, limit) } };
   }
 
   async findOne(id: string, storeId: string): Promise<CreditNoteEntity> {

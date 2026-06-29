@@ -13,3 +13,8 @@ export function normalizePage(page?: number): number {
 export function normalizeLimit(limit?: number, def = 50, max = 100): number {
   return Math.min(Math.max(limit ?? def, 1), max);
 }
+
+/** Total page count for a result set (0 when limit ≤ 0, guarding division). */
+export function totalPages(total: number, limit: number): number {
+  return limit > 0 ? Math.ceil(total / limit) : 0;
+}

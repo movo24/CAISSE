@@ -12,6 +12,7 @@ import { randomBytes } from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { CustomerEntity } from '../../database/entities/customer.entity';
 import { PaginatedResult } from '../../common/dto/pagination.dto';
+import { totalPages } from '../../common/pagination';
 import {
   formatOtpCode,
   otpExpiresAt,
@@ -179,7 +180,7 @@ export class CustomersService {
         page,
         limit,
         total,
-        totalPages: Math.ceil(total / limit),
+        totalPages: totalPages(total, limit),
       },
     };
   }
