@@ -870,4 +870,22 @@ Décisions produit tranchées par l'utilisateur. 5 blocs enchaînés.
 ## PAQUET 64 — reports averageBasket (dédup)
 - `reports/average-basket.ts` (`averageBasket(totalRevenue, txCount)` round, 0 si 0 tx) + spec **2/2**. **Dédup** : même formule présente dans `reports.service` (résumé jour) ET `z-report-aggregate` → consolidée (même module, sans couplage inter-modules). Comportement préservé. `tsc` EXIT 0. Commit réel à suivre.
 
-**Prochain paquet** : PAQUET 65 — domaine restant / vérification, même protocole. Sur GO.
+## PAQUET 65 — sales stock decrement (réutilisation)
+- `sales.service` décrément stock vente → réutilise `applyStockAdjustment(qty, -item.quantity, 'delta')` (clamp ≥0). Comportement préservé. `tsc` EXIT 0. Commit réel `70ecb89`.
+
+## PAQUET 66 — pagination clamp (dédup)
+- `common/pagination.ts` (`normalizePage`, `normalizeLimit`) + spec **4/4**. Dédup : products + returns. `tsc` EXIT 0. Commit réel `6908959`.
+
+## PAQUET 67 — pagination totalPages (dédup)
+- `common/pagination.ts` +`totalPages` (garde div/0) + spec **6/6**. Dédup `Math.ceil(total/limit)` ×4 : products/returns/customers/sales (0 résiduel vérifié). `tsc` EXIT 0. Commit réel `c8235a2`.
+
+## PAQUET 68 — VÉRIFICATION d'agrégat (couche helpers)
+- Lancement groupé de **toute** la couche de helpers purs : **64 suites · 405 tests · 405 PASS** (5,2 s) — aucune régression après 67 paquets. `tsc --noEmit` global **EXIT 0**.
+- Constat honnête : l'extraction « comportement préservé » à forte valeur est désormais **quasi épuisée** (tous les helpers sont isolés + testés ; l'inline restant est soit côté SQL, soit non-déterministe). Les prochains paquets seront surtout vérification / dédup mineure / dette documentée, sans inventer de changement de comportement.
+
+## PAQUET 69 — consolidation (65→68)
+- Chaîne réelle : `c8235a2` → `6908959` → `70ecb89` → `1931962` (P64) … → `c55e6c5` (P1). Branche `recovery/pos-audit-session`, working tree **clean**.
+- **Bundle** rafraîchi (complete history) à chaque paquet.
+- **Non prouvé en sandbox** : suites lourdes ts-jest/pg-mem (Nest/pg-mem), migrations 1721-1724, `npm run build:backend` complet → à valider en local.
+
+**Prochain paquet** : PAQUET 70 — vérification ciblée ou dette documentée (TD-*), sur décision. Sur GO.
