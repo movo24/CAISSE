@@ -1078,3 +1078,10 @@ Décisions produit tranchées par l'utilisateur. 5 blocs enchaînés.
 - Doc : section §H ajoutée à INTER_SYSTEM_INTEGRATION.md (récap P101–107, ajout matrice `cash_session.opened`, contrat consommateur exactly-once+sans-perte = curseur composite + dédup par id).
 - Dette inchangée : TD-INT-SOCIAL-ENTRIES, publisher HTTP réel = secrets, migration 1725 + DB runtime = gate local.
 - Cumul épic intégration : 38 paquets (71→108).
+
+## PAQUET 109 — Export CSV amplitude de poste (POS-INT-109)
+- Objectif : handoff paie/TimeWin — `GET /integration/shifts?date=&format=csv` renvoie le CSV des shifts (header stable, 1 ligne/shift).
+- Fichiers : `timewin/shift-amplitude.ts` (`shiftsToCsv` pur, échappement CSV), `outbox-query.service.ts` (`shiftsForDayCsv`), `integration.controller.ts` (`format=csv|json`), spec étendue.
+- Preuve tests : `shift-amplitude.spec.ts` ⇒ 1 suite / 9 tests PASS.
+- Preuve typecheck/build : `tsc --noEmit` EXIT 0 ; `nest build` RC=0.
+- Dette : inchangée.

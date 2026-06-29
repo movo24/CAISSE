@@ -1,4 +1,4 @@
-import { summarizeShifts, toShiftEvents, ShiftEvent } from './shift-amplitude';
+import { summarizeShifts, toShiftEvents, shiftsToCsv, ShiftEvent } from './shift-amplitude';
 
 const open = (sessionId: string, employeeId: string, at: string, terminalId: string | null = 'T1'): ShiftEvent => ({
   sessionId, employeeId, terminalId, kind: 'open', at,
@@ -73,6 +73,27 @@ describe('shift-amplitude (POS-INT-106)', () => {
 
     it('skips rows without a session id', () => {
       expect(toShiftEvents([{ type: 'cash_session.opened', payload: {} }])).toEqual([]);
+    });
+  });
+
+  describe('shiftsToCsv (POS-INT-109)', () => {
+    it('emits a stable header + one row per shift', () => {
+      const s = summarizeShifts([
+        open('s1', 'emp1', '2026-06-29T09:00:00.000Z'),
+        close('s1', 'emp1', '2026-06-29T17:00:00.000Z', 480),
+        open('s2', 'emp2', '2026-06-29T10:00:00.000Z'),
+      ]);
+      const csv = shiftsToCsv(s).split('\n');
+      expect(csv[0]).toBe('sessionId,employeeId,terminalId,openedAt,closedAt,durationMinutes,open');
+      expect(csv).toHaveLength(3); // header + 2 shifts
+      expect(csv[1]).toBe('s1,emp1,T1,2026-06-29T09:00:00.000Z,2026-06-29T17:00:00.000Z,480,false');
+      expect(csv[2]).toContain('s2,emp2,T1,2026-06-29T10:00:00.000Z,,0,true');
+    });
+
+    it('header-only when there are no shifts', () => {
+      expect(shiftsToCsv(summarizeShifts([]))).toBe(
+        'sessionId,employeeId,terminalId,openedAt,closedAt,durationMinutes,open',
+      );
     });
   });
 });

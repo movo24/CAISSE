@@ -109,6 +109,42 @@ export function summarizeShifts(events: readonly ShiftEvent[]): ShiftSummary {
   return { shifts, byEmployee, totalMinutes };
 }
 
+function csvCell(v: string | number | boolean | null): string {
+  const s = v === null ? '' : String(v);
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+/**
+ * Per-shift CSV export (payroll / TimeWin handoff). Stable header & column
+ * order; deterministic row order (matches `summarizeShifts`).
+ */
+export function shiftsToCsv(summary: ShiftSummary): string {
+  const header = [
+    'sessionId',
+    'employeeId',
+    'terminalId',
+    'openedAt',
+    'closedAt',
+    'durationMinutes',
+    'open',
+  ];
+  const lines = [header.join(',')];
+  for (const r of summary.shifts) {
+    lines.push(
+      [
+        csvCell(r.sessionId),
+        csvCell(r.employeeId),
+        csvCell(r.terminalId),
+        csvCell(r.openedAt),
+        csvCell(r.closedAt),
+        csvCell(r.durationMinutes),
+        csvCell(r.open),
+      ].join(','),
+    );
+  }
+  return lines.join('\n');
+}
+
 /** Normalize raw outbox rows into ShiftEvents (tolerant; ignores other types). */
 export function toShiftEvents(rows: readonly any[]): ShiftEvent[] {
   const out: ShiftEvent[] = [];

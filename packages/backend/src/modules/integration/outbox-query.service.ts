@@ -5,7 +5,7 @@ import { IntegrationEventEntity } from '../../database/entities/integration-even
 import { normalizeEventsQuery, encodeEventsCursor } from './events-query';
 import { shapeOutboxStats, OutboxStats } from './outbox-stats';
 import { dayRangeUtc } from '../comptamax/journal-range';
-import { summarizeShifts, toShiftEvents, ShiftSummary } from '../timewin/shift-amplitude';
+import { summarizeShifts, toShiftEvents, shiftsToCsv, ShiftSummary } from '../timewin/shift-amplitude';
 
 export interface ConsumerEvent {
   id: string;
@@ -102,6 +102,11 @@ export class OutboxQueryService {
     });
     const summary = summarizeShifts(toShiftEvents(rows));
     return { storeId, date, ...summary };
+  }
+
+  /** CSV variant of shiftsForDay (payroll / TimeWin handoff). */
+  async shiftsForDayCsv(storeId: string, date: string): Promise<string> {
+    return shiftsToCsv(await this.shiftsForDay(storeId, date));
   }
 
   /** Outbox delivery stats for a store (counts per status/type + backlog). */

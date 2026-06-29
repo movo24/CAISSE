@@ -46,10 +46,12 @@ export class IntegrationController {
   @Roles('admin', 'manager')
   @ApiOperation({
     summary:
-      'POS-INT-107 — cash-session shift amplitude for the store on a day (?date=YYYY-MM-DD): per-shift open→close records + per-employee worked-minute totals. Tenant-scoped, read-only (TimeWin presence / Analytik R).',
+      'POS-INT-107/109 — cash-session shift amplitude for the store on a day (?date=YYYY-MM-DD&format=csv|json): per-shift open→close records + per-employee worked-minute totals. Tenant-scoped, read-only (TimeWin presence / Analytik R).',
   })
-  async shifts(@Request() req: any, @Query('date') date: string) {
-    return this.queryService.shiftsForDay(req.user.storeId, date);
+  async shifts(@Request() req: any, @Query('date') date: string, @Query('format') format?: string) {
+    return format === 'csv'
+      ? this.queryService.shiftsForDayCsv(req.user.storeId, date)
+      : this.queryService.shiftsForDay(req.user.storeId, date);
   }
 
   @Get('outbox/stats')
