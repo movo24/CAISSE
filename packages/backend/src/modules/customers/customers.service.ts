@@ -12,6 +12,13 @@ import { randomBytes } from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { CustomerEntity } from '../../database/entities/customer.entity';
 import { PaginatedResult } from '../../common/dto/pagination.dto';
+import {
+  formatOtpCode,
+  otpExpiresAt,
+  isOtpExpired,
+  isOtpMaxAttempts,
+  otpCodeMatches,
+} from './otp-policy';
 import { NotificationService } from '../../common/messaging/notification.service';
 
 @Injectable()
@@ -26,8 +33,7 @@ export class CustomersService {
     string,
     { code: string; expiresAt: number; attempts: number }
   >();
-  private static readonly OTP_TTL_MS = 10 * 60 * 1000; // 10 minutes
-  private static readonly OTP_MAX_ATTEMPTS = 5;
+  // OTP TTL / attempt cap live in otp-policy.ts (OTP_TTL_MS, OTP_MAX_ATTEMPTS).
 
   constructor(
     @InjectRepository(CustomerEntity)
@@ -59,12 +65,12 @@ export class CustomersService {
     const qrCodeDataUrl = await QRCode.toDataURL(qrCode);
 
     // Generate crypto-safe OTP code
-    const otpCode = (100000 + (randomBytes(4).readUInt32BE(0) % 900000)).toString();
+    const otpCode = formatOtpCode(randomBytes(4).readUInt32BE(0));
 
     // Store OTP with expiry
     this.otpStore.set(saved.id, {
       code: otpCode,
-      expiresAt: Date.now() + CustomersService.OTP_TTL_MS,
+      expiresAt: otpExpiresAt(Date.now()),
       attempts: 0,
     });
 
@@ -195,7 +201,7 @@ export class CustomersService {
     const stored = this.otpStore.get(id);
 
     // No OTP stored or expired
-    if (!stored || stored.expiresAt < Date.now()) {
+    if (!stored || isOtpExpired(stored.expiresAt)) {
       this.otpStore.delete(id);
       throw new BadRequestException(
         'OTP expired or not found. Please request a new verification code.',
@@ -203,7 +209,7 @@ export class CustomersService {
     }
 
     // Too many attempts
-    if (stored.attempts >= CustomersService.OTP_MAX_ATTEMPTS) {
+    if (isOtpMaxAttempts(stored.attempts)) {
       this.otpStore.delete(id);
       throw new BadRequestException(
         'Too many failed OTP attempts. Please request a new code.',
@@ -211,7 +217,7 @@ export class CustomersService {
     }
 
     // Wrong code
-    if (stored.code !== otpCode) {
+    if (!otpCodeMatches(stored.code, otpCode)) {
       stored.attempts++;
       throw new BadRequestException('Invalid OTP code.');
     }
