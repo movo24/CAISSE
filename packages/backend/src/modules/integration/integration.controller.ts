@@ -2,6 +2,7 @@ import { Controller, Get, Post, Query, UseGuards, Request } from '@nestjs/common
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { OutboxRelayService } from './outbox-relay.service';
 import { OutboxQueryService } from './outbox-query.service';
+import { ReconciliationService } from './reconciliation.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard, Roles } from '../../common/guards/roles.guard';
 
@@ -13,7 +14,18 @@ export class IntegrationController {
   constructor(
     private readonly relay: OutboxRelayService,
     private readonly queryService: OutboxQueryService,
+    private readonly reconciliation: ReconciliationService,
   ) {}
+
+  @Get('reconciliation')
+  @Roles('admin', 'manager')
+  @ApiOperation({
+    summary:
+      'POS-INT-81 — POS↔TimeWin presence reconciliation for the store today (POS sessions vs TimeWin shifts, degrades gracefully if TW24 unreachable). Tenant-scoped, read-only.',
+  })
+  async reconciliationToday(@Request() req: any) {
+    return this.reconciliation.reconcileToday(req.user.storeId);
+  }
 
   @Get('events')
   @Roles('admin', 'manager')
