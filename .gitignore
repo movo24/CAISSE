@@ -13,6 +13,3 @@ coverage/
 !public/
 # Sandbox git-lock backup artifacts (do not track — they grow recursively)
 _BACKUP_PAQUET_*.patch
-
-pos-recovery.bundle
-*.bundle

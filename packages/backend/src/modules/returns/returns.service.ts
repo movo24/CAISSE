@@ -89,6 +89,7 @@ export class ReturnsService {
     dto: CreateReturnDto,
     employeeName?: string,
     idempotencyKey?: string,
+    terminalId?: string | null,
   ): Promise<CreditNoteEntity> {
     const idemKey = this.normalizeIdempotencyKey(idempotencyKey);
     if (idemKey) {
@@ -230,6 +231,7 @@ export class ReturnsService {
           code: saved.code,
           storeId,
           organizationId,
+          terminalId: terminalId ?? null,
           employeeId,
           type: saved.type === 'store_credit' ? 'store_credit' : 'refund',
           refundMethod: saved.refundMethod ?? null,
@@ -299,6 +301,7 @@ export class ReturnsService {
     data: { amountMinorUnits: number; code?: string; saleId?: string },
     employeeName?: string,
     idempotencyKey?: string,
+    terminalId?: string | null,
   ): Promise<CreditNoteEntity> {
     const idemKey = this.normalizeIdempotencyKey(idempotencyKey);
     if (idemKey) {
@@ -372,6 +375,7 @@ export class ReturnsService {
           code: saved.code,
           storeId,
           organizationId,
+          terminalId: terminalId ?? null,
           employeeId,
           amountMinorUnits: amount,
           currencyCode: saved.currencyCode || 'EUR',
@@ -416,6 +420,7 @@ export class ReturnsService {
     dto: { ticketNumber: string; items: { ean: string; quantity: number }[]; reason?: string; refundMethod: 'cash' | 'card' | 'store_credit' },
     employeeName?: string,
     idempotencyKey?: string,
+    terminalId?: string | null,
   ): Promise<CreditNoteEntity> {
     const sale = await this.saleRepo.findOne({ where: { ticketNumber: dto.ticketNumber, storeId } });
     if (!sale) throw new NotFoundException(`Vente introuvable pour le ticket ${dto.ticketNumber}`);
@@ -431,6 +436,7 @@ export class ReturnsService {
       { originalSaleId: sale.id, items, reason: dto.reason, refundMethod: dto.refundMethod },
       employeeName,
       idempotencyKey,
+      terminalId,
     );
   }
 

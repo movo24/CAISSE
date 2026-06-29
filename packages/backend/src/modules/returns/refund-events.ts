@@ -13,6 +13,7 @@ export interface RefundEventInput {
   code: string;
   storeId: string;
   organizationId?: string | null;
+  terminalId?: string | null;
   employeeId: string;
   type: 'refund' | 'store_credit';
   refundMethod: string | null;
@@ -38,6 +39,7 @@ export function buildRefundOutboxEvent(input: RefundEventInput): IntegrationEven
     tenant: {
       organizationId: input.organizationId ?? null,
       storeId: input.storeId,
+      terminalId: input.terminalId ?? null,
     },
     actor: { employeeId: input.employeeId, role: null },
     occurredAt: input.occurredAt,
@@ -60,6 +62,7 @@ export interface GiftCardEventInput {
   code: string;
   storeId: string;
   organizationId?: string | null;
+  terminalId?: string | null;
   employeeId: string;
   amountMinorUnits: number;
   currencyCode: string;
@@ -76,6 +79,7 @@ export function buildGiftCardOutboxEvent(input: GiftCardEventInput): Integration
     tenant: {
       organizationId: input.organizationId ?? null,
       storeId: input.storeId,
+      terminalId: input.terminalId ?? null,
     },
     actor: { employeeId: input.employeeId, role: null },
     occurredAt: input.occurredAt,
