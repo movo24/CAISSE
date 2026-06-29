@@ -10,11 +10,13 @@ import {
   buildIntegrationEvent,
   IntegrationEvent,
 } from '../../common/integration/integration-event';
+import { taxBreakdownByRate } from './tax';
 
 export interface SaleEventItem {
   ean: string;
   quantity: number;
   lineTotalMinorUnits: number;
+  taxRate?: number;
 }
 
 export interface SaleEventPayment {
@@ -77,7 +79,14 @@ export function buildSaleOutboxEvents(input: SaleEventInput): IntegrationEvent[]
         ean: i.ean,
         quantity: i.quantity,
         lineTotalMinorUnits: i.lineTotalMinorUnits,
+        taxRate: i.taxRate ?? null,
       })),
+      // POS-INT-96 — per-rate VAT breakdown for multi-rate pre-accounting.
+      taxBreakdown: taxBreakdownByRate(
+        input.items
+          .filter((i) => i.taxRate != null)
+          .map((i) => ({ lineTotalMinorUnits: i.lineTotalMinorUnits, taxRate: i.taxRate as number })),
+      ),
       paymentMethods: input.payments.map((p) => p.method),
     },
   });

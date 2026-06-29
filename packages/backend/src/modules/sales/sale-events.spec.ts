@@ -49,8 +49,22 @@ describe('POS sale-events outbox mapper', () => {
       paymentMethods: ['card', 'cash'],
     });
     expect(sale.payload.items).toEqual([
-      { ean: '111', quantity: 2, lineTotalMinorUnits: 2000 },
-      { ean: '222', quantity: 1, lineTotalMinorUnits: 1000 },
+      { ean: '111', quantity: 2, lineTotalMinorUnits: 2000, taxRate: null },
+      { ean: '222', quantity: 1, lineTotalMinorUnits: 1000, taxRate: null },
+    ]);
+  });
+
+  it('sale.completed carries per-rate VAT breakdown when items have taxRate', () => {
+    const [sale] = buildSaleOutboxEvents({
+      ...base,
+      items: [
+        { ean: '111', quantity: 2, lineTotalMinorUnits: 1200, taxRate: 20 }, // tax 200
+        { ean: '222', quantity: 1, lineTotalMinorUnits: 1100, taxRate: 10 }, // tax 100
+      ],
+    });
+    expect(sale.payload.taxBreakdown).toEqual([
+      { rate: 10, grossMinorUnits: 1100, taxMinorUnits: 100, baseMinorUnits: 1000 },
+      { rate: 20, grossMinorUnits: 1200, taxMinorUnits: 200, baseMinorUnits: 1000 },
     ]);
   });
 

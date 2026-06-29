@@ -47,6 +47,24 @@ describe('Comptamax pre-accounting engine', () => {
       expect(card.debitMinorUnits).toBe(10000);
       expect(cash.debitMinorUnits).toBe(2000);
     });
+    it('emits one 44571 line per VAT rate when a breakdown is given (balanced)', () => {
+      const l = buildSaleJournalLines({
+        ticketNumber: 'T-3',
+        totalMinorUnits: 12000,
+        taxTotalMinorUnits: 300, // ignored when breakdown present
+        payments: [{ method: 'card', amountMinorUnits: 12000 }],
+        taxBreakdown: [
+          { rate: 10, taxMinorUnits: 100 },
+          { rate: 20, taxMinorUnits: 200 },
+        ],
+      });
+      const vatLines = l.filter((x) => x.account === ACCOUNTS.TVA_COLLECTEE);
+      expect(vatLines).toHaveLength(2);
+      expect(vatLines.map((v) => v.creditMinorUnits)).toEqual([100, 200]);
+      expect(l.find((x) => x.account === ACCOUNTS.VENTE_HT)!.creditMinorUnits).toBe(11700);
+      expect(journalIsBalanced(l)).toBe(true);
+    });
+
     it('skips zero-amount payments and omits TVA line when tax is 0', () => {
       const l2 = buildSaleJournalLines({
         ticketNumber: 'T-2', totalMinorUnits: 500, taxTotalMinorUnits: 0,

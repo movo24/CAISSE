@@ -47,6 +47,8 @@ export interface SaleJournalInput {
   totalMinorUnits: number; // TTC encaissé
   taxTotalMinorUnits: number;
   payments: { method: string; amountMinorUnits: number }[];
+  /** Optional per-rate VAT split → one 44571 line per rate (else a single line). */
+  taxBreakdown?: { rate: number; taxMinorUnits: number }[];
 }
 
 /**
@@ -55,7 +57,6 @@ export interface SaleJournalInput {
  *  - débit encaissements par moyen de paiement (= TTC).
  */
 export function buildSaleJournalLines(input: SaleJournalInput): JournalLine[] {
-  const htMinorUnits = input.totalMinorUnits - input.taxTotalMinorUnits;
   const lines: JournalLine[] = [];
 
   for (const p of input.payments) {
@@ -67,13 +68,32 @@ export function buildSaleJournalLines(input: SaleJournalInput): JournalLine[] {
       creditMinorUnits: 0,
     });
   }
+
+  // VAT: one 44571 line per rate when a breakdown is provided, else a single line.
+  // HT is always the residual TTC − total VAT, so the entry stays balanced.
+  const breakdown = (input.taxBreakdown ?? []).filter((b) => b.taxMinorUnits !== 0);
+  const vatTotal = breakdown.length
+    ? breakdown.reduce((s, b) => s + b.taxMinorUnits, 0)
+    : input.taxTotalMinorUnits;
+  const htMinorUnits = input.totalMinorUnits - vatTotal;
+
   lines.push({
     account: ACCOUNTS.VENTE_HT,
     label: `Vente HT ${input.ticketNumber}`,
     debitMinorUnits: 0,
     creditMinorUnits: htMinorUnits,
   });
-  if (input.taxTotalMinorUnits !== 0) {
+
+  if (breakdown.length) {
+    for (const b of breakdown) {
+      lines.push({
+        account: ACCOUNTS.TVA_COLLECTEE,
+        label: `TVA ${b.rate}% ${input.ticketNumber}`,
+        debitMinorUnits: 0,
+        creditMinorUnits: b.taxMinorUnits,
+      });
+    }
+  } else if (input.taxTotalMinorUnits !== 0) {
     lines.push({
       account: ACCOUNTS.TVA_COLLECTEE,
       label: `TVA collectée ${input.ticketNumber}`,

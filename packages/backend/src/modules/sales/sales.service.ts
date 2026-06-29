@@ -666,6 +666,7 @@ export class SalesService {
           ean: li.ean,
           quantity: li.quantity,
           lineTotalMinorUnits: li.lineTotalMinorUnits,
+          taxRate: Number(li.taxRate),
         })),
         payments: dto.payments.map((p) => ({
           method: p.method,

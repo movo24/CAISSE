@@ -105,6 +105,9 @@ export class ComptamaxService {
             totalMinorUnits: Number(p.totalMinorUnits) || 0,
             taxTotalMinorUnits: Number(p.taxTotalMinorUnits) || 0,
             payments: paymentsBySale.get(e.aggregateId) ?? [],
+            taxBreakdown: Array.isArray(p.taxBreakdown)
+              ? p.taxBreakdown.map((b: any) => ({ rate: Number(b.rate), taxMinorUnits: Number(b.taxMinorUnits) }))
+              : undefined,
           }),
         );
       } else if (e.type === 'refund.created' || e.type === 'credit_note.issued') {

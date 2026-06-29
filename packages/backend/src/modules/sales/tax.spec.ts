@@ -1,4 +1,4 @@
-import { extractLineTax, sumLineTax } from './tax';
+import { extractLineTax, sumLineTax, taxBreakdownByRate } from './tax';
 
 // Reference: the exact inline formula createSale used before extraction.
 const inline = (gross: number, rate: number) =>
@@ -35,6 +35,27 @@ describe('POS-063 VAT extraction (tax.ts)', () => {
     });
     it('empty = 0', () => {
       expect(sumLineTax([])).toBe(0);
+    });
+  });
+
+  describe('taxBreakdownByRate', () => {
+    const lines = [
+      { lineTotalMinorUnits: 1200, taxRate: 20 }, // tax 200
+      { lineTotalMinorUnits: 1100, taxRate: 10 }, // tax 100
+      { lineTotalMinorUnits: 600, taxRate: 20 }, // tax 100
+    ];
+    it('groups per rate, sorted, with base = gross - tax', () => {
+      expect(taxBreakdownByRate(lines)).toEqual([
+        { rate: 10, grossMinorUnits: 1100, taxMinorUnits: 100, baseMinorUnits: 1000 },
+        { rate: 20, grossMinorUnits: 1800, taxMinorUnits: 300, baseMinorUnits: 1500 },
+      ]);
+    });
+    it('Σ tax equals sumLineTax (consistent rounding)', () => {
+      const total = taxBreakdownByRate(lines).reduce((s, b) => s + b.taxMinorUnits, 0);
+      expect(total).toBe(sumLineTax(lines));
+    });
+    it('empty → []', () => {
+      expect(taxBreakdownByRate([])).toEqual([]);
     });
   });
 });
