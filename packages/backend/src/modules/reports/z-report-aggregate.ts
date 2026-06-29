@@ -4,6 +4,7 @@
  * already-frozen completed sales of the day and computes the Z-report figures.
  * The Z-report itself stays immutable once generated (no recompute after the fact).
  */
+import { averageBasket } from './average-basket';
 
 export interface ZSaleInput {
   totalMinorUnits: number;
@@ -81,8 +82,7 @@ export function aggregateZReport(sales: ZSaleInput[]): ZReportAggregate {
     .map(([hour, count]) => ({ hour: parseInt(hour), transactionCount: count }))
     .sort((a, b) => b.transactionCount - a.transactionCount);
 
-  const averageBasketMinorUnits =
-    sales.length > 0 ? Math.round(totalRevenue / sales.length) : 0;
+  const averageBasketMinorUnits = averageBasket(totalRevenue, sales.length);
 
   return {
     totalRevenueMinorUnits: totalRevenue,

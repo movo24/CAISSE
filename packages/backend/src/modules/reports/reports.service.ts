@@ -8,6 +8,7 @@ import { aggregateZReport } from './z-report-aggregate';
 import { aggregateSalesByEmployee } from './sales-by-employee';
 import { buildDailyAccountingExport, toAccountingCsv } from './accounting-export';
 import { aggregatePaymentsByMethod } from './payments-breakdown';
+import { averageBasket } from './average-basket';
 
 @Injectable()
 export class ReportsService {

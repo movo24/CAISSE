@@ -867,4 +867,7 @@ Décisions produit tranchées par l'utilisateur. 5 blocs enchaînés.
 - **Bundle** rafraîchi à chaque paquet (volatilité /tmp) ; verify OK.
 - **Non prouvé (honnête)** : suites lourdes ts-jest/pg-mem, migrations 1721-1724, `npm run build:backend` complet → à valider en local.
 
-**Prochain paquet** : PAQUET 64 — domaine restant faible couverture (helper pur), même protocole. Sur GO.
+## PAQUET 64 — reports averageBasket (dédup)
+- `reports/average-basket.ts` (`averageBasket(totalRevenue, txCount)` round, 0 si 0 tx) + spec **2/2**. **Dédup** : même formule présente dans `reports.service` (résumé jour) ET `z-report-aggregate` → consolidée (même module, sans couplage inter-modules). Comportement préservé. `tsc` EXIT 0. Commit réel à suivre.
+
+**Prochain paquet** : PAQUET 65 — domaine restant / vérification, même protocole. Sur GO.
