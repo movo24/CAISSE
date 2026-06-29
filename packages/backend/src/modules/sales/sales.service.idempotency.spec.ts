@@ -16,6 +16,8 @@ import { StockService } from '../stock/stock.service';
 import { JackpotService } from '../jackpot/jackpot.service';
 import { TimewinService } from '../timewin/timewin.service';
 import { RealtimeService } from '../../common/realtime/realtime.service';
+import { EmployeeEntity } from '../../database/entities/employee.entity';
+import { StoreOrgResolver } from '../integration/store-org-resolver';
 
 /**
  * E1 — Idempotency on POS writes (NF525): a replayed offline-sync request must
@@ -63,6 +65,9 @@ describe('SalesService — idempotency (E1)', () => {
         { provide: JackpotService, useValue: noop },
         { provide: TimewinService, useValue: noop },
         { provide: RealtimeService, useValue: { emit: jest.fn() } },
+        // POS-INT-121 — DI added during the epic; mocked for unit isolation.
+        { provide: getRepositoryToken(EmployeeEntity), useValue: { findOne: jest.fn() } },
+        { provide: StoreOrgResolver, useValue: { resolve: async () => null } },
       ],
     }).compile();
 

@@ -1176,3 +1176,13 @@ Décisions produit tranchées par l'utilisateur. 5 blocs enchaînés.
 - Audit qualité : 0 TODO/FIXME critiques (csv/integration/comptamax/stock) ; toutes les nouvelles fonctions (stockSignalsForDay, buildCashControl[Csv], shiftsForDayCsv, summarizeStockSignals, cashControlToCsv, buildCashSessionOpenedEvent, csvSafeRow) référencées ≥1 hors def/spec → pas de helper mort.
 - Gate bcrypt = nouvelle dette de test environnement (TD-TEST-BCRYPT-NATIVE) : suites bcrypt-dépendantes non exécutables en sandbox ; à lancer sur CI Linux avec bcrypt rebuild.
 - Cumul épic : 50 paquets (71→120).
+
+## PAQUET 121 — Mock bcrypt + DI specs ventes → suite backend 0-rouge (POS-INT-121 / TD-TEST-BCRYPT-NATIVE résolu en sandbox)
+- Objectif : rendre exécutables les 5 suites bloquées par le binaire natif bcrypt (auth, employees, sales.service.{audit,idempotency,store-credit}).
+- Fichiers : `test/mocks/bcrypt.mock.ts` (NOUVEAU, pur : hash/compare/genSalt round-trip base64, hashSync/compareSync, default export), `package.json` jest.moduleNameMapper `^bcrypt$` → mock (test-only), + 3 specs ventes complétées (providers DI manquants : EmployeeEntity repo + StoreOrgResolver — même classe que P120).
+- Méthode : mock fidèle (invariant compare(v,hash(v))=true, compare(w,hash(v))=false) → assertions auth/employees/ventes restent valides. Aucun code de prod modifié ; mock non référencé par src/.
+- Preuve AVANT : 5 suites rouges (invalid ELF header / DI). APRÈS ciblé : 5 suites / 31 tests PASS.
+- Preuve globale : `src/**` ⇒ 127 suites / 857 tests PASS, **0 échec** (vs 122/826 + 5 rouges en P120).
+- Preuve typecheck/build : `tsc --noEmit` EXIT 0 ; `nest build` RC=0 (345 .js).
+- Limite restante : suites `test/` (pg/e2e DB) toujours gate DB (pas Postgres en sandbox) ; CI Linux requise pour celles-là.
+- Cumul épic : 51 paquets (71→121).
