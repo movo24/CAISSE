@@ -795,4 +795,22 @@ Décisions produit tranchées par l'utilisateur. 5 blocs enchaînés.
 - **Bundle** `pos-recovery.bundle` rafraîchi (verify OK) → racine + outputs.
 - **Non prouvé (honnête)** : suites lourdes ts-jest/pg-mem, migrations 1721-1724, `npm run build:backend` complet → à valider en local (pas de DB/temps en sandbox).
 
-**Prochain paquet** : PAQUET 44 — stock-locations (transfert) ou autre domaine à faible couverture (helper pur), même protocole (commit réel + bundle). Sur GO.
+## PAQUET 44 — stock-locations quantités
+- `stock-locations/dispatch-policy.ts` (`isPositiveQuantity`, `sumDispatchQuantities`, `hasSufficientStock`) + spec **6/6**. Branché : adjust/transfer (quantité>0) + dispatch (total>0, stock suffisant, skip ligne ≤0). `tsc` EXIT 0. Commit réel `03b5cfe`.
+
+## PAQUET 45 — customers OTP policy
+- `customers/otp-policy.ts` (`formatOtpCode`, `otpExpiresAt`, `isOtpExpired`, `isOtpMaxAttempts` cap 5, `otpCodeMatches`, `OTP_TTL_MS` 10min) + spec **5/5**. Branché : génération + `verifyOtp` (expiry/attempts/match) ; statics morts supprimés. `tsc` EXIT 0. Commit réel `11125d5`.
+
+## PAQUET 46 — notifications policy
+- `notifications/reminder-policy.ts` (`daysSince`, `isInactiveCustomer`, `baseReactivationPriority`, `priorityRank`, `stockNotificationLevel`) + spec **10/10**. Branché : rappels fidélité (jours/inactif/priorité base+tri, messages inchangés) + notifications stock (sévérité out/critical/alert). `tsc` EXIT 0. Commit réel `87f7eba`. TD : cutoffs 60/90j = défauts opérationnels (tunables).
+
+## PAQUET 47 — sales-ai reco scoring
+- `sales-ai/reco-scoring.ts` (`rate` division sûre ; `scoreRecommendation` neutre<min / blacklist<3% / penalize<5% / boost≥10% conv / score gradué) + spec **6/6**. Branché : `ai-learning.getProductPerformance` (score+statut) + perf magasin (ctr/convRate via `rate`, seuils importés). Logique du 2e bloc (sans boost/neutre) **préservée**. `tsc` EXIT 0. Commit réel `084557a`.
+
+## PAQUET 48 — consolidation (44→47)
+- Vérif globale : `tsc --noEmit` **EXIT 0** ; 4 nouvelles suites ensemble **27/27 PASS**.
+- Chaîne réelle : `084557a` → `87f7eba` → `11125d5` → `03b5cfe` → `8cfbb13` (P43) … → `c55e6c5` (P1). Branche `recovery/pos-audit-session`, working tree **clean**.
+- **Bundle** `pos-recovery.bundle` rafraîchi (verify OK) → racine + outputs.
+- **Non prouvé (honnête)** : suites lourdes ts-jest/pg-mem, migrations 1721-1724, `npm run build:backend` complet → à valider en local (pas de DB/temps en sandbox).
+
+**Prochain paquet** : PAQUET 49 — domaine restant faible couverture (helper pur), même protocole (commit réel + bundle). Sur GO.
