@@ -964,3 +964,27 @@ Décisions produit tranchées par l'utilisateur. 5 blocs enchaînés.
 - **Gates restants** : `TD-INT-RELAY` publisher HTTP réel (secrets) · `TD-INT-SOCIAL-ENTRIES` · `TD-INT-RECON-PEREMP` · org sur retours/sessions/stock (ventes faites) · migration 1725 + suites lourdes = local.
 
 **Prochain (sur GO)** : PAQUET 89 — publisher HTTP réel (gate secrets) OU org/terminal sur retours+sessions+stock OU rapprochement par employé.
+
+## PAQUET 89 — organizationId sur tous events
+- `StoreOrgResolver` câblé returns/reports(Z)/pos-session/stock. tsc 0, build RC=0, **TD-INT-ORG clos**. Commit (réécrit, voir tip).
+
+## PAQUET 90 — HTTP publisher gated
+- `publish-request.ts` (body+HMAC pur, 4/4) + `HttpOutboxPublisher` + factory `createOutboxPublisher` (réel si `OUTBOX_PUBLISH_URL`+`SECRET`, sinon simulation). build RC=0. **TD-INT-RELAY structuré (gate secret intact).**
+
+## PAQUET 91 — Outbox stats
+- `shapeOutboxStats` pur (3/3) + `GET /integration/outbox/stats` (backlog monitoring). build RC=0.
+
+## HYGIÈNE CRITIQUE (entre P91 et P92)
+- **Défaut corrigé** : `pos-recovery.bundle` se committait lui-même depuis P39 → historique gonflé à ~400 Mo. Détrack + `.gitignore *.bundle` + `git filter-branch` (purge du blob sur 57 commits) + gc → **.git 3,6 Mo, bundle 2,5 Mo**. rsync exclut désormais le bundle. **Hashes de commits réécrits** (nouveau tip ci-dessous). Aucune perte de code.
+
+## PAQUET 92 — terminalId sur events retours
+- `X-Terminal-Id` → createReturn/byTicket/issueGiftCard → refund/gift events `tenant.terminalId`. 3/3, build RC=0.
+
+## PAQUET 93 — Rapprochement par employé
+- `shift-adapter` filtre employé (8/8) + `reconcileToday(storeId, employeeId?)` + `GET /integration/reconciliation?employeeId`. build RC=0. **TD-INT-RECON-PEREMP traité** (TW24 store-feed sans id employé → shifts droppés, documenté).
+
+## PAQUET 94 — Consolidation intégration v4
+- Agrégat **16 suites / 77 tests** intégration PASS ; `tsc --noEmit` **EXIT 0**.
+- Enveloppe outbox pleinement tenant : storeId + organizationId + terminalId (ventes+retours) sur tous les agrégats.
+- **Endpoints** : `/comptamax/journal`, `/comptamax/social`, `/integration/relay`, `/integration/events`, `/integration/outbox/stats`, `/integration/reconciliation`. **Cron** relais (OFF défaut). **Publisher** factory (simulation/HTTP gated).
+- **Gates restants** : `TD-INT-RELAY` (URL+secret prod) · `TD-INT-SOCIAL-ENTRIES` · migration 1725 + suites lourdes = local.
