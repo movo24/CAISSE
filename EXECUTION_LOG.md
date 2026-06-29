@@ -1055,3 +1055,11 @@ Décisions produit tranchées par l'utilisateur. 5 blocs enchaînés.
 - Preuve tests : `session-events.spec.ts` ⇒ 1 suite / 6 tests PASS.
 - Preuve typecheck/build : `tsc --noEmit` EXIT 0 ; `nest build` RC=0.
 - Dette : inchangée. Prochain : P106 (axe utile à décider).
+
+## PAQUET 106 — Agrégateur amplitude de poste (POS-INT-106)
+- Objectif : exploiter le couple lifecycle P105 (`cash_session.opened`) + clôture (`employee_activity.recorded` action=closed) pour produire des shifts par session + totaux par employé — utile TimeWin24 (présence) et Analytik R (occupation).
+- Fichiers : `timewin/shift-amplitude.ts` (pur : `summarizeShifts`, `toShiftEvents`, types `ShiftEvent`/`ShiftRecord`/`ShiftSummary`), `shift-amplitude.spec.ts` (nouveau).
+- Robustesse : tolérant aux events hors-ordre (close avant open connu), open non apparié = poste en cours (open:true, durée 0), durée = durationMinutes explicite sinon (closedAt−openedAt), totaux par employé classés.
+- Preuve tests : `shift-amplitude.spec.ts` ⇒ 1 suite / 7 tests PASS.
+- Preuve typecheck/build : `tsc --noEmit` EXIT 0 ; `nest build` RC=0.
+- Dette : inchangée. Prochain : P107 (axe utile à décider).
