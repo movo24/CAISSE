@@ -2,6 +2,13 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, MoreThan } from 'typeorm';
 import { AiRecommendationLogEntity } from '../../database/entities/ai-recommendation-log.entity';
+import {
+  rate,
+  scoreRecommendation,
+  BLACKLIST_MIN_DISPLAYS,
+  BLACKLIST_CTR_THRESHOLD,
+  PENALTY_CTR_THRESHOLD,
+} from './reco-scoring';
 
 /* ═══════════════════════════════════════════════════════════════
    AI LEARNING SERVICE — Track, measure, and improve recommendations
@@ -39,10 +46,7 @@ export interface AiKPI {
   worstPerformers: RecoPerformance[];
 }
 
-const BLACKLIST_CTR_THRESHOLD = 0.03;     // Below 3% CTR after 20+ displays → blacklist
-const BLACKLIST_MIN_DISPLAYS = 20;        // Need 20+ displays before blacklisting
-const PENALTY_CTR_THRESHOLD = 0.05;       // Below 5% CTR → penalize
-const BOOST_CONVERSION_THRESHOLD = 0.10;  // Above 10% conversion → boost
+// Scoring thresholds live in reco-scoring.ts (pure, unit-tested).
 
 @Injectable()
 export class AiLearningService {
@@ -115,28 +119,15 @@ export class AiLearningService {
     const totalRevenue = logs.reduce((s, l) => s + l.revenueGenerated, 0);
     const totalMargin = logs.reduce((s, l) => s + l.marginGenerated, 0);
 
-    const ctr = totalDisplayed > 0 ? totalClicked / totalDisplayed : 0;
-    const conversionRate = totalDisplayed > 0 ? totalConverted / totalDisplayed : 0;
+    const ctr = rate(totalClicked, totalDisplayed);
+    const conversionRate = rate(totalConverted, totalDisplayed);
 
-    // Performance scoring
-    let performanceScore = 0.5; // Default neutral
-    let status: 'active' | 'penalized' | 'blacklisted' = 'active';
-
-    if (totalDisplayed >= BLACKLIST_MIN_DISPLAYS) {
-      if (ctr < BLACKLIST_CTR_THRESHOLD) {
-        performanceScore = 0.0;
-        status = 'blacklisted';
-      } else if (ctr < PENALTY_CTR_THRESHOLD) {
-        performanceScore = 0.2;
-        status = 'penalized';
-      } else if (conversionRate >= BOOST_CONVERSION_THRESHOLD) {
-        performanceScore = 1.0;
-        status = 'active';
-      } else {
-        performanceScore = Math.min(1, ctr * 5 + conversionRate * 3);
-        status = 'active';
-      }
-    }
+    // Performance scoring (pure helper — see reco-scoring.ts)
+    const { performanceScore, status } = scoreRecommendation(
+      totalDisplayed,
+      ctr,
+      conversionRate,
+    );
 
     return {
       suggestedProductId,
@@ -181,8 +172,8 @@ export class AiLearningService {
       const converted = productLogs.filter((l) => l.converted).length;
       const rev = productLogs.reduce((s, l) => s + l.revenueGenerated, 0);
       const margin = productLogs.reduce((s, l) => s + l.marginGenerated, 0);
-      const ctr = displayed > 0 ? clicked / displayed : 0;
-      const convRate = displayed > 0 ? converted / displayed : 0;
+      const ctr = rate(clicked, displayed);
+      const convRate = rate(converted, displayed);
 
       performances.push({
         suggestedProductId: pid,
