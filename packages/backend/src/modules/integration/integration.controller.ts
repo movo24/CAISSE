@@ -42,6 +42,16 @@ export class IntegrationController {
     return this.queryService.listForConsumer(req.user.storeId, { since, type, limit });
   }
 
+  @Get('outbox/stats')
+  @Roles('admin', 'manager')
+  @ApiOperation({
+    summary:
+      'POS-INT-91 — outbox delivery stats for the store (counts per status/type + backlog). Monitoring; tenant-scoped, read-only.',
+  })
+  async outboxStats(@Request() req: any) {
+    return this.queryService.stats(req.user.storeId);
+  }
+
   @Post('relay')
   @Roles('admin')
   @ApiOperation({

@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, MoreThan, Repository } from 'typeorm';
 import { IntegrationEventEntity } from '../../database/entities/integration-event.entity';
 import { normalizeEventsQuery } from './events-query';
+import { shapeOutboxStats, OutboxStats } from './outbox-stats';
 
 export interface ConsumerEvent {
   id: string;
@@ -57,5 +58,21 @@ export class OutboxQueryService {
 
     const nextCursor = events.length ? events[events.length - 1].occurredAt : null;
     return { events, nextCursor };
+  }
+
+  /** Outbox delivery stats for a store (counts per status/type + backlog). */
+  async stats(storeId: string): Promise<OutboxStats> {
+    const grouped = await this.events
+      .createQueryBuilder('e')
+      .select('e.status', 'status')
+      .addSelect('e.type', 'type')
+      .addSelect('COUNT(*)', 'count')
+      .where('e.store_id = :storeId', { storeId })
+      .groupBy('e.status')
+      .addGroupBy('e.type')
+      .getRawMany();
+    return shapeOutboxStats(
+      grouped.map((r: any) => ({ status: r.status, type: r.type, count: Number(r.count) })),
+    );
   }
 }
