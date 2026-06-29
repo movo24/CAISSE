@@ -849,4 +849,22 @@ Décisions produit tranchées par l'utilisateur. 5 blocs enchaînés.
 - **Note infra** : sandbox redémarrée — clone `/tmp` + identité git + `/tmp/jest.fast.cjs` reconstruits depuis le bundle (tip P53 vérifié `10a25d2` avant reprise) ; bundle rafraîchi à chaque paquet par sécurité.
 - **Non prouvé (honnête)** : suites lourdes ts-jest/pg-mem, migrations 1721-1724, `npm run build:backend` complet → à valider en local.
 
-**Prochain paquet** : PAQUET 59 — domaine restant faible couverture (helper pur), même protocole. Sur GO.
+## PAQUET 59 — sales-ai temporal pattern
+- `sales-ai/temporal-pattern.ts` (`avgTicketsPerDay`, `avgRevenuePerDay`, `avgBasket`, `rushThreshold`, `isRush`, `RUSH_THRESHOLD_MULTIPLIER`) + spec **7/7**. Branché : patterns horaires (moy/jour, panier, rush) ; const RUSH déplacée. `tsc` EXIT 0. Commit réel `df69efb`.
+
+## PAQUET 60 — returns refund policy
+- `returns/refund-policy.ts` (`isValidRefundMethod`, `creditNoteRefundState` type/method/status/remaining, `isSpendableStoreCredit`) + spec **6/6**. Branché : `createReturn` (validation + état avoir) + `lookupSpendable`. `tsc` EXIT 0. Commit réel `d1cbf6a`.
+
+## PAQUET 61 — auth upstream status
+- `auth/upstream-status.ts` (`isUpstreamUnavailable` : no-status/5xx vs 4xx) + spec **3/3**. Branché : `loginByQrCode` (branche fallback TW24 indisponible). `tsc` EXIT 0. Commit réel `a2c3432`.
+
+## PAQUET 62 — timewin health status
+- `timewin/health-status.ts` (`isHealthyTimeWinStatus` : ok/degraded) + spec **2/2**. Branché : `TimewinService.isHealthy`. `tsc` EXIT 0. Commit réel `35da5f1`.
+
+## PAQUET 63 — consolidation (59→62)
+- Vérif globale : `tsc --noEmit` **EXIT 0** ; 4 nouvelles suites ensemble **18/18 PASS**.
+- Chaîne réelle : `35da5f1` → `a2c3432` → `d1cbf6a` → `df69efb` → `39424da` (P58) … → `c55e6c5` (P1). Branche `recovery/pos-audit-session`, working tree **clean**.
+- **Bundle** rafraîchi à chaque paquet (volatilité /tmp) ; verify OK.
+- **Non prouvé (honnête)** : suites lourdes ts-jest/pg-mem, migrations 1721-1724, `npm run build:backend` complet → à valider en local.
+
+**Prochain paquet** : PAQUET 64 — domaine restant faible couverture (helper pur), même protocole. Sur GO.
