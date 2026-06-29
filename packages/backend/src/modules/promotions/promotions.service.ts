@@ -7,6 +7,12 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { PromoRuleEntity } from '../../database/entities/promo-rule.entity';
 import { dedupeBestPerProduct } from './promo-policy';
+import {
+  buyXGetDiscount,
+  percentageDiscount,
+  firstPurchaseDiscount,
+  lineTotal,
+} from './promo-discount';
 
 export interface CartItem {
   productId: string;
@@ -107,17 +113,18 @@ export class PromotionsService {
         switch (promo.type) {
           case 'buy_x_get_discount': {
             if (!promo.buyQuantity || !promo.discountPercent) break;
-            const groupSize = promo.buyQuantity + 1;
-            const discountedItems = Math.floor(item.quantity / groupSize);
-            if (discountedItems > 0) {
-              const discountPerItem = Math.round(
-                item.unitPriceMinorUnits * (promo.discountPercent / 100),
-              );
+            const discountTotal = buyXGetDiscount(
+              item.quantity,
+              promo.buyQuantity,
+              item.unitPriceMinorUnits,
+              promo.discountPercent,
+            );
+            if (discountTotal > 0) {
               results.push({
                 promoId: promo.id,
                 promoName: promo.name,
                 productId: item.productId,
-                discountMinorUnits: discountPerItem * discountedItems,
+                discountMinorUnits: discountTotal,
                 type: promo.type,
               });
             }
@@ -125,9 +132,9 @@ export class PromotionsService {
           }
           case 'percentage': {
             if (!promo.discountPercent) break;
-            const lineTotal = item.unitPriceMinorUnits * item.quantity;
-            const discount = Math.round(
-              lineTotal * (promo.discountPercent / 100),
+            const discount = percentageDiscount(
+              lineTotal(item.unitPriceMinorUnits, item.quantity),
+              promo.discountPercent,
             );
             results.push({
               promoId: promo.id,
@@ -150,8 +157,9 @@ export class PromotionsService {
             break;
           }
           case 'first_purchase': {
-            const lineTotal = item.unitPriceMinorUnits * item.quantity;
-            const discount = Math.round(lineTotal * 0.05); // 5%
+            const discount = firstPurchaseDiscount(
+              lineTotal(item.unitPriceMinorUnits, item.quantity),
+            );
             results.push({
               promoId: promo.id,
               promoName: promo.name,
