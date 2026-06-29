@@ -9,7 +9,7 @@ import { OutboxQueryService } from './outbox-query.service';
 import { ReconciliationService } from './reconciliation.service';
 import { OutboxRelayCron } from './outbox-relay.cron';
 import { IntegrationController } from './integration.controller';
-import { OUTBOX_PUBLISHER, SimulationOutboxPublisher } from './outbox-publisher';
+import { OUTBOX_PUBLISHER, createOutboxPublisher } from './outbox-publisher';
 import { TimewinModule } from '../timewin/timewin.module';
 
 /**
@@ -29,7 +29,7 @@ import { TimewinModule } from '../timewin/timewin.module';
     ReconciliationService,
     OutboxRelayCron,
     StoreOrgResolver,
-    { provide: OUTBOX_PUBLISHER, useClass: SimulationOutboxPublisher },
+    { provide: OUTBOX_PUBLISHER, useFactory: createOutboxPublisher },
   ],
   exports: [OutboxRelayService, OutboxQueryService, ReconciliationService, StoreOrgResolver],
 })
