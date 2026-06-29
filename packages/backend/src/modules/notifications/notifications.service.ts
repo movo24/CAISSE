@@ -4,6 +4,13 @@ import { Repository } from 'typeorm';
 import { CustomerEntity } from '../../database/entities/customer.entity';
 import { SaleEntity } from '../../database/entities/sale.entity';
 import { ProductEntity } from '../../database/entities/product.entity';
+import {
+  daysSince,
+  isInactiveCustomer,
+  baseReactivationPriority,
+  priorityRank,
+  stockNotificationLevel,
+} from './reminder-policy';
 
 // ---------------------------------------------------------------------------
 // Notification types
@@ -100,34 +107,27 @@ export class NotificationsService {
         ? new Date(raw.lastVisit)
         : null;
 
-      let daysSinceLastVisit: number | null = null;
-      if (lastVisitDate) {
-        daysSinceLastVisit = Math.floor(
-          (Date.now() - lastVisitDate.getTime()) / (1000 * 60 * 60 * 24),
-        );
-      }
+      const daysSinceLastVisit = daysSince(lastVisitDate);
 
       // Include if never visited or inactive for > inactiveDays
-      const isInactive =
-        lastVisitDate === null || daysSinceLastVisit! >= inactiveDays;
+      if (!isInactiveCustomer(daysSinceLastVisit, lastVisitDate === null, inactiveDays)) {
+        continue;
+      }
 
-      if (!isInactive) continue;
-
-      // Determine priority
-      let priority: 'high' | 'medium' | 'low' = 'low';
+      // Determine priority (base — loyalty bump applied below)
+      let priority: 'high' | 'medium' | 'low' = baseReactivationPriority(
+        daysSinceLastVisit,
+        lastVisitDate === null,
+      );
       let message = '';
 
       if (lastVisitDate === null) {
-        priority = 'medium';
         message = `${customer.firstName} n'a jamais effectue d'achat. Envoyez un rappel QR avec offre de bienvenue (-5%).`;
       } else if (daysSinceLastVisit! >= 90) {
-        priority = 'high';
         message = `${customer.firstName} n'est pas venu(e) depuis ${daysSinceLastVisit} jours. Client a risque de perte.`;
       } else if (daysSinceLastVisit! >= 60) {
-        priority = 'medium';
         message = `${customer.firstName} absent(e) depuis ${daysSinceLastVisit} jours. Un rappel QR est recommande.`;
       } else {
-        priority = 'low';
         message = `${customer.firstName} inactif(ve) depuis ${daysSinceLastVisit} jours. Suggestion de rappel.`;
       }
 
@@ -150,9 +150,8 @@ export class NotificationsService {
     }
 
     // Sort by priority: high > medium > low, then by days since last visit
-    const priorityOrder = { high: 0, medium: 1, low: 2 };
     reminders.sort((a, b) => {
-      const pDiff = priorityOrder[a.priority] - priorityOrder[b.priority];
+      const pDiff = priorityRank(a.priority) - priorityRank(b.priority);
       if (pDiff !== 0) return pDiff;
       return (b.daysSinceLastVisit ?? 999) - (a.daysSinceLastVisit ?? 999);
     });
@@ -177,17 +176,18 @@ export class NotificationsService {
     const notifications: StockNotification[] = [];
 
     for (const product of products) {
-      let level: StockNotification['level'] | null = null;
+      const level: StockNotification['level'] | null = stockNotificationLevel(
+        product.stockQuantity,
+        product.stockCriticalThreshold,
+        product.stockAlertThreshold,
+      );
       let message = '';
 
-      if (product.stockQuantity <= 0) {
-        level = 'out_of_stock';
+      if (level === 'out_of_stock') {
         message = `${product.name} est en rupture de stock !`;
-      } else if (product.stockQuantity <= product.stockCriticalThreshold) {
-        level = 'critical';
+      } else if (level === 'critical') {
         message = `${product.name}: stock critique (${product.stockQuantity} restant(s), seuil: ${product.stockCriticalThreshold})`;
-      } else if (product.stockQuantity <= product.stockAlertThreshold) {
-        level = 'alert';
+      } else if (level === 'alert') {
         message = `${product.name}: stock bas (${product.stockQuantity} restant(s), seuil: ${product.stockAlertThreshold})`;
       }
 
