@@ -9,6 +9,7 @@ import { CreateStoreDto } from '../../common/dto';
 import { mapStoreEntityToStoreInfo } from './store-info.mapper';
 import { generateUniqueStoreCode } from '../../common/utils/store-code-generator';
 import { TimewinService } from '../timewin/timewin.service';
+import { aggregateNetworkTotals, isTimeWinActive } from './network-stats';
 
 @Injectable()
 export class StoresService {
@@ -314,7 +315,7 @@ export class StoresService {
         existing.city = tw.city || existing.city;
         existing.currencyCode = tw.currency || existing.currencyCode;
         existing.timezone = tw.timezone || existing.timezone;
-        existing.isActive = tw.status === 'ACTIVE';
+        existing.isActive = isTimeWinActive(tw.status);
         existing.latitude = tw.latitude ?? existing.latitude;
         existing.longitude = tw.longitude ?? existing.longitude;
         await this.storeRepo.save(existing);
@@ -329,7 +330,7 @@ export class StoresService {
           address: tw.address || undefined,
           currencyCode: tw.currency || 'EUR',
           timezone: tw.timezone || 'Europe/Paris',
-          isActive: tw.status === 'ACTIVE',
+          isActive: isTimeWinActive(tw.status),
           latitude: tw.latitude,
           longitude: tw.longitude,
         });
@@ -421,12 +422,14 @@ export class StoresService {
       };
     });
 
-    // Network totals
-    const networkTotalRevenue = storeStats.reduce((s, st) => s + st.totalRevenue, 0);
-    const networkTotalSales = storeStats.reduce((s, st) => s + st.totalSales, 0);
-    const networkAvgTicket = networkTotalSales > 0 ? Math.round(networkTotalRevenue / networkTotalSales) : 0;
-    const networkTodayRevenue = storeStats.reduce((s, st) => s + st.todayRevenue, 0);
-    const networkTodaySales = storeStats.reduce((s, st) => s + st.todaySales, 0);
+    // Network totals (pure aggregator — see network-stats.ts)
+    const {
+      totalRevenue: networkTotalRevenue,
+      totalSales: networkTotalSales,
+      avgTicket: networkAvgTicket,
+      todayRevenue: networkTodayRevenue,
+      todaySales: networkTodaySales,
+    } = aggregateNetworkTotals(storeStats);
 
     // Rankings
     const sortedByRevenue = [...storeStats].sort((a, b) => b.totalRevenue - a.totalRevenue);
