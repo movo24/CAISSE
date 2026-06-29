@@ -1085,3 +1085,11 @@ Décisions produit tranchées par l'utilisateur. 5 blocs enchaînés.
 - Preuve tests : `shift-amplitude.spec.ts` ⇒ 1 suite / 9 tests PASS.
 - Preuve typecheck/build : `tsc --noEmit` EXIT 0 ; `nest build` RC=0.
 - Dette : inchangée.
+
+## PAQUET 110 — Contrôle écart de caisse (POS-INT-110)
+- Objectif : rapprocher les totaux figés du Z-report (`cash_session.closed`) avec la somme des `payment.captured` du jour, par bucket de tender (cash/card/other) → détection d'écart de caisse, read-only (n'altère ni Z ni ventes).
+- Fichiers : `comptamax/cash-control.ts` (pur : `reconcileCashControl`, `tenderBucket`, types), `cash-control.spec.ts` (nouveau).
+- Robustesse : buckets cash/card/other, `other` sans contrepartie Z (declared=0) remonte en écart ; diff = capturé − déclaré ; balanced = tous diffs 0 ; montants centimes entiers.
+- Preuve tests : `cash-control.spec.ts` ⇒ 1 suite / 5 tests PASS.
+- Preuve typecheck/build : `tsc --noEmit` EXIT 0 ; `nest build` RC=0.
+- Dette : inchangée.
