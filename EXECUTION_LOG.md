@@ -1038,3 +1038,12 @@ Décisions produit tranchées par l'utilisateur. 5 blocs enchaînés.
 - Preuve tests : `events-query.spec.ts` ⇒ 1 suite / 9 tests PASS.
 - Preuve typecheck/build : `tsc --noEmit` EXIT 0 ; `nest build` RC=0.
 - Dette : inchangée. Prochain : P104 (axe utile à décider).
+
+## PAQUET 104 — Preuve runtime keyset sans DB (référence pure) (POS-INT-104)
+- Objectif : prouver de façon déterministe (sans DB, hors gate pg-mem) que la pagination keyset P103 ne saute ni ne duplique aucun event, même avec gros groupes même-timestamp à cheval sur les pages.
+- Fichiers : `events-keyset.ts` (pur : `compareKeyset`, `isAfterCursor`, `selectPage`, `drainAll` — miroir exact de la requête SQL de listForConsumer), `events-keyset.spec.ts` (nouveau).
+- Preuve forte : `drainAll` à limit ∈ {1,2,3,4,7,100} ⇒ couverture totale exacte, 0 doublon ; cas démontrant la perte legacy (timestamp-only) vs résolution composite (e2..e5 conservés).
+- Honnêteté : `events-keyset.ts` est une référence pure miroir ; le chemin exécuté reste le SQL de `OutboxQueryService` (validé tsc+build ; test DB runtime = gate pg-mem hors sandbox). Garde anti-régression du contrat.
+- Preuve tests : `events-keyset.spec.ts` + `events-query.spec.ts` ⇒ 2 suites / 23 tests PASS.
+- Preuve typecheck/build : `tsc --noEmit` EXIT 0 ; `nest build` RC=0.
+- Dette : inchangée. Prochain : P105 (axe utile à décider).
