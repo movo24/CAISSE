@@ -12,6 +12,7 @@ import { averageBasket } from './average-basket';
 import { IntegrationEventEntity } from '../../database/entities/integration-event.entity';
 import { toOutboxRow } from '../../common/integration/integration-event';
 import { buildCashSessionClosedEvent } from './cash-session-events';
+import { StoreOrgResolver } from '../integration/store-org-resolver';
 
 @Injectable()
 export class ReportsService {
@@ -20,6 +21,7 @@ export class ReportsService {
     private saleRepo: Repository<SaleEntity>,
     @InjectRepository(ZReportEntity)
     private zReportRepo: Repository<ZReportEntity>,
+    private storeOrgResolver: StoreOrgResolver,
   ) {}
 
   async generateZReport(
@@ -75,12 +77,13 @@ export class ReportsService {
     // Persist the Z-report and its closure event atomically (transactional outbox,
     // POS-INT-73). The Z stays immutable; the event mirrors its frozen figures and
     // is consumed out-of-band (Comptamax24 / Analytik R never block the closure).
+    const organizationId = await this.storeOrgResolver.resolve(storeId); // POS-INT-89
     return this.zReportRepo.manager.transaction(async (m) => {
       const savedZ = await m.save(ZReportEntity, zReport);
       const event = buildCashSessionClosedEvent({
         zReportId: savedZ.id,
         storeId,
-        organizationId: null,
+        organizationId,
         employeeId,
         date,
         currencyCode: 'EUR',

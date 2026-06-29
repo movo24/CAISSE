@@ -9,6 +9,7 @@ import { SaleEntity } from '../../database/entities/sale.entity';
 import { IdempotencyKeyEntity } from '../../database/entities/idempotency-key.entity';
 import { IntegrationEventEntity } from '../../database/entities/integration-event.entity';
 import { AuditModule } from '../audit/audit.module';
+import { IntegrationModule } from '../integration/integration.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { AuditModule } from '../audit/audit.module';
       IntegrationEventEntity,
     ]),
     AuditModule,
+    IntegrationModule,
   ],
   controllers: [ReturnsController],
   providers: [ReturnsService],

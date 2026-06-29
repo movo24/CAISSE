@@ -25,6 +25,7 @@ import { normalizePage, normalizeLimit, totalPages } from '../../common/paginati
 import { IntegrationEventEntity } from '../../database/entities/integration-event.entity';
 import { toOutboxRow } from '../../common/integration/integration-event';
 import { buildRefundOutboxEvent, buildGiftCardOutboxEvent } from './refund-events';
+import { StoreOrgResolver } from '../integration/store-org-resolver';
 
 const GENESIS = '0'.repeat(64);
 function sha256(s: string): string {
@@ -52,6 +53,7 @@ export class ReturnsService {
     @InjectRepository(IdempotencyKeyEntity) private idemRepo: Repository<IdempotencyKeyEntity>,
     private dataSource: DataSource,
     private auditService: AuditService,
+    private storeOrgResolver: StoreOrgResolver,
   ) {}
 
   private normalizeIdempotencyKey(key?: string): string | undefined {
@@ -140,6 +142,7 @@ export class ReturnsService {
     }
     if (total <= 0) throw new BadRequestException('Montant de retour nul');
 
+    const organizationId = await this.storeOrgResolver.resolve(storeId); // POS-INT-89
     const MAX_RETRIES = 3;
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       const qr = this.dataSource.createQueryRunner();
@@ -226,7 +229,7 @@ export class ReturnsService {
           creditNoteId: saved.id,
           code: saved.code,
           storeId,
-          organizationId: null,
+          organizationId,
           employeeId,
           type: saved.type === 'store_credit' ? 'store_credit' : 'refund',
           refundMethod: saved.refundMethod ?? null,
@@ -307,6 +310,7 @@ export class ReturnsService {
       throw new BadRequestException('Montant de carte cadeau invalide');
     }
 
+    const organizationId = await this.storeOrgResolver.resolve(storeId); // POS-INT-89
     const MAX_RETRIES = 3;
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       const qr = this.dataSource.createQueryRunner();
@@ -367,7 +371,7 @@ export class ReturnsService {
           creditNoteId: saved.id,
           code: saved.code,
           storeId,
-          organizationId: null,
+          organizationId,
           employeeId,
           amountMinorUnits: amount,
           currencyCode: saved.currencyCode || 'EUR',

@@ -10,6 +10,7 @@ import { ZReportEntity } from '../../database/entities/z-report.entity';
 import { ProductEntity } from '../../database/entities/product.entity';
 import { StoreEntity } from '../../database/entities/store.entity';
 import { IntegrationEventEntity } from '../../database/entities/integration-event.entity';
+import { IntegrationModule } from '../integration/integration.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { IntegrationEventEntity } from '../../database/entities/integration-even
       StoreEntity,
       IntegrationEventEntity,
     ]),
+    IntegrationModule,
   ],
   controllers: [ReportsController],
   providers: [ReportsService, ProductAnalyticsService],

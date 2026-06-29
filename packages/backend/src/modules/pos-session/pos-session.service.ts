@@ -12,6 +12,7 @@ import { PosSessionEntity } from '../../database/entities/pos-session.entity';
 import { IntegrationEventEntity } from '../../database/entities/integration-event.entity';
 import { toOutboxRow } from '../../common/integration/integration-event';
 import { buildSessionActivityEvent } from './session-events';
+import { StoreOrgResolver } from '../integration/store-org-resolver';
 
 /**
  * POS Session primitive — γ-model (D1 decision: terminal-bound sessions).
@@ -49,6 +50,7 @@ export class PosSessionService {
     private readonly repo: Repository<PosSessionEntity>,
     @InjectRepository(IntegrationEventEntity)
     private readonly outbox: Repository<IntegrationEventEntity>,
+    private readonly storeOrgResolver: StoreOrgResolver,
   ) {}
 
   /**
@@ -65,7 +67,7 @@ export class PosSessionService {
       const event = buildSessionActivityEvent({
         sessionId: s.id,
         storeId: s.storeId,
-        organizationId: null,
+        organizationId: await this.storeOrgResolver.resolve(s.storeId),
         employeeId: s.employeeId,
         employeeRole: s.employeeRole ?? null,
         terminalId: s.terminalId ?? null,

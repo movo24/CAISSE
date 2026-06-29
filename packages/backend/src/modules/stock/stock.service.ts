@@ -11,6 +11,7 @@ import { AuditService } from '../audit/audit.service';
 import { crossedDownward, effectiveAlertThreshold, applyStockAdjustment } from './stock-level';
 import { toOutboxRow } from '../../common/integration/integration-event';
 import { buildStockEvents } from './stock-events';
+import { StoreOrgResolver } from '../integration/store-org-resolver';
 import type { EntityManager } from 'typeorm';
 
 @Injectable()
@@ -24,6 +25,7 @@ export class StockService {
     private outbox: Repository<IntegrationEventEntity>,
     private auditService: AuditService,
     private dataSource: DataSource,
+    private storeOrgResolver: StoreOrgResolver,
   ) {}
 
   /** Best-effort stock outbox events (Analytik R). Never blocks stock ops. */
@@ -36,7 +38,8 @@ export class StockService {
     manager?: EntityManager,
   ): Promise<void> {
     try {
-      const rows = buildStockEvents(args).map(toOutboxRow) as any;
+      const organizationId = await this.storeOrgResolver.resolve(args.storeId); // POS-INT-89
+      const rows = buildStockEvents({ ...args, organizationId }).map(toOutboxRow) as any;
       if (manager) await manager.insert(IntegrationEventEntity, rows);
       else await this.outbox.insert(rows);
     } catch (e: any) {
