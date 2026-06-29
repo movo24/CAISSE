@@ -6,8 +6,12 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { ProductEntity } from '../../database/entities/product.entity';
+import { IntegrationEventEntity } from '../../database/entities/integration-event.entity';
 import { AuditService } from '../audit/audit.service';
 import { crossedDownward, effectiveAlertThreshold, applyStockAdjustment } from './stock-level';
+import { toOutboxRow } from '../../common/integration/integration-event';
+import { buildStockEvents } from './stock-events';
+import type { EntityManager } from 'typeorm';
 
 @Injectable()
 export class StockService {
@@ -16,9 +20,29 @@ export class StockService {
   constructor(
     @InjectRepository(ProductEntity)
     private productRepo: Repository<ProductEntity>,
+    @InjectRepository(IntegrationEventEntity)
+    private outbox: Repository<IntegrationEventEntity>,
     private auditService: AuditService,
     private dataSource: DataSource,
   ) {}
+
+  /** Best-effort stock outbox events (Analytik R). Never blocks stock ops. */
+  private async emitStockEvents(
+    args: {
+      productId: string; storeId: string; employeeId?: string | null;
+      ean: string | null; productName: string; newQuantity: number;
+      deltaQuantity: number; reason: string;
+    },
+    manager?: EntityManager,
+  ): Promise<void> {
+    try {
+      const rows = buildStockEvents(args).map(toOutboxRow) as any;
+      if (manager) await manager.insert(IntegrationEventEntity, rows);
+      else await this.outbox.insert(rows);
+    } catch (e: any) {
+      this.logger.warn(`Outbox (stock) failed for ${args.productId}: ${e?.message}`);
+    }
+  }
 
   /** Find product only if it belongs to the given store */
   private async findProductForStore(
@@ -112,6 +136,13 @@ export class StockService {
       });
     }
 
+    // Analytik R — stock movement / rupture (best-effort, non-blocking).
+    await this.emitStockEvents({
+      productId, storeId, employeeId,
+      ean: saved.ean, productName: saved.name,
+      newQuantity: saved.stockQuantity, deltaQuantity: -quantity, reason: 'sale_decrement',
+    });
+
     return saved;
   }
 
@@ -124,7 +155,7 @@ export class StockService {
     mode: 'absolute' | 'delta' = 'absolute',
   ): Promise<ProductEntity> {
     // Use transaction with pessimistic lock to prevent race conditions
-    return this.dataSource.transaction(async (manager) => {
+    const { saved, oldQty } = await this.dataSource.transaction(async (manager) => {
       const product = await manager.findOne(ProductEntity, {
         where: { id: productId, storeId },
         lock: { mode: 'pessimistic_write' },
@@ -164,8 +195,18 @@ export class StockService {
         },
       });
 
-      return saved;
+      return { saved, oldQty };
     });
+
+    // Analytik R — stock movement / rupture, AFTER commit (best-effort, never
+    // rolls back the adjustment).
+    await this.emitStockEvents({
+      productId, storeId, employeeId,
+      ean: saved.ean, productName: saved.name,
+      newQuantity: saved.stockQuantity, deltaQuantity: saved.stockQuantity - oldQty, reason,
+    });
+
+    return saved;
   }
 
   async updateDefaultThresholds(
