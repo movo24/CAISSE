@@ -831,4 +831,22 @@ Décisions produit tranchées par l'utilisateur. 5 blocs enchaînés.
 - **Bundle** `pos-recovery.bundle` rafraîchi (verify OK) → racine + outputs.
 - **Non prouvé (honnête)** : suites lourdes ts-jest/pg-mem, migrations 1721-1724, `npm run build:backend` complet → à valider en local (pas de DB/temps en sandbox).
 
-**Prochain paquet** : PAQUET 54 — domaine restant faible couverture (helper pur), même protocole (commit réel + bundle). Sur GO.
+## PAQUET 54 — promotions discount math
+- `promotions/promo-discount.ts` (`buyXGetDiscount`, `percentageDiscount`, `firstPurchaseDiscount` 5%, `lineTotal`) + spec **7/7**. Branché : `applyPromotions` (3 cas + first_purchase). `tsc` EXIT 0. Commit réel `6576ad9`.
+
+## PAQUET 55 — sales discount totals
+- `sales/discount-totals.ts` (`computeMaxAllowedDiscount` floor cap employé ; `discountPercentOfSubtotal` 2 déc., null si subtotal 0) + spec **3/3**. Branché : `createSale` (plafond remise + payload audit). `tsc` EXIT 0. Commit réel `4fef264`.
+
+## PAQUET 56 — products period analytics
+- `products/product-analytics.ts` (`periodDays`, `unitsPerDayRate`, `perDayMinor`, `marginPercentOf`, `deltaPct`) + spec **7/7**. Branché : analytics par période de prix (durée/jour/marge/delta). `tsc` EXIT 0. Commit réel `f58ece2`.
+
+## PAQUET 57 — stock adjustment clamp
+- `stock/stock-level.ts` +`applyStockAdjustment` (delta/absolu, clamp ≥0) + spec **4/4**. Branché : `adjustStock` (remplace `Math.max(0, …)` ×2). `tsc` EXIT 0. Commit réel `b74597b`.
+
+## PAQUET 58 — consolidation (54→57)
+- Vérif globale : `tsc --noEmit` **EXIT 0** ; 4 nouvelles suites ensemble **21/21 PASS**.
+- Chaîne réelle : `b74597b` → `f58ece2` → `4fef264` → `6576ad9` → `10a25d2` (P53) … → `c55e6c5` (P1). Branche `recovery/pos-audit-session`, working tree **clean**.
+- **Note infra** : sandbox redémarrée — clone `/tmp` + identité git + `/tmp/jest.fast.cjs` reconstruits depuis le bundle (tip P53 vérifié `10a25d2` avant reprise) ; bundle rafraîchi à chaque paquet par sécurité.
+- **Non prouvé (honnête)** : suites lourdes ts-jest/pg-mem, migrations 1721-1724, `npm run build:backend` complet → à valider en local.
+
+**Prochain paquet** : PAQUET 59 — domaine restant faible couverture (helper pur), même protocole. Sur GO.
