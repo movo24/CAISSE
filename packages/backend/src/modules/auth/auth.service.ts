@@ -17,6 +17,7 @@ import { logBusinessEvent } from '../../common/business-logger';
 import { CACHE_STORE } from '../../common/cache/cache.module';
 import { ICacheStore } from '../../common/cache/cache-store';
 import { AuditService } from '../audit/audit.service';
+import { isUpstreamUnavailable } from './upstream-status';
 
 /** Conventional store id for global (store-less) audit events like admin login. */
 const ADMIN_AUDIT_STORE = '_admin';
@@ -221,7 +222,7 @@ export class AuthService {
       const twResult = await this.timewin.loginEmployee({ qrCode, pin, storeId: '_any' });
       return await this.buildSessionFromTimewin(twResult, twResult.store_id);
     } catch (err: any) {
-      if (err.status === undefined || err.status >= 500) {
+      if (isUpstreamUnavailable(err.status)) {
         this.logger.warn(`TimeWin24 unreachable for QR login`);
         throw new UnauthorizedException('TimeWin24 unreachable — QR login requires online connection');
       }
