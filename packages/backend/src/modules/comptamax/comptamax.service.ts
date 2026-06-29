@@ -18,6 +18,7 @@ import {
   WorkforcePeriodSummary,
 } from './social-preaccounting';
 import { toEmployeePeriodInputs } from './payroll-adapter';
+import { dayRangeUtc, inclusiveRangeUtc } from './journal-range';
 import { TimewinService } from '../timewin/timewin.service';
 
 export interface DayJournal {
@@ -73,10 +74,31 @@ export class ComptamaxService {
   }
 
   async buildDayJournal(storeId: string, date: string): Promise<DayJournal> {
-    const start = new Date(`${date}T00:00:00.000Z`);
-    const end = new Date(start);
-    end.setUTCDate(end.getUTCDate() + 1);
+    const { start, end } = dayRangeUtc(date);
+    const r = await this.aggregateRange(storeId, start, end);
+    return { storeId, date, ...r };
+  }
 
+  /** Journal over an inclusive date range (period close), e.g. a month. */
+  async buildJournalRange(
+    storeId: string,
+    from: string,
+    to: string,
+  ): Promise<DayJournal & { from: string; to: string }> {
+    const { start, end } = inclusiveRangeUtc(from, to);
+    const r = await this.aggregateRange(storeId, start, end);
+    return { storeId, date: `${from}..${to}`, from, to, ...r };
+  }
+
+  async buildJournalRangeCsv(storeId: string, from: string, to: string): Promise<string> {
+    return journalToCsv((await this.buildJournalRange(storeId, from, to)).lines);
+  }
+
+  private async aggregateRange(
+    storeId: string,
+    start: Date,
+    end: Date,
+  ): Promise<Omit<DayJournal, 'storeId' | 'date'>> {
     const rows = await this.events.find({
       where: {
         storeId,
@@ -144,8 +166,6 @@ export class ComptamaxService {
 
     const agg = aggregateJournalByAccount(lines);
     return {
-      storeId,
-      date,
       lines: agg,
       totals: journalTotals(agg),
       balanced: journalIsBalanced(agg),

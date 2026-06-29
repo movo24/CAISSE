@@ -21,13 +21,20 @@ export class ComptamaxController {
     @Request() req: any,
     @Query('date') date: string,
     @Query('format') format?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
   ) {
     // storeId comes from the authenticated tenant (anti-IDOR — never from the query).
     const storeId = req.user.storeId;
-    if (format === 'csv') {
-      return this.comptamax.buildDayJournalCsv(storeId, date);
+    // Range mode (period close) when from+to are given, else single day.
+    if (from && to) {
+      return format === 'csv'
+        ? this.comptamax.buildJournalRangeCsv(storeId, from, to)
+        : this.comptamax.buildJournalRange(storeId, from, to);
     }
-    return this.comptamax.buildDayJournal(storeId, date);
+    return format === 'csv'
+      ? this.comptamax.buildDayJournalCsv(storeId, date)
+      : this.comptamax.buildDayJournal(storeId, date);
   }
 
   @Get('social')
