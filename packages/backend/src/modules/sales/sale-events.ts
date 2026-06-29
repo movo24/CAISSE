@@ -91,6 +91,7 @@ export function buildSaleOutboxEvents(input: SaleEventInput): IntegrationEvent[]
     },
   });
 
+  // (sale.voided is built separately by buildSaleVoidedEvent)
   const paymentEvents = input.payments.map((p) =>
     buildIntegrationEvent({
       type: 'payment.captured',
@@ -110,4 +111,55 @@ export function buildSaleOutboxEvents(input: SaleEventInput): IntegrationEvent[]
   );
 
   return [saleEvent, ...paymentEvents];
+}
+
+export interface SaleVoidedInput {
+  saleId: string;
+  ticketNumber: string;
+  storeId: string;
+  organizationId?: string | null;
+  terminalId?: string | null;
+  employeeId: string;
+  employeeRole?: string | null;
+  currencyCode: string;
+  totalMinorUnits: number;
+  taxTotalMinorUnits: number;
+  reason?: string | null;
+  occurredAt?: Date | string;
+  payments: SaleEventPayment[];
+  items: SaleEventItem[];
+}
+
+/**
+ * `sale.voided` — a validated sale was annulled (NF525 void). Carries the figures
+ * + payments + per-rate VAT so Comptamax24 can post the counter-entry standalone
+ * (the original may have been booked on another day).
+ */
+export function buildSaleVoidedEvent(input: SaleVoidedInput): IntegrationEvent {
+  return buildIntegrationEvent({
+    type: 'sale.voided',
+    aggregateType: 'sale',
+    aggregateId: input.saleId,
+    tenant: {
+      organizationId: input.organizationId ?? null,
+      storeId: input.storeId,
+      terminalId: input.terminalId ?? null,
+    },
+    actor: { employeeId: input.employeeId, role: input.employeeRole ?? null },
+    occurredAt: input.occurredAt,
+    payload: {
+      ticketNumber: input.ticketNumber,
+      currencyCode: input.currencyCode,
+      totalMinorUnits: input.totalMinorUnits,
+      taxTotalMinorUnits: input.taxTotalMinorUnits,
+      reason: input.reason ?? null,
+      paymentMethods: input.payments.map((p) => p.method),
+      payments: input.payments.map((p) => ({ method: p.method, amountMinorUnits: p.amountMinorUnits })),
+      taxBreakdown: taxBreakdownByRate(
+        input.items
+          .filter((i) => i.taxRate != null)
+          .map((i) => ({ lineTotalMinorUnits: i.lineTotalMinorUnits, taxRate: i.taxRate as number })),
+      ),
+    },
+  });
 }

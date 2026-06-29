@@ -1,6 +1,7 @@
 import {
   buildSaleJournalLines,
   buildRefundJournalLines,
+  reverseJournal,
   journalIsBalanced,
   journalTotals,
   aggregateJournalByAccount,
@@ -102,6 +103,25 @@ describe('Comptamax pre-accounting engine', () => {
       });
       expect(journalIsBalanced(lines)).toBe(true);
       expect(lines.find((l) => l.account === ACCOUNTS.CAISSE_ESPECES)!.creditMinorUnits).toBe(600);
+    });
+  });
+
+  describe('reverseJournal', () => {
+    it('swaps debit/credit and stays balanced (sale void counter-entry)', () => {
+      const sale = buildSaleJournalLines({
+        ticketNumber: 'T-1', totalMinorUnits: 1200, taxTotalMinorUnits: 200,
+        payments: [{ method: 'card', amountMinorUnits: 1200 }],
+      });
+      const rev = reverseJournal(sale, 'Annulation T-1');
+      expect(journalIsBalanced(rev)).toBe(true);
+      // the 707 credit becomes a 707 debit
+      expect(rev.find((l) => l.account === ACCOUNTS.VENTE_HT)!.debitMinorUnits).toBe(1000);
+      // the card debit becomes a card credit
+      expect(rev.find((l) => l.account === ACCOUNTS.BANQUE_CARTE)!.creditMinorUnits).toBe(1200);
+      // sale + reversal net to zero
+      const net = [...sale, ...rev];
+      const t = journalTotals(net);
+      expect(t.debit).toBe(t.credit);
     });
   });
 

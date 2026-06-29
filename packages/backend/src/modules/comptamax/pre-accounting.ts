@@ -148,6 +148,16 @@ export function buildRefundJournalLines(input: RefundJournalInput): JournalLine[
   ];
 }
 
+/** Reverse an entry (counter-passation): swap debit ↔ credit. Stays balanced. */
+export function reverseJournal(lines: JournalLine[], labelPrefix = 'Annulation'): JournalLine[] {
+  return lines.map((l) => ({
+    account: l.account,
+    label: `${labelPrefix} — ${l.label}`,
+    debitMinorUnits: l.creditMinorUnits,
+    creditMinorUnits: l.debitMinorUnits,
+  }));
+}
+
 /** Σ débit and Σ crédit (integer centimes). */
 export function journalTotals(lines: JournalLine[]): { debit: number; credit: number } {
   return lines.reduce(

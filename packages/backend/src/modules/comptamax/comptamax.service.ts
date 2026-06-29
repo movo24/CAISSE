@@ -5,6 +5,7 @@ import { IntegrationEventEntity } from '../../database/entities/integration-even
 import {
   buildSaleJournalLines,
   buildRefundJournalLines,
+  reverseJournal,
   aggregateJournalByAccount,
   journalIsBalanced,
   journalTotals,
@@ -80,7 +81,7 @@ export class ComptamaxService {
       where: {
         storeId,
         occurredAt: Between(start, end),
-        type: In(['sale.completed', 'payment.captured', 'refund.created', 'credit_note.issued']),
+        type: In(['sale.completed', 'sale.voided', 'payment.captured', 'refund.created', 'credit_note.issued']),
       },
       order: { occurredAt: 'ASC' },
     });
@@ -110,6 +111,20 @@ export class ComptamaxService {
               : undefined,
           }),
         );
+      } else if (e.type === 'sale.voided') {
+        // Counter-entry of the sale (reverse debit/credit), booked on the void day.
+        const saleLines = buildSaleJournalLines({
+          ticketNumber: String(p.ticketNumber ?? e.aggregateId),
+          totalMinorUnits: Number(p.totalMinorUnits) || 0,
+          taxTotalMinorUnits: Number(p.taxTotalMinorUnits) || 0,
+          payments: Array.isArray(p.payments)
+            ? p.payments.map((x: any) => ({ method: String(x.method), amountMinorUnits: Number(x.amountMinorUnits) || 0 }))
+            : [],
+          taxBreakdown: Array.isArray(p.taxBreakdown)
+            ? p.taxBreakdown.map((b: any) => ({ rate: Number(b.rate), taxMinorUnits: Number(b.taxMinorUnits) }))
+            : undefined,
+        });
+        lines.push(...reverseJournal(saleLines, `Annulation ${p.ticketNumber ?? e.aggregateId}`));
       } else if (e.type === 'refund.created' || e.type === 'credit_note.issued') {
         if (p.origin !== 'return') continue; // gift cards are not sales reversals
         lines.push(

@@ -31,7 +31,7 @@ import { ProductEntity } from '../../database/entities/product.entity';
 import { FiscalJournalEntity } from '../../database/entities/fiscal-journal.entity';
 import { IntegrationEventEntity } from '../../database/entities/integration-event.entity';
 import { toOutboxRow } from '../../common/integration/integration-event';
-import { buildSaleOutboxEvents } from './sale-events';
+import { buildSaleOutboxEvents, buildSaleVoidedEvent } from './sale-events';
 import { StoreOrgResolver } from '../integration/store-org-resolver';
 import { ProductsService } from '../products/products.service';
 import { CustomersService } from '../customers/customers.service';
@@ -1265,6 +1265,32 @@ export class SalesService {
           expiresAt: this.idempotencyExpiry(),
         });
       }
+
+      // POS-INT-98 — transactional outbox: sale.voided (Comptamax counter-entry).
+      const voidOrganizationId = await this.storeOrgResolver.resolve(storeId);
+      const voidEvent = buildSaleVoidedEvent({
+        saleId: sale.id,
+        ticketNumber: sale.ticketNumber,
+        storeId,
+        organizationId: voidOrganizationId,
+        employeeId,
+        employeeRole: employeeRole ?? null,
+        currencyCode: sale.currencyCode || 'EUR',
+        totalMinorUnits: sale.totalMinorUnits,
+        taxTotalMinorUnits: sale.taxTotalMinorUnits,
+        reason: reason ?? null,
+        payments: (sale.payments || []).map((p) => ({
+          method: p.method,
+          amountMinorUnits: p.amountMinorUnits,
+        })),
+        items: (sale.lineItems || []).map((li) => ({
+          ean: li.ean,
+          quantity: li.quantity,
+          lineTotalMinorUnits: li.lineTotalMinorUnits,
+          taxRate: Number(li.taxRate),
+        })),
+      });
+      await queryRunner.manager.insert(IntegrationEventEntity, [toOutboxRow(voidEvent)] as any);
 
       await queryRunner.commitTransaction();
 

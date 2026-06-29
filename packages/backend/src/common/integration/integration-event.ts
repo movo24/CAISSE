@@ -29,6 +29,7 @@ export type AggregateType =
 /** Namespaced event types: `<aggregate>.<action>`. Extend as packets land. */
 export type IntegrationEventType =
   | 'sale.completed'
+  | 'sale.voided'
   | 'payment.captured'
   | 'refund.created'
   | 'credit_note.issued'
