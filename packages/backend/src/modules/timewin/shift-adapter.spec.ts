@@ -20,4 +20,22 @@ describe('TimeWin24 shift-adapter', () => {
     expect(toWorkIntervals(null)).toEqual([]);
     expect(toWorkIntervals('nope')).toEqual([]);
   });
+
+  describe('employee filter (TD-INT-RECON-PEREMP)', () => {
+    const rows = [
+      { employeeId: 'e1', start: 'a', end: 'b' },
+      { employee_id: 'e2', start: 'c', end: 'd' },
+      { start: 'x', end: 'y' }, // no employee id
+    ];
+    it('keeps only matching employee shifts', () => {
+      expect(toWorkIntervals(rows, { employeeId: 'e1' })).toEqual([{ start: 'a', end: 'b' }]);
+      expect(toWorkIntervals(rows, { employeeId: 'e2' })).toEqual([{ start: 'c', end: 'd' }]);
+    });
+    it('drops shifts lacking an employee id when filtering', () => {
+      expect(toWorkIntervals(rows, { employeeId: 'e9' })).toEqual([]);
+    });
+    it('no filter → all shifts (incl. id-less)', () => {
+      expect(toWorkIntervals(rows)).toHaveLength(3);
+    });
+  });
 });

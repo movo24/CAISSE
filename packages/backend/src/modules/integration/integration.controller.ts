@@ -23,8 +23,8 @@ export class IntegrationController {
     summary:
       'POS-INT-81 — POS↔TimeWin presence reconciliation for the store today (POS sessions vs TimeWin shifts, degrades gracefully if TW24 unreachable). Tenant-scoped, read-only.',
   })
-  async reconciliationToday(@Request() req: any) {
-    return this.reconciliation.reconcileToday(req.user.storeId);
+  async reconciliationToday(@Request() req: any, @Query('employeeId') employeeId?: string) {
+    return this.reconciliation.reconcileToday(req.user.storeId, employeeId);
   }
 
   @Get('events')

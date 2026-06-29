@@ -26,11 +26,24 @@ function asArray(raw: any): any[] {
 
 const START_KEYS = ['start', 'startedAt', 'clockIn', 'clock_in', 'in', 'checkIn', 'debut'];
 const END_KEYS = ['end', 'endedAt', 'clockOut', 'clock_out', 'out', 'checkOut', 'fin'];
+const EMP_KEYS = ['employeeId', 'employee_id', 'empId', 'matricule'];
 
-/** Normalize a TW24 shifts payload into WorkInterval[] (items without a start are dropped). */
-export function toWorkIntervals(raw: unknown): WorkInterval[] {
+/**
+ * Normalize a TW24 shifts payload into WorkInterval[] (items without a start are dropped).
+ * When `opts.employeeId` is given, only shifts carrying a matching employee id are kept;
+ * shifts with NO employee-id field are dropped in that mode (avoids over-counting —
+ * TD-INT-RECON-PEREMP: store-level feeds may lack per-employee ids).
+ */
+export function toWorkIntervals(
+  raw: unknown,
+  opts?: { employeeId?: string },
+): WorkInterval[] {
   return asArray(raw)
     .map((item): WorkInterval | null => {
+      if (opts?.employeeId) {
+        const emp = pick(item, EMP_KEYS);
+        if (emp == null || String(emp) !== opts.employeeId) return null;
+      }
       const start = pick(item, START_KEYS);
       const end = pick(item, END_KEYS);
       return start

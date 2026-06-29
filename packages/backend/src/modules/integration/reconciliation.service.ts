@@ -12,6 +12,7 @@ import {
 
 export interface StoreReconciliation extends ReconcileResult {
   storeId: string;
+  employeeId: string | null;
   date: string;
   posSessionCount: number;
   timewinReachable: boolean;
@@ -34,15 +35,15 @@ export class ReconciliationService {
     private readonly timewin: TimewinService,
   ) {}
 
-  async reconcileToday(storeId: string): Promise<StoreReconciliation> {
+  async reconcileToday(storeId: string, employeeId?: string): Promise<StoreReconciliation> {
     const dayStart = new Date();
     dayStart.setHours(0, 0, 0, 0);
     const dayEnd = new Date(dayStart);
     dayEnd.setDate(dayEnd.getDate() + 1);
 
-    const rows = await this.sessions.find({
-      where: { storeId, openedAt: Between(dayStart, dayEnd) },
-    });
+    const where: any = { storeId, openedAt: Between(dayStart, dayEnd) };
+    if (employeeId) where.employeeId = employeeId;
+    const rows = await this.sessions.find({ where });
     const posSessions: WorkInterval[] = rows.map((s) => ({
       start: s.openedAt,
       end: s.closedAt ?? null,
@@ -51,7 +52,10 @@ export class ReconciliationService {
     let timewinShifts: WorkInterval[] = [];
     let timewinReachable = true;
     try {
-      timewinShifts = toWorkIntervals(await this.timewin.getTodayShifts(storeId));
+      timewinShifts = toWorkIntervals(
+        await this.timewin.getTodayShifts(storeId),
+        employeeId ? { employeeId } : undefined,
+      );
     } catch (e: any) {
       timewinReachable = false;
       this.logger.warn(`TimeWin24 today-shifts unreachable for ${storeId}: ${e?.message}`);
@@ -61,6 +65,7 @@ export class ReconciliationService {
     return {
       ...result,
       storeId,
+      employeeId: employeeId ?? null,
       date: dayStart.toISOString().slice(0, 10),
       posSessionCount: rows.length,
       timewinReachable,
