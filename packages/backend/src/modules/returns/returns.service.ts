@@ -22,6 +22,9 @@ import {
   isSpendableStoreCredit,
 } from './refund-policy';
 import { normalizePage, normalizeLimit, totalPages } from '../../common/pagination';
+import { IntegrationEventEntity } from '../../database/entities/integration-event.entity';
+import { toOutboxRow } from '../../common/integration/integration-event';
+import { buildRefundOutboxEvent, buildGiftCardOutboxEvent } from './refund-events';
 
 const GENESIS = '0'.repeat(64);
 function sha256(s: string): string {
@@ -217,6 +220,24 @@ export class ReturnsService {
           });
         }
 
+        // Transactional outbox — refund/credit-note event (POS-INT-73). Atomic with
+        // the credit note; consumed out-of-band so external systems never block returns.
+        const refundEvent = buildRefundOutboxEvent({
+          creditNoteId: saved.id,
+          code: saved.code,
+          storeId,
+          organizationId: null,
+          employeeId,
+          type: saved.type === 'store_credit' ? 'store_credit' : 'refund',
+          refundMethod: saved.refundMethod ?? null,
+          originalSaleId: sale.id,
+          originalTicketNumber: sale.ticketNumber,
+          totalMinorUnits: total,
+          currencyCode: saved.currencyCode || 'EUR',
+          reason: saved.reason ?? null,
+        });
+        await qr.manager.insert(IntegrationEventEntity, [toOutboxRow(refundEvent)] as any);
+
         await qr.commitTransaction();
 
         // Append-only audit (post-commit, non-blocking).
@@ -340,6 +361,19 @@ export class ReturnsService {
             responseStatus: 201, responseBody: JSON.parse(JSON.stringify(saved)), expiresAt,
           });
         }
+
+        // Transactional outbox — gift-card issuance (POS-INT-73).
+        const giftEvent = buildGiftCardOutboxEvent({
+          creditNoteId: saved.id,
+          code: saved.code,
+          storeId,
+          organizationId: null,
+          employeeId,
+          amountMinorUnits: amount,
+          currencyCode: saved.currencyCode || 'EUR',
+          saleId: data.saleId ?? null,
+        });
+        await qr.manager.insert(IntegrationEventEntity, [toOutboxRow(giftEvent)] as any);
 
         await qr.commitTransaction();
 

@@ -9,6 +9,9 @@ import { aggregateSalesByEmployee } from './sales-by-employee';
 import { buildDailyAccountingExport, toAccountingCsv } from './accounting-export';
 import { aggregatePaymentsByMethod } from './payments-breakdown';
 import { averageBasket } from './average-basket';
+import { IntegrationEventEntity } from '../../database/entities/integration-event.entity';
+import { toOutboxRow } from '../../common/integration/integration-event';
+import { buildCashSessionClosedEvent } from './cash-session-events';
 
 @Injectable()
 export class ReportsService {
@@ -69,7 +72,30 @@ export class ReportsService {
       peakHours: agg.peakHours,
     });
 
-    return this.zReportRepo.save(zReport);
+    // Persist the Z-report and its closure event atomically (transactional outbox,
+    // POS-INT-73). The Z stays immutable; the event mirrors its frozen figures and
+    // is consumed out-of-band (Comptamax24 / Analytik R never block the closure).
+    return this.zReportRepo.manager.transaction(async (m) => {
+      const savedZ = await m.save(ZReportEntity, zReport);
+      const event = buildCashSessionClosedEvent({
+        zReportId: savedZ.id,
+        storeId,
+        organizationId: null,
+        employeeId,
+        date,
+        currencyCode: 'EUR',
+        totalRevenueMinorUnits: savedZ.totalRevenueMinorUnits,
+        totalTaxMinorUnits: savedZ.totalTaxMinorUnits,
+        cashTotalMinorUnits: savedZ.cashTotalMinorUnits,
+        cardTotalMinorUnits: savedZ.cardTotalMinorUnits,
+        discountTotalMinorUnits: savedZ.discountTotalMinorUnits,
+        transactionCount: savedZ.transactionCount,
+        averageBasketMinorUnits: savedZ.averageBasketMinorUnits,
+        voidCount: savedZ.voidCount,
+      });
+      await m.insert(IntegrationEventEntity, [toOutboxRow(event)] as any);
+      return savedZ;
+    });
   }
 
   async getZReport(
