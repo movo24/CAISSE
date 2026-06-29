@@ -4,6 +4,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { ReportsService } from './reports.service';
 import { SaleEntity } from '../../database/entities/sale.entity';
 import { ZReportEntity } from '../../database/entities/z-report.entity';
+import { StoreOrgResolver } from '../integration/store-org-resolver';
 
 describe('ReportsService — getStoreKpi', () => {
   let service: ReportsService;
@@ -23,6 +24,8 @@ describe('ReportsService — getStoreKpi', () => {
         ReportsService,
         { provide: getRepositoryToken(SaleEntity), useValue: saleRepo },
         { provide: getRepositoryToken(ZReportEntity), useValue: {} },
+        // POS-INT-120 — integration DI added during the epic; mocked here.
+        { provide: StoreOrgResolver, useValue: { resolve: async () => null } },
       ],
     }).compile();
     service = module.get(ReportsService);

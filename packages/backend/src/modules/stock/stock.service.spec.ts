@@ -5,7 +5,9 @@ import { ForbiddenException } from '@nestjs/common';
 
 import { StockService } from './stock.service';
 import { ProductEntity } from '../../database/entities/product.entity';
+import { IntegrationEventEntity } from '../../database/entities/integration-event.entity';
 import { AuditService } from '../audit/audit.service';
+import { StoreOrgResolver } from '../integration/store-org-resolver';
 
 describe('StockService — adjustStock', () => {
   let service: StockService;
@@ -26,8 +28,11 @@ describe('StockService — adjustStock', () => {
       providers: [
         StockService,
         { provide: getRepositoryToken(ProductEntity), useValue: {} },
+        // POS-INT-120 — integration DI added during the epic; mocked here.
+        { provide: getRepositoryToken(IntegrationEventEntity), useValue: { insert: jest.fn() } },
         { provide: AuditService, useValue: audit },
         { provide: DataSource, useValue: dataSource },
+        { provide: StoreOrgResolver, useValue: { resolve: async () => null } },
       ],
     }).compile();
     service = module.get(StockService);

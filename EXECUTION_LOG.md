@@ -1165,3 +1165,14 @@ Décisions produit tranchées par l'utilisateur. 5 blocs enchaînés.
 - Preuve tests : `stock-signals.spec.ts` ⇒ 1 suite / 7 tests PASS.
 - Preuve typecheck/build : `tsc --noEmit` EXIT 0 ; `nest build` RC=0.
 - Dette inchangée. Cumul épic : 49 paquets (71→119).
+
+## PAQUET 120 — Audit complet + fix 3 specs DI obsolètes (POS-INT-120)
+- Contrôle demandé (no blabla, preuves). Run global `src/**` : AVANT = 8 suites rouges. Diagnostic honnête :
+  - 5 = gate bcrypt (binaire natif macOS, "invalid ELF header" sur Linux sandbox) : auth.service, employees.service, sales.service.{audit,idempotency,store-credit} — non exécutables ici (env, pas code).
+  - 3 = VRAIE régression de tests : reports/returns/stock `.service.spec.ts` non mis à jour après l'ajout de DI intégration (StoreOrgResolver, IntegrationEventEntity) en P79/P86/P89 → "Nest can't resolve dependencies".
+- Fix : providers mock ajoutés aux 3 TestingModule (StoreOrgResolver pour reports/returns/stock ; IntegrationEventEntity repo pour stock). Aucun code de prod modifié.
+- Preuve APRÈS : `src/**` ⇒ 122 suites PASS / 826 tests PASS, 826/826 ; 5 suites rouges restantes = TOUTES bcrypt (prouvé une par une). 3 suites réparées : 24 tests PASS.
+- Preuve typecheck/build : `tsc --noEmit` EXIT 0 ; `nest build` RC=0 (345 .js).
+- Audit qualité : 0 TODO/FIXME critiques (csv/integration/comptamax/stock) ; toutes les nouvelles fonctions (stockSignalsForDay, buildCashControl[Csv], shiftsForDayCsv, summarizeStockSignals, cashControlToCsv, buildCashSessionOpenedEvent, csvSafeRow) référencées ≥1 hors def/spec → pas de helper mort.
+- Gate bcrypt = nouvelle dette de test environnement (TD-TEST-BCRYPT-NATIVE) : suites bcrypt-dépendantes non exécutables en sandbox ; à lancer sur CI Linux avec bcrypt rebuild.
+- Cumul épic : 50 paquets (71→120).

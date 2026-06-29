@@ -8,6 +8,7 @@ import { CreditNoteEntity } from '../../database/entities/credit-note.entity';
 import { SaleEntity } from '../../database/entities/sale.entity';
 import { IdempotencyKeyEntity } from '../../database/entities/idempotency-key.entity';
 import { AuditService } from '../audit/audit.service';
+import { StoreOrgResolver } from '../integration/store-org-resolver';
 
 const SALE = {
   id: 'sale-1',
@@ -55,6 +56,8 @@ describe('ReturnsService', () => {
         { provide: getRepositoryToken(IdempotencyKeyEntity), useValue: idemRepo },
         { provide: DataSource, useValue: dataSource },
         { provide: AuditService, useValue: audit },
+        // POS-INT-120 — integration DI added during the epic; mocked here.
+        { provide: StoreOrgResolver, useValue: { resolve: async () => null } },
       ],
     }).compile();
     service = module.get(ReturnsService);
