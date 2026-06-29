@@ -22,6 +22,7 @@ import {
   marginPercentOf,
   deltaPct,
 } from './product-analytics';
+import { normalizePage, normalizeLimit } from '../../common/pagination';
 
 @Injectable()
 export class ProductsService {
@@ -250,8 +251,8 @@ export class ProductsService {
     limit: number;
   }> {
     // Paginate to avoid loading an unbounded set on large catalogues.
-    const limit = Math.min(Math.max(options.limit ?? 50, 1), 100);
-    const page = Math.max(options.page ?? 1, 1);
+    const limit = normalizeLimit(options.limit);
+    const page = normalizePage(options.page);
     const skip = (page - 1) * limit;
 
     const [alert, alertTotal] = await this.productRepo

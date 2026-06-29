@@ -21,6 +21,7 @@ import {
   creditNoteRefundState,
   isSpendableStoreCredit,
 } from './refund-policy';
+import { normalizePage, normalizeLimit } from '../../common/pagination';
 
 const GENESIS = '0'.repeat(64);
 function sha256(s: string): string {
@@ -399,8 +400,8 @@ export class ReturnsService {
     storeId: string,
     opts: { page?: number; limit?: number } = {},
   ): Promise<PaginatedResult<CreditNoteEntity>> {
-    const limit = Math.min(Math.max(opts.limit ?? 50, 1), 100);
-    const page = Math.max(opts.page ?? 1, 1);
+    const limit = normalizeLimit(opts.limit);
+    const page = normalizePage(opts.page);
     const [data, total] = await this.cnRepo.findAndCount({
       where: { storeId },
       order: { createdAt: 'DESC' },
