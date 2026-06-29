@@ -41,10 +41,12 @@ export class ComptamaxController {
   @Roles('admin', 'manager')
   @ApiOperation({
     summary:
-      'POS-INT-111 — cash control / écart de caisse for a day (?date=YYYY-MM-DD): reconciles captured payments vs the frozen Z-report totals by tender bucket (cash/card/other). Tenant-scoped, read-only.',
+      'POS-INT-111/112 — cash control / écart de caisse for a day (?date=YYYY-MM-DD&format=csv|json): reconciles captured payments vs the frozen Z-report totals by tender bucket (cash/card/other). Tenant-scoped, read-only.',
   })
-  async cashControl(@Request() req: any, @Query('date') date: string) {
-    return this.comptamax.buildCashControl(req.user.storeId, date);
+  async cashControl(@Request() req: any, @Query('date') date: string, @Query('format') format?: string) {
+    return format === 'csv'
+      ? this.comptamax.buildCashControlCsv(req.user.storeId, date)
+      : this.comptamax.buildCashControl(req.user.storeId, date);
   }
 
   @Get('social')

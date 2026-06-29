@@ -1,4 +1,4 @@
-import { reconcileCashControl, tenderBucket } from './cash-control';
+import { reconcileCashControl, tenderBucket, cashControlToCsv } from './cash-control';
 
 describe('cash-control / écart de caisse (POS-INT-110)', () => {
   describe('tenderBucket', () => {
@@ -58,5 +58,24 @@ describe('cash-control / écart de caisse (POS-INT-110)', () => {
     expect(r.totalCapturedMinorUnits).toBe(3000);
     expect(r.totalDeclaredMinorUnits).toBe(3000);
     expect(r.totalDiffMinorUnits).toBe(0);
+  });
+
+  describe('cashControlToCsv (POS-INT-112)', () => {
+    it('emits a header, one row per bucket and a TOTAL row', () => {
+      const r = reconcileCashControl(
+        [
+          { method: 'cash', amountMinorUnits: 4900 },
+          { method: 'card', amountMinorUnits: 2000 },
+        ],
+        { cashTotalMinorUnits: 5000, cardTotalMinorUnits: 2000 },
+      );
+      const csv = cashControlToCsv(r).split('\n');
+      expect(csv[0]).toBe('bucket,capturedMinorUnits,declaredMinorUnits,diffMinorUnits');
+      expect(csv[1]).toBe('cash,4900,5000,-100');
+      expect(csv[2]).toBe('card,2000,2000,0');
+      expect(csv[3]).toBe('other,0,0,0');
+      expect(csv[4]).toBe('TOTAL,6900,7000,-100');
+      expect(csv).toHaveLength(5);
+    });
   });
 });

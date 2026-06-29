@@ -37,6 +37,34 @@ export interface CashControlResult {
   balanced: boolean; // every bucket diff === 0
 }
 
+function csvCell(v: string | number | boolean): string {
+  const s = String(v);
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+/**
+ * Cash-control CSV (accounting justificatif): one row per tender bucket plus a
+ * TOTAL row. Stable header & column order; amounts in integer centimes.
+ */
+export function cashControlToCsv(result: CashControlResult): string {
+  const header = ['bucket', 'capturedMinorUnits', 'declaredMinorUnits', 'diffMinorUnits'];
+  const lines = [header.join(',')];
+  for (const b of result.byBucket) {
+    lines.push(
+      [csvCell(b.bucket), csvCell(b.capturedMinorUnits), csvCell(b.declaredMinorUnits), csvCell(b.diffMinorUnits)].join(','),
+    );
+  }
+  lines.push(
+    [
+      'TOTAL',
+      csvCell(result.totalCapturedMinorUnits),
+      csvCell(result.totalDeclaredMinorUnits),
+      csvCell(result.totalDiffMinorUnits),
+    ].join(','),
+  );
+  return lines.join('\n');
+}
+
 /** Map a POS payment method to the Z-report tender bucket. */
 export function tenderBucket(method: string): TenderBucket {
   switch (method) {

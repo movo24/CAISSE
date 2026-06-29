@@ -21,7 +21,7 @@ import {
 } from './social-preaccounting';
 import { toEmployeePeriodInputs } from './payroll-adapter';
 import { dayRangeUtc, inclusiveRangeUtc } from './journal-range';
-import { reconcileCashControl, CashControlResult, CapturedPayment } from './cash-control';
+import { reconcileCashControl, cashControlToCsv, CashControlResult, CapturedPayment } from './cash-control';
 import { TimewinService } from '../timewin/timewin.service';
 
 export interface DayJournal {
@@ -235,5 +235,10 @@ export class ComptamaxService {
 
     const result = reconcileCashControl(captured, { cashTotalMinorUnits, cardTotalMinorUnits });
     return { storeId, date, zReportCount, ...result };
+  }
+
+  /** CSV variant of buildCashControl (accounting justificatif). */
+  async buildCashControlCsv(storeId: string, date: string): Promise<string> {
+    return cashControlToCsv(await this.buildCashControl(storeId, date));
   }
 }

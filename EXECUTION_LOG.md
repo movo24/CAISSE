@@ -1101,3 +1101,10 @@ Décisions produit tranchées par l'utilisateur. 5 blocs enchaînés.
 - Preuve tests (non-régression) : agrégat 16 suites / 112 tests PASS.
 - Preuve typecheck/build : `tsc --noEmit` EXIT 0 ; `nest build` RC=0.
 - Dette inchangée. Cumul épic : 41 paquets (71→111).
+
+## PAQUET 112 — Export CSV contrôle de caisse (POS-INT-112)
+- Objectif : justificatif comptable — `GET /comptamax/cash-control?date=&format=csv` (1 ligne/bucket + ligne TOTAL).
+- Fichiers : `comptamax/cash-control.ts` (`cashControlToCsv` pur), `comptamax.service.ts` (`buildCashControlCsv`), `comptamax.controller.ts` (`format=csv|json`), spec étendue.
+- Preuve tests : `cash-control.spec.ts` ⇒ 1 suite / 6 tests PASS.
+- Preuve typecheck/build : `tsc --noEmit` EXIT 0 ; `nest build` RC=0.
+- Dette inchangée. Cumul épic : 42 paquets (71→112).
