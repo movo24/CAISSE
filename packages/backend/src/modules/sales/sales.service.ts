@@ -32,6 +32,7 @@ import { FiscalJournalEntity } from '../../database/entities/fiscal-journal.enti
 import { IntegrationEventEntity } from '../../database/entities/integration-event.entity';
 import { toOutboxRow } from '../../common/integration/integration-event';
 import { buildSaleOutboxEvents } from './sale-events';
+import { StoreOrgResolver } from '../integration/store-org-resolver';
 import { ProductsService } from '../products/products.service';
 import { CustomersService } from '../customers/customers.service';
 import { PromotionsService, CartItem } from '../promotions/promotions.service';
@@ -99,6 +100,7 @@ export class SalesService {
     private jackpotService: JackpotService,
     private timewinService: TimewinService,
     private realtime: RealtimeService,
+    private storeOrgResolver: StoreOrgResolver,
   ) {}
 
   /** Serialize an entity to a plain JSON object for jsonb storage (dates → ISO strings). */
@@ -643,11 +645,12 @@ export class SalesService {
       // (future) Analytik R. Written in the SAME transaction as the sale so they are
       // atomic with it; consumers read the outbox out-of-band, so an external system
       // being down NEVER blocks the caisse. (POS-INT-72) ---
+      const organizationId = await this.storeOrgResolver.resolve(storeId); // POS-INT-86
       const outboxEvents = buildSaleOutboxEvents({
         saleId: saved.id,
         ticketNumber,
         storeId,
-        organizationId: null, // not carried on sale; consumer resolves via store (TD-INT-ORG)
+        organizationId, // resolved store→org (cached)
         terminalId: employeeSnapshot?.terminalId ?? null, // POS-INT-83 — from X-Terminal-Id header
 
         employeeId,

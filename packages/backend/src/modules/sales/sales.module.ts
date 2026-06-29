@@ -15,6 +15,7 @@ import { PromotionsModule } from '../promotions/promotions.module';
 import { AuditModule } from '../audit/audit.module';
 import { StockModule } from '../stock/stock.module';
 import { JackpotModule } from '../jackpot/jackpot.module';
+import { IntegrationModule } from '../integration/integration.module';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { JackpotModule } from '../jackpot/jackpot.module';
     AuditModule,
     StockModule,
     JackpotModule,
+    IntegrationModule,
   ],
   controllers: [SalesController],
   providers: [SalesService],

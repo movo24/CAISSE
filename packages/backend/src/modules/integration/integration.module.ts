@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { IntegrationEventEntity } from '../../database/entities/integration-event.entity';
 import { PosSessionEntity } from '../../database/entities/pos-session.entity';
+import { StoreEntity } from '../../database/entities/store.entity';
+import { StoreOrgResolver } from './store-org-resolver';
 import { OutboxRelayService } from './outbox-relay.service';
 import { OutboxQueryService } from './outbox-query.service';
 import { ReconciliationService } from './reconciliation.service';
@@ -17,7 +19,7 @@ import { TimewinModule } from '../timewin/timewin.module';
  */
 @Module({
   imports: [
-    TypeOrmModule.forFeature([IntegrationEventEntity, PosSessionEntity]),
+    TypeOrmModule.forFeature([IntegrationEventEntity, PosSessionEntity, StoreEntity]),
     TimewinModule,
   ],
   controllers: [IntegrationController],
@@ -26,8 +28,9 @@ import { TimewinModule } from '../timewin/timewin.module';
     OutboxQueryService,
     ReconciliationService,
     OutboxRelayCron,
+    StoreOrgResolver,
     { provide: OUTBOX_PUBLISHER, useClass: SimulationOutboxPublisher },
   ],
-  exports: [OutboxRelayService, OutboxQueryService, ReconciliationService],
+  exports: [OutboxRelayService, OutboxQueryService, ReconciliationService, StoreOrgResolver],
 })
 export class IntegrationModule {}
