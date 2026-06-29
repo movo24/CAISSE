@@ -129,3 +129,34 @@ Chaque paquet : objectif · fichiers · test · typecheck/build · git · dette 
 **Endpoints intégration livrés** : `GET /api/comptamax/journal` (pré-compta) · `POST /api/integration/relay` (flush simulation) · `GET /api/integration/events` (consommateur Analytik R) · `GET /api/integration/reconciliation` (présence POS↔TimeWin). Tous JWT + RBAC + tenant.
 
 **Gates inchangés** : `TD-INT-RELAY` (publisher réel = simulation pour l'instant ; bascule prod = injecter un publisher HTTP, secrets requis) · `TD-INT-SOCIAL-ENTRIES` · migrations 1725 + suites lourdes = local. **Filtre par employé du rapprochement** = niveau magasin/jour pour l'instant (TW24 today-shifts store-scoped) → `TD-INT-RECON-PEREMP`.
+
+---
+
+## G. JALON PAQUET 100 (2026-06-29) — état consolidé
+
+**Couche intégration : 18 suites / 100 tests verts ensemble · `tsc` EXIT 0 · `nest build` RC=0 (339 .js).**
+
+### Matrice événements outbox (tous append-only, enveloppe normalisée tenant+versionnée)
+| Event | Source POS | Tenant porté | Consommateurs |
+|---|---|---|---|
+| `sale.completed` | createSale (tx) | store+org+terminal | Comptamax (vente HT + TVA/taux), Analytik R |
+| `payment.captured` (×tender) | createSale (tx) | store+org+terminal | Comptamax (encaissements par compte) |
+| `sale.voided` | voidSale (tx) | store+org | Comptamax (**contre-passation** équilibrée) |
+| `refund.created` / `credit_note.issued` | returns/gift (tx) | store+org+terminal | Comptamax (avoir HT + TVA/taux) |
+| `cash_session.closed` (Z) | generateZReport (tx) | store+org | Comptamax, Analytik R |
+| `stock.movement` / `stock.depleted` | stock adjust/decrement (best-effort) | store+org | Analytik R (ruptures) |
+| `employee_activity.recorded` | pos-session open/close (best-effort) | store+org+terminal | TimeWin (rapprochement), Analytik R |
+
+### Endpoints (JWT + RBAC + tenant + anti-IDOR)
+- `GET /api/comptamax/journal?date=` **ou** `?from=&to=` (`format=csv|json`) — journal double-entrée équilibré, TVA par taux, avoirs + annulations contre-passées.
+- `GET /api/comptamax/social?period=YYYY-MM` — justificatif RH (heures/absences/retards), best-effort TW24.
+- `GET /api/integration/events?since=&type=&limit=` — feed incrémental **Analytik R**.
+- `GET /api/integration/outbox/stats` — backlog/monitoring.
+- `GET /api/integration/reconciliation?employeeId=` — présence POS↔TimeWin (magasin ou employé).
+- `POST /api/integration/relay` — flush manuel ; **cron** auto 5 min (OFF par défaut, `OUTBOX_RELAY_ENABLED`).
+
+### Garanties
+Écriture event **dans la transaction** de l'agrégat (cohérence) ; publication **hors chemin critique** (relais/poll) → la **caisse ne dépend d'aucun consommateur**. Montants centimes entiers, ISO-8601, journaux **équilibrés** (Σ débit = Σ crédit). Livraison **signée HMAC** + **vérif anti-rejeu**.
+
+### Pour activer la prod (hors sandbox)
+1. `migration:run` (table `integration_events`, 1725). 2. Fournir `OUTBOX_PUBLISH_URL` + `OUTBOX_PUBLISH_SECRET` (publisher HTTP réel). 3. `OUTBOX_RELAY_ENABLED=true`. 4. Côté Comptamax/TimeWin/Analytik : vérifier la signature (`verifyPublishSignature`) + dédupliquer par `id`.

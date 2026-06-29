@@ -965,6 +965,29 @@ Décisions produit tranchées par l'utilisateur. 5 blocs enchaînés.
 
 **Prochain (sur GO)** : PAQUET 89 — publisher HTTP réel (gate secrets) OU org/terminal sur retours+sessions+stock OU rapprochement par employé.
 
+## PAQUET 95 — Vérif HMAC livraison (anti-rejeu)
+- `verifyPublishSignature` (timingSafe + fenêtre fraîcheur) — contrat signé symétrique. 8/8, tsc 0. Commit (réécrit).
+
+## PAQUET 96 — TVA par taux (ventes)
+- `taxBreakdownByRate` + `sale.completed.taxBreakdown` + Comptamax 1 ligne 44571/taux (équilibré). 25/25, build RC=0.
+
+## PAQUET 97 — TVA par taux (avoirs)
+- refund taxBreakdown + `buildRefundJournalLines` débit 44571/taux. **TD-INT-REFUND-TAX clos.** 15/15, build RC=0.
+
+## PAQUET 98 — sale.voided + contre-passation
+- event `sale.voided` (tx) + `reverseJournal` + Comptamax contre-passe (net zéro). 18/18, build RC=0.
+
+## PAQUET 99 — Journal sur plage de dates
+- `journal-range` (day/inclusive UTC) + `buildJournalRange` + `GET /comptamax/journal?from&to`. 5/5, build RC=0.
+
+## PAQUET 100 — JALON consolidation finale
+- **18 suites / 100 tests** intégration PASS ensemble ; `tsc` EXIT 0 ; `nest build` RC=0 (339 .js).
+- `INTER_SYSTEM_INTEGRATION.md` §G : matrice events + endpoints + garanties + checklist activation prod.
+- Cycle comptable complet & équilibré : vente, paiement, **annulation**, retour/avoir, carte cadeau, clôture Z — TVA par taux, jour ou période. Feed Analytik R + monitoring + rapprochement TimeWin + relais signé (simulation/HTTP gated) + cron.
+- **Gates** (activation prod) : migration 1725 (`migration:run`) · publisher HTTP (`OUTBOX_PUBLISH_URL/SECRET`) · `OUTBOX_RELAY_ENABLED=true` · `TD-INT-SOCIAL-ENTRIES` (écritures sociales = décision compta). Suites lourdes = local.
+
+**Cumul épic intégration : 30 paquets (71→100).**
+
 ## PAQUET 89 — organizationId sur tous events
 - `StoreOrgResolver` câblé returns/reports(Z)/pos-session/stock. tsc 0, build RC=0, **TD-INT-ORG clos**. Commit (réécrit, voir tip).
 
