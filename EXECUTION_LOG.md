@@ -1029,3 +1029,12 @@ Décisions produit tranchées par l'utilisateur. 5 blocs enchaînés.
 - Preuve tests : `consumer-dedup.spec.ts` ⇒ 1 suite / 10 tests PASS.
 - Preuve typecheck/build : `tsc --noEmit` EXIT 0 ; `nest build` RC=0.
 - Dette : inchangée. Prochain : P103 (axe utile à décider).
+
+## PAQUET 103 — Curseur consommateur composite (occurredAt, id) (POS-INT-103)
+- Objectif : éliminer la perte d'events au même `occurredAt` à la frontière de page dans le feed `/integration/events` (Analytik R) — keyset pagination sans saut, complémentaire de la dédup P102.
+- Problème réel : curseur timestamp-only (`MoreThan occurredAt`) saute les events partageant le timestamp de frontière quand une page coupe un groupe même-milliseconde.
+- Fichiers : `events-query.ts` (`parseEventsCursor`, `encodeEventsCursor`, `NormalizedEventsQuery.sinceId`), `outbox-query.service.ts` (prédicat keyset `occurred_at > since OR (occurred_at = since AND id > sinceId)`, `orderBy occurred_at,id`, nextCursor = `"<iso>|<id>"`), specs mises à jour.
+- Rétro-compatibilité : un `since` ISO nu (sans `|`) ⇒ comportement legacy strict-after-timestamp.
+- Preuve tests : `events-query.spec.ts` ⇒ 1 suite / 9 tests PASS.
+- Preuve typecheck/build : `tsc --noEmit` EXIT 0 ; `nest build` RC=0.
+- Dette : inchangée. Prochain : P104 (axe utile à décider).

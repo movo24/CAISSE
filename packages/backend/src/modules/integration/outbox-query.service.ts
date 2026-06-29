@@ -1,8 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, MoreThan, Repository } from 'typeorm';
+import { Brackets, Repository } from 'typeorm';
 import { IntegrationEventEntity } from '../../database/entities/integration-event.entity';
-import { normalizeEventsQuery } from './events-query';
+import { normalizeEventsQuery, encodeEventsCursor } from './events-query';
 import { shapeOutboxStats, OutboxStats } from './outbox-stats';
 
 export interface ConsumerEvent {
@@ -34,15 +34,33 @@ export class OutboxQueryService {
     query: { since?: string; limit?: string | number; type?: string },
   ): Promise<{ events: ConsumerEvent[]; nextCursor: string | null }> {
     const q = normalizeEventsQuery(query);
-    const where: any = { storeId };
-    if (q.sinceDate) where.occurredAt = MoreThan(q.sinceDate);
-    if (q.types.length) where.type = In(q.types);
 
-    const rows = await this.events.find({
-      where,
-      order: { occurredAt: 'ASC', id: 'ASC' },
-      take: q.limit,
-    });
+    // POS-INT-103 — keyset pagination on (occurredAt, id). A composite cursor
+    // (sinceId present) resumes strictly after the last event even when several
+    // events share the same occurredAt; a bare-timestamp cursor keeps the legacy
+    // strict-after-timestamp behaviour.
+    const qb = this.events
+      .createQueryBuilder('e')
+      .where('e.store_id = :storeId', { storeId });
+    if (q.types.length) qb.andWhere('e.type IN (:...types)', { types: q.types });
+    if (q.sinceDate && q.sinceId) {
+      qb.andWhere(
+        new Brackets((b) => {
+          b.where('e.occurred_at > :since', { since: q.sinceDate }).orWhere(
+            new Brackets((b2) => {
+              b2.where('e.occurred_at = :since', { since: q.sinceDate }).andWhere('e.id > :sinceId', {
+                sinceId: q.sinceId,
+              });
+            }),
+          );
+        }),
+      );
+    } else if (q.sinceDate) {
+      qb.andWhere('e.occurred_at > :since', { since: q.sinceDate });
+    }
+    qb.orderBy('e.occurred_at', 'ASC').addOrderBy('e.id', 'ASC').take(q.limit);
+
+    const rows = await qb.getMany();
 
     const events: ConsumerEvent[] = rows.map((r) => ({
       id: r.id,
@@ -56,7 +74,8 @@ export class OutboxQueryService {
       schemaVersion: r.schemaVersion,
     }));
 
-    const nextCursor = events.length ? events[events.length - 1].occurredAt : null;
+    const last = events.length ? events[events.length - 1] : null;
+    const nextCursor = last ? encodeEventsCursor(last.occurredAt, last.id) : null;
     return { events, nextCursor };
   }
 
