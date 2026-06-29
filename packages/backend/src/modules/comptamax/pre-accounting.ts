@@ -20,6 +20,24 @@ export const ACCOUNTS = {
   RRR_ACCORDEES: '709000', // Remises, rabais, ristournes accordés
 } as const;
 
+/** A chart-of-accounts map (PCG). Overridable per client/org. */
+export type AccountMap = Record<keyof typeof ACCOUNTS, string>;
+
+/**
+ * Merge override codes onto the default plan. Non-string / empty / unknown keys
+ * are ignored, so a malformed config can never produce an invalid account.
+ */
+export function resolveAccountMap(overrides?: Partial<Record<string, unknown>>): AccountMap {
+  const map: AccountMap = { ...ACCOUNTS };
+  if (overrides) {
+    for (const k of Object.keys(ACCOUNTS) as (keyof typeof ACCOUNTS)[]) {
+      const v = overrides[k];
+      if (typeof v === 'string' && v.trim()) map[k] = v.trim();
+    }
+  }
+  return map;
+}
+
 export interface JournalLine {
   account: string;
   label: string;
@@ -28,17 +46,17 @@ export interface JournalLine {
 }
 
 /** Map a POS payment method to its encaissement account. */
-export function paymentAccount(method: string): string {
+export function paymentAccount(method: string, accounts: AccountMap = ACCOUNTS): string {
   switch (method) {
     case 'cash':
-      return ACCOUNTS.CAISSE_ESPECES;
+      return accounts.CAISSE_ESPECES;
     case 'card':
     case 'stripe_terminal':
-      return ACCOUNTS.BANQUE_CARTE;
+      return accounts.BANQUE_CARTE;
     case 'store_credit':
-      return ACCOUNTS.AVOIR_CLIENT;
+      return accounts.AVOIR_CLIENT;
     default:
-      return ACCOUNTS.ATTENTE;
+      return accounts.ATTENTE;
   }
 }
 
@@ -56,13 +74,16 @@ export interface SaleJournalInput {
  *  - crédit 707 = HT (TTC − TVA), crédit 44571 = TVA ;
  *  - débit encaissements par moyen de paiement (= TTC).
  */
-export function buildSaleJournalLines(input: SaleJournalInput): JournalLine[] {
+export function buildSaleJournalLines(
+  input: SaleJournalInput,
+  accounts: AccountMap = ACCOUNTS,
+): JournalLine[] {
   const lines: JournalLine[] = [];
 
   for (const p of input.payments) {
     if (p.amountMinorUnits === 0) continue;
     lines.push({
-      account: paymentAccount(p.method),
+      account: paymentAccount(p.method, accounts),
       label: `Encaissement ${p.method} ${input.ticketNumber}`,
       debitMinorUnits: p.amountMinorUnits,
       creditMinorUnits: 0,
@@ -78,7 +99,7 @@ export function buildSaleJournalLines(input: SaleJournalInput): JournalLine[] {
   const htMinorUnits = input.totalMinorUnits - vatTotal;
 
   lines.push({
-    account: ACCOUNTS.VENTE_HT,
+    account: accounts.VENTE_HT,
     label: `Vente HT ${input.ticketNumber}`,
     debitMinorUnits: 0,
     creditMinorUnits: htMinorUnits,
@@ -87,7 +108,7 @@ export function buildSaleJournalLines(input: SaleJournalInput): JournalLine[] {
   if (breakdown.length) {
     for (const b of breakdown) {
       lines.push({
-        account: ACCOUNTS.TVA_COLLECTEE,
+        account: accounts.TVA_COLLECTEE,
         label: `TVA ${b.rate}% ${input.ticketNumber}`,
         debitMinorUnits: 0,
         creditMinorUnits: b.taxMinorUnits,
@@ -95,7 +116,7 @@ export function buildSaleJournalLines(input: SaleJournalInput): JournalLine[] {
     }
   } else if (input.taxTotalMinorUnits !== 0) {
     lines.push({
-      account: ACCOUNTS.TVA_COLLECTEE,
+      account: accounts.TVA_COLLECTEE,
       label: `TVA collectée ${input.ticketNumber}`,
       debitMinorUnits: 0,
       creditMinorUnits: input.taxTotalMinorUnits,
@@ -119,7 +140,10 @@ export interface RefundJournalInput {
  *  - débit 707 (HT) + débit 44571 (TVA) ;
  *  - crédit encaissement (cash/card) OR crédit 4191 (avoir émis).
  */
-export function buildRefundJournalLines(input: RefundJournalInput): JournalLine[] {
+export function buildRefundJournalLines(
+  input: RefundJournalInput,
+  accounts: AccountMap = ACCOUNTS,
+): JournalLine[] {
   const breakdown = (input.taxBreakdown ?? []).filter((b) => b.taxMinorUnits !== 0);
   const tax = breakdown.length
     ? breakdown.reduce((s, b) => s + b.taxMinorUnits, 0)
@@ -127,22 +151,22 @@ export function buildRefundJournalLines(input: RefundJournalInput): JournalLine[
   const ht = input.totalMinorUnits - tax;
   const counterpart =
     input.type === 'store_credit'
-      ? ACCOUNTS.AVOIR_CLIENT
-      : paymentAccount(input.refundMethod ?? '');
+      ? accounts.AVOIR_CLIENT
+      : paymentAccount(input.refundMethod ?? '', accounts);
 
   const vatLines: JournalLine[] = breakdown.length
     ? breakdown.map((b) => ({
-        account: ACCOUNTS.TVA_COLLECTEE,
+        account: accounts.TVA_COLLECTEE,
         label: `Avoir TVA ${b.rate}% ${input.code}`,
         debitMinorUnits: b.taxMinorUnits,
         creditMinorUnits: 0,
       }))
     : tax !== 0
-      ? [{ account: ACCOUNTS.TVA_COLLECTEE, label: `Avoir TVA ${input.code}`, debitMinorUnits: tax, creditMinorUnits: 0 }]
+      ? [{ account: accounts.TVA_COLLECTEE, label: `Avoir TVA ${input.code}`, debitMinorUnits: tax, creditMinorUnits: 0 }]
       : [];
 
   return [
-    { account: ACCOUNTS.VENTE_HT, label: `Avoir HT ${input.code}`, debitMinorUnits: ht, creditMinorUnits: 0 },
+    { account: accounts.VENTE_HT, label: `Avoir HT ${input.code}`, debitMinorUnits: ht, creditMinorUnits: 0 },
     ...vatLines,
     { account: counterpart, label: `Remboursement ${input.code}`, debitMinorUnits: 0, creditMinorUnits: input.totalMinorUnits },
   ];

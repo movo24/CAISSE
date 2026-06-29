@@ -10,6 +10,8 @@ import {
   journalIsBalanced,
   journalTotals,
   journalToCsv,
+  resolveAccountMap,
+  AccountMap,
   JournalLine,
 } from './pre-accounting';
 import {
@@ -41,11 +43,30 @@ export interface DayJournal {
 export class ComptamaxService {
   private readonly logger = new Logger(ComptamaxService.name);
 
+  /**
+   * POS-INT-101 — chart of accounts (PCG). Defaults to the standard French plan,
+   * overridable per deployment via env COMPTAMAX_ACCOUNTS (JSON of {KEY:code}).
+   * A malformed value is ignored key-by-key, so it can never break booking.
+   */
+  private readonly accounts: AccountMap = resolveAccountMap(this.parseAccountOverrides());
+
   constructor(
     @InjectRepository(IntegrationEventEntity)
     private readonly events: Repository<IntegrationEventEntity>,
     private readonly timewin: TimewinService,
   ) {}
+
+  private parseAccountOverrides(): Record<string, unknown> | undefined {
+    const raw = process.env.COMPTAMAX_ACCOUNTS;
+    if (!raw) return undefined;
+    try {
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' ? parsed : undefined;
+    } catch {
+      this.logger.warn('COMPTAMAX_ACCOUNTS is not valid JSON — using default plan.');
+      return undefined;
+    }
+  }
 
   /**
    * Social pre-accounting export (TimeWin→Comptamax). Fetches the TW24 monthly

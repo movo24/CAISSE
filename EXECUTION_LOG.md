@@ -1011,3 +1011,12 @@ Décisions produit tranchées par l'utilisateur. 5 blocs enchaînés.
 - Enveloppe outbox pleinement tenant : storeId + organizationId + terminalId (ventes+retours) sur tous les agrégats.
 - **Endpoints** : `/comptamax/journal`, `/comptamax/social`, `/integration/relay`, `/integration/events`, `/integration/outbox/stats`, `/integration/reconciliation`. **Cron** relais (OFF défaut). **Publisher** factory (simulation/HTTP gated).
 - **Gates restants** : `TD-INT-RELAY` (URL+secret prod) · `TD-INT-SOCIAL-ENTRIES` · migration 1725 + suites lourdes = local.
+
+## PAQUET 101 — Plan de comptes Comptamax configurable (POS-INT-101)
+- Objectif : rendre le plan comptable (PCG) surchargeable par déploiement, sans modifier le chemin caisse ni casser le défaut.
+- Fichiers : `pre-accounting.ts` (type `AccountMap`, `resolveAccountMap(overrides?)` pur + builders `paymentAccount`/`buildSaleJournalLines`/`buildRefundJournalLines` acceptant un `accounts: AccountMap = ACCOUNTS`), `comptamax.service.ts` (résolution unique via env `COMPTAMAX_ACCOUNTS` JSON, parse tolérant), `account-map.spec.ts` (nouveau).
+- Sécurité : surcharge clé-par-clé, valeurs non-string/vides/clés inconnues ignorées → jamais de compte invalide ; JSON invalide ⇒ warn + plan par défaut. Rétro-compatible (signatures avec défaut).
+- Preuve tests : `account-map.spec.ts` + `pre-accounting.spec.ts` ⇒ 2 suites / 18 tests PASS.
+- Preuve typecheck/build : `tsc --noEmit` EXIT 0 ; `nest build` RC=0 (7 .js comptamax).
+- Dette : inchangée (TD-INT-SOCIAL-ENTRIES, publisher HTTP réel = secrets, migration 1725 non jouée hors DB).
+- Prochain paquet : P102 (axe utile à décider — ex. dédup consommateur par event id, ou mapping compte par méthode de paiement étendu).
