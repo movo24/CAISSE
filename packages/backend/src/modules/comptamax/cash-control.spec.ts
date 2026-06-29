@@ -37,13 +37,38 @@ describe('cash-control / écart de caisse (POS-INT-110)', () => {
     expect(cash.diffMinorUnits).toBe(-100); // 1€ manquant
   });
 
-  it('surfaces other-bucket tenders with no Z counterpart', () => {
+  it('surfaces other-bucket tenders with no Z counterpart (no totalRevenue)', () => {
     const r = reconcileCashControl(
       [{ method: 'store_credit', amountMinorUnits: 1500 }],
       { cashTotalMinorUnits: 0, cardTotalMinorUnits: 0 },
     );
     const other = r.byBucket.find((b) => b.bucket === 'other')!;
     expect(other).toMatchObject({ capturedMinorUnits: 1500, declaredMinorUnits: 0, diffMinorUnits: 1500 });
+    expect(r.balanced).toBe(false);
+  });
+
+  it('balanced when store-credit matches the Z residual (POS-INT-116, no false positive)', () => {
+    // Day: 100€ cash + 50€ card + 15€ store credit = 165€ revenue.
+    const r = reconcileCashControl(
+      [
+        { method: 'cash', amountMinorUnits: 10000 },
+        { method: 'card', amountMinorUnits: 5000 },
+        { method: 'store_credit', amountMinorUnits: 1500 },
+      ],
+      { cashTotalMinorUnits: 10000, cardTotalMinorUnits: 5000, totalRevenueMinorUnits: 16500 },
+    );
+    const other = r.byBucket.find((b) => b.bucket === 'other')!;
+    expect(other).toMatchObject({ capturedMinorUnits: 1500, declaredMinorUnits: 1500, diffMinorUnits: 0 });
+    expect(r.balanced).toBe(true);
+  });
+
+  it('still flags an other-bucket shortage against the residual', () => {
+    const r = reconcileCashControl(
+      [{ method: 'store_credit', amountMinorUnits: 1000 }],
+      { cashTotalMinorUnits: 0, cardTotalMinorUnits: 0, totalRevenueMinorUnits: 1500 },
+    );
+    const other = r.byBucket.find((b) => b.bucket === 'other')!;
+    expect(other.diffMinorUnits).toBe(-500); // 5€ d'avoir manquant
     expect(r.balanced).toBe(false);
   });
 

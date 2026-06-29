@@ -221,6 +221,7 @@ export class ComptamaxService {
     const captured: CapturedPayment[] = [];
     let cashTotalMinorUnits = 0;
     let cardTotalMinorUnits = 0;
+    let totalRevenueMinorUnits = 0;
     let zReportCount = 0;
     for (const e of rows) {
       const p = e.payload as any;
@@ -230,10 +231,15 @@ export class ComptamaxService {
         zReportCount += 1;
         cashTotalMinorUnits += Number(p.cashTotalMinorUnits) || 0;
         cardTotalMinorUnits += Number(p.cardTotalMinorUnits) || 0;
+        totalRevenueMinorUnits += Number(p.totalRevenueMinorUnits) || 0;
       }
     }
 
-    const result = reconcileCashControl(captured, { cashTotalMinorUnits, cardTotalMinorUnits });
+    const result = reconcileCashControl(captured, {
+      cashTotalMinorUnits,
+      cardTotalMinorUnits,
+      totalRevenueMinorUnits,
+    });
     return { storeId, date, zReportCount, ...result };
   }
 

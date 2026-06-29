@@ -75,8 +75,9 @@ export function tenderBucket(method: string): TenderBucket {
 
 /**
  * Reconcile captured payments against the Z-report declared totals.
- * `other`-bucket payments have no declared Z counterpart (declared = 0), so any
- * non-cash/non-card tender surfaces as a diff to investigate.
+ * The `other` bucket is reconciled against the residual (totalRevenue − cash −
+ * card) when totalRevenue is known, so a balanced day paid partly by store
+ * credit / voucher does not false-flag; without totalRevenue, declared other = 0.
  */
 export function reconcileCashControl(
   captured: readonly CapturedPayment[],
@@ -87,10 +88,21 @@ export function reconcileCashControl(
     sums[tenderBucket(p.method)] += Number(p.amountMinorUnits) || 0;
   }
 
+  const cashDeclared = declared.cashTotalMinorUnits || 0;
+  const cardDeclared = declared.cardTotalMinorUnits || 0;
+  // POS-INT-116 — the Z-report declares only cash & card explicitly. When the
+  // total revenue is known, the "other" tenders (store_credit, voucher, mobile…)
+  // are the residual = totalRevenue − cash − card; otherwise we cannot attribute
+  // them, so declared other = 0 (and any captured other surfaces as a diff).
+  const otherDeclared =
+    typeof declared.totalRevenueMinorUnits === 'number'
+      ? Math.max(0, declared.totalRevenueMinorUnits - cashDeclared - cardDeclared)
+      : 0;
+
   const declaredByBucket: Record<TenderBucket, number> = {
-    cash: declared.cashTotalMinorUnits || 0,
-    card: declared.cardTotalMinorUnits || 0,
-    other: 0,
+    cash: cashDeclared,
+    card: cardDeclared,
+    other: otherDeclared,
   };
 
   const byBucket: BucketControl[] = (['cash', 'card', 'other'] as TenderBucket[]).map((bucket) => ({

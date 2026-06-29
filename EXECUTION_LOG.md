@@ -1132,3 +1132,11 @@ Décisions produit tranchées par l'utilisateur. 5 blocs enchaînés.
 - Doc : section §I ajoutée à INTER_SYSTEM_INTEGRATION.md (récap P109–114, table des 5 exports CSV gardés + champs texte).
 - Dette inchangée : TD-INT-SOCIAL-ENTRIES, publisher HTTP réel = secrets, migration 1725 + DB runtime = gate local.
 - Cumul épic intégration : 45 paquets (71→115).
+
+## PAQUET 116 — Cash-control: bucket `other` vs résiduel Z (fix faux positif) (POS-INT-116)
+- Bug réel : `reconcileCashControl` comparait toujours le bucket `other` (store_credit/voucher/mobile) à 0 → un jour équilibré payé en partie par avoir client était faussement signalé en écart.
+- Fix : `declared other = max(0, totalRevenue − cash − card)` quand `totalRevenueMinorUnits` est connu (sinon 0, comportement legacy conservé). `comptamax.service.buildCashControl` agrège désormais `totalRevenueMinorUnits` depuis `cash_session.closed` et le passe.
+- Fichiers : `comptamax/cash-control.ts`, `comptamax.service.ts`, `cash-control.spec.ts` (3 cas : équilibré avec avoir = balanced ; manque sur résiduel = -500 ; legacy sans totalRevenue inchangé).
+- Preuve tests : `cash-control.spec.ts` ⇒ 1 suite / 8 tests PASS (verbeux collé).
+- Preuve typecheck/build : `tsc --noEmit` EXIT 0 ; `nest build` RC=0.
+- Dette inchangée.
