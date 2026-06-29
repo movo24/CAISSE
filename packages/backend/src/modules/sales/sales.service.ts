@@ -17,6 +17,7 @@ import {
 } from './discount-policy';
 import { validatePayments, PaymentPolicyViolation } from './payment-policy';
 import { sumLineTax } from './tax';
+import { computeMaxAllowedDiscount, discountPercentOfSubtotal } from './discount-totals';
 import { resolveEffectivePrice } from '../products/price-resolve';
 import { formatTicketNumber } from './ticket-number';
 import { loyaltyPointsEarned } from './loyalty-points';
@@ -363,7 +364,7 @@ export class SalesService {
     // --- Enforce maxDiscount limit ---
     const maxDiscountPct = employeeSnapshot?.maxDiscount ?? 100;
     if (maxDiscountPct < 100 && subtotal > 0) {
-      const maxAllowedDiscount = Math.floor(subtotal * (maxDiscountPct / 100));
+      const maxAllowedDiscount = computeMaxAllowedDiscount(subtotal, maxDiscountPct);
       if (totalDiscount > maxAllowedDiscount) {
         throw new BadRequestException(
           `Discount ${totalDiscount} exceeds employee limit of ${maxDiscountPct}% (max ${maxAllowedDiscount} on subtotal ${subtotal})`,
@@ -686,9 +687,7 @@ export class SalesService {
               ticketNumber,
               discountMinorUnits: totalDiscount,
               subtotalMinorUnits: subtotalForPct,
-              discountPct: subtotalForPct > 0
-                ? Math.round((totalDiscount / subtotalForPct) * 10000) / 100
-                : null,
+              discountPct: discountPercentOfSubtotal(totalDiscount, subtotalForPct),
               employeeRole: employeeSnapshot?.employeeRole ?? null,
               source: 'pos_sale',
             },
