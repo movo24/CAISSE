@@ -942,3 +942,25 @@ Décisions produit tranchées par l'utilisateur. 5 blocs enchaînés.
 - **Non prouvé sandbox** : migration 1725, publisher réel (secrets), suites lourdes → local.
 
 **Prochain (sur GO)** : PAQUET 83 — publisher HTTP réel (gate secrets) OU thread org/terminal (TD-INT-ORG/TERMINAL) OU rapprochement par employé (TD-INT-RECON-PEREMP) OU scheduled task relais.
+
+## PAQUET 83 — terminalId sur events vente
+- `X-Terminal-Id` header → `createSale` → `sale.completed`/`payment.captured` `tenant.terminalId`. Chemin vente inchangé. tsc 0, build RC=0. Commit `2b2cd59`. **TD-INT-TERMINAL clos.**
+
+## PAQUET 84 — Export RH /comptamax/social
+- `comptamax/payroll-adapter.ts` (pur tolérant TW24) + `buildSocialExport` (best-effort/dégradé) + `GET /comptamax/social?period&format`. **4/4**, build RC=0. Commit `32b203c`.
+
+## PAQUET 85 — Cron relais automatique
+- `OutboxRelayCron` `@Cron(EVERY_5_MINUTES)` + toggle `OUTBOX_RELAY_ENABLED` (OFF défaut) + helper pur `isRelayCronEnabled`. **8/8**, build RC=0. Commit `983ac76`.
+
+## PAQUET 86 — organizationId résolu
+- `StoreOrgResolver` (cache store→org) câblé `createSale` → `tenant.organizationId`. tsc 0, build RC=0 (pas de cycle DI). Commit `73adb77`. **TD-INT-ORG clos (ventes).**
+
+## PAQUET 87 — Test relais (mock)
+- `OutboxRelayService` unit test (repo+publisher mockés) : éligibilité/skip-cap, succès→published, échec→failed/pending, throw non propagé. **2/2**. Commit `029df80`.
+
+## PAQUET 88 — Consolidation intégration v3
+- Agrégat **14 suites / 67 tests** intégration PASS ; `tsc --noEmit` **EXIT 0**. Commit réel + bundle.
+- **Endpoints** : `/comptamax/journal`, `/comptamax/social`, `/integration/relay`, `/integration/events`, `/integration/reconciliation`. **Cron** relais (OFF défaut).
+- **Gates restants** : `TD-INT-RELAY` publisher HTTP réel (secrets) · `TD-INT-SOCIAL-ENTRIES` · `TD-INT-RECON-PEREMP` · org sur retours/sessions/stock (ventes faites) · migration 1725 + suites lourdes = local.
+
+**Prochain (sur GO)** : PAQUET 89 — publisher HTTP réel (gate secrets) OU org/terminal sur retours+sessions+stock OU rapprochement par employé.
