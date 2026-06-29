@@ -5,7 +5,7 @@
  * over `${timestamp}.${body}` lets the receiver verify authenticity + integrity.
  * No network here — the HttpOutboxPublisher performs the actual POST.
  */
-import { createHmac } from 'crypto';
+import { createHmac, timingSafeEqual } from 'crypto';
 
 export interface PublishableEvent {
   id: string;
@@ -46,6 +46,42 @@ export function publishEnvelope(e: PublishableEvent): Record<string, unknown> {
 /** HMAC-SHA256 hex over `${timestampMs}.${body}` with the shared secret. */
 export function signPublishBody(body: string, secret: string, timestampMs: number): string {
   return createHmac('sha256', secret).update(`${timestampMs}.${body}`).digest('hex');
+}
+
+/** Default replay window for delivery verification (5 minutes). */
+export const PUBLISH_FRESHNESS_MS = 5 * 60 * 1000;
+
+export type VerifyResult = 'ok' | 'bad_signature' | 'stale' | 'malformed';
+
+/** Constant-time hex compare (length-safe). */
+function safeEqualHex(a: string, b: string): boolean {
+  if (typeof a !== 'string' || typeof b !== 'string' || a.length !== b.length) return false;
+  try {
+    return timingSafeEqual(Buffer.from(a, 'hex'), Buffer.from(b, 'hex'));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Receiver-side verification of a signed outbox delivery (Comptamax24 / TimeWin24 /
+ * Analytik R webhook). Recomputes the HMAC over `${timestamp}.${body}` and compares
+ * in constant time, and rejects deliveries outside the freshness window (replay guard).
+ * Pure — the receiver passes the raw body + the x-pos-* headers it received.
+ */
+export function verifyPublishSignature(
+  body: string,
+  providedSignature: string,
+  secret: string,
+  timestampMs: number,
+  opts: { nowMs?: number; toleranceMs?: number } = {},
+): VerifyResult {
+  if (!body || !providedSignature || !Number.isFinite(timestampMs)) return 'malformed';
+  const now = opts.nowMs ?? Date.now();
+  const tolerance = opts.toleranceMs ?? PUBLISH_FRESHNESS_MS;
+  if (Math.abs(now - timestampMs) > tolerance) return 'stale';
+  const expected = signPublishBody(body, secret, timestampMs);
+  return safeEqualHex(providedSignature, expected) ? 'ok' : 'bad_signature';
 }
 
 /** Build the signed request (body + headers) for one event. */

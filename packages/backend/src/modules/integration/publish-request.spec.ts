@@ -2,6 +2,8 @@ import {
   publishEnvelope,
   signPublishBody,
   buildOutboxPublishRequest,
+  verifyPublishSignature,
+  PUBLISH_FRESHNESS_MS,
   PublishableEvent,
 } from './publish-request';
 import { createHmac } from 'crypto';
@@ -49,5 +51,26 @@ describe('POS integration publish-request', () => {
     const c = buildOutboxPublishRequest(ev, 'secret', 2000).headers['x-pos-signature'];
     expect(a).not.toBe(b);
     expect(a).not.toBe(c);
+  });
+
+  describe('verifyPublishSignature (receiver side)', () => {
+    const now = 1_000_000;
+    const req = buildOutboxPublishRequest(ev, 'secret', now);
+
+    it('ok for a valid, fresh delivery', () => {
+      expect(verifyPublishSignature(req.body, req.headers['x-pos-signature'], 'secret', now, { nowMs: now })).toBe('ok');
+    });
+    it('bad_signature on wrong secret or tampered body', () => {
+      expect(verifyPublishSignature(req.body, req.headers['x-pos-signature'], 'WRONG', now, { nowMs: now })).toBe('bad_signature');
+      expect(verifyPublishSignature(req.body + 'x', req.headers['x-pos-signature'], 'secret', now, { nowMs: now })).toBe('bad_signature');
+    });
+    it('stale beyond the freshness window (replay guard)', () => {
+      expect(PUBLISH_FRESHNESS_MS).toBe(300000);
+      expect(verifyPublishSignature(req.body, req.headers['x-pos-signature'], 'secret', now, { nowMs: now + 400000 })).toBe('stale');
+    });
+    it('malformed on empty inputs', () => {
+      expect(verifyPublishSignature('', 'sig', 'secret', now)).toBe('malformed');
+      expect(verifyPublishSignature(req.body, '', 'secret', now)).toBe('malformed');
+    });
   });
 });
