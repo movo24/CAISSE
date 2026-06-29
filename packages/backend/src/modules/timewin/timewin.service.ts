@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
 import { AlertService } from '../../common/alert/alert.service';
 import { buildPosHmacHeaders } from './pos-hmac';
+import { isHealthyTimeWinStatus } from './health-status';
 import { mapTimewinEmployee } from './employee-map';
 
 /* ── Types ── */
@@ -128,7 +129,7 @@ export class TimewinService implements OnModuleInit {
   async isHealthy(): Promise<boolean> {
     try {
       const res = await this.fetch('/api/health');
-      return res.status === 'ok' || res.status === 'degraded';
+      return isHealthyTimeWinStatus(res.status);
     } catch {
       return false;
     }
