@@ -42,6 +42,16 @@ export class IntegrationController {
     return this.queryService.listForConsumer(req.user.storeId, { since, type, limit });
   }
 
+  @Get('shifts')
+  @Roles('admin', 'manager')
+  @ApiOperation({
+    summary:
+      'POS-INT-107 — cash-session shift amplitude for the store on a day (?date=YYYY-MM-DD): per-shift open→close records + per-employee worked-minute totals. Tenant-scoped, read-only (TimeWin presence / Analytik R).',
+  })
+  async shifts(@Request() req: any, @Query('date') date: string) {
+    return this.queryService.shiftsForDay(req.user.storeId, date);
+  }
+
   @Get('outbox/stats')
   @Roles('admin', 'manager')
   @ApiOperation({

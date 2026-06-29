@@ -1,9 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Brackets, Repository } from 'typeorm';
+import { Between, Brackets, In, Repository } from 'typeorm';
 import { IntegrationEventEntity } from '../../database/entities/integration-event.entity';
 import { normalizeEventsQuery, encodeEventsCursor } from './events-query';
 import { shapeOutboxStats, OutboxStats } from './outbox-stats';
+import { dayRangeUtc } from '../comptamax/journal-range';
+import { summarizeShifts, toShiftEvents, ShiftSummary } from '../timewin/shift-amplitude';
 
 export interface ConsumerEvent {
   id: string;
@@ -77,6 +79,29 @@ export class OutboxQueryService {
     const last = events.length ? events[events.length - 1] : null;
     const nextCursor = last ? encodeEventsCursor(last.occurredAt, last.id) : null;
     return { events, nextCursor };
+  }
+
+  /**
+   * POS-INT-107 — shift amplitude for a store on a given day. Reads the
+   * cash_session.opened + employee_activity.recorded(closed) lifecycle events
+   * from the outbox and pairs them into per-shift records + per-employee totals.
+   * Tenant-scoped, read-only (TimeWin presence / Analytik R occupancy).
+   */
+  async shiftsForDay(
+    storeId: string,
+    date: string,
+  ): Promise<ShiftSummary & { storeId: string; date: string }> {
+    const { start, end } = dayRangeUtc(date);
+    const rows = await this.events.find({
+      where: {
+        storeId,
+        occurredAt: Between(start, end),
+        type: In(['cash_session.opened', 'employee_activity.recorded']),
+      },
+      order: { occurredAt: 'ASC', id: 'ASC' },
+    });
+    const summary = summarizeShifts(toShiftEvents(rows));
+    return { storeId, date, ...summary };
   }
 
   /** Outbox delivery stats for a store (counts per status/type + backlog). */

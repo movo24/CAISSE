@@ -1063,3 +1063,11 @@ Décisions produit tranchées par l'utilisateur. 5 blocs enchaînés.
 - Preuve tests : `shift-amplitude.spec.ts` ⇒ 1 suite / 7 tests PASS.
 - Preuve typecheck/build : `tsc --noEmit` EXIT 0 ; `nest build` RC=0.
 - Dette : inchangée. Prochain : P107 (axe utile à décider).
+
+## PAQUET 107 — Endpoint /integration/shifts (amplitude poste) (POS-INT-107)
+- Objectif : exposer en lecture seule l'amplitude de poste P106 — `GET /integration/shifts?date=YYYY-MM-DD` (shifts open→close par session + totaux minutes par employé). Tenant-scoped (storeId du JWT, anti-IDOR), rôles admin/manager.
+- Fichiers : `outbox-query.service.ts` (`shiftsForDay(storeId,date)` : lit cash_session.opened + employee_activity.recorded sur la journée via dayRangeUtc, applique toShiftEvents+summarizeShifts), `integration.controller.ts` (route `GET /integration/shifts`). Réutilise `dayRangeUtc` (comptamax) + `shift-amplitude` (timewin) — pas de duplication.
+- Honnêteté : logique d'agrégation testée en P106 (pur) ; la méthode service est du glue (lecture DB + appel pur) validée par tsc+build, comme les endpoints events/reconciliation existants (test DB runtime = gate hors sandbox).
+- Preuve tests (non-régression) : suites integration + timewin/shift-amplitude ⇒ 6 suites / 43 tests PASS.
+- Preuve typecheck/build : `tsc --noEmit` EXIT 0 ; `nest build` RC=0.
+- Dette : inchangée. Prochain : P108 (axe utile à décider).
