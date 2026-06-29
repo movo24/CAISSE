@@ -141,5 +141,12 @@ describe('Comptamax pre-accounting engine', () => {
       expect(csv.split('\n')[0]).toBe('compte;libelle;debit;credit');
       expect(csv).toContain('707000;Vente HT T-1;0,00;100,00');
     });
+    it('neutralizes a formula-injection payload in the label (POS-INT-113)', () => {
+      const csv = journalToCsv([
+        { account: '707000', label: '=cmd|"/C calc"!A1', debitMinorUnits: 0, creditMinorUnits: 100 },
+      ]);
+      expect(csv).toContain(`707000;"'=cmd|""/C calc""!A1";0,00;1,00`);
+      expect(csv).not.toContain(';=cmd'); // never an executable leading '='
+    });
   });
 });

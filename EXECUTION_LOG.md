@@ -1108,3 +1108,12 @@ Décisions produit tranchées par l'utilisateur. 5 blocs enchaînés.
 - Preuve tests : `cash-control.spec.ts` ⇒ 1 suite / 6 tests PASS.
 - Preuve typecheck/build : `tsc --noEmit` EXIT 0 ; `nest build` RC=0.
 - Dette inchangée. Cumul épic : 42 paquets (71→112).
+
+## PAQUET 113 — Durcissement anti-injection de formule CSV (POS-INT-113)
+- Contexte : vérif utilisateur — il n'existait AUCUN échappeur durci partagé ; mon `csvCell` local (P109/P112) ne faisait que le quoting RFC4180, PAS la garde anti-formule. cash-control = enums+nombres (non exploitable), MAIS shifts (ids), journal (label) et social (employeeName) émettent du texte libre = vrai vecteur.
+- Fichiers : `common/csv/csv-safe.ts` (NOUVEAU, pur : `csvSafeCell`/`csvSafeRow` — neutralise `= + - @` et tab/CR/LF en tête sur les cellules TEXTE par préfixe apostrophe, quoting RFC4180 ; nombres/booléens jamais gardés → `-100` reste un nombre), branché dans `cash-control.ts` (cashControlToCsv), `timewin/shift-amplitude.ts` (shiftsToCsv), `pre-accounting.ts` (journalToCsv : account+label), `social-preaccounting.ts` (workforceToCsv : employeeId+employeeName). Suppression des `csvCell` locaux.
+- Décision de design : la garde s'applique aux STRINGS ; les montants centimes (nombres) passent verbatim → aucune corruption des négatifs comptables.
+- Preuve tests : csv-safe (14) + cash-control (6) + pre-accounting (14, dont label `=cmd` neutralisé) + social (6, dont employeeName `=HYPERLINK` neutralisé) + shift-amplitude (9) ⇒ 5 suites / 47 tests PASS. Sorties verbeuses collées dans la conversation.
+- Preuve typecheck/build : `tsc --noEmit` EXIT 0 ; `nest build` RC=0.
+- Honnêteté : correction d'un surstatement antérieur (« échappement CSV » ne couvrait pas l'injection de formule) ; désormais couvert et prouvé sur les 4 exports.
+- Dette inchangée : TD-INT-SOCIAL-ENTRIES, publisher HTTP réel = secrets, migration 1725 + DB runtime = gate local. Cumul épic : 43 paquets (71→113).

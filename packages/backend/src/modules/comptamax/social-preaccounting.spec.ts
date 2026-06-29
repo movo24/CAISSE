@@ -46,4 +46,17 @@ describe('Comptamax social pre-accounting prep', () => {
     expect(csv).toContain('e1;Alice;160,00;2,00;15;2500,00');
     expect(csv).toContain('e2;Bob;80,00;0,00;0;');
   });
+
+  it('neutralizes a formula-injection payload in employeeName (POS-INT-113)', () => {
+    const s = summarizeWorkforcePeriod({
+      period: '2026-06',
+      storeId: 'store-1',
+      employees: [
+        { employeeId: 'e1', employeeName: '=HYPERLINK("http://evil")', workedMinutes: 60, absenceMinutes: 0, lateMinutes: 0 },
+      ],
+    });
+    const csv = workforceToCsv(s);
+    expect(csv).toContain(`e1;"'=HYPERLINK(""http://evil"")";`);
+    expect(csv).not.toContain(';=HYPERLINK'); // never an executable leading '='
+  });
 });

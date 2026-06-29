@@ -11,6 +11,8 @@
  * known open is surfaced rather than dropped.
  */
 
+import { csvSafeRow } from '../../common/csv/csv-safe';
+
 export interface ShiftEvent {
   sessionId: string;
   employeeId: string;
@@ -109,37 +111,27 @@ export function summarizeShifts(events: readonly ShiftEvent[]): ShiftSummary {
   return { shifts, byEmployee, totalMinutes };
 }
 
-function csvCell(v: string | number | boolean | null): string {
-  const s = v === null ? '' : String(v);
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
-
 /**
  * Per-shift CSV export (payroll / TimeWin handoff). Stable header & column
- * order; deterministic row order (matches `summarizeShifts`).
+ * order; deterministic row order (matches `summarizeShifts`). Cells routed
+ * through the shared CSV-injection guard (POS-INT-113) — session/employee/
+ * terminal ids are device/TimeWin-sourced free text.
  */
 export function shiftsToCsv(summary: ShiftSummary): string {
-  const header = [
-    'sessionId',
-    'employeeId',
-    'terminalId',
-    'openedAt',
-    'closedAt',
-    'durationMinutes',
-    'open',
+  const lines = [
+    csvSafeRow(['sessionId', 'employeeId', 'terminalId', 'openedAt', 'closedAt', 'durationMinutes', 'open']),
   ];
-  const lines = [header.join(',')];
   for (const r of summary.shifts) {
     lines.push(
-      [
-        csvCell(r.sessionId),
-        csvCell(r.employeeId),
-        csvCell(r.terminalId),
-        csvCell(r.openedAt),
-        csvCell(r.closedAt),
-        csvCell(r.durationMinutes),
-        csvCell(r.open),
-      ].join(','),
+      csvSafeRow([
+        r.sessionId,
+        r.employeeId,
+        r.terminalId,
+        r.openedAt,
+        r.closedAt,
+        r.durationMinutes,
+        r.open,
+      ]),
     );
   }
   return lines.join('\n');

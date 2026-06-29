@@ -10,6 +10,8 @@
  * inputs so an accountant / Comptamax24 can produce the entries.
  */
 
+import { csvSafeCell } from '../../common/csv/csv-safe';
+
 export interface EmployeePeriodInput {
   employeeId: string;
   employeeName?: string | null;
@@ -80,9 +82,11 @@ export function summarizeWorkforcePeriod(input: {
 export function workforceToCsv(summary: WorkforcePeriodSummary): string {
   const money = (c: number | null) => (c == null ? '' : (c / 100).toFixed(2).replace('.', ','));
   const header = 'employe_id;employe;heures_travaillees;heures_absence;retard_min;brut';
+  // POS-INT-113 — guard free-text fields (employeeId, employeeName) against CSV
+  // formula injection; numeric/money fields are digit-leading and emitted raw.
   const rows = summary.rows.map(
     (r) =>
-      `${r.employeeId};${r.employeeName};${r.workedHours.toFixed(2).replace('.', ',')};` +
+      `${csvSafeCell(r.employeeId)};${csvSafeCell(r.employeeName)};${r.workedHours.toFixed(2).replace('.', ',')};` +
       `${r.absenceHours.toFixed(2).replace('.', ',')};${r.lateMinutes};${money(r.grossPayMinorUnits)}`,
   );
   return [header, ...rows].join('\n');

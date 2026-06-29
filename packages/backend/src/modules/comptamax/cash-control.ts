@@ -9,6 +9,8 @@
  * Pure: no DB, no Nest. Money is integer centimes.
  */
 
+import { csvSafeRow } from '../../common/csv/csv-safe';
+
 export interface CapturedPayment {
   method: string;
   amountMinorUnits: number;
@@ -37,30 +39,23 @@ export interface CashControlResult {
   balanced: boolean; // every bucket diff === 0
 }
 
-function csvCell(v: string | number | boolean): string {
-  const s = String(v);
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
-
 /**
  * Cash-control CSV (accounting justificatif): one row per tender bucket plus a
  * TOTAL row. Stable header & column order; amounts in integer centimes.
+ * Cells routed through the shared CSV-injection guard (POS-INT-113).
  */
 export function cashControlToCsv(result: CashControlResult): string {
-  const header = ['bucket', 'capturedMinorUnits', 'declaredMinorUnits', 'diffMinorUnits'];
-  const lines = [header.join(',')];
+  const lines = [csvSafeRow(['bucket', 'capturedMinorUnits', 'declaredMinorUnits', 'diffMinorUnits'])];
   for (const b of result.byBucket) {
-    lines.push(
-      [csvCell(b.bucket), csvCell(b.capturedMinorUnits), csvCell(b.declaredMinorUnits), csvCell(b.diffMinorUnits)].join(','),
-    );
+    lines.push(csvSafeRow([b.bucket, b.capturedMinorUnits, b.declaredMinorUnits, b.diffMinorUnits]));
   }
   lines.push(
-    [
+    csvSafeRow([
       'TOTAL',
-      csvCell(result.totalCapturedMinorUnits),
-      csvCell(result.totalDeclaredMinorUnits),
-      csvCell(result.totalDiffMinorUnits),
-    ].join(','),
+      result.totalCapturedMinorUnits,
+      result.totalDeclaredMinorUnits,
+      result.totalDiffMinorUnits,
+    ]),
   );
   return lines.join('\n');
 }

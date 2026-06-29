@@ -9,6 +9,8 @@
  * Invariant: for every document, Σ débit === Σ crédit.
  */
 
+import { csvSafeCell } from '../../common/csv/csv-safe';
+
 /** Simplified PCG accounts (overridable later via config). */
 export const ACCOUNTS = {
   VENTE_HT: '707000', // Ventes de marchandises (HT)
@@ -215,8 +217,11 @@ export function aggregateJournalByAccount(lines: JournalLine[]): JournalLine[] {
 export function journalToCsv(lines: JournalLine[]): string {
   const fmt = (c: number) => (c / 100).toFixed(2).replace('.', ',');
   const header = 'compte;libelle;debit;credit';
+  // POS-INT-113 — guard the free-text fields (account, label) against CSV
+  // formula injection; money is digit-leading and emitted raw.
   const rows = lines.map(
-    (l) => `${l.account};${l.label};${fmt(l.debitMinorUnits)};${fmt(l.creditMinorUnits)}`,
+    (l) =>
+      `${csvSafeCell(l.account)};${csvSafeCell(l.label)};${fmt(l.debitMinorUnits)};${fmt(l.creditMinorUnits)}`,
   );
   return [header, ...rows].join('\n');
 }
