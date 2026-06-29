@@ -111,3 +111,39 @@ export function buildIntegrationEvent(input: BuildEventInput): IntegrationEvent 
 
 /** Outbox row statuses (delivery metadata — distinct from immutable business fields). */
 export type OutboxStatus = 'pending' | 'published' | 'failed';
+
+/** Shape of an outbox row insert (matches IntegrationEventEntity property names). */
+export interface OutboxRow {
+  id: string;
+  type: string;
+  aggregateType: string;
+  aggregateId: string;
+  storeId: string;
+  organizationId: string | null;
+  terminalId: string | null;
+  employeeId: string | null;
+  actorRole: string | null;
+  occurredAt: Date;
+  payload: Record<string, unknown>;
+  schemaVersion: number;
+  source: string;
+}
+
+/** Map a normalized envelope to a persistable outbox row (status/attempts use entity defaults). */
+export function toOutboxRow(e: IntegrationEvent): OutboxRow {
+  return {
+    id: e.id,
+    type: e.type,
+    aggregateType: e.aggregateType,
+    aggregateId: e.aggregateId,
+    storeId: e.tenant.storeId,
+    organizationId: e.tenant.organizationId ?? null,
+    terminalId: e.tenant.terminalId ?? null,
+    employeeId: e.actor.employeeId ?? null,
+    actorRole: e.actor.role ?? null,
+    occurredAt: new Date(e.occurredAt),
+    payload: e.payload,
+    schemaVersion: e.schemaVersion,
+    source: e.source,
+  };
+}

@@ -29,6 +29,9 @@ import { SalePaymentEntity } from '../../database/entities/sale-payment.entity';
 import { IdempotencyKeyEntity } from '../../database/entities/idempotency-key.entity';
 import { ProductEntity } from '../../database/entities/product.entity';
 import { FiscalJournalEntity } from '../../database/entities/fiscal-journal.entity';
+import { IntegrationEventEntity } from '../../database/entities/integration-event.entity';
+import { toOutboxRow } from '../../common/integration/integration-event';
+import { buildSaleOutboxEvents } from './sale-events';
 import { ProductsService } from '../products/products.service';
 import { CustomersService } from '../customers/customers.service';
 import { PromotionsService, CartItem } from '../promotions/promotions.service';
@@ -635,6 +638,43 @@ export class SalesService {
           expiresAt: this.idempotencyExpiry(),
         });
       }
+
+      // --- Transactional outbox: integration events for Comptamax24 / TimeWin24 /
+      // (future) Analytik R. Written in the SAME transaction as the sale so they are
+      // atomic with it; consumers read the outbox out-of-band, so an external system
+      // being down NEVER blocks the caisse. (POS-INT-72) ---
+      const outboxEvents = buildSaleOutboxEvents({
+        saleId: saved.id,
+        ticketNumber,
+        storeId,
+        organizationId: null, // not carried on sale; consumer resolves via store (TD-INT-ORG)
+        terminalId: null, // terminal not threaded into createSale (TD-INT-TERMINAL)
+        employeeId,
+        employeeRole: employeeSnapshot?.employeeRole ?? null,
+        completedAt,
+        currencyCode: 'EUR',
+        subtotalMinorUnits: subtotal,
+        discountTotalMinorUnits: totalDiscount,
+        taxTotalMinorUnits: taxTotal,
+        totalMinorUnits: totalAfterDiscount,
+        customerId: customerId ?? null,
+        items: lineItems.map((li) => ({
+          ean: li.ean,
+          quantity: li.quantity,
+          lineTotalMinorUnits: li.lineTotalMinorUnits,
+        })),
+        payments: dto.payments.map((p) => ({
+          method: p.method,
+          amountMinorUnits: p.amountMinorUnits,
+          stripePaymentIntentId: p.stripePaymentIntentId ?? null,
+        })),
+      });
+      // jsonb payload typing — TypeORM treats Record<> as a nested deep-partial;
+      // cast like the idempotency responseBody insert above.
+      await queryRunner.manager.insert(
+        IntegrationEventEntity,
+        outboxEvents.map(toOutboxRow) as any,
+      );
 
       // --- COMMIT ---
       await queryRunner.commitTransaction();
