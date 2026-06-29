@@ -6,6 +6,7 @@ import { normalizeEventsQuery, encodeEventsCursor } from './events-query';
 import { shapeOutboxStats, OutboxStats } from './outbox-stats';
 import { dayRangeUtc } from '../comptamax/journal-range';
 import { summarizeShifts, toShiftEvents, shiftsToCsv, ShiftSummary } from '../timewin/shift-amplitude';
+import { summarizeStockSignals, toStockSignalEvents, StockSignalSummary } from '../stock/stock-signals';
 
 export interface ConsumerEvent {
   id: string;
@@ -107,6 +108,28 @@ export class OutboxQueryService {
   /** CSV variant of shiftsForDay (payroll / TimeWin handoff). */
   async shiftsForDayCsv(storeId: string, date: string): Promise<string> {
     return shiftsToCsv(await this.shiftsForDay(storeId, date));
+  }
+
+  /**
+   * POS-INT-119 — stock replenishment signals for a store on a day. Folds the
+   * stock.movement/low/depleted events into per-product latest state + status
+   * (Analytik R réappro). Tenant-scoped, read-only.
+   */
+  async stockSignalsForDay(
+    storeId: string,
+    date: string,
+  ): Promise<StockSignalSummary & { storeId: string; date: string }> {
+    const { start, end } = dayRangeUtc(date);
+    const rows = await this.events.find({
+      where: {
+        storeId,
+        occurredAt: Between(start, end),
+        type: In(['stock.movement', 'stock.low', 'stock.depleted']),
+      },
+      order: { occurredAt: 'ASC', id: 'ASC' },
+    });
+    const summary = summarizeStockSignals(toStockSignalEvents(rows));
+    return { storeId, date, ...summary };
   }
 
   /** Outbox delivery stats for a store (counts per status/type + backlog). */

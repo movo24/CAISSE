@@ -54,6 +54,16 @@ export class IntegrationController {
       : this.queryService.shiftsForDay(req.user.storeId, date);
   }
 
+  @Get('stock-signals')
+  @Roles('admin', 'manager')
+  @ApiOperation({
+    summary:
+      'POS-INT-119 — stock replenishment signals for the store on a day (?date=YYYY-MM-DD): per-product latest quantity + status (ok/low/depleted), ranked by urgency. Tenant-scoped, read-only (Analytik R).',
+  })
+  async stockSignals(@Request() req: any, @Query('date') date: string) {
+    return this.queryService.stockSignalsForDay(req.user.storeId, date);
+  }
+
   @Get('outbox/stats')
   @Roles('admin', 'manager')
   @ApiOperation({

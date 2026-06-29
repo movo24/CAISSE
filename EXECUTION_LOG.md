@@ -1156,3 +1156,12 @@ Décisions produit tranchées par l'utilisateur. 5 blocs enchaînés.
 - Preuve tests : `stock-events.spec.ts` ⇒ 1 suite / 7 tests PASS (verbeux collé).
 - Preuve typecheck/build : `tsc --noEmit` EXIT 0 (après fix type param emitStockEvents) ; `nest build` RC=0.
 - Dette inchangée. Cumul épic : 48 paquets (71→118).
+
+## PAQUET 119 — Signaux stock + endpoint réappro (POS-INT-119)
+- Objectif : vue réappro Analytik R — agréger le feed stock.* (movement/low/depleted) en état latest par produit + statut (ok/low/depleted), classé par urgence ; exposer `GET /integration/stock-signals?date=`.
+- Fichiers : `stock/stock-signals.ts` (pur : `summarizeStockSignals`, `toStockSignalEvents`, types), `stock-signals.spec.ts`, `integration/outbox-query.service.ts` (`stockSignalsForDay`), `integration.controller.ts` (route). Tenant-scoped (storeId JWT), réutilise `dayRangeUtc`.
+- Robustesse : réappro tardive efface un low/depleted antérieur (latest state) ; tri depleted→low→ok ; tolérant rows hors-type.
+- Honnêteté : quantité authoritative = table products ; ceci est une vue consommateur du flux d'events. Logique pure testée ; méthode service = glue lecture-DB validée tsc+build.
+- Preuve tests : `stock-signals.spec.ts` ⇒ 1 suite / 7 tests PASS.
+- Preuve typecheck/build : `tsc --noEmit` EXIT 0 ; `nest build` RC=0.
+- Dette inchangée. Cumul épic : 49 paquets (71→119).
