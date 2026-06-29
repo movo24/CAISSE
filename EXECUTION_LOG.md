@@ -888,4 +888,9 @@ Décisions produit tranchées par l'utilisateur. 5 blocs enchaînés.
 - **Bundle** rafraîchi (complete history) à chaque paquet.
 - **Non prouvé en sandbox** : suites lourdes ts-jest/pg-mem (Nest/pg-mem), migrations 1721-1724, `npm run build:backend` complet → à valider en local.
 
-**Prochain paquet** : PAQUET 70 — vérification ciblée ou dette documentée (TD-*), sur décision. Sur GO.
+## PAQUET 70 — preuve build + durcissement POS-054
+- **Build réel** (clone non-FUSE, node_modules liés) : `npx nest build` → **RC=0** ; `dist/main.js` émis ; **310** fichiers `.js` ; helpers de session compilés vérifiés (discount-policy, pagination, chain-linkage, average-basket). Première preuve d'émission complète rafraîchie cette session.
+- **Durcissement POS-054** (vérification, sans changement de comportement) : `sales/discount-policy.edge.spec.ts` — **13/13 PASS**. Frontières confirmées : 20,99 % (pas de justif) / 21 % (justif requise) / 30 % (autorisé avec code+justif) / 30,01 % (POS_OVER_CAP) ; justif générique « client » rejetée ; code responsable obligatoire ; back-office >30 % exige motif+validateur ; répartition NF525 exacte (somme = remise, 0 ≤ ligne ≤ net). **Aucun bug détecté.**
+- `tsc --noEmit` **EXIT 0**. Commit réel à suivre + bundle.
+
+**Prochain paquet** : PAQUET 71 — vérification ciblée (helper fiscal/argent) ou dette documentée sur GO produit. Sur GO.
