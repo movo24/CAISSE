@@ -2,8 +2,22 @@ import {
   relayBackoffMs,
   isEligibleForRelay,
   relayOutcome,
+  isRelayCronEnabled,
   MAX_RELAY_ATTEMPTS,
 } from './outbox-relay';
+
+describe('isRelayCronEnabled', () => {
+  it('off by default / for non-truthy flags', () => {
+    expect(isRelayCronEnabled(undefined)).toBe(false);
+    expect(isRelayCronEnabled('')).toBe(false);
+    expect(isRelayCronEnabled('false')).toBe(false);
+    expect(isRelayCronEnabled(null)).toBe(false);
+  });
+  it('on for true/1', () => {
+    expect(isRelayCronEnabled('true')).toBe(true);
+    expect(isRelayCronEnabled('1')).toBe(true);
+  });
+});
 
 describe('POS outbox-relay policy', () => {
   describe('relayBackoffMs', () => {

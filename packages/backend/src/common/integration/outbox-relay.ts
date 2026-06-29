@@ -13,6 +13,16 @@ import type { OutboxStatus } from './integration-event';
 
 export const MAX_RELAY_ATTEMPTS = 5;
 
+/**
+ * Whether the automatic relay cron is enabled. Default OFF: while the publisher
+ * is the simulation sink (or until a real publisher + secrets are configured),
+ * the cron stays disabled so nothing fires unattended. Set OUTBOX_RELAY_ENABLED=true
+ * to activate (prod, with a real publisher).
+ */
+export function isRelayCronEnabled(flag: string | undefined | null): boolean {
+  return flag === 'true' || flag === '1';
+}
+
 /** Exponential backoff in ms for a given attempt count (capped at 1h). */
 export function relayBackoffMs(attempts: number, baseMs = 1000): number {
   const ms = baseMs * 2 ** Math.max(0, attempts);

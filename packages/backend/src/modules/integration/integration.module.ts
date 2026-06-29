@@ -5,6 +5,7 @@ import { PosSessionEntity } from '../../database/entities/pos-session.entity';
 import { OutboxRelayService } from './outbox-relay.service';
 import { OutboxQueryService } from './outbox-query.service';
 import { ReconciliationService } from './reconciliation.service';
+import { OutboxRelayCron } from './outbox-relay.cron';
 import { IntegrationController } from './integration.controller';
 import { OUTBOX_PUBLISHER, SimulationOutboxPublisher } from './outbox-publisher';
 import { TimewinModule } from '../timewin/timewin.module';
@@ -24,6 +25,7 @@ import { TimewinModule } from '../timewin/timewin.module';
     OutboxRelayService,
     OutboxQueryService,
     ReconciliationService,
+    OutboxRelayCron,
     { provide: OUTBOX_PUBLISHER, useClass: SimulationOutboxPublisher },
   ],
   exports: [OutboxRelayService, OutboxQueryService, ReconciliationService],
