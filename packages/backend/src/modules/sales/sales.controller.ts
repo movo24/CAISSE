@@ -30,6 +30,7 @@ export class SalesController {
     @Body() dto: CreateSaleDto,
     @Request() req: any,
     @Headers('idempotency-key') idempotencyKey?: string,
+    @Headers('x-terminal-id') terminalId?: string,
   ) {
     return this.salesService.createSale(
       req.user.storeId,
@@ -39,6 +40,7 @@ export class SalesController {
         employeeName: req.user.employeeName,
         employeeRole: req.user.role,
         maxDiscount: req.user.maxDiscount,
+        terminalId: terminalId ?? null,
       },
       idempotencyKey,
     );

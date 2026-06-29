@@ -244,7 +244,7 @@ export class SalesService {
     storeId: string,
     employeeId: string,
     dto: CreateSaleDto,
-    employeeSnapshot?: { employeeName?: string; employeeRole?: string; maxDiscount?: number },
+    employeeSnapshot?: { employeeName?: string; employeeRole?: string; maxDiscount?: number; terminalId?: string | null },
     idempotencyKey?: string,
   ): Promise<SaleEntity> {
     // --- Idempotency (NF525): a replayed offline-sync POST must NEVER create a
@@ -648,7 +648,8 @@ export class SalesService {
         ticketNumber,
         storeId,
         organizationId: null, // not carried on sale; consumer resolves via store (TD-INT-ORG)
-        terminalId: null, // terminal not threaded into createSale (TD-INT-TERMINAL)
+        terminalId: employeeSnapshot?.terminalId ?? null, // POS-INT-83 — from X-Terminal-Id header
+
         employeeId,
         employeeRole: employeeSnapshot?.employeeRole ?? null,
         completedAt,
