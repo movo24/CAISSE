@@ -15,6 +15,13 @@ import { computePriceVerdict, PriceVerdict } from './price-verdict';
 import { ConflictException } from '@nestjs/common';
 import { normalizeName } from './name-normalize';
 import { buildEan13, INTERNAL_EAN_PREFIX } from './ean13';
+import {
+  periodDays,
+  unitsPerDayRate,
+  perDayMinor,
+  marginPercentOf,
+  deltaPct,
+} from './product-analytics';
 
 @Injectable()
 export class ProductsService {
@@ -373,9 +380,7 @@ export class ProductsService {
     const analytics: any[] = [];
     for (let i = 0; i < periods.length; i++) {
       const period = periods[i];
-      const daysDuration = Math.max(1, Math.ceil(
-        (period.to.getTime() - period.from.getTime()) / (1000 * 60 * 60 * 24),
-      ));
+      const daysDuration = periodDays(period.from.getTime(), period.to.getTime());
 
       // Aggregate in-memory lines falling in [from, to) for this period.
       const fromTs = period.from.getTime();
@@ -388,29 +393,27 @@ export class ProductsService {
           revenue += line.revenue;
         }
       }
-      const unitsPerDay = Math.round((unitsSold / daysDuration) * 100) / 100;
+      const unitsPerDay = unitsPerDayRate(unitsSold, daysDuration);
       // Keep revenue/day in MINOR units internally for correct delta math…
-      const revenuePerDayMinorUnits = Math.round(revenue / daysDuration);
+      const revenuePerDayMinorUnits = perDayMinor(revenue, daysDuration);
 
       // ── Margin (cash signal) — uses current cost as basis (see note above) ──
       const marginPerUnitMinorUnits = costAvailable
         ? period.priceMinorUnits - cost
         : null;
-      const marginPercent =
-        costAvailable && period.priceMinorUnits > 0
-          ? Math.round(((period.priceMinorUnits - cost) / period.priceMinorUnits) * 10000) / 100
-          : null;
+      const marginPercent = costAvailable
+        ? marginPercentOf(period.priceMinorUnits, cost)
+        : null;
       const totalMarginMinorUnits =
         marginPerUnitMinorUnits !== null ? marginPerUnitMinorUnits * unitsSold : null;
       const marginPerDayMinorUnits =
         totalMarginMinorUnits !== null
-          ? Math.round(totalMarginMinorUnits / daysDuration)
+          ? perDayMinor(totalMarginMinorUnits, daysDuration)
           : null;
 
       // Delta vs previous period (all computed from MINOR-unit fields)
       const prev: any = i > 0 ? analytics[i - 1] : null;
-      const pct = (cur: number, prv: number): number | null =>
-        prv === 0 ? null : Math.round(((cur - prv) / prv) * 10000) / 100;
+      const pct = (cur: number, prv: number): number | null => deltaPct(cur, prv);
 
       const priceDeltaPct = prev ? pct(period.priceMinorUnits, prev.priceMinorUnits) : null;
       const unitsPerDayDeltaPct = prev ? pct(unitsPerDay, prev.unitsPerDay) : null;
