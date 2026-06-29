@@ -2,14 +2,11 @@ import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { createHash } from 'crypto';
+import { checkChainLinkage, GENESIS, ChainIssue } from './chain-linkage';
 
-const GENESIS = '0'.repeat(64);
 const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
 
-export interface ChainIssue {
-  kind: 'fork' | 'orphan' | 'unreachable' | 'multiple_genesis' | 'no_genesis' | 'hash_mismatch';
-  detail: string;
-}
+export { ChainIssue } from './chain-linkage';
 
 export interface ChainReport {
   chain: 'sales' | 'credit_notes' | 'fiscal_journal';
@@ -67,46 +64,9 @@ export class FiscalVerifyService {
     return (Array.isArray(rows) ? rows : []).map((r: any) => r.id);
   }
 
-  /** Walk the chain by hash pointers; report linkage issues. */
+  /** Walk the chain by hash pointers; report linkage issues (pure — see chain-linkage.ts). */
   private checkLinkage(rows: { prev: string; current: string }[]): { ok: boolean; issues: ChainIssue[] } {
-    const issues: ChainIssue[] = [];
-    if (rows.length === 0) return { ok: true, issues };
-
-    const byPrev = new Map<string, number>();
-    const currents = new Set<string>();
-    for (const r of rows) {
-      byPrev.set(r.prev, (byPrev.get(r.prev) ?? 0) + 1);
-      currents.add(r.current);
-    }
-    // forks: any prev shared by >1 row (two events chained on the same parent)
-    for (const [prev, n] of byPrev) {
-      if (n > 1) issues.push({ kind: 'fork', detail: `${n} rows chain on prev=${prev.slice(0, 12)}…` });
-    }
-    // genesis count
-    const genesisCount = rows.filter((r) => r.prev === GENESIS).length;
-    if (genesisCount === 0) issues.push({ kind: 'no_genesis', detail: 'no row chains on genesis' });
-    if (genesisCount > 1) issues.push({ kind: 'multiple_genesis', detail: `${genesisCount} rows chain on genesis` });
-    // orphans: prev points to a hash that is not genesis and not any row's current
-    for (const r of rows) {
-      if (r.prev !== GENESIS && !currents.has(r.prev)) {
-        issues.push({ kind: 'orphan', detail: `row current=${r.current.slice(0, 12)}… has prev not found in chain` });
-      }
-    }
-    // reachability: walk from genesis following pointers
-    const byPrevRow = new Map<string, { prev: string; current: string }>();
-    for (const r of rows) if (!byPrevRow.has(r.prev)) byPrevRow.set(r.prev, r);
-    let cursor = GENESIS;
-    let seen = 0;
-    const guard = rows.length + 1;
-    while (byPrevRow.has(cursor) && seen <= guard) {
-      const next = byPrevRow.get(cursor)!;
-      cursor = next.current;
-      seen++;
-    }
-    if (seen !== rows.length) {
-      issues.push({ kind: 'unreachable', detail: `${rows.length - seen} row(s) not reachable from genesis` });
-    }
-    return { ok: issues.length === 0, issues };
+    return checkChainLinkage(rows);
   }
 
   // ── sales ────────────────────────────────────────────────────────────────
