@@ -1020,3 +1020,12 @@ Décisions produit tranchées par l'utilisateur. 5 blocs enchaînés.
 - Preuve typecheck/build : `tsc --noEmit` EXIT 0 ; `nest build` RC=0 (7 .js comptamax).
 - Dette : inchangée (TD-INT-SOCIAL-ENTRIES, publisher HTTP réel = secrets, migration 1725 non jouée hors DB).
 - Prochain paquet : P102 (axe utile à décider — ex. dédup consommateur par event id, ou mapping compte par méthode de paiement étendu).
+
+## PAQUET 102 — Contrat d'idempotence consommateur (POS-INT-102)
+- Objectif : préparer Comptamax24 / Analytik R à un traitement EXACTLY-ONCE des events outbox (livraison at-least-once : retry relais, rejeu, re-lecture du feed).
+- Fichiers : `common/integration/consumer-dedup.ts` (pur, sans DB/Nest), `consumer-dedup.spec.ts` (nouveau).
+- API : `isFreshEventId(id, seen)`, `dedupeBatch(events, seen?)` → {fresh, duplicates, seen}, `freshOnly(...)`, `seenSetFrom(ids)`. Le consommateur possède le store « seen » (Set/table/KV) ; le POS n'en dépend jamais (jamais bloqueur de caisse).
+- Sémantique : ordre préservé, repeats intra-lot collapsés, event sans id traité comme doublon (drop sûr), rejeu du même lot ⇒ 0 fresh.
+- Preuve tests : `consumer-dedup.spec.ts` ⇒ 1 suite / 10 tests PASS.
+- Preuve typecheck/build : `tsc --noEmit` EXIT 0 ; `nest build` RC=0.
+- Dette : inchangée. Prochain : P103 (axe utile à décider).
