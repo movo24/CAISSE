@@ -7,7 +7,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { ProductEntity } from '../../database/entities/product.entity';
 import { AuditService } from '../audit/audit.service';
-import { crossedDownward, effectiveAlertThreshold } from './stock-level';
+import { crossedDownward, effectiveAlertThreshold, applyStockAdjustment } from './stock-level';
 
 @Injectable()
 export class StockService {
@@ -138,13 +138,8 @@ export class StockService {
 
       const oldQty = product.stockQuantity ?? 0;
 
-      if (mode === 'delta') {
-        // Delta mode: add/subtract from current stock
-        product.stockQuantity = Math.max(0, oldQty + quantity);
-      } else {
-        // Absolute mode: set to exact value (must be >= 0)
-        product.stockQuantity = Math.max(0, quantity);
-      }
+      // Delta adds/subtracts; absolute sets. Both clamp ≥ 0 (pure helper).
+      product.stockQuantity = applyStockAdjustment(oldQty, quantity, mode);
 
       const saved = await manager.save(product);
 

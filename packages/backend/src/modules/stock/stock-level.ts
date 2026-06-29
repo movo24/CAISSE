@@ -59,3 +59,16 @@ export function effectiveAlertThreshold(
   if (baselineQty && baselineQty > 0) return relativeThreshold(baselineQty, pct);
   return absoluteAlertThreshold;
 }
+
+/**
+ * Resulting stock quantity after an adjustment, clamped to ≥ 0.
+ * - 'delta'   → oldQty + value
+ * - 'absolute'→ value
+ */
+export function applyStockAdjustment(
+  oldQty: number,
+  value: number,
+  mode: 'delta' | 'absolute',
+): number {
+  return Math.max(0, mode === 'delta' ? oldQty + value : value);
+}
