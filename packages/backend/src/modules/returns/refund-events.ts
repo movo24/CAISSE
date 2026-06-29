@@ -22,6 +22,8 @@ export interface RefundEventInput {
   totalMinorUnits: number;
   currencyCode: string;
   reason: string | null;
+  /** Per-rate VAT split of the refund (reverse of the sale) — for pre-accounting. */
+  taxBreakdown?: { rate: number; taxMinorUnits: number; baseMinorUnits: number; grossMinorUnits: number }[];
   occurredAt?: Date | string;
 }
 
@@ -53,6 +55,7 @@ export function buildRefundOutboxEvent(input: RefundEventInput): IntegrationEven
       totalMinorUnits: input.totalMinorUnits,
       currencyCode: input.currencyCode,
       reason: input.reason,
+      taxBreakdown: input.taxBreakdown ?? [],
     },
   });
 }

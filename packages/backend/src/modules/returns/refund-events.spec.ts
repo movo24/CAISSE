@@ -31,6 +31,16 @@ describe('POS returns refund-events', () => {
     expect(e.payload).toMatchObject({ refundMethod: 'cash', totalMinorUnits: 800 });
   });
 
+  it('carries taxBreakdown when provided', () => {
+    const e = buildRefundOutboxEvent({
+      creditNoteId: 'cn-3', code: 'AV-3', storeId: 'store-1', employeeId: 'emp-1',
+      type: 'refund', refundMethod: 'card', originalSaleId: 's', originalTicketNumber: 'T',
+      totalMinorUnits: 2300, currencyCode: 'EUR', reason: null, occurredAt: ts,
+      taxBreakdown: [{ rate: 20, taxMinorUnits: 200, baseMinorUnits: 1000, grossMinorUnits: 1200 }],
+    });
+    expect(e.payload.taxBreakdown).toEqual([{ rate: 20, taxMinorUnits: 200, baseMinorUnits: 1000, grossMinorUnits: 1200 }]);
+  });
+
   it('gift card → credit_note.issued (origin gift_card)', () => {
     const e = buildGiftCardOutboxEvent({
       creditNoteId: 'gc-1', code: 'GC-0123456789', storeId: 'store-1',

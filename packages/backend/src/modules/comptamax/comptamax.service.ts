@@ -116,9 +116,12 @@ export class ComptamaxService {
           ...buildRefundJournalLines({
             code: String(p.code ?? e.aggregateId),
             totalMinorUnits: Number(p.totalMinorUnits) || 0,
-            taxTotalMinorUnits: 0, // refund tax split not carried in payload yet (TD-INT-REFUND-TAX)
+            taxTotalMinorUnits: 0,
             type: p.type === 'store_credit' ? 'store_credit' : 'refund',
             refundMethod: p.refundMethod ?? null,
+            taxBreakdown: Array.isArray(p.taxBreakdown) // POS-INT-97
+              ? p.taxBreakdown.map((b: any) => ({ rate: Number(b.rate), taxMinorUnits: Number(b.taxMinorUnits) }))
+              : undefined,
           }),
         );
       }

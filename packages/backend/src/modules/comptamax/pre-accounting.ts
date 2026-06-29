@@ -110,6 +110,8 @@ export interface RefundJournalInput {
   taxTotalMinorUnits?: number; // optional; 0 when not split
   type: 'refund' | 'store_credit';
   refundMethod: string | null;
+  /** Optional per-rate VAT split → one 44571 debit line per rate (else single/none). */
+  taxBreakdown?: { rate: number; taxMinorUnits: number }[];
 }
 
 /**
@@ -118,17 +120,30 @@ export interface RefundJournalInput {
  *  - crédit encaissement (cash/card) OR crédit 4191 (avoir émis).
  */
 export function buildRefundJournalLines(input: RefundJournalInput): JournalLine[] {
-  const tax = input.taxTotalMinorUnits ?? 0;
+  const breakdown = (input.taxBreakdown ?? []).filter((b) => b.taxMinorUnits !== 0);
+  const tax = breakdown.length
+    ? breakdown.reduce((s, b) => s + b.taxMinorUnits, 0)
+    : input.taxTotalMinorUnits ?? 0;
   const ht = input.totalMinorUnits - tax;
   const counterpart =
     input.type === 'store_credit'
       ? ACCOUNTS.AVOIR_CLIENT
       : paymentAccount(input.refundMethod ?? '');
+
+  const vatLines: JournalLine[] = breakdown.length
+    ? breakdown.map((b) => ({
+        account: ACCOUNTS.TVA_COLLECTEE,
+        label: `Avoir TVA ${b.rate}% ${input.code}`,
+        debitMinorUnits: b.taxMinorUnits,
+        creditMinorUnits: 0,
+      }))
+    : tax !== 0
+      ? [{ account: ACCOUNTS.TVA_COLLECTEE, label: `Avoir TVA ${input.code}`, debitMinorUnits: tax, creditMinorUnits: 0 }]
+      : [];
+
   return [
     { account: ACCOUNTS.VENTE_HT, label: `Avoir HT ${input.code}`, debitMinorUnits: ht, creditMinorUnits: 0 },
-    ...(tax !== 0
-      ? [{ account: ACCOUNTS.TVA_COLLECTEE, label: `Avoir TVA ${input.code}`, debitMinorUnits: tax, creditMinorUnits: 0 }]
-      : []),
+    ...vatLines,
     { account: counterpart, label: `Remboursement ${input.code}`, debitMinorUnits: 0, creditMinorUnits: input.totalMinorUnits },
   ];
 }

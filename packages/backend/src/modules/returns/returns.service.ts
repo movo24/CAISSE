@@ -26,6 +26,7 @@ import { IntegrationEventEntity } from '../../database/entities/integration-even
 import { toOutboxRow } from '../../common/integration/integration-event';
 import { buildRefundOutboxEvent, buildGiftCardOutboxEvent } from './refund-events';
 import { StoreOrgResolver } from '../integration/store-org-resolver';
+import { taxBreakdownByRate } from '../sales/tax';
 
 const GENESIS = '0'.repeat(64);
 function sha256(s: string): string {
@@ -144,6 +145,13 @@ export class ReturnsService {
     if (total <= 0) throw new BadRequestException('Montant de retour nul');
 
     const organizationId = await this.storeOrgResolver.resolve(storeId); // POS-INT-89
+    // POS-INT-97 — per-rate VAT split of the refund (reverse of the sale).
+    const refundTaxBreakdown = taxBreakdownByRate(
+      returnLines.map((l) => ({
+        lineTotalMinorUnits: l.lineTotalMinorUnits as number,
+        taxRate: Number(l.taxRate),
+      })),
+    );
     const MAX_RETRIES = 3;
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       const qr = this.dataSource.createQueryRunner();
@@ -240,6 +248,7 @@ export class ReturnsService {
           totalMinorUnits: total,
           currencyCode: saved.currencyCode || 'EUR',
           reason: saved.reason ?? null,
+          taxBreakdown: refundTaxBreakdown,
         });
         await qr.manager.insert(IntegrationEventEntity, [toOutboxRow(refundEvent)] as any);
 

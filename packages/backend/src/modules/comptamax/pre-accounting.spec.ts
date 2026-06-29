@@ -85,6 +85,17 @@ describe('Comptamax pre-accounting engine', () => {
       expect(lines.find((l) => l.account === ACCOUNTS.AVOIR_CLIENT)!.creditMinorUnits).toBe(1200);
       expect(lines.find((l) => l.account === ACCOUNTS.VENTE_HT)!.debitMinorUnits).toBe(1000);
     });
+    it('per-rate VAT breakdown → one 44571 debit per rate (balanced)', () => {
+      const lines = buildRefundJournalLines({
+        code: 'AV-3', totalMinorUnits: 2300, type: 'refund', refundMethod: 'card',
+        taxBreakdown: [{ rate: 10, taxMinorUnits: 100 }, { rate: 20, taxMinorUnits: 200 }],
+      });
+      const vat = lines.filter((l) => l.account === ACCOUNTS.TVA_COLLECTEE);
+      expect(vat.map((v) => v.debitMinorUnits)).toEqual([100, 200]);
+      expect(lines.find((l) => l.account === ACCOUNTS.VENTE_HT)!.debitMinorUnits).toBe(2000);
+      expect(journalIsBalanced(lines)).toBe(true);
+    });
+
     it('cash refund credits the cash account', () => {
       const lines = buildRefundJournalLines({
         code: 'AV-2', totalMinorUnits: 600, taxTotalMinorUnits: 100, type: 'refund', refundMethod: 'cash',
