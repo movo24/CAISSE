@@ -43,5 +43,11 @@ describe('POS-100 accounting-export', () => {
     it('empty rows = header only', () => {
       expect(toAccountingCsv([])).toBe('date;store_id;total_ttc;total_ht;total_tva;cash;card;autres;remise;nb_tickets');
     });
+    it('neutralizes a formula-injection payload in storeId (POS-INT-114)', () => {
+      const row = buildDailyAccountingExport({ ...input, storeId: '=cmd' });
+      const csv = toAccountingCsv([row]);
+      expect(csv).toContain(";'=cmd;"); // apostrophe-prefixed, not executable
+      expect(csv).not.toContain(';=cmd;');
+    });
   });
 });

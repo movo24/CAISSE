@@ -8,6 +8,8 @@
  * (external integration, non branché — see POS_INTEGRATIONS / TD-COMPTAMAX).
  */
 
+import { csvSafeCell } from '../../common/csv/csv-safe';
+
 export interface AccountingExportInput {
   date: string;
   storeId: string;
@@ -77,8 +79,9 @@ export function toAccountingCsv(rows: AccountingExportRow[]): string {
   for (const r of rows) {
     lines.push(
       [
-        r.date,
-        r.storeId,
+        // POS-INT-113/114 — date + storeId are text fields → CSV-injection guard.
+        csvSafeCell(r.date),
+        csvSafeCell(r.storeId),
         major(r.totalTtcMinorUnits),
         major(r.totalHtMinorUnits),
         major(r.totalTvaMinorUnits),

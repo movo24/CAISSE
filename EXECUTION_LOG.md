@@ -1117,3 +1117,11 @@ Décisions produit tranchées par l'utilisateur. 5 blocs enchaînés.
 - Preuve typecheck/build : `tsc --noEmit` EXIT 0 ; `nest build` RC=0.
 - Honnêteté : correction d'un surstatement antérieur (« échappement CSV » ne couvrait pas l'injection de formule) ; désormais couvert et prouvé sur les 4 exports.
 - Dette inchangée : TD-INT-SOCIAL-ENTRIES, publisher HTTP réel = secrets, migration 1725 + DB runtime = gate local. Cumul épic : 43 paquets (71→113).
+
+## PAQUET 114 — Garde CSV sur export comptable POS-100 (POS-INT-114)
+- Objectif : finir la couverture anti-injection — `toAccountingCsv` (reports/accounting-export.ts) émettait `date` + `storeId` (texte) sans garde.
+- Fichiers : `reports/accounting-export.ts` (date+storeId via `csvSafeCell` ; montants major-units digit-leading raw), `accounting-export.spec.ts` (test injection storeId `=cmd` neutralisé).
+- Couverture finale : 5/5 producteurs CSV gardés (journalToCsv, workforceToCsv, cashControlToCsv, shiftsToCsv, toAccountingCsv) — audit grep confirmé ; les contrôleurs ne font que router.
+- Preuve tests : `accounting-export.spec.ts` ⇒ 1 suite / 6 tests PASS (verbeux collé).
+- Preuve typecheck/build : `tsc --noEmit` EXIT 0 ; `nest build` RC=0.
+- Dette inchangée. Cumul épic : 44 paquets (71→114).
