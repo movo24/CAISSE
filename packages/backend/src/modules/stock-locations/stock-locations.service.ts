@@ -8,6 +8,11 @@ import { StockBalanceEntity } from '../../database/entities/stock-balance.entity
 import { StockMovementEntity } from '../../database/entities/stock-movement.entity';
 import { ProductEntity } from '../../database/entities/product.entity';
 import { AuditService } from '../audit/audit.service';
+import {
+  isPositiveQuantity,
+  sumDispatchQuantities,
+  hasSufficientStock,
+} from './dispatch-policy';
 
 /**
  * StockLocationsService — Multi-location stock management.
@@ -142,7 +147,7 @@ export class StockLocationsService {
     employeeId: string;
     employeeName: string;
   }): Promise<StockMovementEntity> {
-    if (data.quantity <= 0) throw new BadRequestException('Quantity must be positive');
+    if (!isPositiveQuantity(data.quantity)) throw new BadRequestException('Quantity must be positive');
 
     return this.dataSource.transaction(async (manager) => {
       // Update or create balance
@@ -199,7 +204,7 @@ export class StockLocationsService {
     employeeId: string;
     employeeName: string;
   }): Promise<StockMovementEntity> {
-    if (data.quantity <= 0) throw new BadRequestException('Quantity must be positive');
+    if (!isPositiveQuantity(data.quantity)) throw new BadRequestException('Quantity must be positive');
     if (data.fromLocationId === data.toLocationId) {
       throw new BadRequestException('Cannot transfer to same location');
     }
@@ -271,8 +276,8 @@ export class StockLocationsService {
     employeeId: string;
     employeeName: string;
   }): Promise<StockMovementEntity[]> {
-    const totalQty = data.dispatches.reduce((s, d) => s + d.quantity, 0);
-    if (totalQty <= 0) throw new BadRequestException('Total dispatch quantity must be positive');
+    const totalQty = sumDispatchQuantities(data.dispatches);
+    if (!isPositiveQuantity(totalQty)) throw new BadRequestException('Total dispatch quantity must be positive');
 
     return this.dataSource.transaction(async (manager) => {
       // Lock source
@@ -281,7 +286,7 @@ export class StockLocationsService {
         lock: { mode: 'pessimistic_write' },
       });
 
-      if (!fromBalance || fromBalance.quantity < totalQty) {
+      if (!fromBalance || !hasSufficientStock(fromBalance.quantity, totalQty)) {
         throw new BadRequestException(
           `Insufficient stock: ${fromBalance?.quantity ?? 0} available, ${totalQty} requested for dispatch`,
         );
@@ -290,7 +295,7 @@ export class StockLocationsService {
       const movements: StockMovementEntity[] = [];
 
       for (const d of data.dispatches) {
-        if (d.quantity <= 0) continue;
+        if (!isPositiveQuantity(d.quantity)) continue;
 
         // Update or create destination
         let toBalance = await manager.findOne(StockBalanceEntity, {
