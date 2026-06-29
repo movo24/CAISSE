@@ -160,3 +160,24 @@ Chaque paquet : objectif · fichiers · test · typecheck/build · git · dette 
 
 ### Pour activer la prod (hors sandbox)
 1. `migration:run` (table `integration_events`, 1725). 2. Fournir `OUTBOX_PUBLISH_URL` + `OUTBOX_PUBLISH_SECRET` (publisher HTTP réel). 3. `OUTBOX_RELAY_ENABLED=true`. 4. Côté Comptamax/TimeWin/Analytik : vérifier la signature (`verifyPublishSignature`) + dédupliquer par `id`.
+
+## H. JALON PAQUET 108 (2026-06-29) — consolidation v5 (paquets 101→107)
+
+**Couche intégration : 22 suites / 144 tests verts ensemble · `tsc` EXIT 0 · `nest build` RC=0.**
+
+### Nouveautés depuis le jalon 100
+- **P101 — plan de comptes configurable** : `resolveAccountMap` + builders paramétrés ; surcharge par déploiement via env `COMPTAMAX_ACCOUNTS` (JSON), tolérante (jamais de compte invalide), défaut PCG préservé.
+- **P102 — contrat d'idempotence consommateur** : `consumer-dedup` (`dedupeBatch` par `id`) → traitement EXACTLY-ONCE côté Comptamax/Analytik (livraison at-least-once). Store « seen » possédé par le consommateur ; POS jamais bloqueur.
+- **P103 — curseur consommateur composite `(occurredAt, id)`** : keyset pagination du feed `/integration/events` ; corrige la perte d'events au même timestamp à la frontière de page. Rétro-compatible (curseur ISO nu = legacy). `nextCursor` = `"<iso>|<id>"`.
+- **P104 — preuve runtime keyset (référence pure)** : `events-keyset` + test exhaustif (couverture totale / 0 saut / 0 doublon à 6 tailles de page ; perte legacy vs résolution composite démontrée). Miroir du SQL exécuté (garde anti-régression).
+- **P105 — event `cash_session.opened`** : début de poste émis (best-effort, non-bloquant) à l'ouverture de session, symétrique de `cash_session.closed` (Z). Distinct de `employee_activity.recorded`.
+- **P106 — agrégateur d'amplitude de poste** : `summarizeShifts`/`toShiftEvents` (pur) — paire open↔close par session, totaux minutes par employé ; tolérant hors-ordre / poste en cours.
+- **P107 — endpoint `GET /api/integration/shifts?date=`** : amplitude de poste lecture seule (TimeWin présence / Analytik R), tenant-scoped, réutilise `dayRangeUtc` + `shift-amplitude`.
+
+### Matrice événements — ajout
+| Event | Source POS | Tenant porté | Consommateurs |
+|---|---|---|---|
+| `cash_session.opened` | pos-session openSession (best-effort) | store+org+terminal | TimeWin (amplitude), Analytik R (occupation) |
+
+### Contrat consommateur (imposé pour exactly-once + sans perte)
+Paginer le feed avec le `nextCursor` composite renvoyé (jamais le seul timestamp) **et** dédupliquer par `id` (`dedupeBatch`). Les deux ensemble ⇒ livraison sans saut **et** sans doublon.

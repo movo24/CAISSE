@@ -1071,3 +1071,10 @@ Décisions produit tranchées par l'utilisateur. 5 blocs enchaînés.
 - Preuve tests (non-régression) : suites integration + timewin/shift-amplitude ⇒ 6 suites / 43 tests PASS.
 - Preuve typecheck/build : `tsc --noEmit` EXIT 0 ; `nest build` RC=0.
 - Dette : inchangée. Prochain : P108 (axe utile à décider).
+
+## PAQUET 108 — Consolidation v5 (jalon paquets 101→107) (POS-INT-108)
+- Agrégat couche intégration : 22 suites / 144 tests PASS ensemble (common/integration, modules/integration, comptamax, timewin shift+presence+adapter, pos-session, sales events+tax, returns, reports, stock).
+- Preuve typecheck/build : `tsc --noEmit` EXIT 0 ; `nest build` RC=0.
+- Doc : section §H ajoutée à INTER_SYSTEM_INTEGRATION.md (récap P101–107, ajout matrice `cash_session.opened`, contrat consommateur exactly-once+sans-perte = curseur composite + dédup par id).
+- Dette inchangée : TD-INT-SOCIAL-ENTRIES, publisher HTTP réel = secrets, migration 1725 + DB runtime = gate local.
+- Cumul épic intégration : 38 paquets (71→108).
