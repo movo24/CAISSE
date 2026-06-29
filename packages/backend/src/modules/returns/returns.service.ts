@@ -16,6 +16,11 @@ import {
   AVOIR_PREFIX,
   GIFT_PREFIX,
 } from './credit-code';
+import {
+  isValidRefundMethod,
+  creditNoteRefundState,
+  isSpendableStoreCredit,
+} from './refund-policy';
 
 const GENESIS = '0'.repeat(64);
 function sha256(s: string): string {
@@ -89,7 +94,7 @@ export class ReturnsService {
     }
 
     if (!dto.items?.length) throw new BadRequestException('Aucun article à retourner');
-    if (!['cash', 'card', 'store_credit'].includes(dto.refundMethod)) {
+    if (!isValidRefundMethod(dto.refundMethod)) {
       throw new BadRequestException('Mode de remboursement invalide');
     }
 
@@ -158,7 +163,7 @@ export class ReturnsService {
         );
         const prevHash = lastCn.length > 0 ? lastCn[0].hash_chain_current : GENESIS;
         const code = this.genCode();
-        const isStoreCredit = dto.refundMethod === 'store_credit';
+        const refundState = creditNoteRefundState(dto.refundMethod, total);
         const chainPayload = JSON.stringify({
           code,
           storeId,
@@ -175,14 +180,14 @@ export class ReturnsService {
         cn.origin = 'return';
         cn.originalSaleId = sale.id;
         cn.originalTicketNumber = sale.ticketNumber;
-        cn.type = isStoreCredit ? 'store_credit' : 'refund';
-        cn.refundMethod = isStoreCredit ? null : dto.refundMethod;
-        cn.status = isStoreCredit ? 'active' : 'refunded';
+        cn.type = refundState.type;
+        cn.refundMethod = refundState.refundMethod;
+        cn.status = refundState.status;
         cn.reason = dto.reason ?? null;
         cn.employeeId = employeeId;
         cn.employeeNameSnapshot = employeeName ?? null;
         cn.totalMinorUnits = total;
-        cn.remainingMinorUnits = isStoreCredit ? total : 0;
+        cn.remainingMinorUnits = refundState.remainingMinorUnits;
         cn.currencyCode = sale.currencyCode || 'EUR';
         cn.hashChainPrev = prevHash;
         cn.hashChainCurrent = currentHash;
@@ -421,10 +426,7 @@ export class ReturnsService {
   ): Promise<{ code: string; type: string; status: string; remainingMinorUnits: number; spendable: boolean }> {
     const cn = await this.cnRepo.findOne({ where: { code: normalizeCreditCode(code), storeId } });
     if (!cn) throw new NotFoundException('Avoir introuvable');
-    const spendable =
-      cn.type === 'store_credit' &&
-      (cn.status === 'active' || cn.status === 'partially_redeemed') &&
-      cn.remainingMinorUnits > 0;
+    const spendable = isSpendableStoreCredit(cn.type, cn.status, cn.remainingMinorUnits);
     return {
       code: cn.code,
       type: cn.type,
