@@ -9,6 +9,9 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
 import { PosSessionEntity } from '../../database/entities/pos-session.entity';
+import { IntegrationEventEntity } from '../../database/entities/integration-event.entity';
+import { toOutboxRow } from '../../common/integration/integration-event';
+import { buildSessionActivityEvent } from './session-events';
 
 /**
  * POS Session primitive — γ-model (D1 decision: terminal-bound sessions).
@@ -44,7 +47,37 @@ export class PosSessionService {
   constructor(
     @InjectRepository(PosSessionEntity)
     private readonly repo: Repository<PosSessionEntity>,
+    @InjectRepository(IntegrationEventEntity)
+    private readonly outbox: Repository<IntegrationEventEntity>,
   ) {}
+
+  /**
+   * Best-effort employee-activity outbox event (TimeWin reconciliation / Analytik R).
+   * NON-blocking by design: a session open/close must NEVER fail because the outbox
+   * write failed, so any error is swallowed (logged). The session itself is already
+   * persisted; this is a non-fiscal activity signal.
+   */
+  private async recordSessionActivity(
+    action: 'opened' | 'closed',
+    s: PosSessionEntity,
+  ): Promise<void> {
+    try {
+      const event = buildSessionActivityEvent({
+        sessionId: s.id,
+        storeId: s.storeId,
+        organizationId: null,
+        employeeId: s.employeeId,
+        employeeRole: s.employeeRole ?? null,
+        terminalId: s.terminalId ?? null,
+        action,
+        openedAt: s.openedAt,
+        closedAt: s.closedAt ?? null,
+      });
+      await this.outbox.insert(toOutboxRow(event) as any);
+    } catch (e: any) {
+      this.logger.warn(`Outbox (employee_activity.${action}) failed: ${e?.message}`);
+    }
+  }
 
   /**
    * Open a new POS session on a physical terminal.
@@ -146,6 +179,7 @@ export class PosSessionService {
       `POS session opened: ${saved.id} for employee ${employeeId} ` +
         `at store ${storeId} on terminal ${options.terminalId}`,
     );
+    await this.recordSessionActivity('opened', saved);
     return saved;
   }
 
@@ -183,6 +217,7 @@ export class PosSessionService {
     session.closedAt = new Date();
     const saved = await this.repo.save(session);
     this.logger.log(`POS session closed: ${saved.id}`);
+    await this.recordSessionActivity('closed', saved);
     return saved;
   }
 
