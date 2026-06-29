@@ -72,6 +72,23 @@ describe('cash-control / écart de caisse (POS-INT-110)', () => {
     expect(r.balanced).toBe(false);
   });
 
+  it('reports captured detail per method, ranked (POS-INT-117)', () => {
+    const r = reconcileCashControl(
+      [
+        { method: 'cash', amountMinorUnits: 1000 },
+        { method: 'card', amountMinorUnits: 5000 },
+        { method: 'stripe_terminal', amountMinorUnits: 2000 },
+        { method: 'cash', amountMinorUnits: 500 }, // same method aggregates
+      ],
+      { cashTotalMinorUnits: 1500, cardTotalMinorUnits: 7000 },
+    );
+    expect(r.capturedByMethod).toEqual([
+      { method: 'card', bucket: 'card', capturedMinorUnits: 5000 },
+      { method: 'stripe_terminal', bucket: 'card', capturedMinorUnits: 2000 },
+      { method: 'cash', bucket: 'cash', capturedMinorUnits: 1500 },
+    ]);
+  });
+
   it('totals are consistent', () => {
     const r = reconcileCashControl(
       [

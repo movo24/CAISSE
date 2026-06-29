@@ -31,8 +31,16 @@ export interface BucketControl {
   diffMinorUnits: number; // captured − declared (0 = match)
 }
 
+export interface MethodCapture {
+  method: string;
+  bucket: TenderBucket;
+  capturedMinorUnits: number;
+}
+
 export interface CashControlResult {
   byBucket: BucketControl[];
+  /** POS-INT-117 — captured detail per raw tender method (investigation aid). */
+  capturedByMethod: MethodCapture[];
   totalCapturedMinorUnits: number;
   totalDeclaredMinorUnits: number;
   totalDiffMinorUnits: number;
@@ -84,9 +92,16 @@ export function reconcileCashControl(
   declared: ZDeclared,
 ): CashControlResult {
   const sums: Record<TenderBucket, number> = { cash: 0, card: 0, other: 0 };
+  const byMethod = new Map<string, number>();
   for (const p of captured) {
-    sums[tenderBucket(p.method)] += Number(p.amountMinorUnits) || 0;
+    const amount = Number(p.amountMinorUnits) || 0;
+    const method = String(p.method);
+    sums[tenderBucket(method)] += amount;
+    byMethod.set(method, (byMethod.get(method) ?? 0) + amount);
   }
+  const capturedByMethod: MethodCapture[] = [...byMethod.entries()]
+    .map(([method, capturedMinorUnits]) => ({ method, bucket: tenderBucket(method), capturedMinorUnits }))
+    .sort((a, b) => b.capturedMinorUnits - a.capturedMinorUnits || a.method.localeCompare(b.method));
 
   const cashDeclared = declared.cashTotalMinorUnits || 0;
   const cardDeclared = declared.cardTotalMinorUnits || 0;
@@ -117,6 +132,7 @@ export function reconcileCashControl(
 
   return {
     byBucket,
+    capturedByMethod,
     totalCapturedMinorUnits,
     totalDeclaredMinorUnits,
     totalDiffMinorUnits: totalCapturedMinorUnits - totalDeclaredMinorUnits,

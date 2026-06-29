@@ -1140,3 +1140,11 @@ Décisions produit tranchées par l'utilisateur. 5 blocs enchaînés.
 - Preuve tests : `cash-control.spec.ts` ⇒ 1 suite / 8 tests PASS (verbeux collé).
 - Preuve typecheck/build : `tsc --noEmit` EXIT 0 ; `nest build` RC=0.
 - Dette inchangée.
+
+## PAQUET 117 — Cash-control: détail par méthode (POS-INT-117)
+- Objectif : aide à l'investigation d'un écart — exposer `capturedByMethod` (capturé agrégé par méthode brute + son bucket), classé par montant décroissant, en plus des 3 buckets.
+- Fichiers : `comptamax/cash-control.ts` (type `MethodCapture` + `capturedByMethod` dans `CashControlResult`), `cash-control.spec.ts` (cas : agrégation même méthode + classement + bucket).
+- Le service `buildCashControl` renvoie déjà l'objet complet → endpoint enrichi sans changement de contrôleur. CSV inchangé (niveau bucket).
+- Preuve tests : `cash-control.spec.ts` ⇒ 1 suite / 9 tests PASS.
+- Preuve typecheck/build : `tsc --noEmit` EXIT 0 ; `nest build` RC=0.
+- Dette inchangée.
