@@ -6,6 +6,17 @@ import { Repository, DataSource } from 'typeorm';
 import { SaleEntity } from '../../database/entities/sale.entity';
 import { SaleLineItemEntity } from '../../database/entities/sale-line-item.entity';
 import { ProductEntity } from '../../database/entities/product.entity';
+import {
+  coOccurrenceScore,
+  marginPercentOf,
+  marginScoreOf,
+  stockPressureScore,
+  stockPressureLabel,
+  temporalScore,
+  consistencyScore,
+  upsellConfidence,
+  estimatedCashImpact,
+} from './upsell-scoring';
 
 /* ═══════════════════════════════════════════════════════════════
    SALES AI ENGINE — V1
@@ -70,15 +81,8 @@ const MIN_ATTACHMENT_RATE = 0.25;
 const MIN_CONFIDENCE = 0.75;
 const MIN_MARGIN_PERCENT = 10;
 const MIN_STOCK_FOR_RECOMMEND = 3;
-const OVERSTOCK_THRESHOLD = 50;          // Stock > 50 = overstock → push harder
 const RUSH_THRESHOLD_MULTIPLIER = 1.5;
-
-// ── V4 Scoring weights — CASH FIRST ──
-const W_COOCCURRENCE = 0.30;  // Correlation (reduced — no longer king)
-const W_MARGIN = 0.35;        // MARGIN IS KING — push what makes money
-const W_STOCK_PRESSURE = 0.15; // Push overstock, block low stock
-const W_TEMPORAL = 0.10;      // Time-of-day relevance
-const W_CONSISTENCY = 0.10;   // Pattern stability
+// V4 scoring weights + stock thresholds live in upsell-scoring.ts (pure, unit-tested).
 
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes cache
 
@@ -181,42 +185,36 @@ export class SalesAiService {
       // ── V4 Cash-oriented multi-factor scoring ──
 
       // 1. Co-occurrence strength (volume + rate)
-      const coOccurrenceScore = Math.min(1, (rate / 0.5) * 0.6 + (mainTickets / 200) * 0.4);
+      const coScore = coOccurrenceScore(rate, mainTickets);
 
       // 2. MARGIN IS KING — push what makes money
       const sugPrice = productPrices.get(sugPid) || 0;
       const sugCost = productCosts.get(sugPid) || 0;
-      const marginPercent = sugPrice > 0 ? ((sugPrice - sugCost) / sugPrice) * 100 : 50;
+      const marginPercent = marginPercentOf(sugPrice, sugCost);
       if (marginPercent < MIN_MARGIN_PERCENT) continue;
-      const marginScore = Math.min(1, marginPercent / 70);
+      const marginScore = marginScoreOf(marginPercent);
 
       // 3. Stock pressure
       const sugStock = productStocks.get(sugPid) || 0;
       if (sugStock < MIN_STOCK_FOR_RECOMMEND) continue;
-      let stockPressureScore: number;
-      if (sugStock >= OVERSTOCK_THRESHOLD) stockPressureScore = 1.0;
-      else if (sugStock >= 20) stockPressureScore = 0.7;
-      else stockPressureScore = 0.3;
+      const stockScore = stockPressureScore(sugStock);
 
       // 4. Temporal relevance
-      const currentHour = new Date().getHours();
-      let temporalScore = 0.5;
-      if (currentHour >= 7 && currentHour <= 9) temporalScore = 0.8;
-      if (currentHour >= 12 && currentHour <= 14) temporalScore = 0.9;
-      if (currentHour >= 17 && currentHour <= 20) temporalScore = 0.7;
+      const tempScore = temporalScore(new Date().getHours());
 
       // 5. Consistency
-      const consistencyScore = Math.min(1, coOccurrences / 30);
+      const consScore = consistencyScore(coOccurrences);
 
-      // ── FINAL SCORE ──
-      const confidence =
-        coOccurrenceScore * W_COOCCURRENCE +
-        marginScore * W_MARGIN +
-        stockPressureScore * W_STOCK_PRESSURE +
-        temporalScore * W_TEMPORAL +
-        consistencyScore * W_CONSISTENCY;
+      // ── FINAL SCORE (pure helper — see upsell-scoring.ts) ──
+      const confidence = upsellConfidence({
+        coOccurrence: coScore,
+        margin: marginScore,
+        stockPressure: stockScore,
+        temporal: tempScore,
+        consistency: consScore,
+      });
 
-      const estimatedCashImpact = Math.round((marginPercent / 100) * sugPrice);
+      const cashImpact = estimatedCashImpact(marginPercent, sugPrice);
 
       associations.push({
         productA: mainPid,
@@ -229,8 +227,8 @@ export class SalesAiService {
         confidence,
         marginBoost: sugPrice,
         marginPercent: Math.round(marginPercent),
-        estimatedCashImpact,
-        stockPressure: sugStock >= OVERSTOCK_THRESHOLD ? 'overstock' : sugStock >= 20 ? 'healthy' : 'low',
+        estimatedCashImpact: cashImpact,
+        stockPressure: stockPressureLabel(sugStock),
       });
     }
 
