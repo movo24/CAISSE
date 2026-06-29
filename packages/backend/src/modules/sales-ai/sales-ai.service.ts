@@ -17,6 +17,13 @@ import {
   upsellConfidence,
   estimatedCashImpact,
 } from './upsell-scoring';
+import {
+  avgTicketsPerDay,
+  avgRevenuePerDay,
+  avgBasket as avgBasketOf,
+  rushThreshold,
+  isRush,
+} from './temporal-pattern';
 
 /* ═══════════════════════════════════════════════════════════════
    SALES AI ENGINE — V1
@@ -81,8 +88,8 @@ const MIN_ATTACHMENT_RATE = 0.25;
 const MIN_CONFIDENCE = 0.75;
 const MIN_MARGIN_PERCENT = 10;
 const MIN_STOCK_FOR_RECOMMEND = 3;
-const RUSH_THRESHOLD_MULTIPLIER = 1.5;
 // V4 scoring weights + stock thresholds live in upsell-scoring.ts (pure, unit-tested).
+// Rush multiplier + hourly averages live in temporal-pattern.ts (pure, unit-tested).
 
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes cache
 
@@ -269,17 +276,18 @@ export class SalesAiService {
 
     const avgTicketsGlobal = result.reduce((s: number, r: any) => s + Number(r.ticket_count), 0) / result.length;
 
+    const threshold = rushThreshold(avgTicketsGlobal, result.length);
     const patterns: HourlyPattern[] = result.map((r: any) => {
       const days = Math.max(1, Number(r.distinct_days));
       const tickets = Number(r.ticket_count);
       const revenue = Number(r.total_revenue);
       return {
         hour: Number(r.hour),
-        avgTickets: Math.round(tickets / days * 10) / 10,
-        avgRevenue: Math.round(revenue / days),
-        avgBasket: tickets > 0 ? Math.round(revenue / tickets) : 0,
+        avgTickets: avgTicketsPerDay(tickets, days),
+        avgRevenue: avgRevenuePerDay(revenue, days),
+        avgBasket: avgBasketOf(revenue, tickets),
         topProducts: [], // Will be filled separately if needed
-        isRush: (tickets / days) > (avgTicketsGlobal / result.length * RUSH_THRESHOLD_MULTIPLIER),
+        isRush: isRush(tickets / days, threshold),
       };
     });
 
