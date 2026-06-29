@@ -24,4 +24,28 @@ describe('POS stock-events', () => {
     const evs = buildStockEvents({ ...base, newQuantity: 1, deltaQuantity: -1 });
     expect(evs.some((e) => e.type === 'stock.depleted')).toBe(false);
   });
+
+  describe('stock.low (POS-INT-118)', () => {
+    it('emits stock.low when 0 < newQuantity <= threshold', () => {
+      const evs = buildStockEvents({ ...base, newQuantity: 3, deltaQuantity: -1, lowStockThreshold: 5 });
+      expect(evs.map((e) => e.type)).toEqual(['stock.movement', 'stock.low']);
+      expect(evs[1].payload).toMatchObject({ newQuantity: 3, lowStockThreshold: 5 });
+    });
+
+    it('no stock.low when above threshold', () => {
+      const evs = buildStockEvents({ ...base, newQuantity: 6, deltaQuantity: -1, lowStockThreshold: 5 });
+      expect(evs.some((e) => e.type === 'stock.low')).toBe(false);
+    });
+
+    it('depleted wins over low at 0 (mutually exclusive)', () => {
+      const evs = buildStockEvents({ ...base, newQuantity: 0, deltaQuantity: -2, lowStockThreshold: 5 });
+      expect(evs.map((e) => e.type)).toEqual(['stock.movement', 'stock.depleted']);
+      expect(evs.some((e) => e.type === 'stock.low')).toBe(false);
+    });
+
+    it('no stock.low when threshold absent or <= 0 (back-compat)', () => {
+      expect(buildStockEvents({ ...base, newQuantity: 2, deltaQuantity: -1 }).some((e) => e.type === 'stock.low')).toBe(false);
+      expect(buildStockEvents({ ...base, newQuantity: 2, deltaQuantity: -1, lowStockThreshold: 0 }).some((e) => e.type === 'stock.low')).toBe(false);
+    });
+  });
 });

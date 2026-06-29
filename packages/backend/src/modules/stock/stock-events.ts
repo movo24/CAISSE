@@ -18,13 +18,17 @@ export interface StockEventInput {
   newQuantity: number;
   deltaQuantity: number; // signed (negative on sale/decrement)
   reason: string;
+  lowStockThreshold?: number | null; // POS-INT-118 — effective low-stock threshold (POS-083)
   occurredAt?: Date | string;
 }
 
 /**
  * Build stock events:
  *  - always `stock.movement` (delta + resulting quantity),
+ *  - plus `stock.low` when 0 < resulting quantity <= lowStockThreshold (rupture
+ *    imminente — replenishment signal for Analytik R),
  *  - plus `stock.depleted` when the resulting quantity reaches 0 (rupture).
+ * `stock.low` and `stock.depleted` are mutually exclusive (depleted wins at 0).
  */
 export function buildStockEvents(input: StockEventInput): IntegrationEvent[] {
   const tenant = {
@@ -53,6 +57,7 @@ export function buildStockEvents(input: StockEventInput): IntegrationEvent[] {
     }),
   ];
 
+  const threshold = input.lowStockThreshold ?? null;
   if (input.newQuantity <= 0) {
     events.push(
       buildIntegrationEvent({
@@ -63,6 +68,18 @@ export function buildStockEvents(input: StockEventInput): IntegrationEvent[] {
         actor,
         occurredAt: input.occurredAt,
         payload,
+      }),
+    );
+  } else if (threshold != null && threshold > 0 && input.newQuantity <= threshold) {
+    events.push(
+      buildIntegrationEvent({
+        type: 'stock.low',
+        aggregateType: 'stock',
+        aggregateId: input.productId,
+        tenant,
+        actor,
+        occurredAt: input.occurredAt,
+        payload: { ...payload, lowStockThreshold: threshold },
       }),
     );
   }

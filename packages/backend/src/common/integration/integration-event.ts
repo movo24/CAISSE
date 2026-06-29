@@ -36,6 +36,7 @@ export type IntegrationEventType =
   | 'cash_session.opened'
   | 'cash_session.closed'
   | 'stock.movement'
+  | 'stock.low'
   | 'stock.depleted'
   | 'employee_activity.recorded';
 

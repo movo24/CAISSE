@@ -33,7 +33,7 @@ export class StockService {
     args: {
       productId: string; storeId: string; employeeId?: string | null;
       ean: string | null; productName: string; newQuantity: number;
-      deltaQuantity: number; reason: string;
+      deltaQuantity: number; reason: string; lowStockThreshold?: number | null;
     },
     manager?: EntityManager,
   ): Promise<void> {
@@ -139,11 +139,12 @@ export class StockService {
       });
     }
 
-    // Analytik R — stock movement / rupture (best-effort, non-blocking).
+    // Analytik R — stock movement / low / rupture (best-effort, non-blocking).
     await this.emitStockEvents({
       productId, storeId, employeeId,
       ean: saved.ean, productName: saved.name,
       newQuantity: saved.stockQuantity, deltaQuantity: -quantity, reason: 'sale_decrement',
+      lowStockThreshold: effectiveAlertThreshold(saved.stockBaselineQuantity, saved.stockAlertThreshold),
     });
 
     return saved;

@@ -1148,3 +1148,11 @@ Décisions produit tranchées par l'utilisateur. 5 blocs enchaînés.
 - Preuve tests : `cash-control.spec.ts` ⇒ 1 suite / 9 tests PASS.
 - Preuve typecheck/build : `tsc --noEmit` EXIT 0 ; `nest build` RC=0.
 - Dette inchangée.
+
+## PAQUET 118 — Event stock.low (rupture imminente) (POS-INT-118)
+- Objectif : signal de réappro pour Analytik R — émettre `stock.low` quand 0 < quantité <= seuil d'alerte effectif (POS-083 : CEIL(baseline*0.2) sinon stock_alert_threshold), distinct de `stock.depleted` (=0).
+- Fichiers : `common/integration/integration-event.ts` (ajout `stock.low` à l'union), `stock/stock-events.ts` (param `lowStockThreshold`, émission mutuellement exclusive avec depleted, payload porte le seuil), `stock/stock.service.ts` (décrément passe `effectiveAlertThreshold(...)` + type param), `stock-events.spec.ts` (4 cas).
+- Sémantique : depleted prioritaire à 0 ; pas de stock.low si seuil absent/≤0 (back-compat) ; best-effort non-bloquant (catch existant).
+- Preuve tests : `stock-events.spec.ts` ⇒ 1 suite / 7 tests PASS (verbeux collé).
+- Preuve typecheck/build : `tsc --noEmit` EXIT 0 (après fix type param emitStockEvents) ; `nest build` RC=0.
+- Dette inchangée. Cumul épic : 48 paquets (71→118).
