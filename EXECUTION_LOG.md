@@ -1047,3 +1047,11 @@ Décisions produit tranchées par l'utilisateur. 5 blocs enchaînés.
 - Preuve tests : `events-keyset.spec.ts` + `events-query.spec.ts` ⇒ 2 suites / 23 tests PASS.
 - Preuve typecheck/build : `tsc --noEmit` EXIT 0 ; `nest build` RC=0.
 - Dette : inchangée. Prochain : P105 (axe utile à décider).
+
+## PAQUET 105 — Event cash_session.opened (début de poste) (POS-INT-105)
+- Objectif : combler l'asymétrie — `cash_session.opened` était déclaré dans l'union mais jamais émis (seul `.closed` via Z-report l'était). Émettre le signal de début de poste (terminal, employé, openedAt) pour Comptamax24/TimeWin24/Analytik R.
+- Fichiers : `pos-session/session-events.ts` (`buildCashSessionOpenedEvent` pur + `CashSessionOpenedInput`), `pos-session.service.ts` (émission best-effort dans `recordSessionActivity('opened')` — insert groupé employee_activity + cash_session.opened), spec étendue.
+- Non-bloquant : émission dans le catch best-effort existant ; une ouverture de session ne peut jamais échouer à cause de l'outbox. Distinct de `employee_activity.recorded` (temps travaillé).
+- Preuve tests : `session-events.spec.ts` ⇒ 1 suite / 6 tests PASS.
+- Preuve typecheck/build : `tsc --noEmit` EXIT 0 ; `nest build` RC=0.
+- Dette : inchangée. Prochain : P106 (axe utile à décider).

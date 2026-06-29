@@ -11,7 +11,7 @@ import { Repository } from 'typeorm';
 import { PosSessionEntity } from '../../database/entities/pos-session.entity';
 import { IntegrationEventEntity } from '../../database/entities/integration-event.entity';
 import { toOutboxRow } from '../../common/integration/integration-event';
-import { buildSessionActivityEvent } from './session-events';
+import { buildSessionActivityEvent, buildCashSessionOpenedEvent } from './session-events';
 import { StoreOrgResolver } from '../integration/store-org-resolver';
 
 /**
@@ -64,10 +64,11 @@ export class PosSessionService {
     s: PosSessionEntity,
   ): Promise<void> {
     try {
+      const organizationId = await this.storeOrgResolver.resolve(s.storeId);
       const event = buildSessionActivityEvent({
         sessionId: s.id,
         storeId: s.storeId,
-        organizationId: await this.storeOrgResolver.resolve(s.storeId),
+        organizationId,
         employeeId: s.employeeId,
         employeeRole: s.employeeRole ?? null,
         terminalId: s.terminalId ?? null,
@@ -75,9 +76,28 @@ export class PosSessionService {
         openedAt: s.openedAt,
         closedAt: s.closedAt ?? null,
       });
-      await this.outbox.insert(toOutboxRow(event) as any);
+      // POS-INT-105 — also emit the symmetric session-lifecycle open event so
+      // consumers see shift START (closed side is the Z-report cash_session.closed).
+      const rows = [toOutboxRow(event)];
+      if (action === 'opened') {
+        rows.push(
+          toOutboxRow(
+            buildCashSessionOpenedEvent({
+              sessionId: s.id,
+              storeId: s.storeId,
+              organizationId,
+              employeeId: s.employeeId,
+              employeeRole: s.employeeRole ?? null,
+              terminalId: s.terminalId ?? null,
+              openedAt: s.openedAt,
+              offlineMode: s.offlineMode ?? false,
+            }),
+          ),
+        );
+      }
+      await this.outbox.insert(rows as any);
     } catch (e: any) {
-      this.logger.warn(`Outbox (employee_activity.${action}) failed: ${e?.message}`);
+      this.logger.warn(`Outbox (session.${action}) failed: ${e?.message}`);
     }
   }
 

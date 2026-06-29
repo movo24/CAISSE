@@ -31,6 +31,45 @@ export function sessionDurationMinutes(
   return ms > 0 ? Math.floor(ms / 60000) : 0;
 }
 
+export interface CashSessionOpenedInput {
+  sessionId: string;
+  storeId: string;
+  organizationId?: string | null;
+  employeeId: string;
+  employeeRole?: string | null;
+  terminalId: string | null;
+  openedAt: Date | string;
+  offlineMode?: boolean;
+  occurredAt?: Date | string;
+}
+
+/**
+ * `cash_session.opened` — shift START at a terminal (symmetric with the
+ * `cash_session.closed` Z-report closure event). Non-fiscal lifecycle signal:
+ * lets Comptamax24 / TimeWin24 / Analytik R see when a till was opened, by whom,
+ * on which terminal. Distinct from `employee_activity.recorded` (worked-time).
+ */
+export function buildCashSessionOpenedEvent(input: CashSessionOpenedInput): IntegrationEvent {
+  return buildIntegrationEvent({
+    type: 'cash_session.opened',
+    aggregateType: 'cash_session',
+    aggregateId: input.sessionId,
+    tenant: {
+      organizationId: input.organizationId ?? null,
+      storeId: input.storeId,
+      terminalId: input.terminalId,
+    },
+    actor: { employeeId: input.employeeId, role: input.employeeRole ?? null },
+    occurredAt: input.occurredAt ?? input.openedAt,
+    payload: {
+      sessionId: input.sessionId,
+      terminalId: input.terminalId,
+      openedAt: new Date(input.openedAt).toISOString(),
+      offlineMode: input.offlineMode ?? false,
+    },
+  });
+}
+
 /** `employee_activity.recorded` for a cash-session open/close. */
 export function buildSessionActivityEvent(input: SessionActivityInput): IntegrationEvent {
   return buildIntegrationEvent({
