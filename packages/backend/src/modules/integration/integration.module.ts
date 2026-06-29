@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { IntegrationEventEntity } from '../../database/entities/integration-event.entity';
 import { OutboxRelayService } from './outbox-relay.service';
+import { OutboxQueryService } from './outbox-query.service';
 import { IntegrationController } from './integration.controller';
 import { OUTBOX_PUBLISHER, SimulationOutboxPublisher } from './outbox-publisher';
 
@@ -15,8 +16,9 @@ import { OUTBOX_PUBLISHER, SimulationOutboxPublisher } from './outbox-publisher'
   controllers: [IntegrationController],
   providers: [
     OutboxRelayService,
+    OutboxQueryService,
     { provide: OUTBOX_PUBLISHER, useClass: SimulationOutboxPublisher },
   ],
-  exports: [OutboxRelayService],
+  exports: [OutboxRelayService, OutboxQueryService],
 })
 export class IntegrationModule {}

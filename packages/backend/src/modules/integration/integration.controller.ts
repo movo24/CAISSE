@@ -1,6 +1,7 @@
-import { Controller, Post, Query, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Query, UseGuards, Request } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { OutboxRelayService } from './outbox-relay.service';
+import { OutboxQueryService } from './outbox-query.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard, Roles } from '../../common/guards/roles.guard';
 
@@ -9,7 +10,25 @@ import { RolesGuard, Roles } from '../../common/guards/roles.guard';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('integration')
 export class IntegrationController {
-  constructor(private readonly relay: OutboxRelayService) {}
+  constructor(
+    private readonly relay: OutboxRelayService,
+    private readonly queryService: OutboxQueryService,
+  ) {}
+
+  @Get('events')
+  @Roles('admin', 'manager')
+  @ApiOperation({
+    summary:
+      'POS-INT-80 — incremental consumer feed of the integration outbox for Analytik R & co. ?since=<ISO occurredAt cursor>&type=a,b&limit=. Tenant-scoped, read-only.',
+  })
+  async events(
+    @Request() req: any,
+    @Query('since') since?: string,
+    @Query('type') type?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.queryService.listForConsumer(req.user.storeId, { since, type, limit });
+  }
 
   @Post('relay')
   @Roles('admin')
