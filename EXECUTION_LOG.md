@@ -813,4 +813,22 @@ Décisions produit tranchées par l'utilisateur. 5 blocs enchaînés.
 - **Bundle** `pos-recovery.bundle` rafraîchi (verify OK) → racine + outputs.
 - **Non prouvé (honnête)** : suites lourdes ts-jest/pg-mem, migrations 1721-1724, `npm run build:backend` complet → à valider en local (pas de DB/temps en sandbox).
 
-**Prochain paquet** : PAQUET 49 — domaine restant faible couverture (helper pur), même protocole (commit réel + bundle). Sur GO.
+## PAQUET 49 — sales-ai upsell scoring (V4)
+- `sales-ai/upsell-scoring.ts` (co-occurrence/margin%/margin-score/stock-pressure score+label/temporal/consistency/`upsellConfidence` pondéré/`estimatedCashImpact`) + spec **12/12**. Branché : `getProductAssociations` (5 sous-scores + confiance + label stock + cash impact) ; consts W_*/OVERSTOCK déplacées dans le helper. `tsc` EXIT 0. Commit réel `9a2aff7`.
+
+## PAQUET 50 — sales-ai weather impact
+- `sales-ai/weather-impact.ts` (`weatherImpact(temp,condition)` → score -1..+1 + raison FR ; ordre pluie>neige/tempête>chaud>froid>beau) + spec **7/7**. Branché : `external-context` (calcul impact météo). `tsc` EXIT 0. Commit réel `46c88a9`.
+
+## PAQUET 51 — stores network stats
+- `stores/network-stats.ts` (`aggregateNetworkTotals` totaux+avg ticket sans /0 ; `isTimeWinActive`) + spec **3/3**. Branché : dashboard réseau (totaux) + sync TW24 (mapping statut ×2). `tsc` EXIT 0. Commit réel `1a53d23`.
+
+## PAQUET 52 — fiscal chain linkage (NF525)
+- `fiscal/chain-linkage.ts` (`checkChainLinkage` fork/no_genesis/multiple_genesis/orphan/unreachable ; `GENESIS` ; `ChainIssue`) + spec **5/5**. Extrait de `FiscalVerifyService.checkLinkage` (méthode privée → helper pur, re-export `ChainIssue`). `tsc` EXIT 0. Commit réel `139f6cc`.
+
+## PAQUET 53 — consolidation (49→52)
+- Vérif globale : `tsc --noEmit` **EXIT 0** ; 4 nouvelles suites ensemble **27/27 PASS**.
+- Chaîne réelle : `139f6cc` → `1a53d23` → `46c88a9` → `9a2aff7` → `9ebb192` (P48) … → `c55e6c5` (P1). Branche `recovery/pos-audit-session`, working tree **clean**.
+- **Bundle** `pos-recovery.bundle` rafraîchi (verify OK) → racine + outputs.
+- **Non prouvé (honnête)** : suites lourdes ts-jest/pg-mem, migrations 1721-1724, `npm run build:backend` complet → à valider en local (pas de DB/temps en sandbox).
+
+**Prochain paquet** : PAQUET 54 — domaine restant faible couverture (helper pur), même protocole (commit réel + bundle). Sur GO.
