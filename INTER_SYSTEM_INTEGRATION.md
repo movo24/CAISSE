@@ -91,3 +91,28 @@
 
 ## D. PREUVES (mises à jour par paquet dans EXECUTION_LOG.md)
 Chaque paquet : objectif · fichiers · test · typecheck/build · git · dette · paquet suivant.
+
+---
+
+## F. ÉTAT D'AVANCEMENT (2026-06-29)
+
+| Paquet | Livré | Preuve |
+|---|---|---|
+| 71 | Outbox fondation (enveloppe + entité append-only + migration 1725 additive) | 6/6, tsc 0 |
+| 72 | `sale.completed` + `payment.captured` dans la **tx de vente** (transactional outbox) | 11/11, build RC=0 |
+| 73 | `refund.created` / `credit_note.issued` (returns + gift) + `cash_session.closed` (Z, atomique) | 4/4, tsc 0 |
+| 74 | **Comptamax pré-compta** : moteur écritures équilibrées (PCG) + `GET /comptamax/journal` (csv/json, tenant, anti-IDOR) lisant l'outbox | 9/9, build RC=0 |
+| 75 | **POS↔TimeWin** rapprochement présence (moteur pur) + `employee_activity.recorded` (open/close caisse, best-effort) | 12/12, build RC=0 |
+| 76 | **TimeWin→Comptamax** prépa variables RH (heures/absences/retards + CSV justificatif) | 5/5, tsc 0 |
+| 77 | Consolidation : agrégat **8 suites / 41 tests** intégration, tsc 0, doc | — |
+
+**Flux branché de bout en bout (local) :** vente/retour/clôture caisse → **outbox** `integration_events` (atomique) → `GET /api/comptamax/journal` produit le **journal comptable équilibré** (débit=crédit) jour/magasin en CSV/JSON. Activité employé (sessions) → outbox → moteur de **rapprochement présence** prêt à brancher sur TimeWin.
+
+### Dette / gates documentés (non franchis sans décision)
+- `TD-INT-ORG` : `organizationId` non porté par sale/cn/session → `null` (consommateur résout via store).
+- `TD-INT-TERMINAL` : terminalId non threadé dans `createSale` (présent sur pos-session).
+- `TD-INT-REFUND-TAX` : split TVA de l'avoir non porté dans le payload → écriture avoir en HT=total (TVA 0) tant que non fourni.
+- `TD-INT-RELAY` : **relais/poller** outbox → envoi réel Comptamax24/TimeWin24 non implémenté (secrets + endpoints distants = hors sandbox). L'outbox est prêt à être consommé.
+- `TD-INT-SOCIAL-ENTRIES` : écritures sociales réelles (641/645/431…) = décision compta/produit ; seule la **prépa** est faite.
+- **Migration 1725** : non rejouée en sandbox (pas de DB) → `migration:run` en local.
+- **Analytik R** : aucun couplage ajouté ; consommera l'outbox normalisé — **jamais bloqueur**.

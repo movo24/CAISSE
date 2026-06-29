@@ -894,3 +894,33 @@ Décisions produit tranchées par l'utilisateur. 5 blocs enchaînés.
 - `tsc --noEmit` **EXIT 0**. Commit réel à suivre + bundle.
 
 **Prochain paquet** : PAQUET 71 — vérification ciblée (helper fiscal/argent) ou dette documentée sur GO produit. Sur GO.
+
+---
+
+# ÉPIC INTÉGRATION POS ↔ Comptamax24 ↔ TimeWin24 (+ Analytik R ready) — GO 2026-06-29
+
+> Voir `INTER_SYSTEM_INTEGRATION.md` (audit A, plan B, archi C/E, état F).
+
+## PAQUET 71 — Outbox fondation
+- `common/integration/integration-event.ts` (enveloppe normalisée + `buildIntegrationEvent` + `toOutboxRow`) + `IntegrationEventEntity` append-only + migration **1725 additive/réversible**. **6/6**, tsc 0. Commit `ce2012c`.
+
+## PAQUET 72 — Events vente (transactional outbox)
+- `sales/sale-events.ts` (1 `sale.completed` + N `payment.captured`) branché **dans la tx** de `createSale` ; entité dans SalesModule. **11/11**, **nest build RC=0**. Commit `7a5048a`.
+
+## PAQUET 73 — Retours/avoirs + clôture caisse
+- `returns/refund-events.ts` (`refund.created`/`credit_note.issued`) dans les tx returns + gift ; `reports/cash-session-events.ts` (`cash_session.closed`) **atomique avec le Z**. **4/4**, tsc 0. Commit `3a54266`.
+
+## PAQUET 74 — Pré-compta Comptamax
+- `comptamax/pre-accounting.ts` (moteur double-entrée équilibré, PCG) + `ComptamaxService`/`Controller` : `GET /api/comptamax/journal?date&format` lit l'outbox → journal jour/magasin (CSV/JSON), tenant + anti-IDOR. **9/9**, **nest build RC=0**. Commit `43c6a23`.
+
+## PAQUET 75 — Rapprochement POS↔TimeWin
+- `timewin/presence-reconciliation.ts` (moteur pur : minutes POS vs pointage, anomalies, tolérance) + `pos-session/session-events.ts` (`employee_activity.recorded` open/close, **best-effort non bloquant**). **12/12**, **nest build RC=0**. Commit `a05994d`.
+
+## PAQUET 76 — TimeWin→Comptamax variables RH
+- `comptamax/social-preaccounting.ts` (consolidation heures/absences/retards + CSV justificatif). Écritures sociales réelles **gated** (`TD-INT-SOCIAL-ENTRIES`). **5/5**, tsc 0. Commit `59802a7`.
+
+## PAQUET 77 — Consolidation intégration
+- Agrégat **8 suites / 41 tests** intégration PASS ; `tsc --noEmit` **EXIT 0** ; `INTER_SYSTEM_INTEGRATION.md` état F + dette/gates. Commit réel + bundle.
+- **Non prouvé sandbox** : migration 1725, relais réel Comptamax/TimeWin (secrets/endpoints distants), suites lourdes → local.
+
+**Prochain (sur GO)** : PAQUET 78 — relais outbox (poller pending→published) en simulation locale OU thread `organizationId`/`terminalId` OU endpoint export RH `GET /comptamax/social`.
