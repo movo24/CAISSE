@@ -1285,3 +1285,10 @@ Prochains blocs proposés : P130 audit DI cross-module restant (autres *.service
 - Agrégat re-prouvé : src/** 130 suites/883 tests + test/ série 20/164 = 150 suites / 1047 tests PASS. tsc EXIT 0 ; nest build RC=0.
 - PROJECT_STATUS.md mis à jour (état consolidé daté v8).
 - Cumul épic : 62 paquets (71→133).
+
+## PAQUET 134 — stock.low aussi sur adjustStock (parité Analytik R) (POS-INT-134)
+- Incohérence trouvée : en P118, `stock.low` n'était câblé que sur le décrément (vente). Une correction d'inventaire manuelle (`adjustStock`) franchissant le seuil bas n'émettait pas `stock.low` (seulement movement/depleted) → angle mort réappro Analytik R.
+- Fix : `adjustStock` passe `effectiveAlertThreshold(saved.stockBaselineQuantity, saved.stockAlertThreshold)` à `emitStockEvents` (parité avec la vente). Best-effort post-commit inchangé.
+- Fichiers : `stock/stock.service.ts` (1 ligne).
+- Preuve tests : stock.service.spec + stock-events.spec ⇒ 2 suites/12 PASS ; `tsc --noEmit` EXIT 0 ; `nest build` RC=0.
+- Cumul épic : 63 paquets (71→134).

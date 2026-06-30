@@ -202,12 +202,14 @@ export class StockService {
       return { saved, oldQty };
     });
 
-    // Analytik R — stock movement / rupture, AFTER commit (best-effort, never
-    // rolls back the adjustment).
+    // Analytik R — stock movement / low / rupture, AFTER commit (best-effort, never
+    // rolls back the adjustment). POS-INT-134 — a manual adjustment that crosses
+    // the low-stock threshold must signal stock.low too (parity with the sale path).
     await this.emitStockEvents({
       productId, storeId, employeeId,
       ean: saved.ean, productName: saved.name,
       newQuantity: saved.stockQuantity, deltaQuantity: saved.stockQuantity - oldQty, reason,
+      lowStockThreshold: effectiveAlertThreshold(saved.stockBaselineQuantity, saved.stockAlertThreshold),
     });
 
     return saved;
