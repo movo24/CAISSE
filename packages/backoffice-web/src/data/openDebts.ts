@@ -37,9 +37,9 @@ export const OPEN_DEBTS: OpenDebt[] = [
   },
   {
     id: 'TD-FE-ROLLUP-NATIVE',
-    label: 'Build front complet (vite/rollup)',
-    impact: 'Build/e2e front non exécutables en sandbox (binaire natif).',
-    action: 'Lancer build + e2e en CI Linux.',
+    label: 'Build + tests front (CI)',
+    impact: 'Build/vitest front s’exécutent en CI Linux (configuré). Non lançables en bac à sable arm64 (binaire natif).',
+    action: 'Vérifier le 1er run CI vert au prochain push.',
     severity: 'info',
   },
 ];

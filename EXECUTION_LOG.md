@@ -1566,3 +1566,11 @@ Prochains candidats : (1) build+vitest+e2e en CI Linux/Postgres (lever TD-FE-ROL
 - Câblage : Supervision → signaux stock triés rupture→bas→ok (`sortByStockSeverity`) ; Écart inventaire → case "Afficher les écarts seulement" (`onlyDiscrepancies`).
 - Preuve : `tsc --noEmit` EXIT 0 ; severity node 9/9 (vitest gated, lancé en CI depuis P166) ; importé dans 2 pages.
 - Suite : P168 hygiène/vérif, P169 docs CI + dette, P170 audit.
+
+## PAQUET 168 — Docs CI + dette rollup couverte (POS-CI-168)
+- `packages/backend/TESTING.md` : section CI ajoutée (5 étapes : lint, backend, backoffice vitest, pos vitest, builds) + explication binaire rollup Linux.
+- `TECHNICAL_DEBT.md` : TD-FE-ROLLUP-NATIVE passé 🟡→🟢 "Couvert en CI" (reste non exécutable bac à sable arm64).
+- `openDebts.ts` (panneau app) : reformulé "Build + tests front (CI)", action = vérifier 1er run vert.
+- Preuve : `tsc --noEmit` back-office EXIT 0 (openDebts modifié).
+- Honnêteté : "couvert en CI" = câblé ; le 1er run réel reste à observer au prochain push (pas de push externe sans GO).
+- Suite : P169 sweep non-régression front+backend, P170 audit+verdict.

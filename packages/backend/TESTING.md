@@ -64,3 +64,13 @@ npm run lint          # ESLint
 - Immuabilité ventes & Z-report, chaîne de hash audit append-only.
 - Idempotence des écritures monétaires (clé d'idempotence).
 - Outbox d'intégration transactionnel (POS ↔ Comptamax24 ↔ TimeWin24, prep Analytik R).
+
+## CI (GitHub Actions `.github/workflows/ci.yml`)
+La CI (ubuntu-latest, Node 20) exécute à chaque push/PR :
+1. `npm run lint`
+2. `npm run test:backend` (jest backend)
+3. `npm run test:backoffice` (vitest — 4 suites front : parseCounts, supervisionVerdict, severity, payroll/export-utils)
+4. `npm run test:pos` (vitest — manual-discount-guard, paymentMachine, hmacSecurity, rightsStore, pointageStore)
+5. `npm run build:backend` / `build:backoffice` / `build:pos` (tsc --noEmit + vite/nest — installe le binaire rollup Linux natif)
+
+Sur ubuntu, `npm install` récupère `@rollup/rollup-linux-x64-gnu` → `vite build` et `vitest` fonctionnent (contrairement au bac à sable arm64 où le binaire manque, cf. TD-FE-ROLLUP-NATIVE). Les helpers purs front sont aussi prouvés hors CI via `tsc → node` (assertions) à chaque paquet.
