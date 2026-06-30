@@ -1363,3 +1363,11 @@ VERDICT : ✅ SOLIDE.
 - Preuve compile : `tsc --noEmit` back-office EXIT 0.
 - Gate environnement (honnête) : `vite build` échoue sur binaire natif `@rollup/rollup-linux-arm64-gnu` absent (node_modules hôte ≠ linux sandbox, bug npm optional-deps) → TD-FE-ROLLUP-NATIVE. Même classe que bcrypt. `tsc` est la preuve de compilation ; build complet à lancer en CI Linux.
 - Suite : P143 supervision intégration (sync/outbox/events/reconciliation/stock-signals).
+
+## PAQUET 143 — Page Supervision intégration (POS-FE-143)
+- Objectif : exposer l'état d'intégration au siège — file outbox, signaux stock (réappro), rapprochement présence, relais manuel.
+- Fichiers : `pages/IntegrationSupervisionPage.tsx` (NOUVEAU — cartes outbox pending/published/failed ; rapprochement POS↔TimeWin avec dégradé ; table signaux stock ok/low/depleted colorée ; bouton "Lancer le relais" réservé admin ; Promise.allSettled → une source HS n'efface pas les autres ; états vide/erreur), `main.tsx` (route `/integration`), `Layout.tsx` (nav "Supervision", icône Activity).
+- UX : sources indépendantes (allSettled) ; relais admin-only ; messages lisibles.
+- Preuve : `tsc --noEmit` back-office EXIT 0.
+- Gate inchangé : vite build = TD-FE-ROLLUP-NATIVE (CI Linux).
+- Suite : P144 export CSV shifts + cohérence UX + audit front.

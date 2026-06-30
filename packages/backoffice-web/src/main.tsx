@@ -9,6 +9,7 @@ import { DashboardPage } from './pages/DashboardPage';
 import { ProductsPage } from './pages/ProductsPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { AccountingPage } from './pages/AccountingPage';
+import { IntegrationSupervisionPage } from './pages/IntegrationSupervisionPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { StockAlertsPage } from './pages/StockAlertsPage';
 import { StockNetworkPage } from './pages/StockNetworkPage';
@@ -79,6 +80,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             {/* Couche 5: Analyse */}
             <Route path="/reports" element={<ReportsPage />} />
             <Route path="/accounting" element={<AccountingPage />} />
+            <Route path="/integration" element={<IntegrationSupervisionPage />} />
             <Route path="/sales-guards" element={<SalesGuardsPage />} />
             <Route path="/returns" element={<ReturnsPage />} />
 
