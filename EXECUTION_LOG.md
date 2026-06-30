@@ -1467,3 +1467,13 @@ Preuves :
 - Gate honnête : vite/vitest non exécutables en sandbox (rollup natif) = TD-FE-ROLLUP-NATIVE → preuve node 5/5 fournie pour parseCounts.
 
 VERDICT : ✅ SOLIDE — fonctionnalité écart d'inventaire reconstruite de bout en bout (helper pur → endpoint read-only → écran branché → util testé), compile-verte des 2 packages, non-régression stock prouvée, dette correspondante résolue et retirée de l'app. Réserve unique = preuve runtime visuelle en CI Linux.
+
+## PAQUET 156 — Non-régression GLOBALE backend (agrégat, post écart-inventaire)
+Exécution chunkée (budget sandbox), partition vérifiée sans chevauchement (112 modules + 41 hors-modules = 153 = `jest --listTests`) :
+- Groupe A (modules a–m) : 37 suites / 256 tests PASS.
+- Groupe B (modules n–z) : 75 suites / 502 tests PASS.
+- Groupe C (common/database/test) : 39 PASS + 2 skip / 301 PASS + 3 skip.
+- TOTAL : **151 suites PASS / 2 skip (153) ; 1059 tests PASS / 3 skip**.
+- Les 2 suites skip = `*.pg.spec` (vrai Postgres) auto-skip sans `TEST_DATABASE_URL` (gate honnête documenté TESTING.md).
+- Conclusion : ajout `stock-variance` + `computeVariance` + endpoint = **zéro régression** sur l'ensemble du backend (bcrypt mock + Redis off actifs).
+- Suite : P157 consolidation docs (PROJECT_STATUS v9, TECHNICAL_DEBT, compteurs).
