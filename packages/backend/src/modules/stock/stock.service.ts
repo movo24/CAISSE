@@ -11,6 +11,7 @@ import { AuditService } from '../audit/audit.service';
 import { crossedDownward, effectiveAlertThreshold, applyStockAdjustment } from './stock-level';
 import { toOutboxRow } from '../../common/integration/integration-event';
 import { buildStockEvents } from './stock-events';
+import { computeStockVariance } from './stock-variance';
 import { StoreOrgResolver } from '../integration/store-org-resolver';
 import type { EntityManager } from 'typeorm';
 
@@ -269,5 +270,45 @@ export class StockService {
       .getMany();
 
     return { alert, critical };
+  }
+
+  /**
+   * POS-INT-152 — inventory variance (read-only). Given physical counts (by
+   * productId or EAN), resolve store products, then compute system-vs-counted
+   * gaps valued at cost. No persistence, no stock mutation — decision support.
+   * Counts referencing an unknown product (other store / bad code) are reported.
+   */
+  async computeVariance(
+    storeId: string,
+    counts: { productId?: string; ean?: string; countedQty: number }[],
+  ): Promise<ReturnType<typeof computeStockVariance> & { unmatched: string[] }> {
+    const ids = counts.map((c) => c.productId).filter((x): x is string => !!x);
+    const eans = counts.map((c) => c.ean).filter((x): x is string => !!x);
+    const products = await this.productRepo
+      .createQueryBuilder('p')
+      .where('p.store_id = :storeId', { storeId })
+      .andWhere(
+        '(p.id IN (:...ids) OR p.ean IN (:...eans))',
+        { ids: ids.length ? ids : ['__none__'], eans: eans.length ? eans : ['__none__'] },
+      )
+      .getMany();
+
+    const byId = new Map(products.map((p) => [p.id, p]));
+    const byEan = new Map(products.map((p) => [p.ean, p]));
+    const rows = [];
+    const unmatched: string[] = [];
+    for (const c of counts) {
+      const p = (c.productId && byId.get(c.productId)) || (c.ean && byEan.get(c.ean)) || null;
+      if (!p) { unmatched.push(c.productId || c.ean || '?'); continue; }
+      rows.push({
+        productId: p.id,
+        name: p.name,
+        ean: p.ean,
+        systemQty: p.stockQuantity,
+        countedQty: Number(c.countedQty) || 0,
+        costMinorUnits: p.costMinorUnits ?? 0,
+      });
+    }
+    return { ...computeStockVariance(rows), unmatched };
   }
 }

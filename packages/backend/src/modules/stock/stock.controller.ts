@@ -42,6 +42,17 @@ export class StockController {
     );
   }
 
+  @Post('variance')
+  @Roles('admin', 'manager')
+  @UseGuards(RolesGuard)
+  @ApiOperation({ summary: 'POS-152 — inventory variance report (system vs counted, cost-valued). Read-only; no stock change.' })
+  variance(
+    @Body() dto: { counts: { productId?: string; ean?: string; countedQty: number }[] },
+    @Request() req: any,
+  ) {
+    return this.stockService.computeVariance(req.user.storeId, dto?.counts ?? []);
+  }
+
   @Post(':productId/adjust')
   @Roles('admin', 'manager')
   @UseGuards(RolesGuard)

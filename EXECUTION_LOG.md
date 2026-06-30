@@ -1437,3 +1437,9 @@ VERDICT : 🟡 ACCEPTABLE — logiciel exploitable siège+magasin ; réserve = p
 - Fix : -0 normalisé → 0 (qtyDiff*cost || 0).
 - Preuve : `stock-variance.spec.ts` ⇒ 1 suite / 5 tests PASS ; `tsc --noEmit` EXIT 0 ; `nest build` RC=0.
 - Suite : P152 endpoint POST /stock/variance (read-only, accepte les comptages, valorise au coût produit).
+
+## PAQUET 152 — Endpoint POST /stock/variance (read-only) (POS-INT-152)
+- Fichiers : `stock/stock.service.ts` (`computeVariance` : résout produits par id/ean store-scopé, systemQty=stock, cost=costMinorUnits, applique computeStockVariance, retourne unmatched), `stock/stock.controller.ts` (POST /stock/variance, roles admin/manager, storeId JWT).
+- Read-only : aucune mutation de stock, aucune persistance, aucune migration → safe/réversible.
+- Preuve : `tsc --noEmit` EXIT 0 ; `nest build` RC=0 ; non-régression stock (variance+service+events) 3 suites/17 tests PASS.
+- Suite : P153 API client front + P154 page InventoryVariance reconstruite.
