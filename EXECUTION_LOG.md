@@ -1430,3 +1430,10 @@ Bilan axe front (P140→149) :
 - Priorité 2 (caisse) : flux déjà branchés + remise responsable ajoutée.
 Gates : TD-FE-ROLLUP-NATIVE (build/e2e CI), TD-FE-OFFLINE-DISCOUNT, TD-FRONT-INVENTORY-VARIANCE + dettes backend.
 VERDICT : 🟡 ACCEPTABLE — logiciel exploitable siège+magasin ; réserve = preuve runtime build/e2e en CI Linux.
+
+## PAQUET 151 — Helper pur écart d'inventaire (POS-INT-151)
+- Objectif : reconstruire proprement l'écart d'inventaire (TD-FRONT-INVENTORY-VARIANCE) SANS table/migration risquée — calcul à la volée, pur, testable.
+- Fichier : `stock/stock-variance.ts` (NOUVEAU — `computeStockVariance` : système vs compté, qtyDiff = compté−système, valorisé au coût, statut ok/overage/shortage, totaux manquant/surplus/net, tri par écart valeur décroissant), `stock-variance.spec.ts`.
+- Fix : -0 normalisé → 0 (qtyDiff*cost || 0).
+- Preuve : `stock-variance.spec.ts` ⇒ 1 suite / 5 tests PASS ; `tsc --noEmit` EXIT 0 ; `nest build` RC=0.
+- Suite : P152 endpoint POST /stock/variance (read-only, accepte les comptages, valorise au coût produit).
