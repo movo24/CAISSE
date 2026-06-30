@@ -1393,3 +1393,14 @@ VERDICT : ✅ SOLIDE.
 - Preuve : `tsc --noEmit` pos-desktop EXIT 0.
 - Dette honnête `TD-FE-OFFLINE-DISCOUNT` : remise responsable supportée en ligne (PIN vérifié serveur) ; le payload offline ne la porte pas encore (PIN non vérifiable hors-ligne) — à arbitrer (interdire remise offline vs vérif au sync).
 - Gate : vite build = TD-FE-ROLLUP-NATIVE.
+
+## PAQUET 147 — AUDIT DE CONTRÔLE front (blocs 140→146) (Règle 3+4)
+Preuves :
+- git : branche recovery/pos-audit-session, HEAD 38a2c9d, arbre PROPRE, 7 commits 140→146.
+- typecheck : back-office `tsc --noEmit` EXIT 0 ; pos-desktop EXIT 0 ; backend EXIT 0 (non-régression).
+- cohérence UX : 0 page orpheline (toutes routées) ; 0 appel `*Api.*` vers objet absent.
+- backend sous-jacent : comptamax+integration+discount-policy+payment-policy ⇒ 15 suites / 124 tests PASS.
+- écrans livrés : back-office Comptabilité (/accounting) + Supervision (/integration) ; caisse remise responsable (DiscountModal).
+- gates honnêtes : vite build = TD-FE-ROLLUP-NATIVE (CI Linux) ; TD-FE-OFFLINE-DISCOUNT ; TD-FRONT-INVENTORY-VARIANCE.
+Cohérence : aucune régression ; trou critique back-office (build cassé) corrigé P140 ; épic intégration rendu visible P141-144 ; remise caisse rendue utilisable P145-146.
+VERDICT : 🟡 ACCEPTABLE — interfaces réellement exploitables, réserve = preuve runtime visuelle (vite build / e2e) à faire en CI Linux.
