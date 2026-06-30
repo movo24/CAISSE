@@ -1264,3 +1264,11 @@ Prochains blocs proposés : P130 audit DI cross-module restant (autres *.service
 - Méthode : run en 2 moitiés `--maxWorkers=2` (contrainte temps sandbox / TD-TEST-DB-SERIAL).
 - Conclusion : aucune dérive DI résiduelle ; les TestingModule sont à jour avec les constructeurs de service actuels.
 - Cumul épic : 59 paquets (71→130 ; audits P120/P129/P130 inclus).
+
+## PAQUET 131 — Garde NF525 cohérence total vente (POS-INT-131)
+- Objectif (défense-en-profondeur) : garantir runtime que `Σ nets lignes (après promo+remise) === sale.totalMinorUnits`, sinon refuser la vente (fail-closed) plutôt qu'émettre un ticket incohérent.
+- Constat : l'invariant tient par construction (promo + distribution remise cumulative) mais n'était gardé par AUCUN check runtime — un refactor futur pourrait le casser silencieusement.
+- Fichiers : `sales/sale-total.ts` (NOUVEAU, pur : `sumLineNets`, `assertSaleTotalsConsistent`, `SaleTotalInconsistency`), `sales.service.ts` (garde avant calcul TVA/persistance, mappée BadRequest), `sale-total.spec.ts`.
+- Preuve tests : sale-total ⇒ 4 PASS ; non-régression ventes (audit/idempotency/store-credit) ⇒ 3 suites/14 PASS (chemin valide intact). Total 4 suites/18.
+- Preuve typecheck/build : `tsc --noEmit` EXIT 0 ; `nest build` RC=0.
+- Cumul épic : 60 paquets (71→131).

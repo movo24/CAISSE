@@ -16,6 +16,7 @@ import {
   DiscountPolicyViolation,
 } from './discount-policy';
 import { validatePayments, PaymentPolicyViolation } from './payment-policy';
+import { assertSaleTotalsConsistent, SaleTotalInconsistency } from './sale-total';
 import { sumLineTax } from './tax';
 import { computeMaxAllowedDiscount, discountPercentOfSubtotal } from './discount-totals';
 import { applyStockAdjustment } from '../stock/stock-level';
@@ -440,6 +441,16 @@ export class SalesService {
 
     // Calculate totals
     const totalAfterDiscount = subtotal - totalDiscount;
+    // POS-INT-131 — NF525 defense-in-depth: the recorded total MUST equal the sum
+    // of the discounted line nets, or the ticket would be incoherent. Holds by
+    // construction (promo + cumulative manual-discount distribution); fail closed
+    // if a refactor ever breaks it rather than emit an inconsistent sale.
+    try {
+      assertSaleTotalsConsistent(lineItems.map((li) => li.lineTotalMinorUnits), totalAfterDiscount);
+    } catch (e) {
+      if (e instanceof SaleTotalInconsistency) throw new BadRequestException(e.message);
+      throw e;
+    }
     // POS-063 — VAT extracted from gross (TTC) per line; same formula bound into the
     // fiscal hash (see ./tax.ts). Behavior-preserving extraction.
     const taxTotal = sumLineTax(lineItems);
