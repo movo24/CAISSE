@@ -1219,3 +1219,10 @@ Décisions produit tranchées par l'utilisateur. 5 blocs enchaînés.
 - Doc : §J ajoutée à INTER_SYSTEM_INTEGRATION.md (récap P116–124 + dette test TD-TEST-PG-E2E, TD-TEST-DB-SERIAL).
 - Gates : 2 suites .pg (Postgres réel). Reco run : src `--maxWorkers=2`, DB suites `--runInBand`.
 - Cumul épic : 55 paquets (71→125).
+
+## PAQUET 126 — Guide test/CI (POS-INT-126)
+- Objectif : capturer les modes de run prouvés en un guide actionnable.
+- Fichier : `packages/backend/TESTING.md` (NOUVEAU) — 3 groupes (unit `--maxWorkers=2` 129/862 ; pg-mem `--runInBand` 20/164 ; `.pg` via `TEST_DATABASE_URL`), gates bcrypt/Redis, build/typecheck, rappels NF525.
+- Correction prouvée : les 2 suites `.pg` se SKIPPENT proprement sans `TEST_DATABASE_URL` (mesuré : 2 skipped / 3 tests skipped) — CI sans Postgres = verte avec skips, jamais rouge. (Le binaire bcrypt mické permet leur chargement → skip propre au lieu d'échec ELF.)
+- Preuve : `jest test/*.pg.spec.ts` ⇒ 2 suites skipped, 3 tests skipped.
+- Cumul épic : 56 paquets (71→126).
