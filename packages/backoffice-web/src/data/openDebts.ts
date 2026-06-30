@@ -43,13 +43,6 @@ export const OPEN_DEBTS: OpenDebt[] = [
     severity: 'info',
   },
   {
-    id: 'TD-FRONT-INVENTORY-VARIANCE',
-    label: 'Écran écart d’inventaire',
-    impact: 'Fonction comptage physique vs système retirée (écran mort) — à reconstruire.',
-    action: 'Backend inventory-variance + API + page si désiré.',
-    severity: 'info',
-  },
-  {
     id: 'TD-FE-ROLLUP-NATIVE',
     label: 'Build front complet (vite/rollup)',
     impact: 'Build/e2e front non exécutables en sandbox (binaire natif).',

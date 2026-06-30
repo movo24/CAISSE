@@ -1450,3 +1450,9 @@ VERDICT : 🟡 ACCEPTABLE — logiciel exploitable siège+magasin ; réserve = p
 - Preuve : `tsc --noEmit` back-office EXIT 0 ; 0 page orpheline ; 0 appel API absent.
 - TD-FRONT-INVENTORY-VARIANCE : résolu (la dette affichée en P149 sera retirée au prochain bloc doc).
 - Gate : vite build = TD-FE-ROLLUP-NATIVE.
+
+## PAQUET 154 — Dette résolue retirée + parseCounts extrait/testé (POS-FE-154/155)
+- `data/openDebts.ts` : entrée TD-FRONT-INVENTORY-VARIANCE RETIRÉE (résolue P153) → panneau Dettes ouvertes à jour (5 items restants).
+- `utils/parseCounts.ts` (NOUVEAU, pur, extrait de la page) + `utils/parseCounts.test.ts` (vitest) ; page consomme l'util (suppression de la copie locale → 0 duplication logique).
+- Preuve : `tsc --noEmit` EXIT 0. vitest BLOQUÉ en sandbox (rollup natif `@rollup/rollup-linux-arm64-gnu` MODULE_NOT_FOUND = TD-FE-ROLLUP-NATIVE) → preuve d'exécution alternative : tsc→node sur parseCounts ⇒ **5/5 assertions OK**. Honnêteté : la suite vitest elle-même reste à exécuter en CI Linux.
+- Suite : P155 audit de contrôle blocs 151→154 (cohérence back+front, non-régression, verdict).

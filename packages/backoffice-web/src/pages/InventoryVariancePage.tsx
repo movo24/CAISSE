@@ -2,26 +2,11 @@ import React, { useState } from 'react';
 import { ClipboardList, Loader2, AlertCircle, Download } from 'lucide-react';
 import { stockApi } from '../services/api';
 import { useCurrentStoreId } from '../hooks/useCurrentStoreId';
+import { parseCounts } from '../utils/parseCounts';
 
 /** centimes → "12,34 €" */
 function eur(minor: number): string {
   return (Number(minor || 0) / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
-}
-
-/** Parse "ean[;,\t]qty" lines into counts. Tolerant of ; , tab or spaces. */
-function parseCounts(raw: string): { ean: string; countedQty: number }[] {
-  const out: { ean: string; countedQty: number }[] = [];
-  for (const line of raw.split(/\r?\n/)) {
-    const t = line.trim();
-    if (!t) continue;
-    const parts = t.split(/[;,\t ]+/).filter(Boolean);
-    if (parts.length < 2) continue;
-    const ean = parts[0];
-    const qty = parseInt(parts[parts.length - 1], 10);
-    if (!ean || !Number.isFinite(qty)) continue;
-    out.push({ ean, countedQty: qty });
-  }
-  return out;
 }
 
 interface VLine { productId: string; name: string | null; ean: string | null; systemQty: number; countedQty: number; qtyDiff: number; valueDiffMinorUnits: number; status: 'ok' | 'overage' | 'shortage' }
