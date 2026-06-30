@@ -1610,3 +1610,10 @@ Prochains candidats (tous gated, nécessitent une décision/un accès) : (1) TD-
 - `jest src/modules/integration src/common/integration` ⇒ **10 suites / 72 tests PASS** (relayOutcome, isEligibleForRelay, backoff, publishEnvelope/sign/verify, buildOutboxPublishRequest, keyset/cursor, reconciliation, controller, **outbox-publisher loopback**).
 - Conclusion : ajout du test loopback = 0 régression sur l'épic intégration ; mécaniques de bout en bout couvertes.
 - Suite : P173 docs dette relais, P174/175 audit + verdict.
+
+## PAQUET 173 — Docs : TD-INT-RELAY mécaniques prouvées (reste gated secrets)
+- `openDebts.ts` : impact reformulé "Mécaniques POST+signature prouvées (loopback P171) ; simulation seule tant que URL/secret réels absents". Sévérité reste `gate` (secrets requis).
+- `TECHNICAL_DEBT.md` : ligne TD-INT-RELAY ajoutée (🟡, preuve loopback 5 tests, action = fournir secrets).
+- Preuve : `tsc --noEmit` back-office EXIT 0.
+- Honnêteté : NON résolu — la livraison réelle exige URL+secret de prod (hors sandbox). Seules les mécaniques sont prouvées.
+- Suite : P174 non-régression globale rapide, P175 audit+verdict.

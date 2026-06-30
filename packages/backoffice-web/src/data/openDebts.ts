@@ -17,7 +17,7 @@ export const OPEN_DEBTS: OpenDebt[] = [
   {
     id: 'TD-INT-RELAY',
     label: 'Publication outbox HTTP réelle',
-    impact: 'Comptamax/TimeWin/Analytik R ne reçoivent rien tant que non activé (simulation seule).',
+    impact: 'Mécaniques POST+signature prouvées (test loopback P171) ; en prod, simulation seule tant que l’URL/secret réels ne sont pas fournis.',
     action: 'Fournir OUTBOX_PUBLISH_URL + OUTBOX_PUBLISH_SECRET puis OUTBOX_RELAY_ENABLED=true.',
     severity: 'gate',
   },
