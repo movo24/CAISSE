@@ -1186,3 +1186,15 @@ Décisions produit tranchées par l'utilisateur. 5 blocs enchaînés.
 - Preuve typecheck/build : `tsc --noEmit` EXIT 0 ; `nest build` RC=0 (345 .js).
 - Limite restante : suites `test/` (pg/e2e DB) toujours gate DB (pas Postgres en sandbox) ; CI Linux requise pour celles-là.
 - Cumul épic : 51 paquets (71→121).
+
+## PAQUET 122 — Cartographie test/ + mock bcrypt réaliste (POS-INT-122)
+- Objectif (audit demandé) : cartographier honnêtement les 22 suites `test/` et lever ce qui est réparable.
+- Correction mock : `test/mocks/bcrypt.mock.ts` rendu réaliste — format `$2b$<rounds>$<salt22><payload31>` (60 chars, /^\$2[aby]\$\d\d\$/), **sel aléatoire** (hash1≠hash2), `compare` re-dérive le payload (round-trip indépendant du sel). Corrige une régression que mon mock déterministe (P121) introduisait dans `test/auth-security.spec.ts` (assertions format + sel).
+- Carte test/ (22 suites) :
+  - 11 PURES → PASS : audit, auth-security, currency, loyalty-flow, money-precision, promo, report, sale-m2-hash-fingerprint, sale-transaction, stock, tenant-isolation.
+  - 9 pg-mem (in-memory) → PASS en série : avoir-m1-m3, avoir-m5-chain-lock, e2e-money-flow, fiscal-verify, pos-session-db-invariant, pos-session-primitive, ticket-sequence-boundary, void-cash-realized-guard, void-m4-journal-chain.
+  - 2 `.pg.spec` → GATE Postgres réel (non exécutables sandbox) : fiscal-e2e.pg, ticket-sequence-boundary.pg.
+- Flake identifié (TD-TEST-PARALLEL-REDIS) : sous `--maxWorkers=4`, avoir-m1-m3 + pos-session-db-invariant échouent par contention Redis (ECONNREFUSED 6380, fallback in-memory) ; en `--runInBand` → 20/20 vertes. Reco : pg-mem/DB suites en série ou Redis mické.
+- Preuves : auth-security+currency+5 suites P121 ⇒ 7 suites/53 PASS ; 9 autres pures ⇒ 9/97 PASS ; test/ hors .pg en série ⇒ 20 suites/164 PASS. tsc --noEmit EXIT 0.
+- Bilan exécutable total : src/** 127 suites/857 + test/ 20 suites/164 = 147 suites / 1021 tests PASS ; seules 2 suites .pg réellement gatées (Postgres).
+- Cumul épic : 52 paquets (71→122).

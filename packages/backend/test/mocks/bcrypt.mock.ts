@@ -1,43 +1,59 @@
 /**
- * POS-INT-121 — faithful pure-JS bcrypt stand-in for unit tests.
+ * POS-INT-121/122 — faithful pure-JS bcrypt stand-in for unit tests.
  *
  * The real `bcrypt` ships a native binding (bcrypt_lib.node) built per-platform;
  * in a cross-platform sandbox its load fails with "invalid ELF header", which
  * makes every spec that (transitively) imports bcrypt unrunnable. This mock keeps
- * the exact contract the code relies on — `hash(value, rounds)` and
- * `compare(value, hash)` — with deterministic round-trip semantics, so login,
- * PIN duplicate-detection and sale-PIN checks behave identically. It is wired via
- * jest `moduleNameMapper` (^bcrypt$) — test-only, never in production code.
+ * the exact observable contract the tests rely on:
+ *   - format: `$2b$<rounds>$<22-char salt><31-char payload>` (60 chars, matches /^\$2[aby]\$\d\d\$/),
+ *   - salting: each hash() of the same value differs (random salt),
+ *   - round-trip: compare(v, hash(v)) === true, compare(w, hash(v)) === false,
+ *     independent of the salt (compare re-derives the payload from the value).
+ * It is wired via jest `moduleNameMapper` (^bcrypt$) — test-only, never in prod.
  *
- * NOTE: this is NOT cryptographically secure. It only preserves the round-trip
- * invariant compare(v, hash(v)) === true and compare(w, hash(v)) === false.
+ * NOTE: NOT cryptographically secure. Only preserves the observable invariants.
  */
 
-const PREFIX = 'bcrypt-mock:';
+const SALT_ALPHABET = './ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
 
-function encode(value: string): string {
-  return PREFIX + Buffer.from(String(value), 'utf8').toString('base64');
+function randomSalt(len = 22): string {
+  let s = '';
+  for (let i = 0; i < len; i++) s += SALT_ALPHABET[Math.floor(Math.random() * SALT_ALPHABET.length)];
+  return s;
 }
 
-export async function hash(value: string, _rounds?: number | string): Promise<string> {
-  return encode(value);
+/** Deterministic 31-char payload derived from the value (salt-independent). */
+function payloadFor(value: string): string {
+  let h = Buffer.from(String(value), 'utf8').toString('base64').replace(/[^A-Za-z0-9]/g, '');
+  while (h.length < 31) h += h;
+  return h.slice(0, 31);
 }
 
-export async function compare(value: string, hashed: string): Promise<boolean> {
-  if (typeof hashed !== 'string' || !hashed.startsWith(PREFIX)) return false;
-  return hashed === encode(value);
+function rounds2(rounds?: number | string): string {
+  const n = typeof rounds === 'number' ? rounds : parseInt(String(rounds ?? 12), 10) || 12;
+  return String(n).padStart(2, '0');
 }
 
-export async function genSalt(_rounds?: number): Promise<string> {
-  return PREFIX + 'salt';
-}
-
-export function hashSync(value: string, _rounds?: number | string): string {
-  return encode(value);
+export function hashSync(value: string, rounds?: number | string): string {
+  return `$2b$${rounds2(rounds)}$${randomSalt()}${payloadFor(value)}`;
 }
 
 export function compareSync(value: string, hashed: string): boolean {
-  return typeof hashed === 'string' && hashed.startsWith(PREFIX) && hashed === encode(value);
+  if (typeof hashed !== 'string' || !/^\$2[aby]\$\d\d\$.{53}$/.test(hashed)) return false;
+  const rest = hashed.slice(7); // strip "$2b$12$"
+  return rest.slice(22) === payloadFor(value);
+}
+
+export async function hash(value: string, rounds?: number | string): Promise<string> {
+  return hashSync(value, rounds);
+}
+
+export async function compare(value: string, hashed: string): Promise<boolean> {
+  return compareSync(value, hashed);
+}
+
+export async function genSalt(rounds?: number): Promise<string> {
+  return `$2b$${rounds2(rounds)}$${randomSalt()}`;
 }
 
 // Support both `import * as bcrypt` and `import bcrypt from 'bcrypt'`.
