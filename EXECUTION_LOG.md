@@ -1483,3 +1483,11 @@ Exécution chunkée (budget sandbox), partition vérifiée sans chevauchement (1
 - `TECHNICAL_DEBT.md` : ligne TD-FRONT-INVENTORY-VARIANCE = ✅ RÉSOLU (preuve commits) ; ligne TD-FE-ROLLUP-NATIVE = Ouvert (CI Linux).
 - Cohérence : dette résolue retirée de l'app (openDebts P154) ET marquée résolue dans la doc → pas de divergence app/doc.
 - Suite : P158 jalon + verdict + present_files.
+
+## PAQUET 158 — JALON paquet de 8 (151→158) : écart d'inventaire de bout en bout
+Livré (8 blocs) :
+- P151 helper pur `computeStockVariance` (5 tests) ; P152 endpoint read-only `POST /stock/variance` (roles+JWT storeId, 0 mutation, 0 migration) ; P153 écran InventoryVariancePage reconstruit (saisie comptage, tableau écart valorisé, CSV) routé+nav ; P154 dette résolue retirée de l'app + `parseCounts` extrait/testé (node 5/5) ; P155 audit ✅ SOLIDE ; P156 non-régression globale (151/2 suites ; 1059/3 tests) ; P157 docs ; P158 jalon.
+Preuves cumulées : backend tsc EXIT 0, back-office tsc EXIT 0, jest stock 6/37, jest global 151 PASS/2 skip — 1059 PASS/3 skip, git propre, toutes nouvelles fonctions appelées, 0 TODO, 0 duplication.
+Réserve honnête unique : build/vitest front = CI Linux (TD-FE-ROLLUP-NATIVE) ; substitut node fourni.
+
+VERDICT : ✅ SOLIDE. Dette TD-FRONT-INVENTORY-VARIANCE résolue. Prochains 5 candidats : (1) build+vitest front en CI Linux (lever TD-FE-ROLLUP-NATIVE), (2) arbitrage TD-FE-OFFLINE-DISCOUNT (remise hors-ligne), (3) export écart→ajustement assisté (avec garde manager), (4) e2e .pg en CI Postgres, (5) polish supervision (filtres/seuils).
