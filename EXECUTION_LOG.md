@@ -1543,3 +1543,13 @@ Prochains candidats : (1) build+vitest+e2e en CI Linux/Postgres (TD-FE-ROLLUP-NA
 - Fix : headline via map `Record<VerdictLevel,string>` (tsc narrowing littéral sur ternaire).
 - Preuve : `tsc --noEmit` EXIT 0 ; helper node 6/6 (vitest gated TD-FE-ROLLUP-NATIVE) ; importé+utilisé 2× dans la page.
 - Suite : audit de contrôle.
+
+## PAQUET 165 — AUDIT DE CONTRÔLE 164 (Règle 3)
+- git : arbre propre, commit 12bcb07.
+- Compile : back-office `tsc --noEmit` EXIT 0.
+- Câblage : `summarizeSupervision` importé + utilisé 2× (calcul + bandeau) ; helper pur node 6/6.
+- Cohérence : 0 page orpheline, 0 appel API absent, 0 TODO/FIXME sur les utils touchés.
+- Réserve honnête : vitest non exécutable en sandbox (rollup natif) → preuve node substitut ; suites vitest (parseCounts, supervisionVerdict, manual-discount-guard) à lancer en CI Linux.
+
+VERDICT : ✅ SOLIDE — supervision lisible d'un coup d'œil (bandeau verdict synthétique), logique pure testée, 0 régression de cohérence front.
+Prochains candidats : (1) build+vitest+e2e en CI Linux/Postgres (lever TD-FE-ROLLUP-NATIVE — seul axe vraiment bloqué en sandbox), (2) TD-INT-SOCIAL-ENTRIES (décision compta), (3) filtres/tri par sévérité dans les listes (signaux stock, écarts), (4) ajustement écart en lot avec double validation.
