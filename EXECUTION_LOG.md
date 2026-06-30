@@ -1280,3 +1280,8 @@ Prochains blocs proposés : P130 audit DI cross-module restant (autres *.service
 - Preuve typecheck/build : `tsc --noEmit` EXIT 0 ; `nest build` RC=0.
 - Couverture anti-IDOR routing : journal, social, cash-control, shifts, stock-signals, events, reconciliation, outbox/stats, relay.
 - Cumul épic : 61 paquets (71→132).
+
+## PAQUET 133 — Consolidation v8 (POS-INT-133)
+- Agrégat re-prouvé : src/** 130 suites/883 tests + test/ série 20/164 = 150 suites / 1047 tests PASS. tsc EXIT 0 ; nest build RC=0.
+- PROJECT_STATUS.md mis à jour (état consolidé daté v8).
+- Cumul épic : 62 paquets (71→133).

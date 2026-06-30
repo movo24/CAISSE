@@ -73,3 +73,19 @@ Ces points datent d'avril 2026 ; plusieurs commits fiscaux/correctifs ont suivi.
 ## 6. Prochaine action
 
 Voir `POS_BLOCKS.md` → premier paquet (PAQUET 1). Détail d'exécution dans `EXECUTION_LOG.md`.
+
+---
+## État consolidé — 2026-06-30 (jalon PAQUET 133, v8)
+
+**Suite backend exécutable : 150 suites / 1047 tests verts.**
+- Unitaires `src/**` (maxWorkers=2) : 130 suites / 883 tests ✅
+- Intégration `test/` pg-mem (runInBand, hors .pg) : 20 suites / 164 tests ✅
+- `tsc --noEmit` EXIT 0 · `nest build` RC=0 (345 .js)
+- E2E `test/*.pg.spec.ts` (2) : auto-skip sans `TEST_DATABASE_URL` (CI Postgres).
+
+Épic intégration POS↔Comptamax24↔TimeWin24 (+prep Analytik R) : 62 paquets (71→133).
+Détails commandes : `packages/backend/TESTING.md`. Détail intégration : `INTER_SYSTEM_INTEGRATION.md` (§A→§J).
+
+Corrections métier récentes prouvées : avoir partiel sans fuite centime (P127), anti sur-paiement non-espèces (P128), garde NF525 cohérence total vente (P131), sécurité CSV 5/5 exports (P113-114).
+
+Dette ouverte (documentée, non franchie) : TD-INT-SOCIAL-ENTRIES, publisher HTTP réel (secrets), migration 1725 (DB), e2e .pg (Postgres/CI), TD-TEST-DB-SERIAL.
