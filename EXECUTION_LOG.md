@@ -1338,3 +1338,13 @@ Preuves :
 - code mort : partitionPushSales (2 réfs), convertMinor (2 réfs) appelés hors def/spec.
 Cohérence : aucune régression ; 2 bugs d'argent corrigés (sync doublon P136, FX off-by-one P137) prouvés avant/après ; audit conventions arrondi documenté (P138).
 VERDICT : ✅ SOLIDE.
+
+## PAQUET 140 — Audit interfaces front/back-office + fix page morte (POS-FE-140)
+- Direction front/back-office (pas prod). Audit réel câblage écran↔API.
+- Défaut critique : `InventoryVariancePage.tsx` orpheline (non routée) importait `stockReconciliationApi` inexistant (api.ts + backend) → `tsc --noEmit` back-office ÉCHOUAIT (front non buildable). Page supprimée (réversible) → tsc EXIT 0.
+- Trou majeur documenté : 9 endpoints intégration/comptamax NON câblés au front (0 écran/API/route) → plan P141-144.
+- Carte écrans routés établie ; placeholder /timewin24 (ComingSoon) noté.
+- Gate : node_modules front hoisté racine → tsc front exécutable (preuve) ; vite build complet non lancé (sandbox).
+- Livrables : `FRONT_AUDIT.md` (carte + plan), dette `TD-FRONT-INVENTORY-VARIANCE`.
+- Preuve : `tsc --noEmit` back-office EXIT 0 (après retrait).
+- Cumul : démarrage axe front (P140).
