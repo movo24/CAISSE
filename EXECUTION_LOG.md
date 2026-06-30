@@ -1235,3 +1235,11 @@ Décisions produit tranchées par l'utilisateur. 5 blocs enchaînés.
 - Preuve typecheck/build : `tsc --noEmit` EXIT 0 ; `nest build` RC=0.
 - Conformité NF525/comptable : un avoir total sur une ligne rembourse désormais exactement le net payé (pas de fuite centime).
 - Cumul épic : 57 paquets (71→127).
+
+## PAQUET 128 — Garde sur-paiement non-espèces (POS-INT-128)
+- Risque réel : `changeMinorUnits = paymentTotal − total` était calculé quel que soit le tender → un sur-paiement carte/avoir produisait un "rendu monnaie" espèces = fuite de tiroir-caisse / vecteur de fraude.
+- Fix : nouvelle règle `NON_CASH_OVERPAYMENT` — la somme des paiements non-espèces (card, stripe_terminal, store_credit, voucher…) ne doit pas dépasser le total. Seul le cash peut générer du change ⇒ le rendu monnaie est toujours adossé aux espèces.
+- Fichiers : `sales/payment-policy.ts` (code + garde + doc), `payment-policy.spec.ts` (+3 cas : carte rejetée, terminal rejeté, cash overpay + carte partielle = change cash-backed).
+- Preuve tests : payment-policy ⇒ 10 PASS ; non-régression ventes (audit/idempotency/store-credit) ⇒ 3 suites/14 PASS.
+- Preuve typecheck/build : `tsc --noEmit` EXIT 0 ; `nest build` RC=0.
+- Cumul épic : 58 paquets (71→128).

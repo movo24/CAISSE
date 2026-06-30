@@ -67,6 +67,31 @@ describe('POS-040/043/044/048 validatePayments', () => {
     );
   });
 
+  it('card overpayment = refused (no cash change on card) (POS-INT-128)', () => {
+    expectViolation(
+      () => validatePayments([{ method: 'card', amountMinorUnits: 2000 }], 1500),
+      'NON_CASH_OVERPAYMENT',
+    );
+  });
+
+  it('cash overpays while card covers part = ok, change is cash-backed (POS-INT-128)', () => {
+    const r = validatePayments(
+      [
+        { method: 'card', amountMinorUnits: 1000 }, // ≤ total, no card change
+        { method: 'cash', amountMinorUnits: 1000 }, // cash overpays the residual 500
+      ],
+      1500,
+    );
+    expect(r.changeMinorUnits).toBe(500); // fully covered by cash
+  });
+
+  it('terminal overpayment = refused (POS-INT-128)', () => {
+    expectViolation(
+      () => validatePayments([{ method: 'stripe_terminal', amountMinorUnits: 1600 }], 1500),
+      'NON_CASH_OVERPAYMENT',
+    );
+  });
+
   it('store_credit only, equal to total = ok', () => {
     const r = validatePayments(
       [{ method: 'store_credit', amountMinorUnits: 1500 }],
