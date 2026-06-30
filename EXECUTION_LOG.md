@@ -1321,3 +1321,10 @@ Prochains blocs proposés : P136 audit sync offline (réplay/idempotence) ; P137
 - Honnêteté : bug prouvé AVANT correction (script de balayage), corrigé, re-prouvé (0 écart). Conversion = affichage/multi-devises (non-fiscal store currency) mais correctness réelle.
 - Preuve tests : convert-amount ⇒ 8 PASS ; `tsc --noEmit` EXIT 0 ; `nest build` RC=0.
 - Cumul épic : 65 paquets (71→137).
+
+## PAQUET 138 — Audit conventions d'arrondi + référence MONEY_ROUNDING (POS-INT-138)
+- Vérifs sans fix (sens d'arrondi déjà correct) : `loyaltyPointsEarned` = floor (pas de points indus) ; `computeMaxAllowedDiscount` = floor (cap jamais dépassé) ; `discountPercentOfSubtotal` = display gardé.
+- Preuve agrégat helpers monétaires : 11 suites / 93 tests PASS (loyalty, discount-totals, discount-policy, payment-policy, tax, sale-total, returns-policy, promo-discount, convert-amount, consumer-dedup, conflict).
+- Livrable : `MONEY_ROUNDING.md` — table des conventions vérifiées + 5 invariants NF525 + récap bugs corrigés (P127/128/136/137).
+- Conclusion : surface arrondi/argent saine, conventions documentées et testées.
+- Cumul épic : 66 paquets (71→138).
