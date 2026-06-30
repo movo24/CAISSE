@@ -1404,3 +1404,10 @@ Preuves :
 - gates honnêtes : vite build = TD-FE-ROLLUP-NATIVE (CI Linux) ; TD-FE-OFFLINE-DISCOUNT ; TD-FRONT-INVENTORY-VARIANCE.
 Cohérence : aucune régression ; trou critique back-office (build cassé) corrigé P140 ; épic intégration rendu visible P141-144 ; remise caisse rendue utilisable P145-146.
 VERDICT : 🟡 ACCEPTABLE — interfaces réellement exploitables, réserve = preuve runtime visuelle (vite build / e2e) à faire en CI Linux.
+
+## PAQUET 148 — Carte Santé système (back-office) (POS-FE-148)
+- Objectif (visibilité siège : erreurs visibles + alertes) : exposer l'état honnête backend (status ok/degraded/down, DB up/latence/erreur, Redis+fallback, TimeWin/circuit-breaker, alertes récentes) sur la page Supervision.
+- Fichiers : `services/api.ts` (+`healthApi.check` → /health), `pages/IntegrationSupervisionPage.tsx` (carte "Santé système" en tête ; lecture du body même sur 503 DB-down via reason.response.data ; badges colorés ; liste alertes).
+- Résilience : health intégré au Promise.allSettled ; un 503 (DB down) affiche quand même le diagnostic.
+- Preuve : `tsc --noEmit` back-office EXIT 0.
+- Gate : vite build = TD-FE-ROLLUP-NATIVE.

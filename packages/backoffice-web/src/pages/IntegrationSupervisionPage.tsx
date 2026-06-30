@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Activity, RefreshCw, PackageX, Loader2, AlertCircle, Send, Clock, Download } from 'lucide-react';
-import { integrationApi } from '../services/api';
+import { integrationApi, healthApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
 import { useCurrentStoreId } from '../hooks/useCurrentStoreId';
 
@@ -35,6 +35,7 @@ export function IntegrationSupervisionPage() {
   const [signals, setSignals] = useState<StockSignalsResult | null>(null);
   const [recon, setRecon] = useState<any | null>(null);
   const [shifts, setShifts] = useState<any | null>(null);
+  const [health, setHealth] = useState<any | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [relayMsg, setRelayMsg] = useState<string | null>(null);
@@ -43,16 +44,20 @@ export function IntegrationSupervisionPage() {
     if (!storeId) return;
     setLoading(true); setError(null); setRelayMsg(null);
     try {
-      const [s, sig, rec, sh] = await Promise.allSettled([
+      const [s, sig, rec, sh, hl] = await Promise.allSettled([
         integrationApi.outboxStats(),
         integrationApi.stockSignals({ date }),
         integrationApi.reconciliation(),
         integrationApi.shifts({ date }),
+        healthApi.check(),
       ]);
       if (s.status === 'fulfilled') setStats(s.value.data); else setStats(null);
       if (sig.status === 'fulfilled') setSignals(sig.value.data); else setSignals(null);
       if (rec.status === 'fulfilled') setRecon(rec.value.data); else setRecon(null);
       if (sh.status === 'fulfilled') setShifts(sh.value.data); else setShifts(null);
+      // health: a 503 (DB down) still returns a body → read it from the error too.
+      if (hl.status === 'fulfilled') setHealth(hl.value.data);
+      else setHealth((hl as PromiseRejectedResult).reason?.response?.data ?? null);
       if (s.status === 'rejected' && sig.status === 'rejected' && rec.status === 'rejected') {
         setError('Aucune donnée de supervision disponible.');
       }
@@ -112,6 +117,34 @@ export function IntegrationSupervisionPage() {
 
       {!loading && (
         <div className="grid gap-4 md:grid-cols-2">
+          {/* Santé système */}
+          <div className="bg-white rounded-lg border p-4 md:col-span-2">
+            <h2 className="font-semibold mb-2">Santé système</h2>
+            {!health ? (
+              <p className="text-gray-500 text-sm">Indisponible.</p>
+            ) : (
+              <div className="space-y-2">
+                <div className="flex flex-wrap gap-2 text-xs">
+                  <span className={`px-2 py-0.5 rounded ${health.status === 'ok' ? 'bg-green-100 text-green-700' : health.status === 'degraded' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>statut: {health.status}</span>
+                  <span className={`px-2 py-0.5 rounded ${health.database === 'up' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>DB: {health.database}{health.database_latency_ms != null ? ` (${health.database_latency_ms} ms)` : ''}</span>
+                  <span className={`px-2 py-0.5 rounded ${health.redis === 'up' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>Redis: {health.redis}{health.fallback_active ? ' (fallback)' : ''}</span>
+                  <span className={`px-2 py-0.5 rounded ${health.timewin === 'up' ? 'bg-green-100 text-green-700' : health.timewin === 'degraded' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>TimeWin: {health.timewin}</span>
+                </div>
+                {health.database_error && <p className="text-xs text-red-600">DB: {health.database_error}</p>}
+                {Array.isArray(health.recent_alerts) && health.recent_alerts.length > 0 && (
+                  <div className="text-xs text-gray-600">
+                    <div className="font-medium mb-1">Alertes récentes :</div>
+                    <ul className="list-disc pl-4 space-y-0.5">
+                      {health.recent_alerts.map((a: any, i: number) => (
+                        <li key={i}>{typeof a === 'string' ? a : `${a.type ?? ''} ${a.message ?? ''}`.trim()}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
           {/* Outbox backlog */}
           <div className="bg-white rounded-lg border p-4">
             <h2 className="font-semibold mb-2">File d'intégration (outbox)</h2>

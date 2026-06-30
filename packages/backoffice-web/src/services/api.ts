@@ -549,4 +549,11 @@ export const integrationApi = {
     api.post('/integration/relay', null, { params: limit ? { limit } : {} }),
 };
 
+// ---------------------------------------------------------------------------
+// Santé système (POS-FE-148) — état honnête backend/DB/redis/TimeWin + alertes.
+// ---------------------------------------------------------------------------
+export const healthApi = {
+  check: () => api.get('/health'),
+};
+
 export default api;
