@@ -144,6 +144,8 @@ interface POSState {
   cartItems: CartItem[];
   customerQrCode: string | null;
   customer: Customer | null;
+  // POS-054 — manual cashier discount (responsable). Server re-verifies PIN + cap + motif.
+  manualDiscount: { amountMinorUnits: number; reason: string; responsablePin: string } | null;
 
   // UI
   scanMode: 'product' | 'customer' | 'employee';
@@ -172,6 +174,7 @@ interface POSState {
   updateQuantity: (productId: string, quantity: number) => void;
   setCustomer: (customer: Customer, qrCode: string) => void;
   clearCustomer: () => void;
+  setManualDiscount: (d: { amountMinorUnits: number; reason: string; responsablePin: string } | null) => void;
   clearCart: () => void;
   setScanMode: (mode: 'product' | 'customer' | 'employee') => void;
   setPaymentModalOpen: (open: boolean) => void;
@@ -201,6 +204,7 @@ export const usePOSStore = create<POSState>((set, get) => ({
   cartItems: [],
   customerQrCode: null,
   customer: null,
+  manualDiscount: null,
   scanMode: 'product',
   paymentModalOpen: false,
   lastTicket: null,
@@ -283,11 +287,14 @@ export const usePOSStore = create<POSState>((set, get) => ({
     set({ customer: null, customerQrCode: null });
   },
 
+  setManualDiscount: (d) => set({ manualDiscount: d }),
+
   clearCart: () => {
     set({
       cartItems: [],
       customer: null,
       customerQrCode: null,
+      manualDiscount: null,
       paymentModalOpen: false,
     });
   },
@@ -364,6 +371,7 @@ export const usePOSStore = create<POSState>((set, get) => ({
       0,
     ),
   totalDiscount: () =>
-    get().cartItems.reduce((sum, i) => sum + i.discountMinorUnits, 0),
-  total: () => get().subtotal() - get().totalDiscount(),
+    get().cartItems.reduce((sum, i) => sum + i.discountMinorUnits, 0) +
+    (get().manualDiscount?.amountMinorUnits ?? 0),
+  total: () => Math.max(0, get().subtotal() - get().totalDiscount()),
 }));

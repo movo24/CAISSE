@@ -30,6 +30,7 @@ import { useTicketHistory } from '../hooks/useTicketHistory';
 import { TicketHistoryModal } from '../components/pos/TicketHistoryModal';
 import { ReturnModal } from '../components/pos/ReturnModal';
 import { AvoirTenderModal } from '../components/pos/AvoirTenderModal';
+import { DiscountModal } from '../components/pos/DiscountModal';
 import { peripheralBridge } from '../services/peripheralBridge';
 import { useCloudSyncStore } from '../services/cloudSyncIdentity';
 import { Wifi, WifiOff, CloudOff, Cloud, RefreshCw as SyncIcon, ShieldAlert, Upload, Lock as LockIcon } from 'lucide-react';
@@ -148,6 +149,8 @@ export function POSPage() {
   const [returnOpen, setReturnOpen] = useState(false);
   // Pay-by-avoir tender modal
   const [avoirOpen, setAvoirOpen] = useState(false);
+  // POS-054 — manual discount modal
+  const [discountModalOpen, setDiscountModalOpen] = useState(false);
   const [ticketCountdown, setTicketCountdown] = useState(TICKET_TIMEOUT_MS / 1000);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -684,14 +687,24 @@ export function POSPage() {
     let ticketNumber = '';
 
     try {
+      const md = store.manualDiscount;
       const res = await salesApi.create({
         items: store.cartItems.map((i) => ({ ean: i.ean, quantity: i.quantity })),
         customerQrCode: store.customerQrCode || undefined,
         payments: payments.map((p) => ({ method: p.method, amountMinorUnits: p.amountMinorUnits, creditNoteCode: p.creditNoteCode })),
+        // POS-054 — manual cashier discount (server re-verifies PIN/cap/motive).
+        ...(md ? { manualDiscountMinorUnits: md.amountMinorUnits, responsablePin: md.responsablePin, justification: md.reason } : {}),
       });
       ticketNumber = res.data.ticketNumber || `T-${Date.now().toString().slice(-6)}`;
       if (res.data.jackpotResult) store.setJackpotResult(res.data.jackpotResult);
-    } catch {
+    } catch (e: any) {
+      // A refused manual discount (cap/PIN/motive) must surface, not silently fall back.
+      const status = e?.response?.status;
+      if (store.manualDiscount && status === 400) {
+        setProcessing(false);
+        setError(e?.response?.data?.message || 'Remise refusée (plafond / PIN responsable / motif).');
+        return;
+      }
       ticketNumber = `T-${Date.now().toString().slice(-6)}`;
     }
 
@@ -1155,6 +1168,13 @@ export function POSPage() {
                 <span>Remise</span><span className="font-medium">-{formatPrice(store.totalDiscount())}</span>
               </div>
             )}
+            <button
+              onClick={() => setDiscountModalOpen(true)}
+              disabled={store.cartItems.length === 0}
+              className="w-full text-xs rounded-lg border border-indigo-200 text-indigo-700 hover:bg-indigo-50 py-1.5 disabled:opacity-40"
+            >
+              {store.manualDiscount ? `Remise responsable : -${formatPrice(store.manualDiscount.amountMinorUnits)} (modifier)` : 'Remise responsable'}
+            </button>
             <div className="h-px bg-pos-border/40" />
             <div className="flex justify-between items-end">
               <span className="text-pos-muted text-sm font-medium">Total</span>
@@ -1842,6 +1862,14 @@ export function POSPage() {
           onClose={() => setAvoirOpen(false)}
         />
       )}
+
+      <DiscountModal
+        open={discountModalOpen}
+        subtotalMinorUnits={store.subtotal()}
+        current={store.manualDiscount}
+        onClose={() => setDiscountModalOpen(false)}
+        onApply={(d) => store.setManualDiscount(d)}
+      />
 
       {/* ═══════ CAMERA BARCODE SCANNER OVERLAY (iPad/Tablet) ═══════ */}
       {cameraOpen && (

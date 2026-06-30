@@ -1385,3 +1385,11 @@ VERDICT : ✅ SOLIDE.
 - TROU CRITIQUE : remise caisse manuelle — backend POS-054 (cap 30%, PIN responsable 21-30%, motif, audit) prêt mais AUCUNE UI (0 occurrence manualDiscountMinorUnits dans le renderer). Classé TD-FE-MANUAL-DISCOUNT → fix P146.
 - Livrable : POS_FRONT_AUDIT.md (table flux↔endpoints + trou).
 - Gate : vite build = TD-FE-ROLLUP-NATIVE.
+
+## PAQUET 146 — UI remise responsable (POS-054 branché caisse) (POS-FE-146)
+- Comble le trou critique P145 : la remise manuelle caisse a maintenant une UI réelle.
+- Fichiers : `components/pos/DiscountModal.tsx` (NOUVEAU — montant €/%, calcul live %, cap 30% bloqué, motif + PIN responsable requis au-delà de 20%, miroir UX de la policy serveur), `stores/posStore.ts` (état `manualDiscount` + `setManualDiscount` + reset clearCart + total() le déduit), `pages/POSPage.tsx` (bouton "Remise responsable" dans le footer panier, rendu modal, payload createSale enrichi `manualDiscountMinorUnits`+`responsablePin`+`justification`, gestion refus 400 = message lisible sans fallback silencieux).
+- Sécurité : le SERVEUR reste autoritaire (re-vérifie PIN responsable, cap 30%, motif 21-30% — POS-054) ; l'UI ne fait que collecter et afficher le refus.
+- Preuve : `tsc --noEmit` pos-desktop EXIT 0.
+- Dette honnête `TD-FE-OFFLINE-DISCOUNT` : remise responsable supportée en ligne (PIN vérifié serveur) ; le payload offline ne la porte pas encore (PIN non vérifiable hors-ligne) — à arbitrer (interdire remise offline vs vérif au sync).
+- Gate : vite build = TD-FE-ROLLUP-NATIVE.
