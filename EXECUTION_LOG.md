@@ -1205,3 +1205,10 @@ Décisions produit tranchées par l'utilisateur. 5 blocs enchaînés.
 - Preuve : bruit Redis (ECONNREFUSED/Redis DOWN) = 0 occurrence ; 2 suites ex-flaky (avoir-m1-m3, pos-session-db-invariant) ⇒ PASS en parallèle ; série complète test/ hors .pg ⇒ 20 suites/164 PASS.
 - Limite restante (TD-TEST-DB-SERIAL) : run parallèle des 9 suites pg-mem sature le sandbox (DataSource+pg-mem+modules par suite) → certaines timeout ; toutes vertes en `--runInBand`. Reco CI : suites DB en série (ou workers limités).
 - Cumul épic : 53 paquets (71→123).
+
+## PAQUET 124 — Smoke-test routing nouveaux endpoints (POS-INT-124)
+- Objectif : prouver que les endpoints P107/P111/P119 délèguent au service avec le storeId du JWT (anti-IDOR, jamais depuis la query) et respectent le switch format.
+- Fichiers : `integration.controller.spec.ts` (NOUVEAU : /shifts json+csv, /stock-signals), `comptamax.controller.spec.ts` (NOUVEAU : /cash-control json+csv). Unit pur (services mockés, sans DB/Nest container).
+- Preuve tests : 2 suites / 5 tests PASS (verbeux collé : storeId='store-JWT' transmis, csv-variant routé).
+- Preuve typecheck/build : `tsc --noEmit` EXIT 0 ; `nest build` RC=0.
+- Cumul épic : 54 paquets (71→124).
