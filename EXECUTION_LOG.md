@@ -1497,3 +1497,11 @@ VERDICT : ✅ SOLIDE. Dette TD-FRONT-INVENTORY-VARIANCE résolue. Prochains 5 ca
 - Fichiers : `renderer/lib/manual-discount-guard.ts` (NOUVEAU, pur `manualDiscountGuard({isOffline})→{allowed,reason}`) + `.test.ts` ; `pages/POSPage.tsx` (bouton désactivé + libellé "hors-ligne indisponible" + message si clic ; garde défensive avant `salesApi.create` si remise présente + offline → refus explicite, pas de fallback silencieux).
 - Preuve : `tsc --noEmit` pos-desktop EXIT 0 ; helper node 4/4 (vitest gated TD-FE-ROLLUP-NATIVE) ; câblage : import 1×, guard appelé 2× (bouton + vente).
 - Suite : P160 docs (résoudre TD-FE-OFFLINE-DISCOUNT) ; P161 audit+verdict.
+
+## PAQUET 160 — Docs : TD-FE-OFFLINE-DISCOUNT résolue
+- `data/openDebts.ts` : entrée TD-FE-OFFLINE-DISCOUNT RETIRÉE (panneau Dettes ouvertes → 4 items).
+- `TECHNICAL_DEBT.md` : ligne ✅ RÉSOLU P159 (décision : interdire hors-ligne).
+- `PROJECT_STATUS.md` : section arbitrage caisse hors-ligne ajoutée.
+- Cohérence app/doc maintenue (retirée de l'app ET marquée résolue).
+- Preuve : `tsc --noEmit` back-office EXIT 0.
+- Suite : P161 audit de contrôle 159→160 + verdict.

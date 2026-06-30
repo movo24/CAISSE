@@ -36,13 +36,6 @@ export const OPEN_DEBTS: OpenDebt[] = [
     severity: 'gate',
   },
   {
-    id: 'TD-FE-OFFLINE-DISCOUNT',
-    label: 'Remise responsable hors-ligne',
-    impact: 'La remise manuelle exige une vérif PIN serveur → indisponible hors-ligne.',
-    action: 'Arbitrer : interdire en offline ou vérifier au resync.',
-    severity: 'info',
-  },
-  {
     id: 'TD-FE-ROLLUP-NATIVE',
     label: 'Build front complet (vite/rollup)',
     impact: 'Build/e2e front non exécutables en sandbox (binaire natif).',
