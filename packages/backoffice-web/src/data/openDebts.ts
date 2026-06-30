@@ -35,11 +35,4 @@ export const OPEN_DEBTS: OpenDebt[] = [
     action: 'migration:run en base cible (hors prod sans GO).',
     severity: 'gate',
   },
-  {
-    id: 'TD-FE-ROLLUP-NATIVE',
-    label: 'Build + tests front (CI)',
-    impact: 'Build/vitest front s’exécutent en CI Linux (configuré). Non lançables en bac à sable arm64 (binaire natif).',
-    action: 'Vérifier le 1er run CI vert au prochain push.',
-    severity: 'info',
-  },
 ];

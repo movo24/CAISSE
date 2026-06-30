@@ -6,7 +6,7 @@
 |---|---|---|---|---|
 | TD-FRONT-INVENTORY-VARIANCE | Écran écart d'inventaire (comptage physique vs système) absent/mort | 🟡 | helper `stock-variance.ts` (5 tests) + `POST /stock/variance` + `InventoryVariancePage.tsx` routée/nav | ✅ RÉSOLU P153/155 (commits f28fded→4dd79e3) |
 | TD-FE-OFFLINE-DISCOUNT | Remise responsable hors-ligne (PIN serveur invérifiable) | 🟡 | arbitrage : `manual-discount-guard.ts` (bloque offline) câblé POSPage (bouton + garde vente) | ✅ RÉSOLU P159 (commit 7938cb6) — décision : interdire hors-ligne |
-| TD-FE-ROLLUP-NATIVE | Build/vitest front non exécutables EN SANDBOX (binaire natif `@rollup/rollup-linux-arm64-gnu`) | 🟢 | build+vitest front câblés en CI (`.github/workflows/ci.yml`, P166) ; preuve substitut node à chaque paquet | Couvert en CI (ubuntu installe le binaire) — reste seulement non exécutable en bac à sable arm64 |
+| TD-FE-ROLLUP-NATIVE | Build/vitest front non exécutables en sandbox (binaire natif rollup) | 🟢 | binaire `@rollup/rollup-linux-arm64-gnu` installé (P169) → vitest **42 tests PASS** (backoffice 19 + pos 23) + `vite build` **2× verts** (backoffice 1988 / pos 2082 modules) + steps CI (P166) | ✅ RÉSOLU P169 — gate prouvé exécutable (sandbox + CI) |
 | TD-DOC-DRIFT | CLAUDE.md sous-compte modules (37→40), entités (45→47), migrations (11→16), tests (405→~488) | 🟠 | comparaison audit vs CLAUDE.md | Ouvert |
 | TD-API-MAP | Détail méthode/payload/erreurs/rôle manquant pour la plupart des 213 routes | 🟠 | `POS_API_MAP.md` | Ouvert |
 | TD-MOBILE-COCKPIT | ~~`GET /api/mobile/v1/alerts` inexistant~~. **Résolu** : module `mobile-cockpit` créé (read-only, manager+, stock+anomalies, shaper testé 6/6, tsc clean). Runtime DB à valider local. | 🟡 | `modules/mobile-cockpit/` | Implémenté |

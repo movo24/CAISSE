@@ -1574,3 +1574,15 @@ Prochains candidats : (1) build+vitest+e2e en CI Linux/Postgres (lever TD-FE-ROL
 - Preuve : `tsc --noEmit` back-office EXIT 0 (openDebts modifié).
 - Honnêteté : "couvert en CI" = câblé ; le 1er run réel reste à observer au prochain push (pas de push externe sans GO).
 - Suite : P169 sweep non-régression front+backend, P170 audit+verdict.
+
+## PAQUET 169 — GATE FRONT LEVÉ EN VRAI (TD-FE-ROLLUP-NATIVE résolu)
+- Cause racine : bac à sable arm64 Linux, binaire optionnel `@rollup/rollup-linux-arm64-gnu` absent → vite/vitest échouaient.
+- Action : `npm i -D @rollup/rollup-linux-arm64-gnu --no-save` (optionnel par-arch, npm choisit le bon binaire sur chaque plateforme ; non figé dans package.json pour ne pas casser la CI x64).
+- PREUVE RÉELLE (plus de substitut node) :
+  - vitest backoffice : 5 fichiers / **19 tests PASS** (parseCounts, severity, supervisionVerdict, export-utils, payroll-calculator).
+  - vitest pos-desktop : 5 fichiers / **23 tests PASS** (paymentMachine, pointageStore, rightsStore, hmacSecurity, manual-discount-guard).
+  - `vite build` backoffice : 1988 modules, built 2.41s, RC 0.
+  - `vite build` pos-desktop : 2082 modules, built 2.91s, RC 0.
+- Total front : **10 fichiers / 42 tests vitest PASS + 2 builds verts** — confirme a posteriori la justesse des preuves node des paquets précédents.
+- Docs : TECHNICAL_DEBT TD-FE-ROLLUP-NATIVE = ✅ RÉSOLU ; retiré du panneau Dettes ouvertes (`tsc` EXIT 0).
+- Suite : P170 audit de contrôle 166→169 + verdict.
