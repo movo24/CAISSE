@@ -1348,3 +1348,10 @@ VERDICT : ✅ SOLIDE.
 - Livrables : `FRONT_AUDIT.md` (carte + plan), dette `TD-FRONT-INVENTORY-VARIANCE`.
 - Preuve : `tsc --noEmit` back-office EXIT 0 (après retrait).
 - Cumul : démarrage axe front (P140).
+
+## PAQUET 141 — API client comptamaxApi + integrationApi (POS-FE-141)
+- Objectif : fondation de câblage front des 9 endpoints intégration/comptamax (étaient 0 côté front).
+- Fichiers : `backoffice-web/src/services/api.ts` (+`comptamaxApi` {journal, cashControl, social} ; +`integrationApi` {shifts, stockSignals, events, reconciliation, outboxStats, relay}).
+- Design : storeId du JWT (anti-IDOR) → aucun param storeId côté client ; `format='csv'|'json'`.
+- Preuve : `tsc --noEmit` back-office EXIT 0.
+- Suite : P142 page Comptabilité/Intégration consommant ces méthodes.

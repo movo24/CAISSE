@@ -510,4 +510,43 @@ export const salesGuardsApi = {
   ignore: (id: string) => api.post(`/sales-guards/anomalies/${id}/ignore`),
 };
 
+// ---------------------------------------------------------------------------
+// Comptamax24 — pré-comptabilité (POS-FE-141). storeId vient du JWT (anti-IDOR),
+// jamais passé en paramètre. format='csv' renvoie une string CSV.
+// ---------------------------------------------------------------------------
+export const comptamaxApi = {
+  /** Journal double-entrée d'un jour, ou d'une plage (from+to). format csv|json. */
+  journal: (params: { date?: string; from?: string; to?: string; format?: 'csv' | 'json' }) =>
+    api.get('/comptamax/journal', { params }),
+  /** Contrôle d'écart de caisse d'un jour (capturé vs Z par bucket). format csv|json. */
+  cashControl: (params: { date: string; format?: 'csv' | 'json' }) =>
+    api.get('/comptamax/cash-control', { params }),
+  /** Justificatif RH (heures/absences/retards) d'une période YYYY-MM. format csv|json. */
+  social: (params: { period: string; format?: 'csv' | 'json' }) =>
+    api.get('/comptamax/social', { params }),
+};
+
+// ---------------------------------------------------------------------------
+// Intégration / supervision (POS-FE-141). Tous tenant-scopés (storeId JWT).
+// ---------------------------------------------------------------------------
+export const integrationApi = {
+  /** Amplitude de poste d'un jour (open→close + totaux/employé). format csv|json. */
+  shifts: (params: { date: string; format?: 'csv' | 'json' }) =>
+    api.get('/integration/shifts', { params }),
+  /** Signaux de stock du jour (statut réappro par produit). */
+  stockSignals: (params: { date: string }) =>
+    api.get('/integration/stock-signals', { params }),
+  /** Feed incrémental des events outbox (Analytik R). */
+  events: (params?: { since?: string; type?: string; limit?: string }) =>
+    api.get('/integration/events', { params }),
+  /** Rapprochement présence POS↔TimeWin du jour (optionnel par employé). */
+  reconciliation: (params?: { employeeId?: string }) =>
+    api.get('/integration/reconciliation', { params }),
+  /** Stats de livraison de l'outbox (backlog/monitoring). */
+  outboxStats: () => api.get('/integration/outbox/stats'),
+  /** Flush manuel de l'outbox (admin) — simulation en sandbox. */
+  relay: (limit?: number) =>
+    api.post('/integration/relay', null, { params: limit ? { limit } : {} }),
+};
+
 export default api;
