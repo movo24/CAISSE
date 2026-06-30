@@ -1243,3 +1243,17 @@ Décisions produit tranchées par l'utilisateur. 5 blocs enchaînés.
 - Preuve tests : payment-policy ⇒ 10 PASS ; non-régression ventes (audit/idempotency/store-credit) ⇒ 3 suites/14 PASS.
 - Preuve typecheck/build : `tsc --noEmit` EXIT 0 ; `nest build` RC=0.
 - Cumul épic : 58 paquets (71→128).
+
+## PAQUET 129 — AUDIT DE CONTRÔLE blocs 121→128 (Règle 3+4)
+Preuves :
+- git : branche `recovery/pos-audit-session`, HEAD 82a93fb, arbre PROPRE, 8 commits 121→128.
+- typecheck : `tsc --noEmit` EXIT 0.
+- build : `nest build` RC=0, 345 .js.
+- tests globaux : src/** (maxWorkers=2) ⇒ 129 suites / 869 tests PASS, 0 échec ; test/ série hors .pg ⇒ 20 suites / 164 PASS. Total exécutable 149 suites / 1033 tests.
+- TODO/FIXME critiques (zones 121-128) : aucun.
+- imports inutilisés (ESLint sur 9 fichiers touchés) : aucun.
+- code mort : computeLineRefund (3 réfs), validatePayments (2 réfs) appelés hors def/spec.
+- routes exposées : @Get shifts/stock-signals/cash-control présents + controllers enregistrés dans integration.module/comptamax.module.
+Cohérence : aucune régression (2 régressions de test antérieures déjà corrigées en P120/P122) ; modules branchés ; pas de doublon logique ; règles métier renforcées (NF525 avoir exact P127, anti-fuite tiroir P128).
+VERDICT : ✅ SOLIDE.
+Prochains blocs proposés : P130 audit DI cross-module restant (autres *.service.spec non couverts) ; P131 e2e payment-policy via vente (gate pg) ; P132 nouvel axe (loyalty/jackpot) ; P133 consolidation v8 ; P134 README racine état global.
