@@ -1292,3 +1292,16 @@ Prochains blocs proposés : P130 audit DI cross-module restant (autres *.service
 - Fichiers : `stock/stock.service.ts` (1 ligne).
 - Preuve tests : stock.service.spec + stock-events.spec ⇒ 2 suites/12 PASS ; `tsc --noEmit` EXIT 0 ; `nest build` RC=0.
 - Cumul épic : 63 paquets (71→134).
+
+## PAQUET 135 — AUDIT DE CONTRÔLE blocs 130→134 (Règle 3+4)
+Preuves :
+- git : branche recovery/pos-audit-session, HEAD f1fcb1f, arbre PROPRE, commits 131/132/133/134 (+130 audit).
+- typecheck : `tsc --noEmit` EXIT 0.
+- build : `nest build` RC=0.
+- tests : src/** (maxWorkers=2) 130 suites/883 PASS ; test/ série hors .pg 20 suites/164 PASS. Total 150/1047.
+- TODO/FIXME (zones 130-134) : aucun.
+- imports inutilisés (ESLint) : aucun (exit 0).
+- code mort : assertSaleTotalsConsistent (3 réfs), sumLineNets (3 réfs) appelés hors def/spec.
+Cohérence : aucune régression ; lacune auto-introduite P118 (stock.low absent sur adjustStock) détectée et corrigée P134 ; garde NF525 total vente (P131) et anti-IDOR routing complet (P132) branchés et testés.
+VERDICT : ✅ SOLIDE.
+Prochains blocs proposés : P136 audit sync offline (réplay/idempotence) ; P137 currency multi-ligne (précision) ; P138 coupon redemption edge ; P139 consolidation v9 ; P140 nouvel axe.
