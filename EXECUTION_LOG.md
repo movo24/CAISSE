@@ -1605,3 +1605,8 @@ Prochains candidats (tous gated, nécessitent une décision/un accès) : (1) TD-
 - Preuve : `jest outbox-publisher.spec.ts` ⇒ 1 suite / **5 tests PASS** (exécution réelle, serveur http loopback).
 - Honnêteté : TD-INT-RELAY reste gated en prod (URL + secret réels à fournir) — mais les mécaniques (POST + signature + verdict + gate env) sont désormais PROUVÉES, plus seulement câblées.
 - Suite : P172 non-régression suite intégration, P173 docs dette, P174/175 audit.
+
+## PAQUET 172 — Non-régression suite intégration
+- `jest src/modules/integration src/common/integration` ⇒ **10 suites / 72 tests PASS** (relayOutcome, isEligibleForRelay, backoff, publishEnvelope/sign/verify, buildOutboxPublishRequest, keyset/cursor, reconciliation, controller, **outbox-publisher loopback**).
+- Conclusion : ajout du test loopback = 0 régression sur l'épic intégration ; mécaniques de bout en bout couvertes.
+- Suite : P173 docs dette relais, P174/175 audit + verdict.
