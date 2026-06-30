@@ -32,6 +32,12 @@ jobs:
       - name: Backend tests
         run: npm run test:backend
 
+      - name: Front unit tests (backoffice — vitest)
+        run: npm run test:backoffice
+
+      - name: Front unit tests (POS desktop — vitest)
+        run: npm run test:pos
+
       - name: Build backend (tsc + nest)
         run: npm run build:backend
 

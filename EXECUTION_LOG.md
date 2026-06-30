@@ -1553,3 +1553,10 @@ Prochains candidats : (1) build+vitest+e2e en CI Linux/Postgres (TD-FE-ROLLUP-NA
 
 VERDICT : ✅ SOLIDE — supervision lisible d'un coup d'œil (bandeau verdict synthétique), logique pure testée, 0 régression de cohérence front.
 Prochains candidats : (1) build+vitest+e2e en CI Linux/Postgres (lever TD-FE-ROLLUP-NATIVE — seul axe vraiment bloqué en sandbox), (2) TD-INT-SOCIAL-ENTRIES (décision compta), (3) filtres/tri par sévérité dans les listes (signaux stock, écarts), (4) ajustement écart en lot avec double validation.
+
+## PAQUET 166 — CI exécute enfin les tests front (vitest) (POS-CI-166)
+- Constat : la CI (.github/workflows/ci.yml) lançait lint + backend tests + 3 builds (vite build = rollup natif OK sur Linux) MAIS jamais les suites vitest front → 9 fichiers de test front (parseCounts, supervisionVerdict, manual-discount-guard, payroll-calculator, export-utils, paymentMachine, hmacSecurity, rightsStore, pointageStore) n'étaient jamais exécutés.
+- Fix : 2 steps ajoutés (`npm run test:backoffice`, `npm run test:pos`) + scripts racine `test:backoffice`/`test:pos`/`test:front`.
+- Preuve : YAML parse OK (10 steps, dont les 2 front) ; package.json racine parse OK + 3 scripts présents ; tous les scripts référencés par la CI existent.
+- Honnêteté : la CI n'est PAS exécutée ici (pas de push externe sans GO) — config validée localement ; les suites vitest tourneront au 1er push (sandbox = rollup natif absent, mais ubuntu-latest l'installe via npm).
+- Suite : P167 garde anti-régression de la config CI (test) + P168 helper sévérité, P169 docs, P170 audit.
