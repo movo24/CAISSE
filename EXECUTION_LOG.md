@@ -1313,3 +1313,11 @@ Prochains blocs proposés : P136 audit sync offline (réplay/idempotence) ; P137
 - Constat honnête : correction d'un fix bug ; le TS a aussi attrapé un type local divergent (résolu).
 - Preuve tests : conflict + sync.service ⇒ 2 suites/12 PASS ; `tsc --noEmit` EXIT 0 ; `nest build` RC=0.
 - Cumul épic : 64 paquets (71→136).
+
+## PAQUET 137 — Fix précision float convertMinor (POS-INT-137)
+- Bug réel (mesuré) : `÷10^fromPrec` avant `×rate` injectait une erreur binaire → arrondi .5 vers le bas (107135×1,1 = 117848,5 → 117848 au lieu de 117849). 34 écarts d'1 centime sur 87 594 cas balayés.
+- Fix : multiplier le montant ENTIER par le taux d'abord, échelle de précision en un seul facteur : `round(amount × rate × 10^(toPrec−fromPrec))`. Balayage : 0 écart vs référence.
+- Fichiers : `currency/convert-amount.ts`, `convert-amount.spec.ts` (+4 cas dont 2 trappes .5, précision 0→2).
+- Honnêteté : bug prouvé AVANT correction (script de balayage), corrigé, re-prouvé (0 écart). Conversion = affichage/multi-devises (non-fiscal store currency) mais correctness réelle.
+- Preuve tests : convert-amount ⇒ 8 PASS ; `tsc --noEmit` EXIT 0 ; `nest build` RC=0.
+- Cumul épic : 65 paquets (71→137).
