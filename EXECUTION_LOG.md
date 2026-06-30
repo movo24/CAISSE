@@ -1456,3 +1456,14 @@ VERDICT : 🟡 ACCEPTABLE — logiciel exploitable siège+magasin ; réserve = p
 - `utils/parseCounts.ts` (NOUVEAU, pur, extrait de la page) + `utils/parseCounts.test.ts` (vitest) ; page consomme l'util (suppression de la copie locale → 0 duplication logique).
 - Preuve : `tsc --noEmit` EXIT 0. vitest BLOQUÉ en sandbox (rollup natif `@rollup/rollup-linux-arm64-gnu` MODULE_NOT_FOUND = TD-FE-ROLLUP-NATIVE) → preuve d'exécution alternative : tsc→node sur parseCounts ⇒ **5/5 assertions OK**. Honnêteté : la suite vitest elle-même reste à exécuter en CI Linux.
 - Suite : P155 audit de contrôle blocs 151→154 (cohérence back+front, non-régression, verdict).
+
+## PAQUET 155 — AUDIT DE CONTRÔLE blocs 151→154 (Règle 3)
+Preuves :
+- git : branche `recovery/pos-audit-session`, arbre **propre**, 4 commits f28fded/d9f59d1/8acda6e/12c098c.
+- Câblage réel (anti-code-mort) : computeStockVariance importée 1× (service), service.computeVariance appelée par controller 1×, stockApi.variance appelée par page 1×, parseCounts importée par page 1×, InventoryVariancePage routée (main.tsx).
+- Compile : backend `tsc --noEmit` EXIT 0 ; back-office `tsc --noEmit` EXIT 0.
+- Non-régression backend : `jest src/modules/stock/` ⇒ **6 suites / 37 tests PASS**.
+- TODO/FIXME sur le code touché : aucun. Duplication logique : aucune (parseCounts unique, computeStockVariance unique).
+- Gate honnête : vite/vitest non exécutables en sandbox (rollup natif) = TD-FE-ROLLUP-NATIVE → preuve node 5/5 fournie pour parseCounts.
+
+VERDICT : ✅ SOLIDE — fonctionnalité écart d'inventaire reconstruite de bout en bout (helper pur → endpoint read-only → écran branché → util testé), compile-verte des 2 packages, non-régression stock prouvée, dette correspondante résolue et retirée de l'app. Réserve unique = preuve runtime visuelle en CI Linux.
