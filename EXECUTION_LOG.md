@@ -1257,3 +1257,10 @@ Preuves :
 Cohérence : aucune régression (2 régressions de test antérieures déjà corrigées en P120/P122) ; modules branchés ; pas de doublon logique ; règles métier renforcées (NF525 avoir exact P127, anti-fuite tiroir P128).
 VERDICT : ✅ SOLIDE.
 Prochains blocs proposés : P130 audit DI cross-module restant (autres *.service.spec non couverts) ; P131 e2e payment-policy via vente (gate pg) ; P132 nouvel axe (loyalty/jackpot) ; P133 consolidation v8 ; P134 README racine état global.
+
+## PAQUET 130 — Audit préventif DI (toutes les *.service.spec) (POS-INT-130)
+- Objectif : prévenir une 3ᵉ régression DI (cf. P120/P121) en exécutant TOUTES les suites *.service.spec.
+- Résultat : 19/19 suites PASS (moitié 1 : 10 suites/78 tests ; moitié 2 : 9 suites/61 tests = 139 tests), 0 échec DI.
+- Méthode : run en 2 moitiés `--maxWorkers=2` (contrainte temps sandbox / TD-TEST-DB-SERIAL).
+- Conclusion : aucune dérive DI résiduelle ; les TestingModule sont à jour avec les constructeurs de service actuels.
+- Cumul épic : 59 paquets (71→130 ; audits P120/P129/P130 inclus).
