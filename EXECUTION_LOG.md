@@ -1371,3 +1371,10 @@ VERDICT : ✅ SOLIDE.
 - Preuve : `tsc --noEmit` back-office EXIT 0.
 - Gate inchangé : vite build = TD-FE-ROLLUP-NATIVE (CI Linux).
 - Suite : P144 export CSV shifts + cohérence UX + audit front.
+
+## PAQUET 144 — Export CSV amplitude + cohérence UX + audit front (POS-FE-144)
+- Ajout : carte "Amplitude de poste" (totaux minutes/employé) + bouton Export CSV sur la page Supervision (`integrationApi.shifts` json+csv). Shifts intégré au Promise.allSettled (résilient).
+- Audit UX (preuves) : 0 page orpheline (toutes les pages routées dans main.tsx) ; 0 appel `*Api.*` vers un objet API absent ; `tsc --noEmit` EXIT 0 (garantit qu'aucun bouton n'appelle un symbole/méthode inexistant).
+- Cohérence : exports CSV reliés (journal, cash-control, shifts) ; états vide/erreur lisibles ; relais admin-only.
+- Gate inchangé : vite build = TD-FE-ROLLUP-NATIVE (CI Linux). Preuve compile = tsc.
+- Bilan front (P140→144) : back-office passé de "ne compile pas" à 2 écrans intégration réels (Comptabilité, Supervision) + API client complet + audit UX propre.

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Activity, RefreshCw, AlertTriangle, PackageX, Loader2, AlertCircle, Send } from 'lucide-react';
+import { Activity, RefreshCw, PackageX, Loader2, AlertCircle, Send, Clock, Download } from 'lucide-react';
 import { integrationApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
 import { useCurrentStoreId } from '../hooks/useCurrentStoreId';
@@ -18,6 +18,14 @@ interface StockSignal {
 }
 interface StockSignalsResult { products: StockSignal[]; lowCount: number; depletedCount: number }
 
+function downloadCsv(filename: string, csv: string) {
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
 export function IntegrationSupervisionPage() {
   const storeId = useCurrentStoreId();
   const role = useAuthStore((s) => s.employee?.role);
@@ -26,6 +34,7 @@ export function IntegrationSupervisionPage() {
   const [stats, setStats] = useState<OutboxStats | null>(null);
   const [signals, setSignals] = useState<StockSignalsResult | null>(null);
   const [recon, setRecon] = useState<any | null>(null);
+  const [shifts, setShifts] = useState<any | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [relayMsg, setRelayMsg] = useState<string | null>(null);
@@ -34,14 +43,16 @@ export function IntegrationSupervisionPage() {
     if (!storeId) return;
     setLoading(true); setError(null); setRelayMsg(null);
     try {
-      const [s, sig, rec] = await Promise.allSettled([
+      const [s, sig, rec, sh] = await Promise.allSettled([
         integrationApi.outboxStats(),
         integrationApi.stockSignals({ date }),
         integrationApi.reconciliation(),
+        integrationApi.shifts({ date }),
       ]);
       if (s.status === 'fulfilled') setStats(s.value.data); else setStats(null);
       if (sig.status === 'fulfilled') setSignals(sig.value.data); else setSignals(null);
       if (rec.status === 'fulfilled') setRecon(rec.value.data); else setRecon(null);
+      if (sh.status === 'fulfilled') setShifts(sh.value.data); else setShifts(null);
       if (s.status === 'rejected' && sig.status === 'rejected' && rec.status === 'rejected') {
         setError('Aucune donnée de supervision disponible.');
       }
@@ -63,6 +74,16 @@ export function IntegrationSupervisionPage() {
       load();
     } catch (err: any) {
       setError(err?.response?.data?.message || 'Échec du relais.');
+    }
+  };
+
+  const exportShiftsCsv = async () => {
+    setError(null);
+    try {
+      const res = await integrationApi.shifts({ date, format: 'csv' });
+      downloadCsv(`amplitude_poste_${date}.csv`, typeof res.data === 'string' ? res.data : '');
+    } catch (err: any) {
+      setError(err?.response?.data?.message || "Erreur lors de l'export CSV.");
     }
   };
 
@@ -138,6 +159,26 @@ export function IntegrationSupervisionPage() {
                       <td className="px-3 py-2 text-right">{p.lowStockThreshold ?? '—'}</td>
                       <td className="px-3 py-2"><span className={`px-2 py-0.5 rounded text-xs ${statusBadge(p.status)}`}>{p.status}</span></td>
                     </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+
+          {/* Amplitude de poste */}
+          <div className="bg-white rounded-lg border p-4 md:col-span-2">
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="font-semibold flex items-center gap-2"><Clock className="w-5 h-5 text-indigo-600" /> Amplitude de poste</h2>
+              <button onClick={exportShiftsCsv} className="px-3 py-1.5 text-sm rounded-lg border hover:bg-gray-50 inline-flex items-center gap-1"><Download className="w-4 h-4" /> Export CSV</button>
+            </div>
+            {!shifts || !Array.isArray(shifts.byEmployee) || shifts.byEmployee.length === 0 ? (
+              <p className="text-gray-500 text-sm">Aucun poste pour cette date.</p>
+            ) : (
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 text-left"><tr><th className="px-3 py-2">Employé</th><th className="px-3 py-2 text-right">Postes</th><th className="px-3 py-2 text-right">Minutes</th></tr></thead>
+                <tbody>
+                  {shifts.byEmployee.map((e: any) => (
+                    <tr key={e.employeeId} className="border-t"><td className="px-3 py-2">{e.employeeId}</td><td className="px-3 py-2 text-right">{e.shiftCount}</td><td className="px-3 py-2 text-right">{e.totalMinutes}</td></tr>
                   ))}
                 </tbody>
               </table>
