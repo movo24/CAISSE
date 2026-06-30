@@ -1443,3 +1443,10 @@ VERDICT : 🟡 ACCEPTABLE — logiciel exploitable siège+magasin ; réserve = p
 - Read-only : aucune mutation de stock, aucune persistance, aucune migration → safe/réversible.
 - Preuve : `tsc --noEmit` EXIT 0 ; `nest build` RC=0 ; non-régression stock (variance+service+events) 3 suites/17 tests PASS.
 - Suite : P153 API client front + P154 page InventoryVariance reconstruite.
+
+## PAQUET 153 — Écart d'inventaire reconstruit (front, TD-FRONT-INVENTORY-VARIANCE résolu) (POS-FE-153)
+- Fichiers : `services/api.ts` (`stockApi.variance(counts)` → POST /stock/variance), `pages/InventoryVariancePage.tsx` (RECONSTRUIT proprement : saisie comptage "EAN;qté" parsée tolérante, appel API, tableau écart système/compté/qté/valeur coloré, totaux comptés/écarts/valeur nette, codes non trouvés signalés, export CSV durci), `main.tsx` (route /inventory-variance), `Layout.tsx` (nav "Écart inventaire", icône ClipboardList, manager).
+- Lecture seule : aucune mutation stock. Remplace l'ancien écran mort (P140) par une version branchée et fonctionnelle.
+- Preuve : `tsc --noEmit` back-office EXIT 0 ; 0 page orpheline ; 0 appel API absent.
+- TD-FRONT-INVENTORY-VARIANCE : résolu (la dette affichée en P149 sera retirée au prochain bloc doc).
+- Gate : vite build = TD-FE-ROLLUP-NATIVE.

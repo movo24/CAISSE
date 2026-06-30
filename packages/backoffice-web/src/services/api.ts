@@ -314,6 +314,9 @@ export const stockApi = {
     api.post(`/stock/${productId}/adjust`, data),
   updateDefaultThresholds: (data: { alertThreshold: number; criticalThreshold: number }) =>
     api.put('/stock/default-thresholds', data),
+  // POS-FE-153 — inventory variance (read-only): system vs counted, cost-valued.
+  variance: (counts: { productId?: string; ean?: string; countedQty: number }[]) =>
+    api.post('/stock/variance', { counts }),
 };
 
 // ---------------------------------------------------------------------------
