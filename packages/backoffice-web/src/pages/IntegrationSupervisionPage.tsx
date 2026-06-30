@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Activity, RefreshCw, PackageX, Loader2, AlertCircle, Send, Clock, Download } from 'lucide-react';
 import { integrationApi, healthApi } from '../services/api';
+import { OPEN_DEBTS } from '../data/openDebts';
 import { useAuthStore } from '../stores/authStore';
 import { useCurrentStoreId } from '../hooks/useCurrentStoreId';
 
@@ -216,6 +217,24 @@ export function IntegrationSupervisionPage() {
                 </tbody>
               </table>
             )}
+          </div>
+
+          {/* Dettes techniques & activation prod */}
+          <div className="bg-white rounded-lg border p-4 md:col-span-2">
+            <h2 className="font-semibold mb-2">Dettes ouvertes & activation prod</h2>
+            <ul className="divide-y">
+              {OPEN_DEBTS.map((d) => (
+                <li key={d.id} className="py-2 text-sm">
+                  <div className="flex items-center gap-2">
+                    <span className={`px-2 py-0.5 rounded text-xs ${d.severity === 'gate' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>{d.severity === 'gate' ? 'GATE' : 'info'}</span>
+                    <span className="font-medium">{d.label}</span>
+                    <span className="text-gray-400 text-xs ml-auto font-mono">{d.id}</span>
+                  </div>
+                  <p className="text-gray-600 text-xs mt-1">{d.impact}</p>
+                  <p className="text-gray-500 text-xs">→ {d.action}</p>
+                </li>
+              ))}
+            </ul>
           </div>
         </div>
       )}

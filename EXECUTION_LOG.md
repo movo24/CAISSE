@@ -1411,3 +1411,10 @@ VERDICT : 🟡 ACCEPTABLE — interfaces réellement exploitables, réserve = pr
 - Résilience : health intégré au Promise.allSettled ; un 503 (DB down) affiche quand même le diagnostic.
 - Preuve : `tsc --noEmit` back-office EXIT 0.
 - Gate : vite build = TD-FE-ROLLUP-NATIVE.
+
+## PAQUET 149 — Panneau dettes ouvertes & activation prod (back-office) (POS-FE-149)
+- Objectif (priorité 1 : affichage clair des dettes ouvertes) : rendre visibles au siège les gates/dettes connus.
+- Fichiers : `data/openDebts.ts` (NOUVEAU — liste typée curée : TD-INT-RELAY, TD-INT-SOCIAL-ENTRIES, MIGRATION-1725, TD-FE-OFFLINE-DISCOUNT, TD-FRONT-INVENTORY-VARIANCE, TD-FE-ROLLUP-NATIVE ; sévérité gate/info + impact + action), `pages/IntegrationSupervisionPage.tsx` (carte "Dettes ouvertes & activation prod" avec badges GATE/info, impact, action).
+- Honnêteté : liste curée (non live) reflétant EXECUTION_LOG/TECHNICAL_DEBT ; affiche ce qui n'est PAS encore activé/fait.
+- Preuve : `tsc --noEmit` back-office EXIT 0 ; 0 page orpheline.
+- Priorité 1 siège désormais couverte : intégration visible, états sync, erreurs/alertes (santé), exports, contrôle écart caisse, dettes ouvertes.
