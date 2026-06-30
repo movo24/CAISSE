@@ -1272,3 +1272,11 @@ Prochains blocs proposés : P130 audit DI cross-module restant (autres *.service
 - Preuve tests : sale-total ⇒ 4 PASS ; non-régression ventes (audit/idempotency/store-credit) ⇒ 3 suites/14 PASS (chemin valide intact). Total 4 suites/18.
 - Preuve typecheck/build : `tsc --noEmit` EXIT 0 ; `nest build` RC=0.
 - Cumul épic : 60 paquets (71→131).
+
+## PAQUET 132 — Anti-IDOR routing endpoints restants (POS-INT-132)
+- Objectif : couvrir au smoke-test de routing TOUS les endpoints intégration/comptamax restants (storeId du JWT, jamais query ; switch format/mode).
+- Fichiers : `integration.controller.spec.ts` (+events, reconciliation, outbox/stats, relay), `comptamax.controller.spec.ts` (+journal jour/plage/csv, social json/csv).
+- Preuve tests : 2 suites / 15 tests PASS (5 P124 + 10 nouveaux) — chaque endpoint délègue avec 'store-JWT' et route correctement jour vs plage vs csv.
+- Preuve typecheck/build : `tsc --noEmit` EXIT 0 ; `nest build` RC=0.
+- Couverture anti-IDOR routing : journal, social, cash-control, shifts, stock-signals, events, reconciliation, outbox/stats, relay.
+- Cumul épic : 61 paquets (71→132).
