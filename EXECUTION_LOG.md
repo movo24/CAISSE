@@ -1198,3 +1198,10 @@ Décisions produit tranchées par l'utilisateur. 5 blocs enchaînés.
 - Preuves : auth-security+currency+5 suites P121 ⇒ 7 suites/53 PASS ; 9 autres pures ⇒ 9/97 PASS ; test/ hors .pg en série ⇒ 20 suites/164 PASS. tsc --noEmit EXIT 0.
 - Bilan exécutable total : src/** 127 suites/857 + test/ 20 suites/164 = 147 suites / 1021 tests PASS ; seules 2 suites .pg réellement gatées (Postgres).
 - Cumul épic : 52 paquets (71→122).
+
+## PAQUET 123 — Neutraliser Redis en test (fix flake) (POS-INT-123)
+- Cause : `.env` (chargé par ConfigModule.forRoot en test) définit REDIS_URL=redis://localhost:6380 → ResilientCacheStore tente Redis → flake parallèle (ECONNREFUSED races).
+- Fix : `test/jest.setup.ts` (NOUVEAU) `process.env.REDIS_URL=''` + `setupFiles` jest. dotunv ne réécrit pas une clé définie ⇒ factory CacheModule voit '' (falsy) ⇒ InMemoryCacheStore. Test-only, 0 code prod.
+- Preuve : bruit Redis (ECONNREFUSED/Redis DOWN) = 0 occurrence ; 2 suites ex-flaky (avoir-m1-m3, pos-session-db-invariant) ⇒ PASS en parallèle ; série complète test/ hors .pg ⇒ 20 suites/164 PASS.
+- Limite restante (TD-TEST-DB-SERIAL) : run parallèle des 9 suites pg-mem sature le sandbox (DataSource+pg-mem+modules par suite) → certaines timeout ; toutes vertes en `--runInBand`. Reco CI : suites DB en série (ou workers limités).
+- Cumul épic : 53 paquets (71→123).

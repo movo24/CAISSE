@@ -89,6 +89,9 @@
     "coverageDirectory": "./coverage",
     "testEnvironment": "node",
     "testTimeout": 30000,
+    "setupFiles": [
+      "<rootDir>/test/jest.setup.ts"
+    ],
     "moduleNameMapper": {
       "^@caisse/shared/(.*)$": "<rootDir>/../../shared/$1",
       "^bcrypt$": "<rootDir>/test/mocks/bcrypt.mock.ts"
