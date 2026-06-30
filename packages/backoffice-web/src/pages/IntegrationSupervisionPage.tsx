@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Activity, RefreshCw, PackageX, Loader2, AlertCircle, Send, Clock, Download } from 'lucide-react';
 import { integrationApi, healthApi } from '../services/api';
+import { summarizeSupervision } from '../utils/supervisionVerdict';
 import { OPEN_DEBTS } from '../data/openDebts';
 import { useAuthStore } from '../stores/authStore';
 import { useCurrentStoreId } from '../hooks/useCurrentStoreId';
@@ -115,6 +116,24 @@ export function IntegrationSupervisionPage() {
       {loading && <div className="flex items-center gap-2 text-gray-500"><Loader2 className="w-5 h-5 animate-spin" /> Chargement…</div>}
       {error && <div className="flex items-center gap-2 text-red-600 bg-red-50 border border-red-200 rounded-lg p-3 mb-3"><AlertCircle className="w-5 h-5" /> {error}</div>}
       {relayMsg && <div className="text-green-700 bg-green-50 border border-green-200 rounded-lg p-3 mb-3">{relayMsg}</div>}
+
+      {!loading && (health || stats || recon || signals) && (() => {
+        const v = summarizeSupervision({
+          health: health ? { status: health.status, database: health.database, timewin: health.timewin } : null,
+          outbox: stats ? { failed: stats.failed, pending: stats.pending } : null,
+          reconciliation: recon ? { timewinReachable: recon.timewinReachable, discrepancies: recon.discrepancies } : null,
+          stock: signals ? { depletedCount: signals.depletedCount, lowCount: signals.lowCount } : null,
+        });
+        const cls = v.level === 'critical' ? 'bg-red-50 border-red-300 text-red-800'
+          : v.level === 'watch' ? 'bg-amber-50 border-amber-300 text-amber-800'
+            : 'bg-green-50 border-green-300 text-green-800';
+        return (
+          <div className={`rounded-lg border p-3 mb-4 ${cls}`}>
+            <div className="font-semibold">{v.headline}</div>
+            {v.reasons.length > 0 && <div className="text-xs mt-1">{v.reasons.join(' · ')}</div>}
+          </div>
+        );
+      })()}
 
       {!loading && (
         <div className="grid gap-4 md:grid-cols-2">

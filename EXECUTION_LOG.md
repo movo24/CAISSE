@@ -1535,3 +1535,11 @@ Preuves :
 
 VERDICT : ✅ SOLIDE — boucle écart→correction fermée proprement et sûrement (manager only, confirm, audit, réversible). Aucune régression backend.
 Prochains candidats : (1) build+vitest+e2e en CI Linux/Postgres (TD-FE-ROLLUP-NATIVE), (2) polish supervision (filtres/seuils), (3) TD-INT-SOCIAL-ENTRIES (décision compta), (4) export écart→ajustement en lot avec double validation.
+
+## PAQUET 164 — Verdict global de supervision (POS-FE-164)
+- Polish supervision : bandeau unique en tête (OK vert / À surveiller ambre / Critique rouge) synthétisant santé+outbox+rapprochement+stock → le manager voit l'état d'un coup d'œil au lieu de scanner 6 cartes.
+- Échelle : critical (DB/système down, échecs outbox) > watch (dégradé, TimeWin down, file outbox >50, écarts rapprochement, ruptures) > ok ; raisons listées.
+- Fichiers : `utils/supervisionVerdict.ts` (NOUVEAU, pur `summarizeSupervision`) + `.test.ts` (vitest) ; `pages/IntegrationSupervisionPage.tsx` (bandeau câblé sur les données déjà chargées).
+- Fix : headline via map `Record<VerdictLevel,string>` (tsc narrowing littéral sur ternaire).
+- Preuve : `tsc --noEmit` EXIT 0 ; helper node 6/6 (vitest gated TD-FE-ROLLUP-NATIVE) ; importé+utilisé 2× dans la page.
+- Suite : audit de contrôle.
