@@ -1598,3 +1598,10 @@ Preuves :
 
 VERDICT : ✅ SOLIDE — la dernière réserve "sandbox" (TD-FE-ROLLUP-NATIVE) est LEVÉE et prouvée (42 tests vitest + 2 builds), pas seulement configurée. Reste 3 gates 100% infra (secrets / décision métier / base prod) — hors périmètre sans GO explicite.
 Prochains candidats (tous gated, nécessitent une décision/un accès) : (1) TD-INT-RELAY (fournir OUTBOX_PUBLISH_URL+SECRET), (2) TD-INT-SOCIAL-ENTRIES (validation plan de comptes social), (3) MIGRATION-1725 (migration:run base cible hors prod), (4) e2e Playwright en CI.
+
+## PAQUET 171 — Preuve loopback du publisher HTTP outbox (TD-INT-RELAY dé-risqué)
+- `modules/integration/outbox-publisher.spec.ts` (NOUVEAU) : prouve les mécaniques de livraison du `HttpOutboxPublisher` contre un serveur localhost (aucun secret réel, aucun push externe).
+- Couvre : (1) POST signé reçu → le receveur re-vérifie le HMAC sur le corps exact = 'ok', enveloppe + headers x-pos-* corrects, retour true sur 2xx ; (2) non-2xx → false (dead-letter) ; (3) corps altéré → 'bad_signature' (intégrité) ; (4) factory = Simulation si env absent, Http seulement si URL+SECRET présents.
+- Preuve : `jest outbox-publisher.spec.ts` ⇒ 1 suite / **5 tests PASS** (exécution réelle, serveur http loopback).
+- Honnêteté : TD-INT-RELAY reste gated en prod (URL + secret réels à fournir) — mais les mécaniques (POST + signature + verdict + gate env) sont désormais PROUVÉES, plus seulement câblées.
+- Suite : P172 non-régression suite intégration, P173 docs dette, P174/175 audit.
