@@ -1505,3 +1505,15 @@ VERDICT : ✅ SOLIDE. Dette TD-FRONT-INVENTORY-VARIANCE résolue. Prochains 5 ca
 - Cohérence app/doc maintenue (retirée de l'app ET marquée résolue).
 - Preuve : `tsc --noEmit` back-office EXIT 0.
 - Suite : P161 audit de contrôle 159→160 + verdict.
+
+## PAQUET 161 — AUDIT DE CONTRÔLE 159→160 (Règle 3)
+Preuves :
+- git : arbre propre, commits 7938cb6 (feature) + d91632f (docs).
+- Compile : pos-desktop `tsc --noEmit` EXIT 0 ; back-office `tsc --noEmit` EXIT 0.
+- Câblage réel : `manualDiscountGuard` importé + appelé 2× (bouton remise + garde validation vente). Helper pur prouvé node 4/4.
+- Propreté : 0 TODO/FIXME sur le code touché ; pas de duplication (guard unique).
+- Cohérence app/doc : TD-FE-OFFLINE-DISCOUNT retirée du panneau (4 items restants : TD-INT-RELAY, TD-INT-SOCIAL-ENTRIES, MIGRATION-1725, TD-FE-ROLLUP-NATIVE) ET marquée ✅ RÉSOLU dans TECHNICAL_DEBT/PROJECT_STATUS.
+- Réserve honnête : vitest non exécutable en sandbox (rollup natif) → preuve node substitut ; suite vitest à lancer en CI Linux.
+
+VERDICT : ✅ SOLIDE — arbitrage hors-ligne décidé (interdire, cohérent NF525) et câblé de bout en bout (helper pur → bouton désactivé + garde défensive validation), compile-vert 2 packages, dette résolue app+doc.
+Prochains candidats : (1) build+vitest front en CI Linux (TD-FE-ROLLUP-NATIVE), (2) e2e .pg en CI Postgres, (3) écart→ajustement assisté (garde manager), (4) polish supervision (filtres/seuils), (5) TD-INT-SOCIAL-ENTRIES (décision compta).
