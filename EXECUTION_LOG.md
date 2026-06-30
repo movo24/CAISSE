@@ -1355,3 +1355,11 @@ VERDICT : ✅ SOLIDE.
 - Design : storeId du JWT (anti-IDOR) → aucun param storeId côté client ; `format='csv'|'json'`.
 - Preuve : `tsc --noEmit` back-office EXIT 0.
 - Suite : P142 page Comptabilité/Intégration consommant ces méthodes.
+
+## PAQUET 142 — Page Comptabilité / Intégration (POS-FE-142)
+- Objectif : rendre visible/exploitable le journal compta + le contrôle d'écart de caisse au back-office.
+- Fichiers : `pages/AccountingPage.tsx` (NOUVEAU — onglets Journal / Contrôle de caisse ; sélecteur date ; tableau écritures avec totaux + badge équilibré/déséquilibré ; buckets cash/card/other avec écart en rouge ; états vide/chargement/erreur ; export CSV via blob), `main.tsx` (route `/accounting`), `components/Layout.tsx` (nav "Comptabilité", icône Calculator, minRole manager).
+- Anti-pattern évité : aucun bouton vers API absente (méthodes P141 réelles) ; storeId du JWT ; messages d'erreur lisibles manager.
+- Preuve compile : `tsc --noEmit` back-office EXIT 0.
+- Gate environnement (honnête) : `vite build` échoue sur binaire natif `@rollup/rollup-linux-arm64-gnu` absent (node_modules hôte ≠ linux sandbox, bug npm optional-deps) → TD-FE-ROLLUP-NATIVE. Même classe que bcrypt. `tsc` est la preuve de compilation ; build complet à lancer en CI Linux.
+- Suite : P143 supervision intégration (sync/outbox/events/reconciliation/stock-signals).

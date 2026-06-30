@@ -5,6 +5,7 @@ import {
   ChevronDown, ChevronRight, Globe, Store as StoreIcon,
   AlertTriangle, Building2, Network, Plug, CreditCard, Tag, Warehouse,
   BarChart3, Users, ShieldAlert, Database, Wallet, CalendarClock, Undo2,
+  Calculator,
 } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 import { useAppScope } from '../hooks/useAppScope';
@@ -60,6 +61,7 @@ const navItems: NavItem[] = [
 
   // Couche 5 — Analyse
   { path: '/reports', label: 'Rapports', icon: FileBarChart, minRole: 'manager', scope: 'store' },
+  { path: '/accounting', label: 'Comptabilité', icon: Calculator, minRole: 'manager', scope: 'store' },
   { path: '/sales-guards', label: 'Garde-fous', icon: ShieldAlert, minRole: 'manager', scope: 'store' },
   { path: '/returns', label: 'Retours & Avoirs', icon: Undo2, minRole: 'manager', scope: 'store' },
 
