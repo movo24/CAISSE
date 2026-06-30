@@ -1212,3 +1212,10 @@ Décisions produit tranchées par l'utilisateur. 5 blocs enchaînés.
 - Preuve tests : 2 suites / 5 tests PASS (verbeux collé : storeId='store-JWT' transmis, csv-variant routé).
 - Preuve typecheck/build : `tsc --noEmit` EXIT 0 ; `nest build` RC=0.
 - Cumul épic : 54 paquets (71→124).
+
+## PAQUET 125 — Consolidation v7 (santé des tests) (POS-INT-125)
+- Agrégat stable : src/** ⇒ 129 suites / 862 tests PASS (maxWorkers=2, 0 échec ; maxWorkers=4 = 3 flakes de contention prouvés PASS en isolation : customers.service, sales.dto, airtable-ops). test/ série hors .pg ⇒ 20 suites / 164 PASS. Total exécutable 149 suites / 1026 tests.
+- Preuve typecheck/build : `tsc --noEmit` EXIT 0 ; `nest build` RC=0 (345 .js).
+- Doc : §J ajoutée à INTER_SYSTEM_INTEGRATION.md (récap P116–124 + dette test TD-TEST-PG-E2E, TD-TEST-DB-SERIAL).
+- Gates : 2 suites .pg (Postgres réel). Reco run : src `--maxWorkers=2`, DB suites `--runInBand`.
+- Cumul épic : 55 paquets (71→125).

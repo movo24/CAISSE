@@ -198,3 +198,21 @@ Paginer le feed avec le `nextCursor` composite renvoyé (jamais le seul timestam
 | Contrôle de caisse | `/comptamax/cash-control?format=csv` | (enums seulement) |
 | Amplitude poste | `/integration/shifts?format=csv` | sessionId, employeeId, terminalId |
 | Export compta POS-100 | `/reports/...export?format=csv` | date, storeId |
+
+## J. JALON PAQUET 125 (2026-06-30) — consolidation v7 (santé des tests)
+
+**Suite backend exécutable : src/** 129 suites / 862 tests + test/ (hors .pg) 20 suites / 164 tests = 149 suites / 1026 tests verts · `tsc` EXIT 0 · `nest build` RC=0.**
+
+- **P116** — cash-control : bucket `other` rapproché du résiduel Z (`totalRevenue − cash − card`) → plus de faux positif sur jours avec avoir.
+- **P117** — cash-control : détail `capturedByMethod` (par tender brut, classé).
+- **P118** — event `stock.low` (0 < qté ≤ seuil POS-083) pour réappro Analytik R ; exclusif avec `stock.depleted`.
+- **P119** — `summarizeStockSignals` + `GET /integration/stock-signals?date=` (statut réappro par produit).
+- **P120** — audit : 3 specs DI obsolètes (reports/returns/stock) réparées (providers d'intégration manquants).
+- **P121** — mock bcrypt pur (jest moduleNameMapper) + DI specs ventes → 5 suites auth/ventes redeviennent exécutables hors binaire natif.
+- **P122** — mock bcrypt réaliste (`$2b$` + sel) ; cartographie test/ (11 pures + 9 pg-mem en série + 2 `.pg` gate Postgres).
+- **P123** — `jest.setup` force le cache in-memory (REDIS_URL='') → supprime le flake Redis parallèle.
+- **P124** — smoke-tests de routing (anti-IDOR storeId JWT + switch format) pour /shifts, /stock-signals, /cash-control.
+
+### Dette de test documentée
+- **TD-TEST-PG-E2E** : 2 suites `*.pg.spec.ts` nécessitent un vrai Postgres (CI Linux).
+- **TD-TEST-DB-SERIAL** : les suites bootant un DataSource (pg-mem) saturent en parallèle dans un environnement contraint → exécuter `--runInBand` ou `--maxWorkers=2`.
