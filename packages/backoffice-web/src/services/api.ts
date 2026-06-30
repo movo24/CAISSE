@@ -310,7 +310,7 @@ export const promosApi = {
 export const stockApi = {
   alerts: (storeId: string) =>
     api.get('/stock/alerts', { params: { storeId } }),
-  adjust: (productId: string, data: { quantity: number; reason: string }) =>
+  adjust: (productId: string, data: { quantity: number; reason: string; mode?: 'absolute' | 'delta' }) =>
     api.post(`/stock/${productId}/adjust`, data),
   updateDefaultThresholds: (data: { alertThreshold: number; criticalThreshold: number }) =>
     api.put('/stock/default-thresholds', data),

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { ClipboardList, Loader2, AlertCircle, Download } from 'lucide-react';
 import { stockApi } from '../services/api';
 import { useCurrentStoreId } from '../hooks/useCurrentStoreId';
+import { useAuthStore } from '../stores/authStore';
 import { parseCounts } from '../utils/parseCounts';
 
 /** centimes → "12,34 €" */
@@ -21,10 +22,32 @@ function toCsv(r: VResult): string {
 
 export function InventoryVariancePage() {
   const storeId = useCurrentStoreId();
+  const role = useAuthStore((s) => s.employee?.role);
+  const canAdjust = role === 'admin' || role === 'manager';
   const [raw, setRaw] = useState('');
   const [result, setResult] = useState<VResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [aligned, setAligned] = useState<Record<string, boolean>>({});
+  const [aligning, setAligning] = useState<string | null>(null);
+
+  // POS-FE-162 — close the loop: align system stock to the physical count via the
+  // audited manager-only adjust endpoint (absolute mode). Per-line + confirm only
+  // (no bulk) to stay safe & reversible; the backend re-checks role + writes audit.
+  const alignLine = async (l: VLine) => {
+    if (!canAdjust || l.qtyDiff === 0) return;
+    const label = l.name || l.ean || l.productId;
+    if (!window.confirm(`Aligner le stock de "${label}" sur le comptage (${l.systemQty} → ${l.countedQty}) ?`)) return;
+    setAligning(l.productId); setError(null);
+    try {
+      await stockApi.adjust(l.productId, { quantity: l.countedQty, reason: 'Écart inventaire — alignement comptage', mode: 'absolute' });
+      setAligned((a) => ({ ...a, [l.productId]: true }));
+    } catch (err: any) {
+      setError(err?.response?.data?.message || 'Échec de l’ajustement (droits manager requis).');
+    } finally {
+      setAligning(null);
+    }
+  };
 
   const run = async () => {
     const counts = parseCounts(raw);
@@ -89,7 +112,7 @@ export function InventoryVariancePage() {
 
           <div className="bg-white rounded-lg border overflow-hidden">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 text-left"><tr><th className="px-3 py-2">Produit</th><th className="px-3 py-2 text-right">Système</th><th className="px-3 py-2 text-right">Compté</th><th className="px-3 py-2 text-right">Écart</th><th className="px-3 py-2 text-right">Valeur</th><th className="px-3 py-2">Statut</th></tr></thead>
+              <thead className="bg-gray-50 text-left"><tr><th className="px-3 py-2">Produit</th><th className="px-3 py-2 text-right">Système</th><th className="px-3 py-2 text-right">Compté</th><th className="px-3 py-2 text-right">Écart</th><th className="px-3 py-2 text-right">Valeur</th><th className="px-3 py-2">Statut</th>{canAdjust && <th className="px-3 py-2">Action</th>}</tr></thead>
               <tbody>
                 {result.lines.map((l) => (
                   <tr key={l.productId} className="border-t">
@@ -99,6 +122,23 @@ export function InventoryVariancePage() {
                     <td className={`px-3 py-2 text-right ${l.qtyDiff !== 0 ? 'font-semibold' : ''}`}>{l.qtyDiff > 0 ? `+${l.qtyDiff}` : l.qtyDiff}</td>
                     <td className={`px-3 py-2 text-right ${l.valueDiffMinorUnits < 0 ? 'text-red-600' : l.valueDiffMinorUnits > 0 ? 'text-amber-600' : ''}`}>{eur(l.valueDiffMinorUnits)}</td>
                     <td className="px-3 py-2"><span className={`px-2 py-0.5 rounded text-xs ${badge(l.status)}`}>{l.status}</span></td>
+                    {canAdjust && (
+                      <td className="px-3 py-2">
+                        {l.qtyDiff === 0 ? (
+                          <span className="text-xs text-gray-400">—</span>
+                        ) : aligned[l.productId] ? (
+                          <span className="text-xs text-green-600">✓ aligné</span>
+                        ) : (
+                          <button
+                            onClick={() => alignLine(l)}
+                            disabled={aligning === l.productId}
+                            className="text-xs rounded border border-indigo-200 text-indigo-700 hover:bg-indigo-50 px-2 py-0.5 disabled:opacity-40"
+                          >
+                            {aligning === l.productId ? '…' : 'Aligner stock'}
+                          </button>
+                        )}
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>

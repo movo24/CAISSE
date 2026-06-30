@@ -1517,3 +1517,10 @@ Preuves :
 
 VERDICT : ✅ SOLIDE — arbitrage hors-ligne décidé (interdire, cohérent NF525) et câblé de bout en bout (helper pur → bouton désactivé + garde défensive validation), compile-vert 2 packages, dette résolue app+doc.
 Prochains candidats : (1) build+vitest front en CI Linux (TD-FE-ROLLUP-NATIVE), (2) e2e .pg en CI Postgres, (3) écart→ajustement assisté (garde manager), (4) polish supervision (filtres/seuils), (5) TD-INT-SOCIAL-ENTRIES (décision compta).
+
+## PAQUET 162 — Écart d'inventaire → ajustement assisté (POS-FE-162)
+- Boucle fermée : depuis l'écran écart, un manager/admin peut aligner le stock système sur le comptage physique via l'endpoint AUDITÉ `POST /stock/:productId/adjust` (mode `absolute`, motif "Écart inventaire — alignement").
+- Fichiers : `services/api.ts` (`stockApi.adjust` accepte `mode?: 'absolute'|'delta'`), `pages/InventoryVariancePage.tsx` (rôle via authStore → colonne Action visible manager/admin ; bouton "Aligner stock" par LIGNE en écart, **confirmation** obligatoire, état aligning/aligné ; lignes sans écart = "—" ; erreur droits surfacée).
+- Sécurité : par ligne uniquement (pas de bulk → réversible/contrôlé) ; double garde rôle (front + serveur roles manager/admin) ; écriture audit côté serveur (adjustStock existant) ; aucune migration.
+- Honnêteté : l'exécution réelle mute le stock → testable uniquement app+DB lancées ; ici preuve = `tsc --noEmit` EXIT 0 + câblage (0 orphelin / 0 API absente). Pas de mutation déclenchée en sandbox.
+- Suite : audit de contrôle.
