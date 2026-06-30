@@ -1524,3 +1524,14 @@ Prochains candidats : (1) build+vitest front en CI Linux (TD-FE-ROLLUP-NATIVE), 
 - Sécurité : par ligne uniquement (pas de bulk → réversible/contrôlé) ; double garde rôle (front + serveur roles manager/admin) ; écriture audit côté serveur (adjustStock existant) ; aucune migration.
 - Honnêteté : l'exécution réelle mute le stock → testable uniquement app+DB lancées ; ici preuve = `tsc --noEmit` EXIT 0 + câblage (0 orphelin / 0 API absente). Pas de mutation déclenchée en sandbox.
 - Suite : audit de contrôle.
+
+## PAQUET 163 — AUDIT DE CONTRÔLE 162 (Règle 3)
+Preuves :
+- git : arbre propre, commit 690b792.
+- Câblage : `alignLine`→`stockApi.adjust` 1× ; `window.confirm` 1× (confirmation obligatoire) ; garde `canAdjust` 4× (colonne + bouton + handler).
+- Non-régression backend : `jest src/modules/stock/` ⇒ 6 suites / 37 tests PASS (endpoint adjustStock inchangé, réutilisé).
+- Sécurité : double garde rôle (front canAdjust + serveur @Roles manager/admin), audit serveur, per-ligne + confirm (pas de bulk), réversible, aucune migration.
+- Honnêteté : exécution réelle (mutation stock) non déclenchée en sandbox ; testable app+DB lancées.
+
+VERDICT : ✅ SOLIDE — boucle écart→correction fermée proprement et sûrement (manager only, confirm, audit, réversible). Aucune régression backend.
+Prochains candidats : (1) build+vitest+e2e en CI Linux/Postgres (TD-FE-ROLLUP-NATIVE), (2) polish supervision (filtres/seuils), (3) TD-INT-SOCIAL-ENTRIES (décision compta), (4) export écart→ajustement en lot avec double validation.
