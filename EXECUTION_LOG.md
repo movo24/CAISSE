@@ -1418,3 +1418,15 @@ VERDICT : 🟡 ACCEPTABLE — interfaces réellement exploitables, réserve = pr
 - Honnêteté : liste curée (non live) reflétant EXECUTION_LOG/TECHNICAL_DEBT ; affiche ce qui n'est PAS encore activé/fait.
 - Preuve : `tsc --noEmit` back-office EXIT 0 ; 0 page orpheline.
 - Priorité 1 siège désormais couverte : intégration visible, états sync, erreurs/alertes (santé), exports, contrôle écart caisse, dettes ouvertes.
+
+## PAQUET 150 — AUDIT + JALON front/back-office (blocs 140→149)
+Preuves :
+- git : branche recovery/pos-audit-session, HEAD b2a7375, arbre PROPRE.
+- typecheck : back-office EXIT 0 ; pos-desktop EXIT 0.
+- cohérence : 0 page orpheline ; 0 appel *Api.* vers objet absent ; 2 routes intégration (/accounting, /integration).
+Bilan axe front (P140→149) :
+- P140 fix build cassé (page morte) ; P141 API client comptamax+integration ; P142 page Comptabilité (journal+écart caisse+CSV) ; P143 page Supervision (outbox/stock/présence/relais) ; P144 amplitude+CSV+audit UX ; P145 audit caisse ; P146 UI remise responsable (POS-054) ; P147 audit front ; P148 carte santé système+alertes ; P149 panneau dettes ouvertes.
+- Priorité 1 (siège) couverte : intégration visible, états sync, erreurs/alertes (santé), exports CSV, contrôle écart caisse, dettes affichées.
+- Priorité 2 (caisse) : flux déjà branchés + remise responsable ajoutée.
+Gates : TD-FE-ROLLUP-NATIVE (build/e2e CI), TD-FE-OFFLINE-DISCOUNT, TD-FRONT-INVENTORY-VARIANCE + dettes backend.
+VERDICT : 🟡 ACCEPTABLE — logiciel exploitable siège+magasin ; réserve = preuve runtime build/e2e en CI Linux.
