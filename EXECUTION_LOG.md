@@ -1328,3 +1328,13 @@ Prochains blocs proposés : P136 audit sync offline (réplay/idempotence) ; P137
 - Livrable : `MONEY_ROUNDING.md` — table des conventions vérifiées + 5 invariants NF525 + récap bugs corrigés (P127/128/136/137).
 - Conclusion : surface arrondi/argent saine, conventions documentées et testées.
 - Cumul épic : 66 paquets (71→138).
+
+## PAQUET 139 — AUDIT DE CONTRÔLE blocs 136→138 (Règle 3+4)
+Preuves :
+- git : branche recovery/pos-audit-session, HEAD 985766e, arbre PROPRE, commits 136/137/138.
+- typecheck : `tsc --noEmit` EXIT 0 ; build : `nest build` RC=0.
+- tests : src/** (maxWorkers=2) 130 suites/890 PASS ; test/ série hors .pg 20 suites/164 PASS. Total 150/1054.
+- TODO/FIXME (zones 136-138) : aucun ; imports inutilisés (ESLint) : aucun.
+- code mort : partitionPushSales (2 réfs), convertMinor (2 réfs) appelés hors def/spec.
+Cohérence : aucune régression ; 2 bugs d'argent corrigés (sync doublon P136, FX off-by-one P137) prouvés avant/après ; audit conventions arrondi documenté (P138).
+VERDICT : ✅ SOLIDE.
