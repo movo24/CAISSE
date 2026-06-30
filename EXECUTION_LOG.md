@@ -1586,3 +1586,15 @@ Prochains candidats : (1) build+vitest+e2e en CI Linux/Postgres (lever TD-FE-ROL
 - Total front : **10 fichiers / 42 tests vitest PASS + 2 builds verts** — confirme a posteriori la justesse des preuves node des paquets précédents.
 - Docs : TECHNICAL_DEBT TD-FE-ROLLUP-NATIVE = ✅ RÉSOLU ; retiré du panneau Dettes ouvertes (`tsc` EXIT 0).
 - Suite : P170 audit de contrôle 166→169 + verdict.
+
+## PAQUET 170 — AUDIT DE CONTRÔLE 166→169 (Règle 3)
+Preuves :
+- git : arbre propre, 4 commits 9458e54/056fa6f/c2ddc59/ea2d3d8.
+- Compile : backend + back-office + pos-desktop `tsc --noEmit` = **EXIT 0** (les 3).
+- Tests front RÉELS : vitest 10 fichiers / **42 tests PASS** ; `vite build` ×2 verts (P169).
+- CI : steps front câblés (P166), TESTING.md à jour (P168).
+- Câblage : severity importé 2 pages, summarizeSupervision 2×, filtre/sort fonctionnels.
+- Cohérence app/doc : panneau Dettes ouvertes = 3 items, tous gates infra réels (TD-INT-RELAY = secrets+URL, TD-INT-SOCIAL-ENTRIES = décision compta, MIGRATION-1725 = DB cible). Plus aucune dette front.
+
+VERDICT : ✅ SOLIDE — la dernière réserve "sandbox" (TD-FE-ROLLUP-NATIVE) est LEVÉE et prouvée (42 tests vitest + 2 builds), pas seulement configurée. Reste 3 gates 100% infra (secrets / décision métier / base prod) — hors périmètre sans GO explicite.
+Prochains candidats (tous gated, nécessitent une décision/un accès) : (1) TD-INT-RELAY (fournir OUTBOX_PUBLISH_URL+SECRET), (2) TD-INT-SOCIAL-ENTRIES (validation plan de comptes social), (3) MIGRATION-1725 (migration:run base cible hors prod), (4) e2e Playwright en CI.
