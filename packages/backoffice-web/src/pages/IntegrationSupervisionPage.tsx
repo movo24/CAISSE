@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Activity, RefreshCw, PackageX, Loader2, AlertCircle, Send, Clock, Download } from 'lucide-react';
 import { integrationApi, healthApi } from '../services/api';
 import { summarizeSupervision } from '../utils/supervisionVerdict';
+import { sortByStockSeverity } from '../utils/severity';
 import { OPEN_DEBTS } from '../data/openDebts';
 import { useAuthStore } from '../stores/authStore';
 import { useCurrentStoreId } from '../hooks/useCurrentStoreId';
@@ -205,7 +206,7 @@ export function IntegrationSupervisionPage() {
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 text-left"><tr><th className="px-3 py-2">Produit</th><th className="px-3 py-2 text-right">Qté</th><th className="px-3 py-2 text-right">Seuil</th><th className="px-3 py-2">Statut</th></tr></thead>
                 <tbody>
-                  {signals.products.map((p) => (
+                  {sortByStockSeverity(signals.products).map((p) => (
                     <tr key={p.productId} className="border-t">
                       <td className="px-3 py-2">{p.productName || p.productId}</td>
                       <td className="px-3 py-2 text-right">{p.lastQuantity}</td>

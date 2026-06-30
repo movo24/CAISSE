@@ -4,6 +4,7 @@ import { stockApi } from '../services/api';
 import { useCurrentStoreId } from '../hooks/useCurrentStoreId';
 import { useAuthStore } from '../stores/authStore';
 import { parseCounts } from '../utils/parseCounts';
+import { onlyDiscrepancies } from '../utils/severity';
 
 /** centimes → "12,34 €" */
 function eur(minor: number): string {
@@ -30,6 +31,7 @@ export function InventoryVariancePage() {
   const [error, setError] = useState<string | null>(null);
   const [aligned, setAligned] = useState<Record<string, boolean>>({});
   const [aligning, setAligning] = useState<string | null>(null);
+  const [onlyGaps, setOnlyGaps] = useState(false);
 
   // POS-FE-162 — close the loop: align system stock to the physical count via the
   // audited manager-only adjust endpoint (absolute mode). Per-line + confirm only
@@ -110,11 +112,16 @@ export function InventoryVariancePage() {
             </div>
           )}
 
+          <label className="flex items-center gap-2 text-xs text-gray-600 mb-2 cursor-pointer">
+            <input type="checkbox" checked={onlyGaps} onChange={(e) => setOnlyGaps(e.target.checked)} />
+            Afficher les écarts seulement
+          </label>
+
           <div className="bg-white rounded-lg border overflow-hidden">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 text-left"><tr><th className="px-3 py-2">Produit</th><th className="px-3 py-2 text-right">Système</th><th className="px-3 py-2 text-right">Compté</th><th className="px-3 py-2 text-right">Écart</th><th className="px-3 py-2 text-right">Valeur</th><th className="px-3 py-2">Statut</th>{canAdjust && <th className="px-3 py-2">Action</th>}</tr></thead>
               <tbody>
-                {result.lines.map((l) => (
+                {(onlyGaps ? onlyDiscrepancies(result.lines) : result.lines).map((l) => (
                   <tr key={l.productId} className="border-t">
                     <td className="px-3 py-2">{l.name || l.ean}</td>
                     <td className="px-3 py-2 text-right">{l.systemQty}</td>

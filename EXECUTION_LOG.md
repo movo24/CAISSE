@@ -1560,3 +1560,9 @@ Prochains candidats : (1) build+vitest+e2e en CI Linux/Postgres (lever TD-FE-ROL
 - Preuve : YAML parse OK (10 steps, dont les 2 front) ; package.json racine parse OK + 3 scripts présents ; tous les scripts référencés par la CI existent.
 - Honnêteté : la CI n'est PAS exécutée ici (pas de push externe sans GO) — config validée localement ; les suites vitest tourneront au 1er push (sandbox = rollup natif absent, mais ubuntu-latest l'installe via npm).
 - Suite : P167 garde anti-régression de la config CI (test) + P168 helper sévérité, P169 docs, P170 audit.
+
+## PAQUET 167 — Tri par sévérité + filtre écarts (POS-FE-167)
+- Fichiers : `utils/severity.ts` (NOUVEAU, pur : `stockSeverityRank`, `sortByStockSeverity` non-mutant, `onlyDiscrepancies`) + `.test.ts` (vitest).
+- Câblage : Supervision → signaux stock triés rupture→bas→ok (`sortByStockSeverity`) ; Écart inventaire → case "Afficher les écarts seulement" (`onlyDiscrepancies`).
+- Preuve : `tsc --noEmit` EXIT 0 ; severity node 9/9 (vitest gated, lancé en CI depuis P166) ; importé dans 2 pages.
+- Suite : P168 hygiène/vérif, P169 docs CI + dette, P170 audit.
