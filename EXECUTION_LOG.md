@@ -1378,3 +1378,10 @@ VERDICT : ✅ SOLIDE.
 - Cohérence : exports CSV reliés (journal, cash-control, shifts) ; états vide/erreur lisibles ; relais admin-only.
 - Gate inchangé : vite build = TD-FE-ROLLUP-NATIVE (CI Linux). Preuve compile = tsc.
 - Bilan front (P140→144) : back-office passé de "ne compile pas" à 2 écrans intégration réels (Comptabilité, Supervision) + API client complet + audit UX propre.
+
+## PAQUET 145 — Audit front caisse (pos-desktop) (POS-FE-145)
+- Baseline `tsc --noEmit` pos-desktop EXIT 0 (compile).
+- Câblage flux caisse vérifié : vente (Idempotency-Key), paiements (cash/card/mixte/avoir/gift), annulation (void+Idempotency+rights.canVoid+offline), retour/avoir (/returns + /returns/by-ticket), offline/resync (useOfflineMode : enqueue, watcher réseau, sync manuel, bandeaux pending/conflict/sync%), alertes stock (StockAlertToast), garde-fous (SaleGuardsGate), PIN responsable (EmployeePinGate) → TOUS branchés.
+- TROU CRITIQUE : remise caisse manuelle — backend POS-054 (cap 30%, PIN responsable 21-30%, motif, audit) prêt mais AUCUNE UI (0 occurrence manualDiscountMinorUnits dans le renderer). Classé TD-FE-MANUAL-DISCOUNT → fix P146.
+- Livrable : POS_FRONT_AUDIT.md (table flux↔endpoints + trou).
+- Gate : vite build = TD-FE-ROLLUP-NATIVE.
