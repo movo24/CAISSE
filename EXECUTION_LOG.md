@@ -1305,3 +1305,11 @@ Preuves :
 Cohérence : aucune régression ; lacune auto-introduite P118 (stock.low absent sur adjustStock) détectée et corrigée P134 ; garde NF525 total vente (P131) et anti-IDOR routing complet (P132) branchés et testés.
 VERDICT : ✅ SOLIDE.
 Prochains blocs proposés : P136 audit sync offline (réplay/idempotence) ; P137 currency multi-ligne (précision) ; P138 coupon redemption edge ; P139 consolidation v9 ; P140 nouvel axe.
+
+## PAQUET 136 — Idempotence sync: rejet des ventes sans id (POS-INT-136)
+- Bug d'idempotence réel : `push` filtrait `(!s.id || !existing)` → une vente offline SANS id passait toujours et était ré-insérée à chaque replay → DOUBLON monétaire (viole NF525 idempotence).
+- Fix : `partitionPushSales` (pur) sépare withId / rejected ; le service n'insère/déduplique que les ventes AVEC id et signale les sans-id en conflit `rejected_no_id` (jamais insérées).
+- Fichiers : `sync/conflict.ts` (helper + SyncResolution +rejected_no_id), `sync/sync.service.ts` (wiring + union locale SyncConflict.resolution +rejected_no_id), `conflict.spec.ts` (+3 cas).
+- Constat honnête : correction d'un fix bug ; le TS a aussi attrapé un type local divergent (résolu).
+- Preuve tests : conflict + sync.service ⇒ 2 suites/12 PASS ; `tsc --noEmit` EXIT 0 ; `nest build` RC=0.
+- Cumul épic : 64 paquets (71→136).

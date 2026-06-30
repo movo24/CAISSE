@@ -5,7 +5,7 @@ import { SaleEntity } from '../../database/entities/sale.entity';
 import { ProductEntity } from '../../database/entities/product.entity';
 import { CustomerEntity } from '../../database/entities/customer.entity';
 import { AuditService } from '../audit/audit.service';
-import { resolveCustomerSync } from './conflict';
+import { resolveCustomerSync, partitionPushSales } from './conflict';
 
 // ---------------------------------------------------------------------------
 // Sync payload interfaces
@@ -36,7 +36,7 @@ export interface SyncConflict {
   field: string;
   localValue: unknown;
   serverValue: unknown;
-  resolution: 'server_wins' | 'client_wins' | 'manual';
+  resolution: 'server_wins' | 'client_wins' | 'manual' | 'rejected_no_id';
 }
 
 // ---------------------------------------------------------------------------
@@ -98,9 +98,21 @@ export class SyncService {
       // 1. Batch-deduplicate sales
       //    Collect all IDs, do ONE query to find existing, then bulk insert new ones
       if (payload.sales.length > 0) {
-        const saleIds = payload.sales
-          .map((s) => s.id)
-          .filter((id): id is string => !!id);
+        // POS-INT-136 — idempotency requires a client id. Sales without one cannot
+        // be deduped and would duplicate on replay → reject (report), never insert.
+        const { withId: idSales, rejected: noIdSales } = partitionPushSales(payload.sales);
+        for (const _ of noIdSales) {
+          conflicts.push({
+            entity: 'sale',
+            entityId: '',
+            field: 'id',
+            localValue: null,
+            serverValue: null,
+            resolution: 'rejected_no_id',
+          });
+        }
+
+        const saleIds = idSales.map((s) => s.id).filter((id): id is string => !!id);
 
         const existingIds = new Set<string>();
         if (saleIds.length > 0) {
@@ -111,8 +123,8 @@ export class SyncService {
           existing.forEach((e) => existingIds.add(e.id));
         }
 
-        const newSales = payload.sales.filter(
-          (s) => !s.id || !existingIds.has(s.id),
+        const newSales = idSales.filter(
+          (s) => !existingIds.has(s.id as string),
         );
         if (newSales.length > 0) {
           // Batch insert in chunks of 100 to avoid hitting param limits

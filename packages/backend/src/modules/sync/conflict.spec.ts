@@ -1,7 +1,26 @@
-import { isServerNewerThanSync, resolveCustomerSync } from './conflict';
+import { isServerNewerThanSync, resolveCustomerSync, partitionPushSales } from './conflict';
 
 describe('POS-049/086 sync conflict', () => {
   const lastSync = '2026-06-28T10:00:00Z';
+
+  describe('partitionPushSales (POS-INT-136 idempotency)', () => {
+    it('separates sales with id from id-less ones', () => {
+      const r = partitionPushSales([
+        { id: 'a', x: 1 }, { id: '', x: 2 }, { x: 3 } as any, { id: 'b', x: 4 }, { id: null, x: 5 } as any,
+      ]);
+      expect(r.withId.map((s: any) => s.x)).toEqual([1, 4]);
+      expect(r.rejected.map((s: any) => s.x)).toEqual([2, 3, 5]);
+    });
+    it('empty / nullish input → empty partitions', () => {
+      expect(partitionPushSales([])).toEqual({ withId: [], rejected: [] });
+      expect(partitionPushSales(undefined as any)).toEqual({ withId: [], rejected: [] });
+    });
+    it('all valid ids → none rejected (idempotent replay possible)', () => {
+      const r = partitionPushSales([{ id: 'x' }, { id: 'y' }]);
+      expect(r.rejected).toHaveLength(0);
+      expect(r.withId).toHaveLength(2);
+    });
+  });
 
   describe('isServerNewerThanSync', () => {
     it('true when server updated after lastSync', () => {

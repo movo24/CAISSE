@@ -6,7 +6,7 @@
  * the server wins (a conflict is reported and the incoming value is NOT saved). Otherwise the
  * incoming record is accepted. This is last-write-wins biased to the server for safety.
  */
-export type SyncResolution = 'server_wins';
+export type SyncResolution = 'server_wins' | 'rejected_no_id';
 
 export interface SyncConflict {
   entity: string;
@@ -15,6 +15,27 @@ export interface SyncConflict {
   localValue: unknown;
   serverValue: unknown;
   resolution: SyncResolution;
+}
+
+/**
+ * POS-INT-136 — offline-sale idempotency partition.
+ *
+ * A re-pushed offline batch must NEVER create a second sale (NF525 idempotency).
+ * Dedup is by client-generated `id`; a sale WITHOUT an id cannot be deduped, so
+ * on replay it would be inserted again → a duplicate (money) row. We therefore
+ * reject id-less sales rather than insert them. Pure; the caller persists only
+ * `withId` and reports `rejected`.
+ */
+export function partitionPushSales<T extends { id?: string | null }>(
+  sales: readonly T[],
+): { withId: T[]; rejected: T[] } {
+  const withId: T[] = [];
+  const rejected: T[] = [];
+  for (const s of sales ?? []) {
+    if (s && typeof s.id === 'string' && s.id.length > 0) withId.push(s);
+    else rejected.push(s);
+  }
+  return { withId, rejected };
 }
 
 /** True when the server record is newer than the client's last sync point. */
