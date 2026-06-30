@@ -1226,3 +1226,12 @@ Décisions produit tranchées par l'utilisateur. 5 blocs enchaînés.
 - Correction prouvée : les 2 suites `.pg` se SKIPPENT proprement sans `TEST_DATABASE_URL` (mesuré : 2 skipped / 3 tests skipped) — CI sans Postgres = verte avec skips, jamais rouge. (Le binaire bcrypt mické permet leur chargement → skip propre au lieu d'échec ELF.)
 - Preuve : `jest test/*.pg.spec.ts` ⇒ 2 suites skipped, 3 tests skipped.
 - Cumul épic : 56 paquets (71→126).
+
+## PAQUET 127 — Fix fuite d'arrondi remboursement partiel (POS-INT-127)
+- Bug fiscal réel : `computeLineRefund = round(lineTotal·req/soldQty)` → retours partiels successifs d'une ligne pouvaient sommer ≠ total ligne (ex. 1000 qté3 en 3×1 → 333×3=999, 1 centime non remboursé).
+- Fix : arrondi CUMULATIF — refund batch = round(total·(prev+req)/sold) − round(total·prev/sold), `prev`=unités déjà retournées. Σ sur ligne entièrement retournée = total exact, quel que soit le découpage/ordre. Rétro-compatible (prev=0 + retour unique = ancienne valeur ; retour plein = total).
+- Fichiers : `returns/returns-policy.ts` (signature +alreadyReturnedQty=0, logique cumulative), `returns.service.ts` (passe `alreadyReturned[li.id]||0`), `returns-policy.spec.ts` (+4 cas : 3×1=1000, tous découpages de qté7=total, back-compat, partiels bornés).
+- Preuve tests : returns-policy ⇒ 11 PASS ; non-régression returns.service+refund-events ⇒ 2 suites/21 PASS.
+- Preuve typecheck/build : `tsc --noEmit` EXIT 0 ; `nest build` RC=0.
+- Conformité NF525/comptable : un avoir total sur une ligne rembourse désormais exactement le net payé (pas de fuite centime).
+- Cumul épic : 57 paquets (71→127).

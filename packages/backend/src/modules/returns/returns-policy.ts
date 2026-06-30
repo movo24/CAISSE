@@ -15,13 +15,22 @@ export function returnableQuantity(soldQty: number, alreadyReturned: number): nu
 
 /**
  * Refund for `requestedQty` units of a line, proportional to its NET total.
- * Rounded to the nearest cent (matches the original inline behavior).
+ *
+ * POS-INT-127 — uses CUMULATIVE rounding so that, no matter how a line is split
+ * across several partial returns, the sum of all refunds for a fully-returned
+ * line equals its line total EXACTLY (no lost/over-refunded centime). The refund
+ * of a batch is `round(total·(prev+req)/sold) − round(total·prev/sold)` where
+ * `prev` = units already returned. Back-compatible: with `prev=0` and a single
+ * return this equals the previous `round(total·req/sold)`, and a full return
+ * (`req=sold`) yields exactly the line total.
  */
 export function computeLineRefund(
   lineTotalMinorUnits: number,
   requestedQty: number,
   soldQty: number,
+  alreadyReturnedQty = 0,
 ): number {
   if (soldQty <= 0) return 0;
-  return Math.round((lineTotalMinorUnits * requestedQty) / soldQty);
+  const cum = (n: number) => Math.round((lineTotalMinorUnits * n) / soldQty);
+  return cum(alreadyReturnedQty + requestedQty) - cum(alreadyReturnedQty);
 }

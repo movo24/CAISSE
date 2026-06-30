@@ -129,7 +129,14 @@ export class ReturnsService {
           `Quantité retournée (${item.quantity}) dépasse le retournable (${remaining}) pour ${li.productName}`,
         );
       }
-      const lineRefund = computeLineRefund(li.lineTotalMinorUnits, item.quantity, li.quantity);
+      // POS-INT-127 — cumulative rounding: pass units already returned so the
+      // sum of partial refunds for a fully-returned line equals its total exactly.
+      const lineRefund = computeLineRefund(
+        li.lineTotalMinorUnits,
+        item.quantity,
+        li.quantity,
+        alreadyReturned[li.id] || 0,
+      );
       total += lineRefund;
       returnLines.push({
         originalLineItemId: li.id,
