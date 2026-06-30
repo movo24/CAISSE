@@ -31,6 +31,7 @@ import { TicketHistoryModal } from '../components/pos/TicketHistoryModal';
 import { ReturnModal } from '../components/pos/ReturnModal';
 import { AvoirTenderModal } from '../components/pos/AvoirTenderModal';
 import { DiscountModal } from '../components/pos/DiscountModal';
+import { manualDiscountGuard } from '../lib/manual-discount-guard';
 import { peripheralBridge } from '../services/peripheralBridge';
 import { useCloudSyncStore } from '../services/cloudSyncIdentity';
 import { Wifi, WifiOff, CloudOff, Cloud, RefreshCw as SyncIcon, ShieldAlert, Upload, Lock as LockIcon } from 'lucide-react';
@@ -684,6 +685,18 @@ export function POSPage() {
       ? payments[0].method
       : 'mixed';
 
+    // POS-FE-159 — defense in depth: a manual discount requires server PIN
+    // verification; refuse to finalize it offline (e.g. discount set online, then
+    // connection dropped before checkout). The cashier must remove it or wait.
+    if (store.manualDiscount) {
+      const dg = manualDiscountGuard({ isOffline: offlineMode.isOffline });
+      if (!dg.allowed) {
+        setProcessing(false);
+        setError(dg.reason!);
+        return;
+      }
+    }
+
     let ticketNumber = '';
 
     try {
@@ -1168,13 +1181,23 @@ export function POSPage() {
                 <span>Remise</span><span className="font-medium">-{formatPrice(store.totalDiscount())}</span>
               </div>
             )}
-            <button
-              onClick={() => setDiscountModalOpen(true)}
-              disabled={store.cartItems.length === 0}
-              className="w-full text-xs rounded-lg border border-indigo-200 text-indigo-700 hover:bg-indigo-50 py-1.5 disabled:opacity-40"
-            >
-              {store.manualDiscount ? `Remise responsable : -${formatPrice(store.manualDiscount.amountMinorUnits)} (modifier)` : 'Remise responsable'}
-            </button>
+            {(() => {
+              const dg = manualDiscountGuard({ isOffline: offlineMode.isOffline });
+              return (
+                <button
+                  onClick={() => { if (dg.allowed) setDiscountModalOpen(true); else setError(dg.reason!); }}
+                  disabled={store.cartItems.length === 0 || !dg.allowed}
+                  title={dg.allowed ? undefined : dg.reason}
+                  className="w-full text-xs rounded-lg border border-indigo-200 text-indigo-700 hover:bg-indigo-50 py-1.5 disabled:opacity-40"
+                >
+                  {!dg.allowed
+                    ? 'Remise responsable (hors-ligne indisponible)'
+                    : store.manualDiscount
+                      ? `Remise responsable : -${formatPrice(store.manualDiscount.amountMinorUnits)} (modifier)`
+                      : 'Remise responsable'}
+                </button>
+              );
+            })()}
             <div className="h-px bg-pos-border/40" />
             <div className="flex justify-between items-end">
               <span className="text-pos-muted text-sm font-medium">Total</span>

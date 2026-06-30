@@ -1491,3 +1491,9 @@ Preuves cumulées : backend tsc EXIT 0, back-office tsc EXIT 0, jest stock 6/37,
 Réserve honnête unique : build/vitest front = CI Linux (TD-FE-ROLLUP-NATIVE) ; substitut node fourni.
 
 VERDICT : ✅ SOLIDE. Dette TD-FRONT-INVENTORY-VARIANCE résolue. Prochains 5 candidats : (1) build+vitest front en CI Linux (lever TD-FE-ROLLUP-NATIVE), (2) arbitrage TD-FE-OFFLINE-DISCOUNT (remise hors-ligne), (3) export écart→ajustement assisté (avec garde manager), (4) e2e .pg en CI Postgres, (5) polish supervision (filtres/seuils).
+
+## PAQUET 159 — Arbitrage remise responsable HORS-LIGNE (TD-FE-OFFLINE-DISCOUNT)
+- Décision : la remise responsable exige une vérif PIN serveur (back 400 si invalide) ; hors-ligne le PIN est invérifiable et la vente devient validée+immuable (NF525) avant tout resync → autorisation invérifiable gravée dans la chaîne. Arbitrage cohérent avec QR/wallet (déjà Internet-only) : **BLOQUER la remise hors-ligne**.
+- Fichiers : `renderer/lib/manual-discount-guard.ts` (NOUVEAU, pur `manualDiscountGuard({isOffline})→{allowed,reason}`) + `.test.ts` ; `pages/POSPage.tsx` (bouton désactivé + libellé "hors-ligne indisponible" + message si clic ; garde défensive avant `salesApi.create` si remise présente + offline → refus explicite, pas de fallback silencieux).
+- Preuve : `tsc --noEmit` pos-desktop EXIT 0 ; helper node 4/4 (vitest gated TD-FE-ROLLUP-NATIVE) ; câblage : import 1×, guard appelé 2× (bouton + vente).
+- Suite : P160 docs (résoudre TD-FE-OFFLINE-DISCOUNT) ; P161 audit+verdict.
