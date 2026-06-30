@@ -1477,3 +1477,9 @@ Exécution chunkée (budget sandbox), partition vérifiée sans chevauchement (1
 - Les 2 suites skip = `*.pg.spec` (vrai Postgres) auto-skip sans `TEST_DATABASE_URL` (gate honnête documenté TESTING.md).
 - Conclusion : ajout `stock-variance` + `computeVariance` + endpoint = **zéro régression** sur l'ensemble du backend (bcrypt mock + Redis off actifs).
 - Suite : P157 consolidation docs (PROJECT_STATUS v9, TECHNICAL_DEBT, compteurs).
+
+## PAQUET 157 — Consolidation docs (statut + dette)
+- `PROJECT_STATUS.md` : ajout axe interfaces front/back (140→155), TD-FRONT-INVENTORY-VARIANCE marqué RÉSOLU, agrégat P156 (151/2 ; 1059/3), TD-FE-ROLLUP-NATIVE listé.
+- `TECHNICAL_DEBT.md` : ligne TD-FRONT-INVENTORY-VARIANCE = ✅ RÉSOLU (preuve commits) ; ligne TD-FE-ROLLUP-NATIVE = Ouvert (CI Linux).
+- Cohérence : dette résolue retirée de l'app (openDebts P154) ET marquée résolue dans la doc → pas de divergence app/doc.
+- Suite : P158 jalon + verdict + present_files.
