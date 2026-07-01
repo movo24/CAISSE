@@ -75,6 +75,15 @@ Ces points datent d'avril 2026 ; plusieurs commits fiscaux/correctifs ont suivi.
 Voir `POS_BLOCKS.md` → premier paquet (PAQUET 1). Détail d'exécution dans `EXECUTION_LOG.md`.
 
 ---
+## État consolidé — 2026-07-01 (jalon PAQUET 271, v18 — session autonome, pg-mem haute fidélité)
+
+- **P271** `outbox-query.service.pgmem.spec` (4) — exécuté contre un **vrai Postgres en mémoire (pg-mem)** via le harness `test/helpers/pgmem.ts`, donc le **query builder keyset réel** est prouvé (pas mocké) : scope tenant (store), filtre de type, pagination curseur `occurredAt|id` (reprise stricte sans perte/doublon), stats groupées par statut/type. Consumer feed Analytik R = `GET /api/integration/events`.
+
+**Non-régression :** slice integration **73 tests verts (10 suites)** ; `tsc --noEmit` EXIT 0. Spec uniquement (harness pg-mem existant réutilisé).
+
+**Compteurs (honnêtes) :** backend 187 → **188 suites**, **+4 tests** (~1270 → ~1274). Cumul session autonome (v12→v18) : **+14 suites, +80 tests**. Méthode pg-mem ouverte pour les prochains services query-heavy (product-analytics, etc.). ⚠️ Suite complète non re-jouée bout-en-bout (cap 45 s).
+
+---
 ## État consolidé — 2026-07-01 (jalon PAQUET 270, v17 — session autonome suite)
 
 - **P270** `comptamax.service.spec` (3) — contrat de requête du modèle de lecture comptable : `buildDayJournal`/`buildJournalRange`/`buildCashControl` interrogent bien le magasin + la plage jour/période + le filtre de types d'events attendus ; journal vide pour 0 event ; comptage Z-report + paiements capturés. Les maths comptables restent couvertes par les specs helpers purs (journal/cash-control).
