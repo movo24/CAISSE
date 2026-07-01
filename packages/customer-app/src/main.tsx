@@ -9,10 +9,12 @@ import { LoyaltyCardPage } from './pages/LoyaltyCardPage';
 import { RewardsPage } from './pages/RewardsPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { AuthGate } from './components/AuthGate';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import './styles/globals.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
+    <ErrorBoundary>
     {/* SVG gradient definition for icon strokes */}
     <svg width="0" height="0" style={{ position: 'absolute' }}>
       <defs>
@@ -40,5 +42,6 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         </Route>
       </Routes>
     </HashRouter>
+    </ErrorBoundary>
   </React.StrictMode>,
 );
