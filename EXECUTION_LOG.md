@@ -1985,3 +1985,9 @@ Livrables reprise : scripts/preflight.sh, OUTBOX_RELAY_KIT.md, EXTERNAL_GATES_RU
 - `.github/workflows/ci.yml` : step "Resume preflight" (`npm run preflight`) ajouté avant lint → la CI échoue tôt si une var env est lue non documentée ou si un doc de reprise manque.
 - Preuve : YAML parse OK, step présent.
 - Suite : P222 .env.example back-office + check front dans preflight.
+
+## PAQUET 222 — .env.example back-office + check front dans preflight
+- `packages/backoffice-web/.env.example` (NOUVEAU) : `VITE_API_URL` documentée (placeholder) — comble le trou de reprise (back-office n'en avait pas).
+- `scripts/preflight.sh` §2bis : vérifie la complétude `.env.example` front (VITE_* lues vs documentées) pour backoffice-web ET pos-desktop ; FAIL si var lue non documentée ou .env.example absent alors que des VITE_* sont lues.
+- Preuve : `preflight` → front env backoffice-web PASS, pos-desktop PASS, OVERALL PASS.
+- Suite : P223 doc front env (RESUME_CHECKLIST), P224 consolidation, P225 audit.

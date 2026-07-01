@@ -25,6 +25,21 @@ for k in DATABASE_URL JWT_SECRET JWT_REFRESH_SECRET NODE_ENV; do
 done
 [ "$fails" -eq 0 ] && line "required keys documented" "PASS"
 
+# 2bis. Front .env.example completeness (VITE_* read vs documented), both packages
+for pkg in backoffice-web pos-desktop; do
+  fdir="$ROOT/packages/$pkg"
+  fused=$(grep -rhoE "import\.meta\.env\.(VITE_[A-Z0-9_]+)" "$fdir/src" --include="*.ts" --include="*.tsx" 2>/dev/null | sed -E 's/import\.meta\.env\.//' | sort -u)
+  if [ -f "$fdir/.env.example" ]; then
+    fdoc=$(grep -oE "^[A-Z0-9_]+=" "$fdir/.env.example" | sed 's/=//' | sort -u)
+    fmiss=$(comm -23 <(echo "$fused") <(echo "$fdoc") | grep -v '^$')
+    if [ -z "$fmiss" ]; then line "front env $pkg" "PASS"; else line "front env $pkg" "FAIL ($(echo "$fmiss" | tr '\n' ' '))"; fails=$((fails+1)); fi
+  elif [ -n "$fused" ]; then
+    line "front env $pkg" "FAIL (.env.example absent, VITE_* lues)"; fails=$((fails+1))
+  else
+    line "front env $pkg" "PASS (aucune VITE_*)"
+  fi
+done
+
 # 3. Key resume/gate docs present
 for d in OUTBOX_RELAY_KIT.md EXTERNAL_GATES_RUNBOOK.md RESUME_CHECKLIST.md; do
   [ -f "$ROOT/$d" ] && line "doc $d" "PASS" || { line "doc $d" "WARN (absent)"; warns=$((warns+1)); }
