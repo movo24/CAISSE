@@ -61,7 +61,7 @@ function Trend({ pct }: { pct: number | null }) {
   );
 }
 
-function CaCompareCard({ label, base, today }: { label: string; base: Baseline; today: number }) {
+function CaCompareCard({ label, base }: { label: string; base: Baseline }) {
   const up = (base.deltaPct ?? 0) >= 0;
   return (
     <div className="bg-gray-50 rounded-xl p-3">
@@ -123,10 +123,10 @@ export function ProductPerformancePage() {
               <div className="text-lg font-bold">{eur(trend.comparisons.today.caMinorUnits)}</div>
               <div className="text-[10px] opacity-70">journée partielle vs jours complets</div>
             </div>
-            <CaCompareCard label="vs hier (J-1)" base={trend.comparisons.jMinus1} today={trend.comparisons.today.caMinorUnits} />
-            <CaCompareCard label="vs S-1" base={trend.comparisons.sMinus1} today={trend.comparisons.today.caMinorUnits} />
-            <CaCompareCard label="vs M-1" base={trend.comparisons.mMinus1} today={trend.comparisons.today.caMinorUnits} />
-            <CaCompareCard label="vs N-1" base={trend.comparisons.nMinus1} today={trend.comparisons.today.caMinorUnits} />
+            <CaCompareCard label="vs hier (J-1)" base={trend.comparisons.jMinus1} />
+            <CaCompareCard label="vs S-1" base={trend.comparisons.sMinus1} />
+            <CaCompareCard label="vs M-1" base={trend.comparisons.mMinus1} />
+            <CaCompareCard label="vs N-1" base={trend.comparisons.nMinus1} />
             <div className="bg-emerald-50 rounded-xl p-3 border border-emerald-100">
               <div className="text-[11px] text-emerald-700">Prévision demain</div>
               <div className="text-lg font-bold text-emerald-800">{eur(trend.forecast.predictedMinorUnits)}</div>

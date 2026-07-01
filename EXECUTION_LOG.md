@@ -1682,3 +1682,11 @@ Prochains (nécessitent accès/décision hors sandbox) : (1) OUTBOX_PUBLISH_URL+
 
 VERDICT : ✅ SOLIDE — un stub mort de moins ; caisse cockpit sans champ trompeur. Autres "placeholders" détectés = inputs légitimes ou dettes infra déjà trackées.
 Reste : 3 gates infra (TD-INT-RELAY secrets, MIGRATION-1725 base, TD-INT-SOCIAL-ENTRIES décision). Proposition future non-gated : câbler réellement "CA vs hier" au cockpit depuis l'endpoint reports existant (feature front complète).
+
+## PAQUET 182 — Hygiène prop morte + constat "vs hier" déjà branché
+- Constat : la feature "CA vs hier" existe DÉJÀ proprement en back-office (`ProductPerformancePage` : cartes vs J-1/S-1/M-1/N-1 via endpoint `reports/sales-trend`, `deltaPct` calculé serveur). Comparaison honnête (journée partielle vs jours complets, étiquetée). → Mon retrait du stub cockpit (P181) était le bon geste ; rien à re-câbler.
+- Fix hygiène : prop `today` de `CaCompareCard` passée aux 4 appels mais JAMAIS utilisée (le delta vient du serveur) → retirée (signature + 4 appels).
+- Preuve : `tsc --noEmit` back-office EXIT 0 ; vitest back-office 5 fichiers / **19 tests PASS** (0 régression).
+
+VERDICT : ✅ SOLIDE — code front encore plus propre (prop morte éliminée), feature de comparaison confirmée déjà opérationnelle au bon endroit. Aucune nouvelle dette.
+Reste inchangé : 3 gates infra (secret relais / base migration / décision compta) — seuls axes nécessitant un accès ou une décision externe.
