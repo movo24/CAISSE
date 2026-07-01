@@ -75,6 +75,22 @@ Ces points datent d'avril 2026 ; plusieurs commits fiscaux/correctifs ont suivi.
 Voir `POS_BLOCKS.md` → premier paquet (PAQUET 1). Détail d'exécution dans `EXECUTION_LOG.md`.
 
 ---
+## État consolidé — 2026-07-01 (jalon PAQUET 257→261, v12 — session autonome, couverture services)
+
+Session autonome (méthode : additif, prouvé, réversible ; zéro gate franchie).
+
+**Livré & prouvé (jest + tsc) :**
+- **P257** `loyalty-card.service.spec` (12) — createCard idempotent, gate statut actif sur les vues (403), rotation QR, suspend, `resolveToken` (malformé/inconnu/inactif → 403 ; succès après vérif HMAC).
+- **P258** `inventory-scan.service.spec` (7) — validation magasin + store_code, **idempotence offline** (replay clientEntryId), matched vs new, early-return apply sans transaction, roll-up stats session.
+- **P259** `reconciliation.service.spec` (3) — **dégradation gracieuse** POS↔TimeWin (TimeWin injoignable → `timewinReachable=false`, résultat POS-only, ne bloque jamais la caisse) + scope employeeId ; `jackpot.service.spec` (6) — config CRUD (lookup actif-only, not-found/forbidden, storeId/id immuables) + comptes du jour.
+
+**Non-régression :** slice loyalty-card/inventory-scan/jackpot/integration/customers/coupon **155 tests verts (21 suites)** ; `tsc --noEmit` EXIT 0. Aucun code métier modifié (specs uniquement) → DI/build inchangés.
+
+**Compteurs (honnêtes) :** backend 174 → **178 suites** (+loyalty-card, +inventory-scan, +reconciliation, +jackpot), **+28 tests** (~1194 → ~1222, 2 `.pg` skip inchangés). ⚠️ Suite complète non re-jouée bout-en-bout (cap 45 s).
+
+**Gates restantes : inchangées** (voir `GATES_READINESS.md`).
+
+---
 ## État consolidé — 2026-07-01 (jalon PAQUET 252→256, v11 — couverture services CRUD)
 
 Suite directe de v10 : on ferme des trous de couverture « services sans spec colocée » (audit P252).
