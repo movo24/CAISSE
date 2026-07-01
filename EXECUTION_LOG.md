@@ -1645,3 +1645,9 @@ Prochains candidats (tous nécessitent accès/décision) : (1) fournir OUTBOX_PU
 - Preuve : `jest migration-1725-outbox.spec.ts` ⇒ 1 suite / **3 tests PASS**.
 - Statut MIGRATION-1725 : SQL prouvé bien formé + schéma conforme ; reste gated sur base cible réelle (Neon, hors sandbox non-root).
 - Suite : P177 non-régression, P178 docs, P179/180 audit.
+
+## PAQUET 177 — Parité entité ↔ migration integration_events (anti-drift)
+- Comparaison colonnes : migration 1725 (17) vs `integration-event.entity.ts`.
+- 16 colonnes matchées via `name:` ; la 17e (`id`) = `@PrimaryColumn({type:'uuid'})` (nom par défaut `id`, non capté par le grep name:) → présente des 2 côtés.
+- Résultat : **0 drift** — schéma migration == schéma entité. Le test pg-mem (P176) + le test loopback (P171) + cette parité couvrent l'outbox de bout en bout (schéma, persistance défauts, livraison signée).
+- Suite : P178 docs, P179 non-régression test/, P180 audit+verdict.
