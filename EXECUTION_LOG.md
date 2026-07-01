@@ -2158,3 +2158,15 @@ VERDICT : ✅ SOLIDE — les 6 risques hérités d'avril 2026 sont re-vérifiés
 - `STATE_INDEX.md` (NOUVEAU) : % de finition par couche, index des 44 modules (statut/routes/tests/risque), connexion API interne (0 orphelin), sources externes (météo OpenWeather/transport PRIM = connecteurs réels gated clé ; Météo-France/France Mobilités national/jours fériés = ABSENTS), Analytik R (PREP seulement : outbox + API pull + relais simulation, aucun lien live), carte des connexions, preuves, verdict + 10 blocs prioritaires.
 - Faits clés honnêtes : relais = SimulationOutboxPublisher (aucun envoi réel) ; migration 1725 non jouée cible ; Comptamax = exports CSV locaux (push gated) ; TimeWin = client HTTP réel gated ; PDF reçu = absent (HTML seulement).
 - Aucun secret dans le document (placeholders/noms uniquement).
+
+## RACCORD P247→P271 (sessions autonomes 2026-07-01)
+Ces paquets ont été journalisés dans `PROJECT_STATUS.md` (v10→v18) et non ici. Résumé :
+- P247 CRUD specs connected-apps/terminals (18 tests) · P248 reçu PDF endpoint (`GET /api/receipts/:saleId/pdf`) · P249 contrat consommateur Analytik R (15 tests) · P250 durcissement mobile/customer-app · P251 e2e Playwright scaffold + CI list.
+- P252→P271 : couverture services DI-mockés + pg-mem haute fidélité (outbox-query keyset réel, comptamax query contract, loyalty-token HMAC, external-context fail-safe, mobile-auth, stripe-billing guards…). Cumul : 167 → **188 suites**, ~1128 → **~1274 tests**.
+- Preuves par paquet : sections « État consolidé » v10→v18 de PROJECT_STATUS.md. Commits dans le bundle (tip `579851c`).
+
+## PAQUET 272 — Reprise Fab 5 (2026-07-02) : git réparé + re-preuve globale bout-en-bout
+- Locks git résiduels supprimés (déblocage définitif des refs) ; historique P271 restauré du bundle dans le dépôt (`recovery/pos-audit-session`), HEAD basculé sans toucher au working tree ; symlinks node_modules dé-trackés (`28f57d9`).
+- Suite backend COMPLÈTE rejouée en 5 tranches : **188 suites PASS/2 skip · 1274 tests PASS/3 skip · 0 échec**. Front vitest 14 fichiers/59 tests PASS. `tsc --noEmit` EXIT 0 · `nest build` RC 0 · `test:security` 10/34 PASS.
+- Invariant remises re-vérifié conforme (cap 30 % pos, justif 21–30 %, responsable, back-office admin ≤100 %).
+- Interdits respectés : zéro push, zéro secret, zéro prod, zéro migration cible, zéro suppression irréversible (hors fichiers *.lock vides).

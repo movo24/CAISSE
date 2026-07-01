@@ -75,6 +75,18 @@ Ces points datent d'avril 2026 ; plusieurs commits fiscaux/correctifs ont suivi.
 Voir `POS_BLOCKS.md` → premier paquet (PAQUET 1). Détail d'exécution dans `EXECUTION_LOG.md`.
 
 ---
+## État consolidé — 2026-07-02 (jalon PAQUET 272, v19 — reprise Fab 5 : git réparé + re-preuve globale)
+
+- **Git réparé (définitif)** : les locks résiduels `.git/HEAD.lock`/`index.lock` (28 juin, FUSE) ont pu être supprimés cette session → refs de nouveau inscriptibles. Historique complet restauré depuis `pos-recovery.bundle` : branche **`recovery/pos-audit-session`** fetchée (P271 = `579851c`), HEAD basculé dessus **sans modifier le working tree** (diff tree vs bundle tip = 0). Les 4 symlinks `node_modules` trackés par accident retirés de l'index (`28f57d9`). Les commits ne dépendent plus du bundle ; le bundle reste comme filet tant qu'aucun push n'est autorisé.
+- **Re-preuve globale bout-en-bout** (la v18 admettait ne pas l'avoir rejouée) — suite backend COMPLÈTE exécutée en 5 tranches (`jest --maxWorkers=2`, 190 fichiers) :
+  **188 suites PASS / 2 skip (.pg) — 1274 tests PASS / 3 skip — 0 échec.**
+  Front : back-office 6 fichiers/23 tests, pos-desktop 5/23, mobile 3/13 — **14 fichiers / 59 tests PASS**. `tsc --noEmit` backend EXIT 0 · `nest build` RC 0 · `test:security` 10 suites/34 tests PASS.
+- **Invariant remises re-vérifié** : `sales/discount-policy.ts` = plafond dur 30 % canal `pos` (jamais contournable), justification obligatoire 21–30 %, code responsable obligatoire, back-office ≤ 100 % admin+motif — conforme aux règles produit, specs dédiées vertes (policy + edge + totals).
+- Traçabilité rattrapée : `EXECUTION_LOG.md` couvrait P246 alors que le code était à P271 → entrée de raccord ajoutée (P247→P271 documentés dans PROJECT_STATUS v10→v18) + entrée P272.
+
+**Gates restantes (inchangées)** : TD-INT-RELAY (secrets), MIGRATION-1725 (DB cible + GO), TD-INT-SOCIAL-ENTRIES (décision comptable), runtime DB/e2e run/Capacitor.
+
+---
 ## État consolidé — 2026-07-01 (jalon PAQUET 271, v18 — session autonome, pg-mem haute fidélité)
 
 - **P271** `outbox-query.service.pgmem.spec` (4) — exécuté contre un **vrai Postgres en mémoire (pg-mem)** via le harness `test/helpers/pgmem.ts`, donc le **query builder keyset réel** est prouvé (pas mocké) : scope tenant (store), filtre de type, pagination curseur `occurredAt|id` (reprise stricte sans perte/doublon), stats groupées par statut/type. Consumer feed Analytik R = `GET /api/integration/events`.
