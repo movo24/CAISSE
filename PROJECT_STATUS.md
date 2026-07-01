@@ -75,6 +75,16 @@ Ces points datent d'avril 2026 ; plusieurs commits fiscaux/correctifs ont suivi.
 Voir `POS_BLOCKS.md` → premier paquet (PAQUET 1). Détail d'exécution dans `EXECUTION_LOG.md`.
 
 ---
+## État consolidé — 2026-07-01 (jalon PAQUET 264→265, v14 — session autonome suite)
+
+- **P264** `subscriptions.service.spec` (12) — cycle de vie + **enforcement des limites de plan** : une seule souscription/magasin, plan inconnu rejeté, double-annulation refusée, limite produits (bypass illimité / sous limite / dépassement→403), gate feature, lecture not-found. Denial/limite pures = `subscription-policy.spec`.
+- **P265** `ai-learning.service.spec` (4) — boucle d'apprentissage reco : tracking display/click/add-to-cart/conversion, agrégation performance (compteurs + CA), blacklist fail-open sans historique.
+
+**Non-régression :** slice subscriptions/sales-ai **55 tests verts (7 suites)** ; `tsc --noEmit` EXIT 0. Specs uniquement.
+
+**Compteurs (honnêtes) :** backend 180 → **182 suites**, **+16 tests** (~1231 → ~1247). Cumul session autonome (v12→v14) : **+8 suites, +53 tests** (loyalty-card, inventory-scan, reconciliation, jackpot, customer-visits, notifications, subscriptions, ai-learning). ⚠️ Suite complète non re-jouée bout-en-bout (cap 45 s).
+
+---
 ## État consolidé — 2026-07-01 (jalon PAQUET 262→263, v13 — session autonome suite)
 
 - **P262** `customer-visits.service.spec` (6) — anti-doublon scan 5 min (early-return sans transaction), insert transactionnel + bump `visit_count`, lecture fréquence sécurisée (not-found → 404, cross-store non-admin → 403).
