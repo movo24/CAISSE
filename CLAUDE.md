@@ -24,7 +24,8 @@ npm run docker:down      # Stop local PostgreSQL
 
 # Testing (always run before committing)
 npm run test             # All workspaces
-npm run test:backend     # Backend only (405 tests, 49 spec files)
+npm run test:backend     # Backend only (~1080 tests / 155 suites PASS; +2 .pg suites skip without TEST_DATABASE_URL)
+npm run test:front       # Front vitest (backoffice + pos-desktop): 46 tests / 11 files
 
 # Code quality
 npm run lint             # ESLint (all workspaces)
@@ -306,7 +307,7 @@ Validated at boot in `main.ts`. Missing required vars crash the server with a cl
 
 ## Tests
 
-~488 test cases across 66 spec files (`packages/backend/test/` + colocated `*.spec.ts`). Key suites:
+~1080 tests PASS across 155 spec suites (157 files; 2 `.pg.spec` skip without `TEST_DATABASE_URL`) in `packages/backend/test/` + colocated `*.spec.ts`. Key suites:
 
 | File | Coverage |
 |------|----------|

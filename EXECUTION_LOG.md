@@ -1841,3 +1841,8 @@ Bilan hygiène/couverture cumulé (183→199) : mobile-auth JWT testé, airtable
 ## PAQUET 203 — Rafraîchir PROJECT_STATUS (chiffres autoritaires v9)
 - État consolidé mis à jour au jalon PAQUET 202 : backend 155/2 skip (157) · 1080/3 skip ; front vitest 11 fichiers/46 tests + 2 builds verts ; gate rollup levé ; CI décrite. Ancien état v8 (150/1047) conservé en "Historique".
 - Suite : P204 rafraîchir CLAUDE.md (compteurs périmés), P205 audit jalon + verdict.
+
+## PAQUET 204 — Rafraîchir compteurs CLAUDE.md
+- Commande test:backend : "405 tests, 49 spec files" → "~1080 tests / 155 suites PASS (+2 .pg skip)" ; ajout ligne `test:front` (46 tests/11 fichiers).
+- Section Tests : "~488 test cases across 66 spec files" → "~1080 tests PASS across 155 suites (157 files; 2 .pg skip)".
+- Suite : P205 audit jalon 201→204 + verdict.
