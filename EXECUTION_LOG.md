@@ -1748,3 +1748,14 @@ Partition (115 modules + 42 hors-modules = 157 = `jest --listTests`) :
 ## PAQUET 190 — Doc TESTING (connecteur Airtable) + total corrigé
 - `TESTING.md` : section "Sécurité connecteur Airtable" (invariant prix/stock=high) ; total corrigé 155/1080.
 - Suite : P191 audit de contrôle 188→190 + verdict.
+
+## PAQUET 191 — AUDIT DE CONTRÔLE 188→190 (Règle 3)
+Preuves :
+- git : arbre propre, commits 6196b55/e6151ee/1847687.
+- Anti-code-mort : `productToAirtable` appelé 1× + `airtableToProductOperations` appelé 1× par `airtable-ops.sync.service.ts` → le mapper testé est réellement utilisé (pas un test sur du code mort).
+- Compile : backend `tsc --noEmit` EXIT 0 + `nest build` RC 0.
+- Tests : mapper 8/8 (P188) ; global 155 suites PASS/2 skip — 1080 tests PASS/3 skip (P189, +8, 0 régression).
+- Bundle : history complète.
+
+VERDICT : ✅ SOLIDE — le connecteur Airtable (mapper export + classification de risque à l'import) est désormais couvert, avec verrouillage de l'invariant sécurité "prix/stock = high, jamais auto-appliqué". Code réellement branché, 0 régression.
+Bilan couverture (183→190) : 2 modules sécurité-sensibles jusque-là sans spec (mobile-auth JWT, airtable mapper) désormais testés. Restent sans spec colocated : connected-apps + terminals (CRUD/repo, peu de logique pure — testables via DI si souhaité). Gates infra inchangées (relais/migration/social).
