@@ -2027,3 +2027,8 @@ Reste inchangé à fournir : GATE1 OUTBOX_PUBLISH_URL+SECRET ; GATE2 DATABASE_UR
 - Positif : 1 test PASS (tous les scripts CI existent). Preuve négative : `npm run lint-DOESNOTEXIST` injecté → test **échoue** en listant le script ; restauré → re-PASS.
 - Valeur : évite une CI qui casse silencieusement sur un script disparu (sécurité reprise/CI).
 - Suite : P228 index reprise, P229 consolidation, P230 audit.
+
+## PAQUET 228 — Point d'entrée unique de reprise (README)
+- `README.md` : section "▶ Reprise & gates externes (commencer ici)" en tête — preflight, RESUME_CHECKLIST, PROJECT_STATUS/EXECUTION_LOG, GATES_READINESS/EXTERNAL_GATES_RUNBOOK/OUTBOX_RELAY_KIT + rappel des gardes automatiques.
+- Vérif : les 6 fichiers liés existent.
+- Suite : P229 consolidation, P230 audit final.
