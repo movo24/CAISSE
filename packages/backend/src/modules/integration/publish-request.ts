@@ -84,21 +84,27 @@ export function verifyPublishSignature(
   return safeEqualHex(providedSignature, expected) ? 'ok' : 'bad_signature';
 }
 
-/** Build the signed request (body + headers) for one event. */
+/**
+ * Build the signed request (body + headers) for one event.
+ * `batchId` (optional) = relay-run correlation id, carried as `x-pos-batch-id`.
+ * It is a DEBUG/correlation aid only: idempotence stays keyed on the EVENT id
+ * (`x-pos-event-id` / envelope `id`), never on the batch. The signature does
+ * not cover it (headers are not signed; the body is).
+ */
 export function buildOutboxPublishRequest(
   event: PublishableEvent,
   secret: string,
   nowMs: number = Date.now(),
+  batchId?: string,
 ): PublishRequest {
   const body = JSON.stringify(publishEnvelope(event));
   const signature = signPublishBody(body, secret, nowMs);
-  return {
-    body,
-    headers: {
-      'content-type': 'application/json',
-      'x-pos-event-id': event.id,
-      'x-pos-timestamp': String(nowMs),
-      'x-pos-signature': signature,
-    },
+  const headers: Record<string, string> = {
+    'content-type': 'application/json',
+    'x-pos-event-id': event.id,
+    'x-pos-timestamp': String(nowMs),
+    'x-pos-signature': signature,
   };
+  if (batchId) headers['x-pos-batch-id'] = batchId;
+  return { body, headers };
 }

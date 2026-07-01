@@ -11,7 +11,8 @@ export const OUTBOX_PUBLISHER = 'OUTBOX_PUBLISHER';
  * (Comptamax24 / TimeWin24 / Analytik R). Returns true on success.
  */
 export interface OutboxPublisher {
-  publish(event: IntegrationEventEntity): Promise<boolean>;
+  /** `batchId` = optional relay-run correlation id (x-pos-batch-id header). */
+  publish(event: IntegrationEventEntity, batchId?: string): Promise<boolean>;
 }
 
 /**
@@ -22,9 +23,9 @@ export interface OutboxPublisher {
 export class SimulationOutboxPublisher implements OutboxPublisher {
   private readonly logger = new Logger('SimulationOutboxPublisher');
 
-  async publish(event: IntegrationEventEntity): Promise<boolean> {
+  async publish(event: IntegrationEventEntity, batchId?: string): Promise<boolean> {
     this.logger.log(
-      `[SIMULATION] would deliver ${event.type} (${event.aggregateType}:${event.aggregateId}) store=${event.storeId}`,
+      `[SIMULATION] would deliver ${event.type} (${event.aggregateType}:${event.aggregateId}) store=${event.storeId}${batchId ? ` batch=${batchId}` : ''}`,
     );
     return true;
   }
@@ -44,8 +45,8 @@ export class HttpOutboxPublisher implements OutboxPublisher {
     private readonly timeoutMs = 10_000,
   ) {}
 
-  async publish(event: IntegrationEventEntity): Promise<boolean> {
-    const req = buildOutboxPublishRequest(event as any, this.secret);
+  async publish(event: IntegrationEventEntity, batchId?: string): Promise<boolean> {
+    const req = buildOutboxPublishRequest(event as any, this.secret, Date.now(), batchId);
     const res = await axios.post(this.url, req.body, {
       headers: req.headers,
       timeout: this.timeoutMs,

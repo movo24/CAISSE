@@ -1,11 +1,14 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
+import { randomUUID } from 'crypto';
 import { IntegrationEventEntity } from '../../database/entities/integration-event.entity';
 import { isEligibleForRelay, relayOutcome } from '../../common/integration/outbox-relay';
 import { OUTBOX_PUBLISHER, OutboxPublisher } from './outbox-publisher';
 
 export interface RelayReport {
+  /** Correlation id of this relay run — sent as `x-pos-batch-id` on every delivery. */
+  batchId: string;
   processed: number;
   published: number;
   pending: number;
@@ -37,13 +40,14 @@ export class OutboxRelayService {
       take: limit,
     });
 
-    const report: RelayReport = { processed: 0, published: 0, pending: 0, failed: 0 };
+    const batchId = randomUUID(); // correlation only — idempotence stays per-event id
+    const report: RelayReport = { batchId, processed: 0, published: 0, pending: 0, failed: 0 };
     for (const row of candidates) {
       if (!isEligibleForRelay(row.status, row.attempts)) continue;
       report.processed++;
       let success = false;
       try {
-        success = await this.publisher.publish(row);
+        success = await this.publisher.publish(row, batchId);
       } catch (e: any) {
         this.logger.warn(`Publish failed for ${row.id}: ${e?.message}`);
         success = false;
