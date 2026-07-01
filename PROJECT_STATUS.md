@@ -75,13 +75,18 @@ Ces points datent d'avril 2026 ; plusieurs commits fiscaux/correctifs ont suivi.
 Voir `POS_BLOCKS.md` → premier paquet (PAQUET 1). Détail d'exécution dans `EXECUTION_LOG.md`.
 
 ---
-## État consolidé — 2026-06-30 (jalon PAQUET 133, v8)
+## État consolidé — 2026-07-01 (jalon PAQUET 202, v9)
 
-**Suite backend exécutable : 150 suites / 1047 tests verts.**
-- Unitaires `src/**` (maxWorkers=2) : 130 suites / 883 tests ✅
-- Intégration `test/` pg-mem (runInBand, hors .pg) : 20 suites / 164 tests ✅
-- `tsc --noEmit` EXIT 0 · `nest build` RC=0 (345 .js)
-- E2E `test/*.pg.spec.ts` (2) : auto-skip sans `TEST_DATABASE_URL` (CI Postgres).
+**Backend : 155 suites PASS / 2 skip (157) ; 1080 tests PASS / 3 skip.** (`jest`, maxWorkers=2/runInBand)
+- 2 suites skip = `test/*.pg.spec.ts` (auto-skip sans `TEST_DATABASE_URL` — CI Postgres réel).
+- `tsc --noEmit` EXIT 0 · `nest build` RC 0.
+
+**Front : 11 fichiers vitest / 46 tests PASS** (back-office 6/23 + pos-desktop 5/23) ; `vite build` ×2 verts (back-office ~1989 modules, pos-desktop ~2082 modules) ; `tsc --noEmit` EXIT 0 sur les 2. CI (`.github/workflows/ci.yml`) exécute lint + tests backend + vitest front + builds.
+
+**Gate front (TD-FE-ROLLUP-NATIVE) levé** : binaire rollup natif présent → front exécutable en sandbox et CI.
+
+### Historique (jalon PAQUET 133, v8) — pour mémoire
+- 150 suites / 1047 tests ; 130 suites/883 unitaires + 20 suites/164 intégration pg-mem.
 
 Épic intégration POS↔Comptamax24↔TimeWin24 (+prep Analytik R) : 62 paquets (71→133).
 Détails commandes : `packages/backend/TESTING.md`. Détail intégration : `INTER_SYSTEM_INTEGRATION.md` (§A→§J).

@@ -1837,3 +1837,7 @@ Bilan hygiène/couverture cumulé (183→199) : mobile-auth JWT testé, airtable
 - `vite build` back-office : 1989 modules, built ~2.4s, RC 0.
 - `vite build` pos-desktop : voir ci-dessus (RC 0).
 - Gate TD-FE-ROLLUP-NATIVE levé (binaire arm64 présent) → tout le front exécutable en sandbox + CI.
+
+## PAQUET 203 — Rafraîchir PROJECT_STATUS (chiffres autoritaires v9)
+- État consolidé mis à jour au jalon PAQUET 202 : backend 155/2 skip (157) · 1080/3 skip ; front vitest 11 fichiers/46 tests + 2 builds verts ; gate rollup levé ; CI décrite. Ancien état v8 (150/1047) conservé en "Historique".
+- Suite : P204 rafraîchir CLAUDE.md (compteurs périmés), P205 audit jalon + verdict.
