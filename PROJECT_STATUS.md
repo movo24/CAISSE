@@ -75,6 +75,22 @@ Ces points datent d'avril 2026 ; plusieurs commits fiscaux/correctifs ont suivi.
 Voir `POS_BLOCKS.md` → premier paquet (PAQUET 1). Détail d'exécution dans `EXECUTION_LOG.md`.
 
 ---
+## État consolidé — 2026-07-02 (jalon PAQUET 296, v23 — blocs B1→B8 : GATE 1 prouvée loopback + dettes résolues)
+
+- **B1/P288 — GATE 1 répétée sans secret réel** : `relay-e2e-loopback.pgmem.spec.ts` (5 tests) prouve la CHAÎNE COMPLÈTE relay réel → `HttpOutboxPublisher` (vrai POST) → receveur HTTP réel (vérif HMAC) → statuts DB : publication+batch id, jamais de re-envoi, mauvais secret → 401 + ligne retryable, dead-letter à 5, re-livraison dédupliquée par event id. + `scripts/mock-receiver.js` (receveur contractuel exécutable : /received, /fail-next) + kit §6-7 (fourniture exacte GATE 1).
+- **B2/P289 — TD-API-MAP ✅ RÉSOLU** : `POS_API_MAP_DETAILED.md` généré du code (42 controllers/**230/230 routes** : verbe, route, handler, guards, rôles, tenant, DTO) via `npm run api:map` (générateur tolérant décorateurs imbriqués + commentaires, vérifié par comptage croisé).
+- **B3/P290 — Pricing 5 règles** : ①variantes **ABSENTES** → TD-PRODUCT-VARIANTS (gate décision produit) ; ②prix/magasin → wiring PROUVÉ en vente réelle e2e (override 750 facturé vs 1000 global, +1 test) ; ③doublons ✅ (EAN unique/magasin + name-dedup) ; ④responsable obligatoire ✅ ; ⑤cap 30 % ✅ (33 tests).
+- **B4/P291 — Stock 20 %** : règle baseline LIVE vérifiée (1721 + effectiveAlertThreshold câblé décrément+SQL, preuve P278) ; chaîne humaine complète (alerte → cockpit read-only → ajustement avec motif → audit) ; **2 commentaires périmés dangereux corrigés** dans stock-level.ts (affirmaient la règle non branchée).
+- **B5/P292 — Sécurité caisse + TD-055 ✅ RÉSOLU** : void-cash/sessions-terminal/auth-local-first/responsable déjà couverts ; quiet hours/fériés **câblés** dans le sweep shift-reminders (pure config env, fenêtre vide par défaut = zéro changement, 4 tests dont « sweep supprimé n'appelle pas TW24 ») + 3 vars documentées .env.example.
+- **B6/P293 — Monitoring pré-prod** : MONITORING-PLAYBOOK §8 (5 moniteurs UptimeRobot prêts à coller avec keywords ok/degraded, activation AlertService/Sentry par variable, matrice healthchecks, revue logs hebdo avec signaux outbox/breaker/bruteforce). Zéro connexion réelle.
+- **B7/P294 — `SERVER_SETUP_RUNBOOK.md`** : mise en service serveur de zéro pour humain (provision→docker→bundle→.env→preflight→deploy→smoke→SSL→backup cron→rollback→erreurs fréquentes).
+- **B8/P295 — `RESUME_CHECKLIST.md` réécrit** : point d'entrée unique (état réel, gates+kits, interdits durs, commandes, 6 décisions business, dépannage).
+- **P296 consolidation** : suite backend COMPLÈTE en 5 tranches —
+  **196 suites PASS / 3 skip (.pg) · 1321 tests PASS / 5 skip · 0 échec** (Δ v22 : +1 suite, +10 tests actifs). `tsc` EXIT 0 · preflight PASS · anti-secret 34 PASS. Front inchangé depuis la preuve v22 (14 fichiers/59 tests).
+
+Commits : `f8ac011` B1 · `7557e5f` B2 · `3201f84` B3 · `7f0f04d` B4 · `4b12fcd` B5 · `e4771a0` B6 · `601a7e5` B7 · `a551822` B8. Interdits respectés : zéro push, zéro prod, zéro secret, zéro migration runtime, zéro Timescale.
+
+---
 ## État consolidé — 2026-07-02 (jalon PAQUET 287, v22 — blocs A1→A6 : contrats d'intégration + ops durcis)
 
 - **A1/P282** MASTER_ROADMAP réécrit sur preuves (M0-M9 re-statués, chemin critique = gates). Écarts demande↔dépôt actés : pas d'`ops/` (réels : `scripts/preflight.sh`, `docker/deploy.sh`) ; pas de tables `tickets`/`register_events` (réelles : `sales`, `integration_events`) ; zéro référence Timescale préexistante.

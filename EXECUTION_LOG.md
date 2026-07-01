@@ -2195,3 +2195,13 @@ Ces paquets ont été journalisés dans `PROJECT_STATUS.md` (v10→v18) et non i
 - A6 TIMESCALE_PLAN.md (doc only, option A recommandée, ledger jamais hypertable). Bloc 7 refactors : rien à prouver → rien fait.
 - P287 consolidation : **195 suites PASS/3 skip · 1311 tests PASS/5 skip · 0 échec** ; nest build RC 0.
 - Commits : 3305c63 / 4e13b6a / a768834 / 0bad4bb / 2943755 / f999f6f ; bundle régénéré.
+
+## PAQUET 288→296 — Blocs B1→B8 (2026-07-02) : GATE 1 loopback + dettes résolues + docs opérateur
+- B1 chaîne push complète prouvée loopback (5 tests) + mock-receiver.js + kit §6-7.
+- B2 TD-API-MAP ✅ (POS_API_MAP_DETAILED 230/230 routes, npm run api:map).
+- B3 pricing : override prouvé en vente e2e ; variantes ABSENTES → TD-PRODUCT-VARIANTS (gate produit).
+- B4 stock 20 % : règle live vérifiée, chaîne humaine complète, 2 commentaires périmés corrigés.
+- B5 TD-055 ✅ : quiet hours/fériés câblés (config env, défaut inchangé, 4 tests) ; autres gardes déjà couverts.
+- B6 monitoring §8 (UptimeRobot/AlertService/Sentry/logs — rien connecté). B7 SERVER_SETUP_RUNBOOK. B8 RESUME_CHECKLIST réécrit.
+- P296 : **196 suites PASS/3 skip · 1321 tests PASS/5 skip · 0 échec** ; tsc EXIT 0 ; preflight PASS.
+- Commits f8ac011/7557e5f/3201f84/7f0f04d/4b12fcd/e4771a0/601a7e5/a551822 ; bundle régénéré.
