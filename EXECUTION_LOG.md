@@ -1846,3 +1846,13 @@ Bilan hygiène/couverture cumulé (183→199) : mobile-auth JWT testé, airtable
 - Commande test:backend : "405 tests, 49 spec files" → "~1080 tests / 155 suites PASS (+2 .pg skip)" ; ajout ligne `test:front` (46 tests/11 fichiers).
 - Section Tests : "~488 test cases across 66 spec files" → "~1080 tests PASS across 155 suites (157 files; 2 .pg skip)".
 - Suite : P205 audit jalon 201→204 + verdict.
+
+## PAQUET 205 — AUDIT JALON 201→204 (consolidation, Règle 3)
+Preuves :
+- git : arbre propre, commits 5c5c569/38d9c63/4316f5f/1fb2775.
+- Chiffres autoritaires cohérents dans 3 docs (PROJECT_STATUS, CLAUDE, TESTING) = "1080" ; 0 compteur périmé restant (405/488 supprimés de CLAUDE).
+- Backend 155 suites PASS/2 skip — 1080 tests PASS/3 skip (P201) ; front 11 fichiers/46 tests vitest + 2 builds verts (P202) ; tsc 3 packages EXIT 0.
+- Bundle : history complète (433 commits).
+
+VERDICT JALON : ✅ SOLIDE — état réel du projet re-prouvé de bout en bout et documenté sans écart : backend 1080 tests verts, front 46 tests + builds verts (gate levé), pilotage à jour.
+Portée sandbox-complétable : ÉPUISÉE proprement (intégration, interfaces, écart d'inventaire, arbitrages, couverture sécurité, hygiène code mort, CI, gate front). Restent 3 gates strictement externes : TD-INT-RELAY (secret+URL), MIGRATION-1725 (base Postgres), TD-INT-SOCIAL-ENTRIES (décision compta). Chacune est câblée + prouvée au maximum (loopback / pg-mem / export justificatif).
