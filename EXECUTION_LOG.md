@@ -1829,3 +1829,11 @@ Bilan hygiène/couverture cumulé (183→199) : mobile-auth JWT testé, airtable
 - TOTAL backend : **155 suites PASS / 2 skip (157) ; 1080 tests PASS / 3 skip** (2 `.pg.spec` = Postgres réel, gate).
 - Partition vérifiée = 157 = `jest --listTests`. Aucune régression.
 - Suite : P202 preuve front complète (vitest + builds), P203/204 rafraîchissement pilotage, P205 audit jalon.
+
+## PAQUET 202 — JALON : preuve front complète (vitest + builds)
+- vitest back-office : 6 fichiers / **23 tests PASS**.
+- vitest pos-desktop : 5 fichiers / **23 tests PASS**.
+- Total front : **11 fichiers / 46 tests vitest PASS**.
+- `vite build` back-office : 1989 modules, built ~2.4s, RC 0.
+- `vite build` pos-desktop : voir ci-dessus (RC 0).
+- Gate TD-FE-ROLLUP-NATIVE levé (binaire arm64 présent) → tout le front exécutable en sandbox + CI.
