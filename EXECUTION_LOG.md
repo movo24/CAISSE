@@ -1959,3 +1959,8 @@ VERDICT : ✅ PRÊT & SOLIDE — préparation de déblocage + sécurité de repr
 - Preuve négative (le garde ATTRAPE le drift) : injection temporaire `process.env.__FAKE_DRIFT_VAR__` dans le clone → test **échoue** en listant la var ; après retrait → re-PASS.
 - Valeur : toute nouvelle variable lue sans documentation casse la CI → plus de dérive silencieuse (registre env auto-vérifié).
 - Suite : P218 doc symptôme→correction, P219 readiness gates, P220 consolidation.
+
+## PAQUET 218 — Table de dépannage reprise (symptôme→cause→diagnostic→correction)
+- `RESUME_CHECKLIST.md` §5bis : table couvrant build échoué, env invalide (boot), migration dry-run échouée, OUTBOX en simulation, écriture sociale bloquée, rollup natif, .pg skipped. Chaque ligne = commande de diagnostic + correction exacte.
+- Distingue clairement "attendu" (OUTBOX simulation, social bloqué, .pg skipped) vs vrai problème.
+- Suite : P219 rapport readiness gates, P220 consolidation.
