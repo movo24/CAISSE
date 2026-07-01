@@ -1698,3 +1698,8 @@ Reste inchangé : 3 gates infra (secret relais / base migration / décision comp
 - Preuve : `tsc --noEmit` EXIT 0 ; `jest mobile-tokens.spec.ts` ⇒ 1 suite / **5 tests PASS** ; service utilise le helper.
 - Valeur : couvre un chemin auth client jusque-là sans spec + verrouille la non-régression du piège aud (throw runtime documenté).
 - Suite : P184 non-régression mobile-auth + global, P185 docs, P186/187 audit.
+
+## PAQUET 184 — Non-régression auth après re-câblage mobile-tokens
+- `jest src/modules/mobile-auth test/auth-security.spec.ts` ⇒ **2 suites / 16 tests PASS**.
+- Confirme : l'extraction du helper JWT n'altère pas le contrat auth (audience mobile-app, isolation secrets, garde rôles). Comportement du service préservé.
+- Suite : P185 non-régression globale (nouveau spec inclus), P186 docs, P187 audit.
