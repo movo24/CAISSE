@@ -1663,3 +1663,14 @@ Prochains candidats (tous nécessitent accès/décision) : (1) fournir OUTBOX_PU
 - Δ vs P174 : +1 suite / +3 tests = spec migration 1725 (P176). 2 skip = `.pg.spec` (Postgres).
 - Global backend recalculé : A 38/261 + B 75/502 + C 40+2skip/304+3skip = **153 suites PASS / 2 skip (155) ; 1067 tests PASS / 3 skip**. Zéro régression.
 - Suite : P180 audit de contrôle 176→179 + verdict.
+
+## PAQUET 180 — AUDIT DE CONTRÔLE 176→179 (Règle 3)
+Preuves :
+- git : arbre propre, commits efbdd2b/cba3bbc/2cc0af9/eb89baf.
+- Compile : backend + back-office + pos-desktop `tsc --noEmit` = EXIT 0 (les 3).
+- Tests : migration 1725 pg-mem 3/3 (P176) ; parité entité 17 col 0 drift (P177) ; global backend 153 suites PASS/2 skip — 1067 tests PASS/3 skip (P179, +3 = migration, 0 régression).
+- Cohérence app/doc : impacts MIGRATION-1725 + TD-INT-RELAY mis à jour (mécaniques/SQL prouvés) ; lignes TECHNICAL_DEBT ajoutées. Panneau = 3 gates infra (inchangé, statuts affinés).
+- Bundle : history complète.
+
+VERDICT : ✅ SOLIDE — les 3 gates restantes ne sont plus des boîtes noires : TD-INT-RELAY (livraison signée prouvée loopback), MIGRATION-1725 (SQL up/down + schéma prouvés pg-mem + parité entité), TD-INT-SOCIAL-ENTRIES (reste une décision compta). Chacune est câblée + prouvée au maximum possible sans franchir le gate réel (secrets / base Postgres serveur / validation métier).
+Prochains (nécessitent accès/décision hors sandbox) : (1) OUTBOX_PUBLISH_URL+SECRET → activer relais réel, (2) migration:run sur Neon, (3) plan de comptes social validé, (4) e2e Playwright/CI.
