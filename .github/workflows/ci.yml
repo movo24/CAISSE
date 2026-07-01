@@ -32,6 +32,9 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Security guards (secrets / env / gitignore / CI scripts)
+        run: npm run test:security
+
       - name: Backend tests
         run: npm run test:backend
 

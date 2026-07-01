@@ -6,6 +6,7 @@
 
 ## Commun (toutes gates)
 - [ ] `npm run preflight:full` = OVERALL PASS.
+- [ ] `npm run test:security` = tous verts (secrets/env/docs/source/gitignore/scripts CI).
 - [ ] `git status` propre ; branche connue ; sauvegarde/bundle à jour.
 - [ ] Aucune valeur réelle dans le repo (gardes secret .env/.md verts).
 - [ ] GO humain explicite pour CETTE gate.

@@ -2098,3 +2098,10 @@ Gardes de sécurité/reprise (6) : env-completeness, env-no-secrets, docs-no-sec
 - Positif : code source **propre** (0 secret hardcodé), 1 test PASS. Négatif : `sk_live_...` injecté dans un `.ts` source → **échec** (file+pattern) ; retiré → re-PASS.
 - Valeur : ferme la dernière porte — une clé collée dans un service serait bloquée (env + docs + code désormais couverts).
 - Suite : P238 script test:security groupé, P239 conso, P240 audit.
+
+## PAQUET 238 — Script test:security groupé + step CI + réf checklist
+- `package.json` : `test:security` = jest sur tous les gardes (src/common/config + env-completeness/no-secrets/docs-no-secrets/source-no-secrets/gitignore-hardening/ci-scripts-exist).
+- CI : step "Security guards" (`npm run test:security`) ajouté après lint.
+- `PRE_GATE_CHECKLIST.md` : ligne commune `npm run test:security` = tous verts avant toute gate.
+- Preuve : `npm run test:security` ⇒ **10 suites / 34 tests PASS** ; YAML valide (step présent) ; ci-scripts-exist reste vert (nouveau script référencé existe).
+- Suite : P239 consolidation, P240 audit final.

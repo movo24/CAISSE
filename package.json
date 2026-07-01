@@ -21,6 +21,7 @@
     "test:front": "npm run test:backoffice && npm run test:pos",
     "preflight": "bash scripts/preflight.sh",
     "preflight:full": "bash scripts/preflight.sh --full",
+    "test:security": "cd packages/backend && npx jest src/common/config test/env-example-completeness.spec.ts test/env-example-no-secrets.spec.ts test/docs-no-secrets.spec.ts test/source-no-secrets.spec.ts test/gitignore-hardening.spec.ts test/ci-scripts-exist.spec.ts",
     "lint": "npm run lint --workspaces",
     "format": "prettier --write \"**/*.{ts,tsx,json,md}\"",
     "docker:up": "docker compose -f docker/docker-compose.yml up -d",
