@@ -2,10 +2,13 @@
  * POS-080/083 — Pure stock-level classification helpers (no DB/Nest), so the threshold
  * logic is unit-testable and shared between the alerts query and the decrement path.
  *
- * The current data model uses ABSOLUTE per-product thresholds
- * (`stock_alert_threshold` default 10, `stock_critical_threshold` default 5).
- * There is NO baseline/par/max/reorder column, so a RELATIVE "20% low-stock" rule
- * (POS-083) has no defined reference yet — see `relativeThreshold` note + TECHNICAL_DEBT.
+ * Data model (since migration 1721-AddStockBaseline): ABSOLUTE per-product thresholds
+ * (`stock_alert_threshold` default 10, `stock_critical_threshold` default 5) PLUS a
+ * nullable `stock_baseline_quantity` (par/max). The RELATIVE 20% rule (POS-083) is LIVE:
+ * `effectiveAlertThreshold` = 20% of the baseline when set, else the absolute threshold —
+ * wired into BOTH the decrement path (stock.service) and the alerts SQL
+ * (`getAlerts` COALESCE/CEIL predicate, proven against real SQL in
+ * stock.service.pgmem.spec.ts / P278).
  */
 
 export type StockLevel = 'out_of_stock' | 'critical' | 'alert' | 'ok';
@@ -36,10 +39,8 @@ export function crossedDownward(
 
 /**
  * POS-083 — compute an absolute alert threshold as a percentage of a baseline quantity.
- *
- * ⚠️ PRODUCT DECISION REQUIRED: the model has no baseline column. "20% of what?"
- * (initial stock? par level? max capacity? reorder point?) is undecided. This helper is
- * provided for when a baseline is defined; it is NOT wired into the live path yet.
+ * Decision settled: the baseline is `stock_baseline_quantity` (par/max, migration 1721,
+ * nullable). Wired live via `effectiveAlertThreshold` below.
  */
 export function relativeThreshold(baselineQty: number, pct = 20): number {
   if (baselineQty <= 0) return 0;
