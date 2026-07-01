@@ -1801,3 +1801,10 @@ Bilan couverture/hygiène (183→194) : mobile-auth JWT testé, airtable mapper 
 - Câblage : `ProductsPage` (2 spots : setError chargement + alert sauvegarde, remplace les extractions manuelles dupliquées) et `ConnectedAppsPage` (setError). L'util passe d'orphelin à utilisé (2 pages).
 - Preuve : `tsc --noEmit` EXIT 0 ; vitest 6 fichiers / **23 tests PASS** (dont safeErrorMessage 4/4).
 - Suite : P198 non-régression vitest complète, P199 docs, P200 audit.
+
+## PAQUET 198 — Non-régression front consolidée
+- back-office : `tsc --noEmit` EXIT 0 ; vitest 6 fichiers / **23 tests PASS**.
+- pos-desktop : `tsc --noEmit` EXIT 0.
+- Vérif : StoreSwitcher/AppSwitcher supprimés ; safeErrorMessage utilisé dans 2 pages (plus orphelin).
+- Bilan front (196→198) : -2 composants morts, +1 util défensif branché+testé, 0 régression.
+- Suite : P199 docs, P200 audit+verdict.
