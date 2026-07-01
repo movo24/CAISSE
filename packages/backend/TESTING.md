@@ -77,4 +77,7 @@ Sur ubuntu, `npm install` récupère `@rollup/rollup-linux-x64-gnu` → `vite bu
 
 ## Sécurité auth mobile (Wesley Club)
 - `src/modules/mobile-auth/mobile-tokens.spec.ts` : garde le contrat JWT client (audience `mobile-app`, TTL access 15m / refresh 30j, isolation des secrets access/refresh, rejet mauvaise audience, **anti-duplication `aud`** — cf. règle sécurité 5 de CLAUDE.md).
-- Total backend courant : 154 suites PASS / 2 skip (156) ; 1072 tests PASS / 3 skip (2 `.pg.spec` = Postgres réel).
+- Total backend courant : 155 suites PASS / 2 skip (157) ; 1080 tests PASS / 3 skip (2 `.pg.spec` = Postgres réel).
+
+## Sécurité connecteur Airtable
+- `src/modules/airtable-ops/airtable-ops.mapper.spec.ts` : verrouille l'invariant d'import — toute proposition de changement de **prix ou stock** venant d'Airtable est classée risque `high` (jamais auto-appliquée ; validation manuelle obligatoire). Couvre aussi le mapping d'export POS→Airtable.

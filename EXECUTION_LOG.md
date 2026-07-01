@@ -1744,3 +1744,7 @@ Partition (115 modules + 42 hors-modules = 157 = `jest --listTests`) :
 - TOTAL : **155 suites PASS / 2 skip (157) ; 1080 tests PASS / 3 skip**.
 - Δ vs P185 : +1 suite / +8 tests = spec airtable mapper (P188). Zéro régression.
 - Suite : P190 docs, P191 audit+verdict.
+
+## PAQUET 190 — Doc TESTING (connecteur Airtable) + total corrigé
+- `TESTING.md` : section "Sécurité connecteur Airtable" (invariant prix/stock=high) ; total corrigé 155/1080.
+- Suite : P191 audit de contrôle 188→190 + verdict.
