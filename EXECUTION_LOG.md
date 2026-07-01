@@ -2152,3 +2152,9 @@ Preuves :
 
 VERDICT : ✅ SOLIDE — les 6 risques hérités d'avril 2026 sont re-vérifiés honnêtement : 5 résolus/mitigés/intentionnels et PROUVÉS (secret scan, échappement testé, capability-URL UUID, erreurs surfacées, code mort supprimé) ; 1 seul reste "à vérifier en runtime local" (#1 PIN login 500, non reproductible sans DB/prod), explicitement marqué comme tel. Aucune sur-déclaration.
 À fournir pour franchir une gate (inchangé) : GATE1 OUTBOX_PUBLISH_URL+SECRET ; GATE2 DATABASE_URL cible+GO ; GATE3 plan de comptes social validé. Le #1 se vérifie au 1er démarrage local (auth PIN).
+
+## PAQUET 246 — STATE_INDEX.md : index d'état réel complet (audit vérifié)
+- Audit read-only : 44 modules, 41 controllers, 229 routes, 47 entités, 21 migrations, 139 specs (~1128 tests) ; 26 pages front, 26 clients API.
+- `STATE_INDEX.md` (NOUVEAU) : % de finition par couche, index des 44 modules (statut/routes/tests/risque), connexion API interne (0 orphelin), sources externes (météo OpenWeather/transport PRIM = connecteurs réels gated clé ; Météo-France/France Mobilités national/jours fériés = ABSENTS), Analytik R (PREP seulement : outbox + API pull + relais simulation, aucun lien live), carte des connexions, preuves, verdict + 10 blocs prioritaires.
+- Faits clés honnêtes : relais = SimulationOutboxPublisher (aucun envoi réel) ; migration 1725 non jouée cible ; Comptamax = exports CSV locaux (push gated) ; TimeWin = client HTTP réel gated ; PDF reçu = absent (HTML seulement).
+- Aucun secret dans le document (placeholders/noms uniquement).
