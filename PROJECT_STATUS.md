@@ -75,6 +75,16 @@ Ces points datent d'avril 2026 ; plusieurs commits fiscaux/correctifs ont suivi.
 Voir `POS_BLOCKS.md` → premier paquet (PAQUET 1). Détail d'exécution dans `EXECUTION_LOG.md`.
 
 ---
+## État consolidé — 2026-07-01 (jalon PAQUET 266→267, v15 — session autonome suite)
+
+- **P266** `mobile-auth.service.spec` (5) — gardes register/login Wesley Club **avant émission de token** : email invalide, mot de passe < 8, compte dupliqué (409), utilisateur inconnu, mauvais mot de passe (401). Tokens = `mobile-tokens.spec`.
+- **P267** `stripe-billing.service.spec` (5) — **gardes des flux monétaires** : Stripe non configuré, plan inconnu, refus checkout plan gratuit, portail sans customer Stripe, webhook **fail-closed** si `STRIPE_WEBHOOK_SECRET` absent (jamais de webhook non vérifiable). Aucun appel Stripe réel (client mocké).
+
+**Non-régression :** slice mobile-auth/subscriptions **34 tests verts (5 suites)** ; `tsc --noEmit` EXIT 0. Specs uniquement.
+
+**Compteurs (honnêtes) :** backend 182 → **184 suites**, **+10 tests** (~1247 → ~1257). Cumul session autonome (v12→v15) : **+10 suites, +63 tests** (loyalty-card, inventory-scan, reconciliation, jackpot, customer-visits, notifications, subscriptions, ai-learning, mobile-auth, stripe-billing). ⚠️ Suite complète non re-jouée bout-en-bout (cap 45 s).
+
+---
 ## État consolidé — 2026-07-01 (jalon PAQUET 264→265, v14 — session autonome suite)
 
 - **P264** `subscriptions.service.spec` (12) — cycle de vie + **enforcement des limites de plan** : une seule souscription/magasin, plan inconnu rejeté, double-annulation refusée, limite produits (bypass illimité / sous limite / dépassement→403), gate feature, lecture not-found. Denial/limite pures = `subscription-policy.spec`.
