@@ -1,6 +1,6 @@
-# POS_API_MAP.md — Cartographie API (vérifié 2026-06-28)
+# POS_API_MAP.md — Cartographie API (inventaire 2026-06-28 ; compteurs re-vérifiés P282 2026-07-02)
 
-> 37 controllers, 213 routes. Légende statut : ✅ branché · 🟡 présent non prouvé live · ⛔ inexistant/à créer.
+> **42 controllers, 230 routes** au 2026-07-02 (le détail ci-dessous reste l'inventaire du 06-28 : +5 controllers depuis — dont mobile-cockpit, backoffice-discounts, integration/outbox-query — voir `STATE_INDEX.md` §2 pour l'index à jour). Légende statut : ✅ branché · 🟡 présent non prouvé live · ⛔ inexistant/à créer.
 > ⚠️ Les méthodes/payloads détaillés par route doivent être complétés controller par controller (dette `TD-API-MAP`). Ci-dessous : inventaire des bases de routes confirmé + zones critiques détaillées.
 
 ## Bases de routes confirmées (`@Controller`)

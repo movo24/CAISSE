@@ -1,7 +1,7 @@
 # STATE_INDEX — État réel du logiciel CAISSE (audit vérifié 2026-07-01)
 
 > Règle : rien d'inventé. « absent aujourd'hui » = pas de code. « mock/simulation » = code présent mais pas d'envoi réel. « gated » = dépend d'un secret/clé/DB/runtime. Preuves par fichier/route/test/commande.
-> Chiffres backend vérifiés : **44 modules · 41 controllers · 229 routes · 47 entités · 21 migrations · 139 fichiers de specs (~1128 tests PASS/3 skip)**. Front : **26 pages back-office · 26 objets API · 29 routes**. (`grep`/`jest --listTests` — paquet 246.)
+> Chiffres backend vérifiés (re-comptés P282, 2026-07-02) : **44 modules · 42 controllers · 230 routes · 47 entités · 21 migrations · 197 fichiers de specs (194 suites PASS/3 .pg skip · 1306 tests PASS/5 skip)**. Front : **26 pages back-office · 26 objets API · 29 routes** (comptage P246). Note : le module `fiscal` est volontairement hors `app.module` (outillage CLI `npm run fiscal:verify`) ; `documents` est câblé via `receipts.module`.
 
 ---
 
@@ -76,7 +76,7 @@ Légende : ✅ prêt+testé · 🟡 partiel/gated · ⚠️ à vérifier runtime
 | pos-integration / subscriptions / documents / fiscal / backoffice-discounts / health | ✅/🟡 | divers | partiel | fiscal-verify OK ; health 503 |
 | sync | ✅ | push/pull offline, conflit, rejet sans id | conflict | — |
 
-Preuve routes : `grep @Get/@Post *.controller.ts` = 229. Preuve tests : `jest --listTests` = 139 fichiers.
+Preuve routes : `grep @Get/@Post *.controller.ts` = 230 (P282). Preuve tests : `jest --listTests` = 197 fichiers (P282).
 
 ---
 
@@ -156,7 +156,7 @@ Preuve : `services/api.ts` (26 exports), `main.tsx` (29 routes), `receipts.contr
 ---
 
 ## 7. Preuves (échantillon)
-- Modules/routes : `ls src/modules` = 44 ; `grep @Get/@Post` = 229 ; `find *.controller.ts` = 41.
+- Modules/routes : `ls src/modules` = 44 ; `grep @Get/@Post` = 230 ; `find *.controller.ts` = 42. (re-compté P282)
 - Tests : `jest --listTests` = 139 fichiers ; agrégat `167 suites PASS/2 skip, 1128 tests PASS/3 skip` (P244).
 - Relais simulation : `outbox-publisher.ts:61-67` (`createOutboxPublisher` → `SimulationOutboxPublisher` sans URL+secret) ; loopback prouvé `outbox-publisher.spec.ts` 8 tests (P171/P206).
 - Migration outbox non jouée : `1725000000000-AddIntegrationOutbox.ts` ; dry-run pg-mem `migration-1725-dryrun.spec.ts` 3 tests (P207) ; **pas** joué sur cible.
