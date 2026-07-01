@@ -1905,3 +1905,10 @@ VERDICT : ✅ PRÊT — les 3 gates sont préparées, durcies (garde-fous fail-c
 - GATE 1 : `OUTBOX_PUBLISH_URL` + `OUTBOX_PUBLISH_SECRET` (+ GO redéploiement).
 - GATE 2 : `DATABASE_URL` base cible (+ GO migration/redéploiement).
 - GATE 3 : plan de comptes social validé par un comptable (codes des 4 slots + validatedBy).
+
+## PAQUET 211 — Sécurité reprise : complétude .env.example
+- Audit : 51 variables `process.env.*` lues dans le backend vs 35 documentées → **16 manquantes** (OUTBOX_*, REDIS_URL, ALLOW_INMEMORY_CACHE, SENTRY_DSN, ALERT_WEBHOOK_URL, RATE_LIMIT_*, COMPTAMAX_ACCOUNTS, ALLOW_SEED, TYPEORM_SYNCHRONIZE).
+- Correctif : ajoutées à `.env.example` avec placeholders fictifs + commentaires (sections OUTBOX, cache/Redis, observabilité, rate-limit, pré-compta, garde-fous seed/synchronize).
+- Re-diff : **0 variable manquante**. Garde-fou : aucun secret réel (placeholders uniquement, règle sécurité respectée).
+- Valeur reprise : plus aucune variable lue non documentée → pas de surprise "missing var" au boot.
+- Suite : P212 tests validation env au boot, P213 checklist reprise, P214 audit.
