@@ -44,6 +44,12 @@ jobs:
       - name: Front unit tests (POS desktop — vitest)
         run: npm run test:pos
 
+      - name: Front unit tests (mobile — vitest)
+        run: npm run test:mobile
+
+      - name: E2E spec collectable (playwright --list, no browser/DB)
+        run: npm run test:e2e:list
+
       - name: Build backend (tsc + nest)
         run: npm run build:backend
 

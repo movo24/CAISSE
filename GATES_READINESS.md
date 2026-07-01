@@ -29,5 +29,24 @@
 - **Comportement actuel (attendu)** : aucune écriture sociale ; export = justificatif seulement.
 - **Débloquer** : plan validé (codes 4 slots + `validatedBy`) → `EXTERNAL_GATES_RUNBOOK.md` §3.
 
+## Gates runtime / environnement (non-secret — infra manquante ici)
+
+Ces points ne sont pas des décisions métier : ils sont *prêts en code* mais ne peuvent pas
+être **exécutés** dans le sandbox faute de runtime (navigateur, base seed, toolchain native).
+Aucun n'invente de "live" ; chacun est prouvé au niveau atteignable.
+
+| Gate runtime | Prêt (prouvé local) | Manquant pour exécuter | Preuve atteignable faite |
+|---|---|---|---|
+| **e2e Playwright** (parcours caisse : login→scan→paiement) | `playwright.config.ts` + `e2e/pos-smoke.spec.ts` (chemin de l'argent, assertions réelles) | binaires chromium + backend `:3001` seedé + Vite | `npm run test:e2e:list` = spec **collectable** (1 test), câblé en CI ; run complet = `npm run test:e2e` sur machine avec navigateur+seed |
+| **Build natif mobile / customer-app** (Capacitor iOS) | code + `ErrorBoundary` (parité) ; vitest mobile 13/13 | dépendances Capacitor installées (`@capacitor/*`) — absentes du sandbox | mes fichiers **compilent proprement** (aucune erreur tsc sur `main.tsx`/`ErrorBoundary.tsx`) ; seule erreur = `@capacitor/preferences` non installé (gap sandbox, dép déclarée `^6.0.0`) |
+| **PIN login 500** (risque hérité #1) | JWT couvert (auth-security, mobile-tokens) | DB/prod runtime pour reproduire | non reproductible sans DB ; reste ⏳ à vérifier en runtime local |
+
+Débloquer e2e run (machine dev/CI avec navigateur) :
+```bash
+npx playwright install chromium
+# backend seedé sur :3001, puis :
+npm run test:e2e            # webServer Vite démarré automatiquement
+```
+
 ## Rappel contraintes
 Zéro secret, zéro prod, zéro migration cible, zéro appel réel, zéro activation OUTBOX, zéro mapping comptable inventé. Tout reste local, réversible, testé.
