@@ -1637,3 +1637,11 @@ Preuves :
 
 VERDICT : ✅ SOLIDE — le relais HTTP outbox n'est plus "câblé sans preuve" : livraison signée + vérification receveur + intégrité (tamper) + gate factory sont PROUVÉS de bout en bout en loopback (sans secret ni push externe). Reste 3 vraies gates : TD-INT-RELAY (secrets/URL prod), TD-INT-SOCIAL-ENTRIES (décision compta), MIGRATION-1725 (Postgres — non root en sandbox).
 Prochains candidats (tous nécessitent accès/décision) : (1) fournir OUTBOX_PUBLISH_URL+SECRET (activer relais réel), (2) valider plan de comptes social, (3) migration:run sur base cible, (4) e2e Playwright en CI.
+
+## PAQUET 176 — MIGRATION-1725 dé-risquée sur pg-mem (POS-INT-176)
+- `test/migration-1725-outbox.spec.ts` (NOUVEAU) : applique `up()`/`down()` de la migration contre pg-mem (Postgres en mémoire).
+- Prouve : up() crée `integration_events` avec les 17 colonnes attendues ; défauts appliqués à l'INSERT (status='pending', attempts=0, schema_version=1) ; down() drop la table (réversible).
+- Non prouvé (limite pg-mem, honnête) : idempotence `CREATE TABLE IF NOT EXISTS` sur table existante (feature Postgres réel, non modélisée en mémoire) → validée au migration:run prod.
+- Preuve : `jest migration-1725-outbox.spec.ts` ⇒ 1 suite / **3 tests PASS**.
+- Statut MIGRATION-1725 : SQL prouvé bien formé + schéma conforme ; reste gated sur base cible réelle (Neon, hors sandbox non-root).
+- Suite : P177 non-régression, P178 docs, P179/180 audit.
