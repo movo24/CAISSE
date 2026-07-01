@@ -1787,3 +1787,10 @@ Preuves :
 
 VERDICT : ✅ SOLIDE — un fichier de code mort supprimé (doublon de la hiérarchie de rôles), source de vérité unique consolidée (role-hierarchy.ts, testé), doc de permissions préservée, 0 régression. Hygiène + sécurité (un seul point de décision pour les rôles).
 Bilan couverture/hygiène (183→194) : mobile-auth JWT testé, airtable mapper testé, permissions.ts mort supprimé. Restent sans spec colocated : connected-apps + terminals (CRUD/repo). Gates infra inchangées.
+
+## PAQUET 196 — Suppression composants morts supplantés (Store/App switchers)
+- Audit front code-mort : `components/StoreSwitcher.tsx` (105 l) et `components/AppSwitcher.tsx` (84 l) = 1 occurrence chacun (leur propre déf) → jamais montés.
+- Diagnostic : StoreSwitcher **supplanté** par le "Scope Switcher" inline du `Layout` (Vue Globale + magasins, admin) ; AppSwitcher = bascule pos/timewin24, hors périmètre back-office (TimeWin24 = future app iPhone V3). Deux composants morts/supplantés.
+- Action : suppression des 2 fichiers.
+- Preuve : `tsc --noEmit` EXIT 0 (rien ne les importait) ; vitest 5 fichiers / **19 tests PASS**.
+- Suite : P197 brancher `safeErrorMessage` (util défensif inutilisé) sur les points d'erreur bruts, P198 non-régression, P199 docs, P200 audit.
