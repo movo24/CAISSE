@@ -74,3 +74,7 @@ La CI (ubuntu-latest, Node 20) exécute à chaque push/PR :
 5. `npm run build:backend` / `build:backoffice` / `build:pos` (tsc --noEmit + vite/nest — installe le binaire rollup Linux natif)
 
 Sur ubuntu, `npm install` récupère `@rollup/rollup-linux-x64-gnu` → `vite build` et `vitest` fonctionnent (contrairement au bac à sable arm64 où le binaire manque, cf. TD-FE-ROLLUP-NATIVE). Les helpers purs front sont aussi prouvés hors CI via `tsc → node` (assertions) à chaque paquet.
+
+## Sécurité auth mobile (Wesley Club)
+- `src/modules/mobile-auth/mobile-tokens.spec.ts` : garde le contrat JWT client (audience `mobile-app`, TTL access 15m / refresh 30j, isolation des secrets access/refresh, rejet mauvaise audience, **anti-duplication `aud`** — cf. règle sécurité 5 de CLAUDE.md).
+- Total backend courant : 154 suites PASS / 2 skip (156) ; 1072 tests PASS / 3 skip (2 `.pg.spec` = Postgres réel).

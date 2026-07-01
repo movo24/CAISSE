@@ -1712,3 +1712,7 @@ Partition (114 modules + 42 hors-modules = 156 = `jest --listTests`) :
 - TOTAL : **154 suites PASS / 2 skip (156) ; 1072 tests PASS / 3 skip**.
 - Δ vs P179 : +1 suite / +5 tests = spec mobile-tokens (P183). 2 skip = `.pg.spec`. Zéro régression.
 - Suite : P186 docs (TESTING), P187 audit+verdict.
+
+## PAQUET 186 — Doc TESTING (garde sécurité auth mobile)
+- `TESTING.md` : section "Sécurité auth mobile (Wesley Club)" ajoutée (contrat JWT + total 154/1072).
+- Suite : P187 audit de contrôle 183→186 + verdict.
