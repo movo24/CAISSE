@@ -184,4 +184,23 @@ describe('E2E — money flow (login → sale → return → avoir → pay → Z)
     const count = await ds.getRepository('sales').count({ where: { ticketNumber: 'OFF-SYNC-1' } as any });
     expect(count).toBe(1);
   });
+
+  it('POS-061 wiring: a REAL sale charges the store price override, not the global price', async () => {
+    // global 10.00 €, store override 7.50 € → the sale line must use 750
+    await ds.getRepository(ProductEntity).save({
+      id: uuidv4(), storeId: STORE_ID, ean: '3000000000002', name: 'Réglisse premium',
+      priceMinorUnits: 1000, priceOverrideMinorUnits: 750, taxRate: 20, stockQuantity: 10,
+      stockAlertThreshold: 2, stockCriticalThreshold: 1, isActive: true,
+    } as any);
+
+    const dto = { items: [{ ean: '3000000000002', quantity: 1 }], payments: [{ method: 'cash', amountMinorUnits: 750 }] };
+    const snap = { employeeName: 'Alice Caisse', employeeRole: 'admin', maxDiscount: 100 };
+    const sale: any = await sales.createSale(STORE_ID, EMP_ID, dto as any, snap, 'idem-override-1');
+
+    expect(sale.totalMinorUnits ?? sale.total_minor_units).toBe(750); // override wins end-to-end
+    const line: any = await ds
+      .getRepository('sale_line_items')
+      .findOne({ where: { saleId: sale.id } as any });
+    expect(Number(line.unitPriceMinorUnits ?? line.unit_price_minor_units)).toBe(750);
+  });
 });
