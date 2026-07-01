@@ -1980,3 +1980,8 @@ Preuves :
 VERDICT : ✅ SOLIDE — reprise rendue "one-command" (preflight PASS/WARN/FAIL) + auto-vérifiée (garde drift env testé) + documentée (checklist + table dépannage + readiness gates). Les 3 gates restent externes, prêtes et prouvées au maximum.
 Livrables reprise : scripts/preflight.sh, OUTBOX_RELAY_KIT.md, EXTERNAL_GATES_RUNBOOK.md, RESUME_CHECKLIST.md (+dépannage), GATES_READINESS.md.
 À fournir pour franchir : GATE1 OUTBOX_PUBLISH_URL+SECRET ; GATE2 DATABASE_URL cible+GO ; GATE3 plan de comptes social validé.
+
+## PAQUET 221 — CI exécute le preflight de reprise
+- `.github/workflows/ci.yml` : step "Resume preflight" (`npm run preflight`) ajouté avant lint → la CI échoue tôt si une var env est lue non documentée ou si un doc de reprise manque.
+- Preuve : YAML parse OK, step présent.
+- Suite : P222 .env.example back-office + check front dans preflight.
