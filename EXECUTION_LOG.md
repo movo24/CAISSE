@@ -2038,3 +2038,14 @@ Reste inchangé à fournir : GATE1 OUTBOX_PUBLISH_URL+SECRET ; GATE2 DATABASE_UR
 - Δ vs P220 (160/1110) : +3 suites (secret-scan, env-example-no-secrets, ci-scripts-exist) / +9 tests. Partition 116 modules + 49 = 165 = `jest --listTests`. Zéro régression.
 - `preflight:full` → OVERALL PASS. git clone propre.
 - Suite : P230 audit final + verdict.
+
+## PAQUET 230 — AUDIT FINAL 226→229 (durcissement reprise + gardes CI)
+Preuves :
+- git : arbre propre, commits 9e80536/145ab48/e2a156d/bec2aaf.
+- 4 gardes de reprise/CI en place et prouvés (positif + négatif) : complétude env (P217), anti-fuite secret (P226), existence scripts CI (P227), preflight en CI (P221) ; README point d'entrée unique (P228).
+- Backend global : 163 suites PASS/2 skip (165) ; 1119 tests PASS/3 skip (P229) ; preflight:full PASS.
+- Bundle complet (458 commits).
+- Interdits respectés : zéro secret, zéro prod, zéro migration cible, zéro appel réel, zéro activation OUTBOX, zéro mapping comptable inventé.
+
+VERDICT : ✅ SOLIDE — la reprise est maintenant "one-command", auto-vérifiée ET auto-défendue : toute dérive (env non documenté, secret réel commité, script CI manquant) casse la CI/les tests. Point d'entrée unique dans le README. Les 3 gates restent externes, prêtes, documentées.
+À fournir pour franchir : GATE1 OUTBOX_PUBLISH_URL+SECRET ; GATE2 DATABASE_URL cible+GO ; GATE3 plan de comptes social validé.
