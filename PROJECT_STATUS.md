@@ -61,14 +61,14 @@ Audit → Plan → Exécution par paquets de 5 blocs. Référentiel des blocs : 
 
 ## 5. Risques ouverts hérités (à re-vérifier — issus de AUDIT-FINAL-2026-04-01)
 
-Ces points datent d'avril 2026 ; plusieurs commits fiscaux/correctifs ont suivi. **Statut = À VÉRIFIER**, pas "ouvert" ni "résolu".
+Ces points datent d'avril 2026 ; plusieurs commits fiscaux/correctifs ont suivi. **Statuts re-vérifiés aux paquets 241-243 :**
 
-1. PIN login 500 en prod (auth.service) — à re-tester.
-2. Clés API réelles potentiellement dans l'historique git (`docker/.env.production.example`).
-3. Erreurs avalées côté front (`StockAlertsPage`, `LabelsPage`).
-4. XSS possible dans receipts HTML (échappement).
-5. Receipts publics sans auth.
-6. Boutons morts (exports).
+1. PIN login 500 en prod (auth.service) — ⏳ À VÉRIFIER en runtime local (non reproductible sans DB/prod ici). Auth JWT couvert par tests (auth-security, mobile-tokens).
+2. Clés API réelles dans `docker/.env.production.example` — ✅ VÉRIFIÉ PROPRE (scan `findSecretLeaks` P236) ; garde testé sur TOUS les `.env*` suivis empêche toute réintroduction.
+3. Erreurs avalées côté front (`StockAlertsPage`, `LabelsPage`) — ✅ PÉRIMÉ : les deux pages surfacent leurs erreurs (audit P242) ; StockAlertsPage durci via `safeErrorMessage`.
+4. XSS receipts HTML (échappement) — ✅ MITIGÉ + TESTÉ : `escapeHtml` (POS-132) câblé sur tous les champs texte ; verrou e2e anti-`<script>` (P241).
+5. Receipts publics sans auth — ✅ INTENTIONNEL : `saleId` = UUID → capability-URL non énumérable (modèle Stripe) ; email protégé JwtAuthGuard (P241).
+6. Boutons morts (exports) — ✅ traité : hygiène front (P181/182/196) a supprimé le code mort ; exports CSV branchés (Comptabilité/Supervision/Inventaire). À re-vérifier ponctuellement.
 
 ## 6. Prochaine action
 

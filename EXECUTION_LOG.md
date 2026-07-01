@@ -2133,3 +2133,8 @@ VERDICT : ✅ SOLIDE — un vrai secret ne peut plus se faufiler nulle part dans
 - Durcissement réel : `StockAlertsPage` ajustement → `safeErrorMessage(err, ...)` (au lieu de l'extraction brute) : cohérence + anti-crash React si message objet.
 - Preuve : `tsc --noEmit` back-office EXIT 0 ; vitest inchangé PASS.
 - Suite : P243 refresh §5 statuts vérifiés, P244 conso, P245 audit.
+
+## PAQUET 243 — Refresh PROJECT_STATUS §5 (statuts risques hérités re-vérifiés)
+- §5 mis à jour honnêtement : #2 VÉRIFIÉ PROPRE (scan), #3 PÉRIMÉ (audit P242), #4 MITIGÉ+TESTÉ (P241), #5 INTENTIONNEL (UUID capability-URL), #6 traité (hygiène). #1 (PIN login 500) = ⏳ À VÉRIFIER en runtime local (non reproductible sans DB/prod).
+- Aucune sur-déclaration : le seul point restant "À vérifier" (#1) est explicitement marqué comme nécessitant un runtime local.
+- Suite : P244 consolidation, P245 audit final.
