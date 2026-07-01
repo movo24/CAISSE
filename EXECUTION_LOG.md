@@ -1776,3 +1776,14 @@ Bilan couverture (183→190) : 2 modules sécurité-sensibles jusque-là sans sp
 - Vérif : aucun fichier de pilotage (.md hors EXECUTION_LOG) ne référençait `guards/permissions.ts` → rien à corriger.
 - `TECHNICAL_DEBT.md` : section "Dette résolue (traçabilité)" ajoutée avec TD-DEAD-PERMISSIONS (supprimé P192, matrice préservée, 0 régression).
 - Suite : P195 audit de contrôle 192→194 + verdict.
+
+## PAQUET 195 — AUDIT DE CONTRÔLE 192→194 (Règle 3)
+Preuves :
+- git : arbre propre, commits 32d5a68/6ad92bc/97296b0.
+- Nettoyage : 0 référence résiduelle à `guards/permissions'` ou `hasMinRole` dans le code ; matrice de permissions préservée dans `role-hierarchy.ts`.
+- Compile : backend `tsc --noEmit` EXIT 0 + `nest build` RC 0.
+- Non-régression : 155 suites PASS/2 skip — 1080 tests PASS/3 skip (P193, inchangé → 0 impact).
+- Bundle : history complète.
+
+VERDICT : ✅ SOLIDE — un fichier de code mort supprimé (doublon de la hiérarchie de rôles), source de vérité unique consolidée (role-hierarchy.ts, testé), doc de permissions préservée, 0 régression. Hygiène + sécurité (un seul point de décision pour les rôles).
+Bilan couverture/hygiène (183→194) : mobile-auth JWT testé, airtable mapper testé, permissions.ts mort supprimé. Restent sans spec colocated : connected-apps + terminals (CRUD/repo). Gates infra inchangées.
