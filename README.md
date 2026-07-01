@@ -9,6 +9,7 @@ A modern, multi-store, multi-currency Point of Sale system designed for SaaS dep
 3. **État courant prouvé** : [`PROJECT_STATUS.md`](PROJECT_STATUS.md) · journal détaillé [`EXECUTION_LOG.md`](EXECUTION_LOG.md).
 4. **3 gates externes (secret / base / décision compta)** :
    - Statut : [`GATES_READINESS.md`](GATES_READINESS.md) — prêt / manquant / pourquoi bloqué.
+   - **Avant de brancher** : [`PRE_GATE_CHECKLIST.md`](PRE_GATE_CHECKLIST.md) (checklist stricte).
    - Procédure : [`EXTERNAL_GATES_RUNBOOK.md`](EXTERNAL_GATES_RUNBOOK.md) · relais : [`OUTBOX_RELAY_KIT.md`](OUTBOX_RELAY_KIT.md).
 
 Gardes automatiques (CI + tests) : complétude `.env.example` backend+front, validation env au boot, absence de secret réel, existence des scripts CI.

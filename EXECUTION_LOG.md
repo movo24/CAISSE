@@ -2068,3 +2068,8 @@ VERDICT : ✅ SOLIDE — la reprise est maintenant "one-command", auto-vérifié
 - `test/gitignore-hardening.spec.ts` : (a) patterns requis présents + `!.env.example` ; (b) pas d'ignore `*.bundle` nu ; (c) `git ls-files` → 0 fichier sensible suivi (.env réel/clé/cert/dump/backup). 3 tests PASS.
 - Vérif préalable : aucun fichier sensible déjà suivi (sûr d'ajouter les patterns).
 - Suite : P234 checklist pré-gate, P235 consolidation.
+
+## PAQUET 234 — PRE_GATE_CHECKLIST.md (checklist ultra stricte avant branchement)
+- `PRE_GATE_CHECKLIST.md` (NOUVEAU) : commun (preflight PASS, git propre, gardes secret verts, GO humain) + par gate (relais/migration/social) — prérequis, dry-run, commande, preuve attendue, rollback prévu, interdits, critères de STOP + étapes post-franchissement.
+- Aucun secret réel (références/placeholders). Lié depuis le README (point d'entrée reprise).
+- Suite : P235 consolidation sécurité + verdict.
