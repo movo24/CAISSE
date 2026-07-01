@@ -1864,3 +1864,13 @@ Portée sandbox-complétable : ÉPUISÉE proprement (intégration, interfaces, �
 - `OUTBOX_RELAY_KIT.md` (NOUVEAU) : variables exactes, contrat de livraison (HMAC), procédure d'activation, critères succès/rollback, ce qui reste bloqué.
 - Preuve : `jest outbox-publisher.spec.ts` ⇒ 1 suite / **8 tests PASS**. Aucun appel réseau réel, aucun secret.
 - Suite : P207 dry-run migration base jetable.
+
+## PAQUET 207 — MIGRATION-1725 : dry-run via runner TypeORM réel (base jetable pg-mem)
+- `test/migration-1725-dryrun.spec.ts` (NOUVEAU) : `ds.runMigrations()` sur pg-mem jetable → applique AddIntegrationOutbox1725 (17 col) ; 2e `runMigrations()` = **0 appliqué (aucun drift)** ; `ds.undoLastMigration()` → rollback propre. Exerce le vrai chemin runner (table migrations + transaction), pas juste up()/down() (P176).
+- Preuve : `jest migration-1725-dryrun.spec.ts` ⇒ 1 suite / **3 tests PASS**. AUCUNE base cible touchée.
+- COMMANDE CIBLE (à lancer plus tard, PAS exécutée ici — nécessite DATABASE_URL de la base cible) :
+    cd packages/backend && DATABASE_URL="postgresql://...cible...?sslmode=require" npm run migration:run
+  (En prod, la migration s'auto-applique au boot : `migrationsRun: isProd` dans app.module.ts — donc un simple redéploiement backend suffit aussi.)
+- Vérification post-migration cible : `\d integration_events` (17 colonnes) + `SELECT * FROM migrations WHERE name='AddIntegrationOutbox1725000000000';`
+- Rollback cible : `npm run migration:revert` (down() drop la table, additif/réversible).
+- Suite : P208 verrouillage comptable social.
