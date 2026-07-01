@@ -2105,3 +2105,8 @@ Gardes de sécurité/reprise (6) : env-completeness, env-no-secrets, docs-no-sec
 - `PRE_GATE_CHECKLIST.md` : ligne commune `npm run test:security` = tous verts avant toute gate.
 - Preuve : `npm run test:security` ⇒ **10 suites / 34 tests PASS** ; YAML valide (step présent) ; ci-scripts-exist reste vert (nouveau script référencé existe).
 - Suite : P239 consolidation, P240 audit final.
+
+## PAQUET 239 — Consolidation globale (durcissement 236→238)
+- Backend global : A 41/284 + B 75/502 + C 51+2skip/341+3skip = **167 suites PASS / 2 skip (169) ; 1127 tests PASS / 3 skip**. Δ vs P235 : +1 suite (source-no-secrets ; env-no-secrets refondu). Zéro régression.
+- `preflight:full` OVERALL PASS. PROJECT_STATUS mis à jour (167/1127).
+- Suite : P240 audit final + verdict.
