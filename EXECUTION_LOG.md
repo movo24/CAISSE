@@ -2073,3 +2073,14 @@ VERDICT : ✅ SOLIDE — la reprise est maintenant "one-command", auto-vérifié
 - `PRE_GATE_CHECKLIST.md` (NOUVEAU) : commun (preflight PASS, git propre, gardes secret verts, GO humain) + par gate (relais/migration/social) — prérequis, dry-run, commande, preuve attendue, rollback prévu, interdits, critères de STOP + étapes post-franchissement.
 - Aucun secret réel (références/placeholders). Lié depuis le README (point d'entrée reprise).
 - Suite : P235 consolidation sécurité + verdict.
+
+## PAQUET 235 — CONSOLIDATION SÉCURITÉ (durcissement 231→234)
+Preuves :
+- Gardes sécurité/reprise : `src/common/config` + env-completeness + env-no-secrets + docs-no-secrets + gitignore-hardening + ci-scripts-exist ⇒ **9 suites / 34 tests PASS**.
+- Backend global : A 41/284 + B 75/502 + C 50+2skip/341+3skip = **166 suites PASS / 2 skip (168) ; 1127 tests PASS / 3 skip**. Δ vs P229 : +3 suites (docs-no-secrets, redact, gitignore-hardening) / +8 tests. Zéro régression.
+- `preflight:full` OVERALL PASS ; PROJECT_STATUS mis à jour (166/1127).
+- Interdits respectés : zéro secret réel, zéro prod, zéro migration cible, zéro appel externe, zéro activation OUTBOX, zéro mapping comptable inventé.
+
+VERDICT : ✅ SOLIDE — le projet est désormais "anti-erreur humaine" côté secrets : aucun vrai secret ne peut finir dans .env.example NI dans une doc .md suivie (tests), les valeurs sensibles ne sont jamais loggées (redact + preuve validation), les artefacts sensibles sont ignorés (gitignore/dockerignore testés, bundle préservé), et une checklist stricte encadre chaque branchement de gate. 6 gardes automatiques en CI.
+Gardes de sécurité/reprise (6) : env-completeness, env-no-secrets, docs-no-secrets, redact/anti-log, gitignore-hardening, ci-scripts-exist (+ preflight en CI).
+À fournir pour franchir une gate (inchangé) : GATE1 OUTBOX_PUBLISH_URL+SECRET ; GATE2 DATABASE_URL cible+GO ; GATE3 plan de comptes social validé.
