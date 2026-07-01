@@ -1,0 +1,27 @@
+# Build context hygiene — keep secrets, deps and artifacts out of images.
+node_modules
+**/node_modules
+dist
+build
+coverage
+.git
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+*.cer
+*.p12
+*.pfx
+id_rsa
+*.keystore
+*.dump
+*.sql.gz
+*.bak
+db-backup-*
+*.log
+logs
+*.bundle
+_BACKUP_PAQUET_*.patch
+.DS_Store

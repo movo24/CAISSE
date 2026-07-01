@@ -2061,3 +2061,10 @@ VERDICT : ✅ SOLIDE — la reprise est maintenant "one-command", auto-vérifié
 - Vérif bonus : `scripts/preflight.sh` imprime des NOMS de variables (via `comm`), jamais les valeurs.
 - Preuve : `jest redact.spec.ts` ⇒ 1 suite / **4 tests PASS** ; `tsc --noEmit` EXIT 0. Aucune valeur sensible réelle utilisée (valeurs simulées).
 - Suite : P233 gitignore/dockerignore, P234 checklist pré-gate, P235 consolidation.
+
+## PAQUET 233 — Durcissement .gitignore / .dockerignore + audit testé
+- `.gitignore` : ajout patterns secrets/artefacts — `.env.*` (+ `!.env.example`), `*.pem/*.key/*.crt/*.cer/*.p12/*.pfx/*.keystore`, `id_rsa*`, `*.dump/*.sql.gz/*.bak/db-backup-*/dump.sql`, `*.log/logs/`. Note explicite : `pos-recovery.bundle` reste suivi (pas d'ignore `*.bundle`).
+- `.dockerignore` (NOUVEAU racine) : exclut node_modules/dist/.git/secrets/clés/dumps/logs du contexte d'image (bundle exclu de l'image mais pas du repo).
+- `test/gitignore-hardening.spec.ts` : (a) patterns requis présents + `!.env.example` ; (b) pas d'ignore `*.bundle` nu ; (c) `git ls-files` → 0 fichier sensible suivi (.env réel/clé/cert/dump/backup). 3 tests PASS.
+- Vérif préalable : aucun fichier sensible déjà suivi (sûr d'ajouter les patterns).
+- Suite : P234 checklist pré-gate, P235 consolidation.

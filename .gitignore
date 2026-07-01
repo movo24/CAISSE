@@ -13,3 +13,27 @@ coverage/
 !public/
 # Sandbox git-lock backup artifacts (do not track — they grow recursively)
 _BACKUP_PAQUET_*.patch
+
+# ── Secrets / env (real values — NEVER commit; .env.example is allowed) ──
+.env.*
+!.env.example
+# Keys & certificates
+*.pem
+*.key
+*.crt
+*.cer
+*.p12
+*.pfx
+id_rsa
+id_rsa.pub
+*.keystore
+# DB dumps / backups
+*.dump
+*.sql.gz
+*.bak
+db-backup-*
+dump.sql
+# Logs
+*.log
+logs/
+# NOTE: pos-recovery.bundle is intentionally tracked (recovery) — do NOT ignore *.bundle.
