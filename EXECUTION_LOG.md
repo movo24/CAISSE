@@ -1766,3 +1766,8 @@ Bilan couverture (183→190) : 2 modules sécurité-sensibles jusque-là sans sp
 - Preuve : `tsc --noEmit` EXIT 0 (rien ne dépendait du fichier) ; `jest src/common/guards` ⇒ 2 suites / 16 tests PASS ; `nest build` RC 0.
 - Valeur : -1 fichier mort, -1 duplication de la hiérarchie de rôles (source de vérité unique = role-hierarchy.ts), doc de permissions préservée au bon endroit.
 - Suite : P193 non-régression global, P194 docs, P195 audit.
+
+## PAQUET 193 — Non-régression globale (post suppression permissions.ts)
+- A (a–m) : 40 suites / 274 tests PASS ; C (hors modules, guards inclus) : 40 PASS + 2 skip / 304 PASS + 3 skip — identiques à P189. B (n–z) inchangé depuis P189 (75/502, aucune modif n-z).
+- TOTAL : **155 suites PASS / 2 skip (157) ; 1080 tests PASS / 3 skip** — inchangé : la suppression du fichier mort n'a impacté aucun test (confirme qu'il était bien du code mort).
+- Suite : P194 docs, P195 audit+verdict.
