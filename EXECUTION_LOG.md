@@ -1703,3 +1703,12 @@ Reste inchangé : 3 gates infra (secret relais / base migration / décision comp
 - `jest src/modules/mobile-auth test/auth-security.spec.ts` ⇒ **2 suites / 16 tests PASS**.
 - Confirme : l'extraction du helper JWT n'altère pas le contrat auth (audience mobile-app, isolation secrets, garde rôles). Comportement du service préservé.
 - Suite : P185 non-régression globale (nouveau spec inclus), P186 docs, P187 audit.
+
+## PAQUET 185 — Non-régression GLOBALE backend (re-agrégat post mobile-tokens)
+Partition (114 modules + 42 hors-modules = 156 = `jest --listTests`) :
+- A (a–m, mobile-auth inclus) : 39 suites / 266 tests PASS.
+- B (n–z) : 75 suites / 502 tests PASS.
+- C (common/db/test) : 40 PASS + 2 skip / 304 PASS + 3 skip.
+- TOTAL : **154 suites PASS / 2 skip (156) ; 1072 tests PASS / 3 skip**.
+- Δ vs P179 : +1 suite / +5 tests = spec mobile-tokens (P183). 2 skip = `.pg.spec`. Zéro régression.
+- Suite : P186 docs (TESTING), P187 audit+verdict.
