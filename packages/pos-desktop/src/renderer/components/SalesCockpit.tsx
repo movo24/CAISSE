@@ -65,9 +65,6 @@ interface CockpitData {
   requiredPerHour: number;
   projection: number;
   status: Status;
-  // Comparisons (placeholders — will be real when backend exposes yesterday/last week)
-  vsYesterday: number | null;
-  vsLastWeek: number | null;
   actionMessage: string;
 }
 
@@ -127,8 +124,6 @@ export function SalesCockpit() {
       requiredPerHour,
       projection,
       status,
-      vsYesterday: null, // TODO: wire to backend comparison endpoint
-      vsLastWeek: null,
       actionMessage,
     };
   }, [session, now]);

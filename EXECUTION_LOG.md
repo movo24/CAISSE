@@ -1674,3 +1674,11 @@ Preuves :
 
 VERDICT : ✅ SOLIDE — les 3 gates restantes ne sont plus des boîtes noires : TD-INT-RELAY (livraison signée prouvée loopback), MIGRATION-1725 (SQL up/down + schéma prouvés pg-mem + parité entité), TD-INT-SOCIAL-ENTRIES (reste une décision compta). Chacune est câblée + prouvée au maximum possible sans franchir le gate réel (secrets / base Postgres serveur / validation métier).
 Prochains (nécessitent accès/décision hors sandbox) : (1) OUTBOX_PUBLISH_URL+SECRET → activer relais réel, (2) migration:run sur Neon, (3) plan de comptes social validé, (4) e2e Playwright/CI.
+
+## PAQUET 181 — Audit stubs/placeholders + retrait champ mort SalesCockpit
+- Balayage repo (TODO/FIXME/stub/placeholder/not implemented) : la plupart = `placeholder` d'inputs (légitimes). Vrais items : (a) `customers.service.ts` TODO Redis multi-instance = limite infra documentée (env REDIS_URL) → laissée telle quelle ; (b) `reports` "sending to Comptamax24 not implemented" = TD-INT-RELAY (déjà tracké) ; (c) **`SalesCockpit.tsx` `vsYesterday`/`vsLastWeek` = champs déclarés, forcés à null, JAMAIS rendus** → stub.
+- Fix : suppression des 2 champs morts (interface + assignations) + TODO trompeur. Aucune UI ne les affichait (grep = 0 usage ailleurs). Note : le backend `reports` expose déjà les comparaisons J-1/S-1 (TrendComparisons) → une vraie feature "vs hier" reste possible plus tard (front à câbler+rendre), mais ne doit pas rester en stub mort.
+- Preuve : `tsc --noEmit` pos EXIT 0 ; vitest pos 5 fichiers / **23 tests PASS** (0 régression) ; 0 référence résiduelle vsYesterday/vsLastWeek.
+
+VERDICT : ✅ SOLIDE — un stub mort de moins ; caisse cockpit sans champ trompeur. Autres "placeholders" détectés = inputs légitimes ou dettes infra déjà trackées.
+Reste : 3 gates infra (TD-INT-RELAY secrets, MIGRATION-1725 base, TD-INT-SOCIAL-ENTRIES décision). Proposition future non-gated : câbler réellement "CA vs hier" au cockpit depuis l'endpoint reports existant (feature front complète).
