@@ -281,3 +281,45 @@ Avant que je puisse exécuter le cutover DNS sur ton ordre, ces 6 lights doivent
 Quand les 4 cases ⏳ deviennent ✅ → tu me dis **"GO DNS"** et j'exécute la `DNS-CUTOVER-CHECKLIST.md`.
 
 Aucun cutover sans ce GO explicite.
+
+---
+
+## 8 — Checklist monitoring pré-prod (P293, bloc B6 — rien de connecté, valeurs prêtes à coller)
+
+### 8.1 UptimeRobot (ou équivalent) — moniteurs à créer
+
+| # | Type | Cible | Réglage | Alerte si |
+|---|---|---|---|---|
+| 1 | HTTP(s) keyword | `https://api.addxintelligence.com/api/health` (après cutover ; avant : URL Railway) | interval 60 s, keyword **`"status":"ok"`** (alert aussi sur `degraded` via moniteur 2) | keyword absent OU code ≠ 200 |
+| 2 | HTTP(s) keyword | même URL | interval 5 min, keyword **`"status":"degraded"`**, type « exists » | présent → Redis ou TW24 down (non bloquant, à investiguer) |
+| 3 | HTTP(s) | `https://app.addxintelligence.com` | interval 5 min | code ≠ 200 |
+| 4 | HTTP(s) | `https://pos.addxintelligence.com` | interval 5 min | code ≠ 200 |
+| 5 | SSL expiry | les 4 domaines | alerte à J-14 | certificat < 14 j |
+
+Contacts d'alerte : email + (optionnel) webhook → même canal que `ALERT_WEBHOOK_URL`.
+
+### 8.2 Alerting applicatif (déjà codé — à activer par UNE variable)
+
+- `ALERT_WEBHOOK_URL` (Slack/Discord/custom) → `AlertService` pousse : `REDIS_DOWN/RECOVERED`, `TIMEWIN_DOWN/RECOVERED`, `CIRCUIT_BREAKER_OPEN/CLOSED`, `LOGIN_BRUTEFORCE`, `RATE_LIMIT_BURST`. Sans la variable : logs structurés seulement (comportement actuel).
+- `SENTRY_DSN` → erreurs runtime (déjà câblé dans `main.ts`, no-op sans DSN).
+
+### 8.3 Healthchecks par environnement
+
+| Env | Mécanisme | Où |
+|---|---|---|
+| Railway | healthcheck HTTP `/api/health` (503 = restart) | service settings (déjà en place) |
+| docker-compose | `pg_isready` + `wget /api/health` (déjà dans le compose) + attente réelle dans `deploy.sh` | `docker/docker-compose.prod.yml` |
+| Cron externe | moniteurs §8.1 | UptimeRobot |
+
+### 8.4 Logs — quoi regarder chaque semaine (5 min)
+
+```bash
+# docker path :
+docker compose -f docker/docker-compose.prod.yml logs backend --since 168h 2>&1 | \
+  grep -E "ERROR|WARN" | grep -vE "TW24_PUSH_FAILED.*circuit" | sort | uniq -c | sort -rn | head -20
+# Railway : dashboard → Deployments → View logs, filtrer ERROR.
+```
+Signaux à traiter : `LOGIN_BRUTEFORCE` (répété = attaque), `CIRCUIT_BREAKER_OPEN` persistant (TW24 réellement down), `Publish … → HTTP` non-2xx récurrent (receveur outbox malade → vérifier `GET /api/integration/outbox/stats`, `failed` doit rester 0), croissance de `pending` outbox (relais arrêté).
+
+### 8.5 Ce qui reste volontairement NON connecté ici
+Aucun compte UptimeRobot/Sentry/webhook n'est créé ni configuré depuis le dépôt — ce sont des actions console à faire par un humain avec les valeurs ci-dessus (zéro secret dans le repo).
