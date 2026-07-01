@@ -75,6 +75,16 @@ Ces points datent d'avril 2026 ; plusieurs commits fiscaux/correctifs ont suivi.
 Voir `POS_BLOCKS.md` → premier paquet (PAQUET 1). Détail d'exécution dans `EXECUTION_LOG.md`.
 
 ---
+## État consolidé — 2026-07-01 (jalon PAQUET 262→263, v13 — session autonome suite)
+
+- **P262** `customer-visits.service.spec` (6) — anti-doublon scan 5 min (early-return sans transaction), insert transactionnel + bump `visit_count`, lecture fréquence sécurisée (not-found → 404, cross-store non-admin → 403).
+- **P263** `notifications.service.spec` (3) — `generateQrReminderMessage` tenant-scopé, garde not-found, branches message premier-achat (-5%) vs points fidélité.
+
+**Non-régression :** slice customer-visits/notifications/customers/reports **98 tests verts (19 suites)** ; `tsc --noEmit` EXIT 0. Specs uniquement.
+
+**Compteurs (honnêtes) :** backend 178 → **180 suites**, **+9 tests** (~1222 → ~1231). Cumul session autonome (v12+v13) : **+6 suites, +37 tests** (loyalty-card, inventory-scan, reconciliation, jackpot, customer-visits, notifications). ⚠️ Suite complète non re-jouée bout-en-bout (cap 45 s).
+
+---
 ## État consolidé — 2026-07-01 (jalon PAQUET 257→261, v12 — session autonome, couverture services)
 
 Session autonome (méthode : additif, prouvé, réversible ; zéro gate franchie).
