@@ -1881,3 +1881,8 @@ Portée sandbox-complétable : ÉPUISÉE proprement (intégration, interfaces, �
 - Zones nécessitant validation comptable = isolées derrière le garde : refus si (a) `SOCIAL_ENTRIES_ENABLED`≠true, (b) aucun chart, (c) chart incomplet (slots manquants listés), (d) `validatedBy` manquant (preuve de validation comptable).
 - Preuve : `jest social-entries-guard.spec.ts` ⇒ 1 suite / **7 tests PASS** ; `tsc --noEmit` EXIT 0. Aucune écriture réelle, aucun arbitrage inventé.
 - Suite : P209 EXTERNAL_GATES_RUNBOOK.md, P210 audit final.
+
+## PAQUET 209 — EXTERNAL_GATES_RUNBOOK.md (reprise sans redécouverte)
+- `EXTERNAL_GATES_RUNBOOK.md` (NOUVEAU) : pour chaque gate — responsable de validation, prérequis exacts, commandes, critères de succès, rollback, risques. Ordre recommandé (migration → relais → social) + liste précise de ce que je dois recevoir pour agir.
+- Renvoie vers OUTBOX_RELAY_KIT.md (gate 1) et les preuves P176/P177/P207 (gate 2), garde P208 (gate 3).
+- Suite : P210 audit final.
