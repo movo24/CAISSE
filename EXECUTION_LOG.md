@@ -1651,3 +1651,9 @@ Prochains candidats (tous nécessitent accès/décision) : (1) fournir OUTBOX_PU
 - 16 colonnes matchées via `name:` ; la 17e (`id`) = `@PrimaryColumn({type:'uuid'})` (nom par défaut `id`, non capté par le grep name:) → présente des 2 côtés.
 - Résultat : **0 drift** — schéma migration == schéma entité. Le test pg-mem (P176) + le test loopback (P171) + cette parité couvrent l'outbox de bout en bout (schéma, persistance défauts, livraison signée).
 - Suite : P178 docs, P179 non-régression test/, P180 audit+verdict.
+
+## PAQUET 178 — Docs : MIGRATION-1725 SQL prouvé (reste gated base)
+- `openDebts.ts` : impact reformulé "SQL up()/down() prouvé (pg-mem P176) + parité entité (P177)". Sévérité reste `gate` (base cible requise).
+- `TECHNICAL_DEBT.md` : ligne MIGRATION-1725 ajoutée (🟡, preuves P176/P177, action migration:run base cible).
+- Preuve : `tsc --noEmit` back-office EXIT 0.
+- Suite : P179 non-régression test/, P180 audit+verdict.

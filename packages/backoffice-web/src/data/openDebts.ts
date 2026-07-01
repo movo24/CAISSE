@@ -31,7 +31,7 @@ export const OPEN_DEBTS: OpenDebt[] = [
   {
     id: 'MIGRATION-1725',
     label: 'Migration table integration_events',
-    impact: 'Les events outbox ne persistent pas tant que la migration 1725 n’est pas jouée.',
+    impact: 'SQL up()/down() prouvé (pg-mem P176) + parité entité (P177) ; events non persistés tant que la migration n’est pas jouée sur la base cible.',
     action: 'migration:run en base cible (hors prod sans GO).',
     severity: 'gate',
   },

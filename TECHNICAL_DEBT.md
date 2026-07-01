@@ -5,6 +5,7 @@
 | ID | Dette | Sévérité | Preuve / Localisation | Statut |
 |---|---|---|---|---|
 | TD-INT-RELAY | Publication outbox HTTP réelle vers Comptamax/TimeWin/Analytik R | 🟡 | `outbox-publisher.ts` (HttpOutboxPublisher + factory env-gated) ; mécaniques POST+HMAC prouvées loopback `outbox-publisher.spec.ts` 5 tests (P171) | Gated — fournir `OUTBOX_PUBLISH_URL`+`OUTBOX_PUBLISH_SECRET` puis `OUTBOX_RELAY_ENABLED=true` (secrets, hors sandbox) |
+| MIGRATION-1725 | Table `integration_events` non créée en base cible | 🟡 | SQL up()/down() prouvé sur pg-mem `migration-1725-outbox.spec.ts` 3 tests (P176) + parité entité 17 col (P177) | Gated — `migration:run` sur base cible (Postgres, non-root en sandbox) |
 | TD-FRONT-INVENTORY-VARIANCE | Écran écart d'inventaire (comptage physique vs système) absent/mort | 🟡 | helper `stock-variance.ts` (5 tests) + `POST /stock/variance` + `InventoryVariancePage.tsx` routée/nav | ✅ RÉSOLU P153/155 (commits f28fded→4dd79e3) |
 | TD-FE-OFFLINE-DISCOUNT | Remise responsable hors-ligne (PIN serveur invérifiable) | 🟡 | arbitrage : `manual-discount-guard.ts` (bloque offline) câblé POSPage (bouton + garde vente) | ✅ RÉSOLU P159 (commit 7938cb6) — décision : interdire hors-ligne |
 | TD-FE-ROLLUP-NATIVE | Build/vitest front non exécutables en sandbox (binaire natif rollup) | 🟢 | binaire `@rollup/rollup-linux-arm64-gnu` installé (P169) → vitest **42 tests PASS** (backoffice 19 + pos 23) + `vite build` **2× verts** (backoffice 1988 / pos 2082 modules) + steps CI (P166) | ✅ RÉSOLU P169 — gate prouvé exécutable (sandbox + CI) |
