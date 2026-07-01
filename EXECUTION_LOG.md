@@ -1945,3 +1945,10 @@ VERDICT : ✅ PRÊT & SOLIDE — préparation de déblocage + sécurité de repr
 - Gates durcies & prouvées : relais (anti demi-activation), migration (dry-run runner réel), social (garde fail-closed).
 - Reprise sécurisée : `.env.example` complet (0 var non documentée), validation boot testée (11 tests), 3 docs de reprise.
 - À fournir pour franchir : GATE1 `OUTBOX_PUBLISH_URL`+`OUTBOX_PUBLISH_SECRET` ; GATE2 `DATABASE_URL` cible+GO ; GATE3 plan de comptes social validé.
+
+## PAQUET 216 — resume preflight : commande unique de vérification de reprise
+- `src/common/config/preflight-checks.ts` (pur) : overallVerdict (fail>warn>pass), missingEnvVars, missingRequiredKeys, statusFromGap, exitCode. `preflight-checks.spec.ts` = 5 tests.
+- `scripts/preflight.sh` (one-command, zéro secret/réseau) : contrôle complétude .env.example, clés requises, présence docs reprise, flags gates OFF par défaut ; `--full` ajoute tsc + tests ciblés. Sortie PASS/WARN/FAIL + exit code (fail=1).
+- Scripts npm : `preflight`, `preflight:full`.
+- Preuve : exécution réelle → `preflight` OVERALL PASS ; `preflight --full` OVERALL PASS (tsc + tests ciblés) ; `jest preflight-checks.spec.ts` 5/5.
+- Suite : P217 registre env testé, P218 doc symptôme→correction, P219 readiness gates, P220 consolidation.

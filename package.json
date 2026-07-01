@@ -19,6 +19,8 @@
     "test:backoffice": "cd packages/backoffice-web && npm test",
     "test:pos": "cd packages/pos-desktop && npm test",
     "test:front": "npm run test:backoffice && npm run test:pos",
+    "preflight": "bash scripts/preflight.sh",
+    "preflight:full": "bash scripts/preflight.sh --full",
     "lint": "npm run lint --workspaces",
     "format": "prettier --write \"**/*.{ts,tsx,json,md}\"",
     "docker:up": "docker compose -f docker/docker-compose.yml up -d",
