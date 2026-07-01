@@ -1920,3 +1920,8 @@ VERDICT : ✅ PRÊT — les 3 gates sont préparées, durcies (garde-fous fail-c
 - Preuve : `jest` ⇒ 1 suite / **11 tests PASS** ; `tsc --noEmit` EXIT 0 ; `nest build` RC 0.
 - Valeur reprise : les règles fail-fast du boot sont désormais testées → toute régression de config est attrapée en CI.
 - Suite : P213 checklist reprise, P214 audit final.
+
+## PAQUET 213 — RESUME_CHECKLIST.md (sécurité de reprise)
+- `RESUME_CHECKLIST.md` (NOUVEAU) : récupération depuis bundle, install + vérif santé (chiffres attendus), config env (.env.example → .env), état courant, traitement des 3 gates (table info-à-fournir), garde-fous en place, rappels sécurité.
+- Objectif : reprise sans redécouverte, complète le trio OUTBOX_RELAY_KIT + EXTERNAL_GATES_RUNBOOK.
+- Suite : P214 audit final local + verdict.
