@@ -11,9 +11,7 @@ import * as jwt from 'jsonwebtoken';
 import { CustomerEntity } from '../../database/entities/customer.entity';
 import { LoyaltyCardService } from '../loyalty-card/loyalty-card.service';
 import { CouponService } from '../coupon/coupon.service';
-
-const ACCESS_TOKEN_TTL = '15m';
-const REFRESH_TOKEN_TTL = '30d';
+import { buildMobileTokens, MOBILE_AUDIENCE } from './mobile-tokens';
 
 @Injectable()
 export class MobileAuthService {
@@ -89,7 +87,7 @@ export class MobileAuthService {
     const secret = process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET!;
     try {
       const payload = jwt.verify(refreshToken, secret, {
-        audience: 'mobile-app',
+        audience: MOBILE_AUDIENCE,
       }) as { sub: string };
 
       const customer = await this.customerRepo.findOne({
@@ -148,18 +146,12 @@ export class MobileAuthService {
     const accessSecret = process.env.JWT_SECRET!;
     const refreshSecret = process.env.JWT_REFRESH_SECRET || accessSecret;
 
-    // Note: do NOT include `aud` in the payload — jsonwebtoken throws when
-    // the same registered claim is set both in the payload and via options.
-    // The `audience` option below adds `aud: 'mobile-app'` to the issued JWT.
-    const accessToken = jwt.sign(
-      { sub: customer.id, email: customer.email },
+    // Token shape (audience, TTL, anti-`aud`-duplication) lives in the pure
+    // buildMobileTokens helper — see mobile-tokens.ts + its spec.
+    const { accessToken, refreshToken } = buildMobileTokens(
+      { id: customer.id, email: customer.email },
       accessSecret,
-      { expiresIn: ACCESS_TOKEN_TTL, audience: 'mobile-app' },
-    );
-    const refreshToken = jwt.sign(
-      { sub: customer.id },
       refreshSecret,
-      { expiresIn: REFRESH_TOKEN_TTL, audience: 'mobile-app' },
     );
 
     return {

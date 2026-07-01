@@ -1690,3 +1690,11 @@ Reste : 3 gates infra (TD-INT-RELAY secrets, MIGRATION-1725 base, TD-INT-SOCIAL-
 
 VERDICT : ✅ SOLIDE — code front encore plus propre (prop morte éliminée), feature de comparaison confirmée déjà opérationnelle au bon endroit. Aucune nouvelle dette.
 Reste inchangé : 3 gates infra (secret relais / base migration / décision compta) — seuls axes nécessitant un accès ou une décision externe.
+
+## PAQUET 183 — Extraction + test JWT Wesley Club (buildMobileTokens) — sécurité
+- `mobile-auth/mobile-tokens.ts` (NOUVEAU, pur) : `buildMobileTokens(subject, accessSecret, refreshSecret)` — audience `mobile-app`, TTL 15m/30j, PIÈGE `aud` évité (jamais dans le payload, uniquement via option — cf. CLAUDE.md security rule 5).
+- `mobile-auth.service.ts` re-câblé (comportement préservé) : `buildAuthResponse` délègue au helper ; constante `MOBILE_AUDIENCE` réutilisée dans `refresh()`.
+- `mobile-tokens.spec.ts` : 5 tests — pas de throw (anti-aud), access porte aud/sub/email + vérif OK, refresh signé avec le secret refresh (le secret access ne le vérifie PAS), mauvaise audience rejetée, TTL access=900s / refresh=2592000s.
+- Preuve : `tsc --noEmit` EXIT 0 ; `jest mobile-tokens.spec.ts` ⇒ 1 suite / **5 tests PASS** ; service utilise le helper.
+- Valeur : couvre un chemin auth client jusque-là sans spec + verrouille la non-régression du piège aud (throw runtime documenté).
+- Suite : P184 non-régression mobile-auth + global, P185 docs, P186/187 audit.
