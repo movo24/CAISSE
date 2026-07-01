@@ -2178,3 +2178,10 @@ Ces paquets ont été journalisés dans `PROJECT_STATUS.md` (v10→v18) et non i
 - P276 : customer-visits pg-mem (6 tests) — anti-doublon 5 min par magasin, transaction + SQL brut, anti-IDOR.
 - P277 : consolidation globale — **191 suites PASS/2 skip · 1290 tests PASS/3 skip · 0 échec** ; tsc EXIT 0 ; test:security 10/34 PASS.
 - Preuves : commits 56b41ed / 47c9113 / 506688f / f3fd2f9 ; bundle régénéré.
+
+## PAQUET 278→281 — Cycle 3 Fab 5 (2026-07-02) : pg-mem chemins critiques stock/coupon/sync
+- P278 stock pg-mem (6 tests) + jumeau réel-PG du décrément atomique (bug pg-mem `col - $param` opérandes inversés, prouvé par sonde, documenté dans la spec).
+- P279 coupon.redeem pg-mem (5 tests) — FOR UPDATE, rejeu idempotent sans double USED, refus complets, cooldown, rollback.
+- P280 sync pg-mem (5 tests) — rejeu offline sans duplication de vente, rejected_no_id, server-wins, deltas tenant-scoped, pull incrémental.
+- P281 consolidation : **194 suites PASS/3 skip · 1306 tests PASS/5 skip · 0 échec** ; tsc EXIT 0.
+- Commits : bbc1b05 / 6034be3 / 7f330c0 ; bundle régénéré.

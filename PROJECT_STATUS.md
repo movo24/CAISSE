@@ -75,6 +75,17 @@ Ces points datent d'avril 2026 ; plusieurs commits fiscaux/correctifs ont suivi.
 Voir `POS_BLOCKS.md` → premier paquet (PAQUET 1). Détail d'exécution dans `EXECUTION_LOG.md`.
 
 ---
+## État consolidé — 2026-07-02 (jalon PAQUET 281, v21 — cycle 3 Fab 5 : pg-mem chemins critiques stock/coupon/sync)
+
+- **P278** `stock.service.pgmem.spec` (6) — décrément atomique tenant-scoped + outbox, adjustStock transactionnel (absolute/delta clampés, audit old→new), **prédicat SQL POS-083 baseline-20 %** (COALESCE/CEIL) réellement exécuté, seuils bulk actifs-only, variance id+EAN + unmatched. **Bug pg-mem découvert et prouvé** : `col - $param` inverse les opérandes (`SELECT 12 - $1 [3]` → −9) → la sémantique exacte du décrément est épinglée dans un **jumeau réel-PG** `test/stock-decrement.pg.spec.ts` (gated TEST_DATABASE_URL, +test de concurrence 10 décréments parallèles).
+- **P279** `coupon.service.pgmem.spec` (5) — rédemption transactionnelle : FOR UPDATE, **rejeu idempotent** (même clé → réponse cachée, zéro double USED/visite), refus 400/403/404/409, cooldown 15 j (vraie requête ORDER BY usedAt), rollback sur refus (le coupon reste AVAILABLE).
+- **P280** `sync.service.pgmem.spec` (5) — **invariant rejeu offline** : re-push du même payload = 0 duplication de vente (dédup batch par id client) ; vente sans id → `rejected_no_id` jamais insérée ; conflit client = server-wins (ligne serveur intacte) ; deltas stock tenant-scoped (SQL `+ :param`, non affecté par le bug pg-mem) ; pull incrémental updatedAt+store.
+- **P281** consolidation : suite backend COMPLÈTE rejouée en 5 tranches —
+  **194 suites PASS / 3 skip (.pg) · 1306 tests PASS / 5 skip · 0 échec** (Δ v20 : +3 suites actives, +1 suite .pg gated, +16 tests actifs). `tsc --noEmit` EXIT 0.
+
+Commits locaux : `bbc1b05` (P278) · `6034be3` (P279) · `7f330c0` (P280). Interdits respectés : zéro push, zéro secret, zéro prod, zéro migration cible.
+
+---
 ## État consolidé — 2026-07-02 (jalon PAQUET 277, v20 — cycle 2 Fab 5 : docs alignées + pg-mem money-path)
 
 - **P273** docs alignées sur le réel : CLAUDE.md (44 modules, 21 migrations dont 1725 gated, compteurs tests, 48 entités) + STATE_INDEX (les 10 priorités re-statuées : ✅ 4/5/9 faites, 🟡 3/10 partielles, ⛔ 5 gated).
