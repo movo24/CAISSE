@@ -2092,3 +2092,9 @@ Gardes de sécurité/reprise (6) : env-completeness, env-no-secrets, docs-no-sec
 - Preuve : positif 7 tests PASS (tous les .env* suivis propres) ; négatif : `sk_live_...` injecté dans `.env.production.example` → **échec** (file+pattern) ; retiré → re-PASS.
 - Vérif : les vrais `.env` (backend/pos-desktop) ne sont PAS suivis (gitignore OK).
 - Suite : P237 scan secret du code source, P238 script test:security, P239 conso, P240 audit.
+
+## PAQUET 237 — Garde anti-secret du code source (backend + front)
+- `test/source-no-secrets.spec.ts` (NOUVEAU) : scanne `packages/{backend,backoffice-web,pos-desktop}/src` (`*.ts`/`*.tsx`) via `findSecretLeaks`. Exclut les specs/tests (faux secrets de test) et `secret-scan.ts` (définit les patterns).
+- Positif : code source **propre** (0 secret hardcodé), 1 test PASS. Négatif : `sk_live_...` injecté dans un `.ts` source → **échec** (file+pattern) ; retiré → re-PASS.
+- Valeur : ferme la dernière porte — une clé collée dans un service serait bloquée (env + docs + code désormais couverts).
+- Suite : P238 script test:security groupé, P239 conso, P240 audit.
