@@ -2014,3 +2014,10 @@ Preuves :
 
 VERDICT : ✅ SOLIDE — reprise "one-command" désormais complète et auto-défendue en CI : complétude env backend ET front vérifiée automatiquement (échec CI sur toute dérive), docs de reprise présentes contrôlées, gates toujours externes/prêtes.
 Reste inchangé à fournir : GATE1 OUTBOX_PUBLISH_URL+SECRET ; GATE2 DATABASE_URL cible+GO ; GATE3 plan de comptes social validé.
+
+## PAQUET 226 — Garde-rail anti-fuite de secret (sécurité reprise)
+- `common/config/secret-scan.ts` (pur) : `findSecretLeaks(text)` détecte clés Stripe (sk_live/test), webhook (whsec_), AWS (AKIA), Google (AIza), JWT, URL Postgres avec mot de passe sur hôte distant ; tolère les placeholders (replace/example/xxxx/<...>/localhost). `secret-scan.spec.ts` = 6 tests.
+- `test/env-example-no-secrets.spec.ts` : scanne les 3 `.env.example` suivis → échoue si vrai secret. Positif : 3/3 propres.
+- Preuve négative : injection `sk_live_...` dans un .env.example du clone → test **échoue** (pattern stripe-secret) ; après retrait → re-PASS.
+- Valeur : empêche qu'une vraie clé finisse commitée (règle sécurité 1/2 de CLAUDE.md, désormais testée).
+- Suite : P227 garde scripts CI, P228 index reprise, P229 consolidation, P230 audit.
