@@ -1856,3 +1856,11 @@ Preuves :
 
 VERDICT JALON : ✅ SOLIDE — état réel du projet re-prouvé de bout en bout et documenté sans écart : backend 1080 tests verts, front 46 tests + builds verts (gate levé), pilotage à jour.
 Portée sandbox-complétable : ÉPUISÉE proprement (intégration, interfaces, écart d'inventaire, arbitrages, couverture sécurité, hygiène code mort, CI, gate front). Restent 3 gates strictement externes : TD-INT-RELAY (secret+URL), MIGRATION-1725 (base Postgres), TD-INT-SOCIAL-ENTRIES (décision compta). Chacune est câblée + prouvée au maximum (loopback / pg-mem / export justificatif).
+
+## PAQUET 206 — TD-INT-RELAY : kit de branchement OUTBOX sans secret
+- Config attendue confirmée (variables réellement lues) : `OUTBOX_PUBLISH_URL` + `OUTBOX_PUBLISH_SECRET` (publisher, les 2 requis) ; `OUTBOX_RELAY_ENABLED=true|1` (cron).
+- Tests renforcés (`outbox-publisher.spec.ts`) : +3 cas config partielle → **jamais de demi-activation** (url seule, secret seul, chaînes vides → simulation). Suite = 8/8 PASS.
+- Cas "absents" déjà couverts : factory unset→Simulation, isRelayCronEnabled(undefined/''/false/null)→false.
+- `OUTBOX_RELAY_KIT.md` (NOUVEAU) : variables exactes, contrat de livraison (HMAC), procédure d'activation, critères succès/rollback, ce qui reste bloqué.
+- Preuve : `jest outbox-publisher.spec.ts` ⇒ 1 suite / **8 tests PASS**. Aucun appel réseau réel, aucun secret.
+- Suite : P207 dry-run migration base jetable.

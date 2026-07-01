@@ -123,4 +123,22 @@ describe('createOutboxPublisher (factory gate)', () => {
     process.env.OUTBOX_PUBLISH_SECRET = FAKE_SECRET;
     expect(createOutboxPublisher()).toBeInstanceOf(HttpOutboxPublisher);
   });
+
+  it('stays simulation with PARTIAL config: url only (no secret) → never half-activate', () => {
+    process.env.OUTBOX_PUBLISH_URL = 'http://127.0.0.1:9/webhook';
+    delete process.env.OUTBOX_PUBLISH_SECRET;
+    expect(createOutboxPublisher()).toBeInstanceOf(SimulationOutboxPublisher);
+  });
+
+  it('stays simulation with PARTIAL config: secret only (no url)', () => {
+    delete process.env.OUTBOX_PUBLISH_URL;
+    process.env.OUTBOX_PUBLISH_SECRET = FAKE_SECRET;
+    expect(createOutboxPublisher()).toBeInstanceOf(SimulationOutboxPublisher);
+  });
+
+  it('empty-string env is treated as unset (no accidental activation)', () => {
+    process.env.OUTBOX_PUBLISH_URL = '';
+    process.env.OUTBOX_PUBLISH_SECRET = '';
+    expect(createOutboxPublisher()).toBeInstanceOf(SimulationOutboxPublisher);
+  });
 });
