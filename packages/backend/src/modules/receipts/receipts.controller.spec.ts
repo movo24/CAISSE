@@ -59,3 +59,42 @@ describe('ReceiptsController — email receipt', () => {
     expect(res).toEqual({ sent: false, skipped: true });
   });
 });
+
+// POS-INT-241 — XSS regression lock: a malicious product/store name must be HTML-escaped
+// in the public receipt HTML (POS-132 escapeHtml wired in the controller).
+describe('ReceiptsController — receipt HTML XSS escaping', () => {
+  const XSS = '<script>alert(1)</script>';
+  let controller: ReceiptsController;
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      controllers: [ReceiptsController],
+      providers: [
+        {
+          provide: getRepositoryToken(SaleEntity),
+          useValue: {
+            findOne: jest.fn().mockResolvedValue({
+              id: SALE_ID, ticketNumber: 'T-000123', storeId: 's1',
+              subtotalMinorUnits: 1000, discountTotalMinorUnits: 0, totalMinorUnits: 1000,
+              taxRate: 20, createdAt: new Date('2026-06-07T10:00:00Z'), employeeNameSnapshot: 'Jean',
+            }),
+          },
+        },
+        {
+          provide: getRepositoryToken(SaleLineItemEntity),
+          useValue: { find: jest.fn().mockResolvedValue([{ productName: XSS, quantity: 1, unitPriceMinorUnits: 1000, totalMinorUnits: 1000 }]) },
+        },
+        { provide: getRepositoryToken(SalePaymentEntity), useValue: { find: jest.fn().mockResolvedValue([]) } },
+        { provide: getRepositoryToken(StoreEntity), useValue: { findOne: jest.fn().mockResolvedValue({ name: XSS, address: XSS }) } },
+        { provide: MailService, useValue: { send: jest.fn() } },
+      ],
+    }).compile();
+    controller = module.get(ReceiptsController);
+  });
+
+  it('escapes <script> in item + store names, never emits the raw tag', async () => {
+    const html: string = await controller.getReceiptHtml(SALE_ID);
+    expect(html).not.toContain('<script>alert(1)</script>');
+    expect(html).toContain('&lt;script&gt;');
+  });
+});

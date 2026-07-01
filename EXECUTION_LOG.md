@@ -2121,3 +2121,9 @@ Preuves :
 
 VERDICT : ✅ SOLIDE — un vrai secret ne peut plus se faufiler nulle part dans le repo : ni dans un fichier env suivi (tous scannés), ni dans une doc .md, ni dans le code source, ni dans un log (redact). Le risque hérité PROJECT_STATUS §5 #2 (docker/.env.production.example) est vérifié PROPRE. 7 gardes automatiques en CI + `test:security` groupé.
 À fournir pour franchir une gate (inchangé) : GATE1 OUTBOX_PUBLISH_URL+SECRET ; GATE2 DATABASE_URL cible+GO ; GATE3 plan de comptes social validé.
+
+## PAQUET 241 — Vérif risques hérités PROJECT_STATUS §5 + verrou anti-XSS receipts
+- Audit risque #4 (XSS receipts) : `esc = escapeHtml` (POS-132) est câblé sur TOUS les champs texte utilisateur du HTML receipt (nom produit, nom/adresse/ville/SIRET magasin) ; seul `${data.taxRate}` non-échappé = un nombre. Primitif `escapeHtml` déjà testé (payloads script/img).
+- NOUVEAU verrou e2e : `receipts.controller.spec.ts` — un `<script>alert(1)</script>` en nom produit + nom/adresse magasin → le HTML contient `&lt;script&gt;` et JAMAIS `<script>alert(1)</script>`. 4 tests PASS.
+- Audit risque #5 (receipts publics) : `GET :saleId` et `:saleId/html` sont publics MAIS `saleId` = `@PrimaryGeneratedColumn('uuid')` → capability-URL non énumérable (modèle Stripe). Design intentionnel, acceptable ; l'email est protégé par JwtAuthGuard.
+- Suite : P242 erreurs avalées front, P243 refresh §5 statuts, P244 conso, P245 audit.
