@@ -75,6 +75,15 @@ Ces points datent d'avril 2026 ; plusieurs commits fiscaux/correctifs ont suivi.
 Voir `POS_BLOCKS.md` → premier paquet (PAQUET 1). Détail d'exécution dans `EXECUTION_LOG.md`.
 
 ---
+## État consolidé — 2026-07-01 (jalon PAQUET 270, v17 — session autonome suite)
+
+- **P270** `comptamax.service.spec` (3) — contrat de requête du modèle de lecture comptable : `buildDayJournal`/`buildJournalRange`/`buildCashControl` interrogent bien le magasin + la plage jour/période + le filtre de types d'events attendus ; journal vide pour 0 event ; comptage Z-report + paiements capturés. Les maths comptables restent couvertes par les specs helpers purs (journal/cash-control).
+
+**Non-régression :** slice comptamax **61 tests verts (9 suites)** ; `tsc --noEmit` EXIT 0. Spec uniquement.
+
+**Compteurs (honnêtes) :** backend 186 → **187 suites**, **+3 tests** (~1267 → ~1270). Cumul session autonome (v12→v17) : **+13 suites, +76 tests**. Services sans spec colocée couverts cette session : loyalty-card, loyalty-token, inventory-scan, reconciliation, jackpot, customer-visits, notifications, subscriptions, stripe-billing, ai-learning, mobile-auth, external-context, comptamax. Restent (query-heavy ou déjà couverts par `test/`) : product-analytics, fiscal-verify, timewin, airtable-ops (2), outbox-query, sales.service (audit/currency couverts par `test/`). ⚠️ Suite complète non re-jouée bout-en-bout (cap 45 s).
+
+---
 ## État consolidé — 2026-07-01 (jalon PAQUET 268→269, v16 — session autonome suite)
 
 - **P268** `loyalty-token.service.spec` (6) — **round-trip HMAC QR** (sécurité) : generate→verify OK, rejet mauvais secret / payload falsifié / token malformé / expiré (constant-time, aucune fuite du check échoué), unicité du secret.
