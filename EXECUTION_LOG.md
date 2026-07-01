@@ -1812,3 +1812,14 @@ Bilan couverture/hygiène (183→194) : mobile-auth JWT testé, airtable mapper 
 ## PAQUET 199 — Docs traçabilité dette front résolue
 - `TECHNICAL_DEBT.md` : TD-FE-DEAD-SWITCHERS (✅ supprimés P196) + TD-FE-ORPHAN-UTIL (✅ safeErrorMessage branché+testé P197) ajoutés à la section "Dette résolue".
 - Suite : P200 audit de contrôle 196→199 + verdict.
+
+## PAQUET 200 — AUDIT DE CONTRÔLE 196→199 (Règle 3)
+Preuves :
+- git : arbre propre, commits b479638/30cb567/b2c204c/5c83abf.
+- Nettoyage : re-sweep back-office = **0 fichier orphelin restant** (StoreSwitcher/AppSwitcher supprimés, safeErrorMessage désormais importé).
+- Compile : back-office `tsc --noEmit` EXIT 0 + vitest 6 fichiers/23 tests ; pos-desktop `tsc --noEmit` EXIT 0 (P198).
+- Cohérence app/doc : dettes front résolues tracées (TD-FE-DEAD-SWITCHERS, TD-FE-ORPHAN-UTIL).
+- Bundle : history complète.
+
+VERDICT : ✅ SOLIDE — front assaini : 2 composants morts supplantés supprimés (-189 lignes), 1 util défensif anti-crash React branché + testé (orphelin → utilisé). 0 orphelin restant en back-office. 0 régression (tsc ×2 verts, vitest 23).
+Bilan hygiène/couverture cumulé (183→199) : mobile-auth JWT testé, airtable mapper testé, guards/permissions doublon supprimé, 2 switchers morts supprimés, safeErrorMessage branché+testé. Gates infra inchangées (relais/migration/social).
