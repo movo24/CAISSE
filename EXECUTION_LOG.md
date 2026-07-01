@@ -1716,3 +1716,14 @@ Partition (114 modules + 42 hors-modules = 156 = `jest --listTests`) :
 ## PAQUET 186 — Doc TESTING (garde sécurité auth mobile)
 - `TESTING.md` : section "Sécurité auth mobile (Wesley Club)" ajoutée (contrat JWT + total 154/1072).
 - Suite : P187 audit de contrôle 183→186 + verdict.
+
+## PAQUET 187 — AUDIT DE CONTRÔLE 183→186 (Règle 3)
+Preuves :
+- git : arbre propre, commits 43d0556/2d42f73/b782eda/1d15381.
+- Compile : backend `tsc --noEmit` EXIT 0 + `nest build` RC 0.
+- Câblage : `buildMobileTokens` utilisé 3× dans le service ; **0 `jwt.sign` restant dans le service** (toute la construction JWT est passée au helper pur testé).
+- Tests : mobile-tokens 5/5 (P183) ; auth non-régression 16 (P184) ; global 154 suites PASS/2 skip — 1072 tests PASS/3 skip (P185, +5, 0 régression).
+- Bundle : history complète.
+
+VERDICT : ✅ SOLIDE — un chemin auth client (Wesley Club JWT) jusque-là sans test est désormais couvert par un helper pur + 5 tests verrouillant le contrat (audience, TTL, isolation secrets, anti-`aud`). Refactor à comportement préservé, 0 régression globale.
+Reste inchangé : 3 gates infra (secret relais / base migration / décision compta). Autres services sans spec colocated (connected-apps, terminals, airtable-ops) = candidats pour de prochains paquets couverture (non-gated).
