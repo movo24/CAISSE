@@ -75,6 +75,16 @@ Ces points datent d'avril 2026 ; plusieurs commits fiscaux/correctifs ont suivi.
 Voir `POS_BLOCKS.md` → premier paquet (PAQUET 1). Détail d'exécution dans `EXECUTION_LOG.md`.
 
 ---
+## État consolidé — 2026-07-01 (jalon PAQUET 268→269, v16 — session autonome suite)
+
+- **P268** `loyalty-token.service.spec` (6) — **round-trip HMAC QR** (sécurité) : generate→verify OK, rejet mauvais secret / payload falsifié / token malformé / expiré (constant-time, aucune fuite du check échoué), unicité du secret.
+- **P269** `external-context.service.spec` (4) — **contrat fail-safe** météo/transport : sans clé (ou coords/station) → contexte NEUTRE `available:false`, **aucun appel réseau** ; getFullContext → overallImpact `neutral`. Applique la règle STATE_INDEX « pas de live sans clé ».
+
+**Non-régression :** slice loyalty-card/sales-ai **66 tests verts (9 suites)** ; `tsc --noEmit` EXIT 0. Specs uniquement.
+
+**Compteurs (honnêtes) :** backend 184 → **186 suites**, **+10 tests** (~1257 → ~1267). Cumul session autonome (v12→v16) : **+12 suites, +73 tests** (…, mobile-auth, stripe-billing, loyalty-token, external-context). ⚠️ Suite complète non re-jouée bout-en-bout (cap 45 s).
+
+---
 ## État consolidé — 2026-07-01 (jalon PAQUET 266→267, v15 — session autonome suite)
 
 - **P266** `mobile-auth.service.spec` (5) — gardes register/login Wesley Club **avant émission de token** : email invalide, mot de passe < 8, compte dupliqué (409), utilisateur inconnu, mauvais mot de passe (401). Tokens = `mobile-tokens.spec`.
