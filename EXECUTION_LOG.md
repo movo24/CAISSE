@@ -2110,3 +2110,14 @@ Gardes de sécurité/reprise (6) : env-completeness, env-no-secrets, docs-no-sec
 - Backend global : A 41/284 + B 75/502 + C 51+2skip/341+3skip = **167 suites PASS / 2 skip (169) ; 1127 tests PASS / 3 skip**. Δ vs P235 : +1 suite (source-no-secrets ; env-no-secrets refondu). Zéro régression.
 - `preflight:full` OVERALL PASS. PROJECT_STATUS mis à jour (167/1127).
 - Suite : P240 audit final + verdict.
+
+## PAQUET 240 — AUDIT FINAL 236→239 (couverture anti-secret complète)
+Preuves :
+- git : arbre propre, commits 9180e2b/46eea2a/3cc134b/88eb57e.
+- Anti-secret 3 portes prouvées (positif+négatif) : env* suivis (P236, couvre .env.production.example), docs .md (P231), code source (P237). `npm run test:security` ⇒ **10 suites / 34 tests PASS**.
+- Faux positif scanner corrigé (placeholder `user:password@host`) sans affaiblir la détection.
+- Backend global 167 suites PASS/2 skip (169) ; 1127 tests PASS/3 skip ; preflight:full PASS ; bundle complet (468 commits).
+- Interdits respectés : zéro secret réel, zéro prod, zéro migration cible, zéro appel externe, zéro activation OUTBOX, zéro mapping comptable inventé.
+
+VERDICT : ✅ SOLIDE — un vrai secret ne peut plus se faufiler nulle part dans le repo : ni dans un fichier env suivi (tous scannés), ni dans une doc .md, ni dans le code source, ni dans un log (redact). Le risque hérité PROJECT_STATUS §5 #2 (docker/.env.production.example) est vérifié PROPRE. 7 gardes automatiques en CI + `test:security` groupé.
+À fournir pour franchir une gate (inchangé) : GATE1 OUTBOX_PUBLISH_URL+SECRET ; GATE2 DATABASE_URL cible+GO ; GATE3 plan de comptes social validé.
