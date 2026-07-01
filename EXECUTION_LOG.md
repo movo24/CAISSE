@@ -1626,3 +1626,14 @@ Partition vérifiée (113 modules + 41 hors-modules = 154 = `jest --listTests`) 
 - TOTAL : **152 suites PASS / 2 skip (154) ; 1064 tests PASS / 3 skip**.
 - Δ vs P156 : +1 suite / +5 tests = exactement le spec loopback (P171). 2 skip = `.pg.spec` (Postgres, gate). Zéro régression.
 - Suite : P175 audit de contrôle 171→174 + verdict.
+
+## PAQUET 175 — AUDIT DE CONTRÔLE 171→174 (Règle 3)
+Preuves :
+- git : arbre propre, commits 49537d5/584dbbb/5eb2568/23d3ccf.
+- Compile : backend + back-office + pos-desktop `tsc --noEmit` = EXIT 0 (les 3).
+- Tests : loopback publisher 5/5 (P171) ; suite intégration 10/72 (P172) ; global backend 152 suites PASS/2 skip — 1064 tests PASS/3 skip (P174, +5 = loopback, 0 régression).
+- Cohérence app/doc : panneau = 3 gates infra ; TD-INT-RELAY impact mis à jour (mécaniques prouvées) + ligne TECHNICAL_DEBT ajoutée.
+- Bundle : history complète vérifiée.
+
+VERDICT : ✅ SOLIDE — le relais HTTP outbox n'est plus "câblé sans preuve" : livraison signée + vérification receveur + intégrité (tamper) + gate factory sont PROUVÉS de bout en bout en loopback (sans secret ni push externe). Reste 3 vraies gates : TD-INT-RELAY (secrets/URL prod), TD-INT-SOCIAL-ENTRIES (décision compta), MIGRATION-1725 (Postgres — non root en sandbox).
+Prochains candidats (tous nécessitent accès/décision) : (1) fournir OUTBOX_PUBLISH_URL+SECRET (activer relais réel), (2) valider plan de comptes social, (3) migration:run sur base cible, (4) e2e Playwright en CI.
