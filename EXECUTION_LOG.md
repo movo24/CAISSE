@@ -1925,3 +1925,9 @@ VERDICT : ✅ PRÊT — les 3 gates sont préparées, durcies (garde-fous fail-c
 - `RESUME_CHECKLIST.md` (NOUVEAU) : récupération depuis bundle, install + vérif santé (chiffres attendus), config env (.env.example → .env), état courant, traitement des 3 gates (table info-à-fournir), garde-fous en place, rappels sécurité.
 - Objectif : reprise sans redécouverte, complète le trio OUTBOX_RELAY_KIT + EXTERNAL_GATES_RUNBOOK.
 - Suite : P214 audit final local + verdict.
+
+## PAQUET 214 — Non-régression GLOBALE backend (post prépa gates + env)
+- A (a–m) 41/284 + B (n–z) 75/502 + C (hors modules) 42+2skip/318+3skip.
+- TOTAL : **158 suites PASS / 2 skip (160) ; 1104 tests PASS / 3 skip**.
+- Δ vs P201 (155/1080) : +3 suites (social-entries-guard, migration-1725-dryrun, env-validation) / +24 tests (dont outbox-publisher +3). Partition 116 modules + 44 = 160 = `jest --listTests`. Zéro régression.
+- Suite : P215 audit final + verdict.
