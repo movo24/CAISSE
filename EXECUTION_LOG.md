@@ -1727,3 +1727,11 @@ Preuves :
 
 VERDICT : ✅ SOLIDE — un chemin auth client (Wesley Club JWT) jusque-là sans test est désormais couvert par un helper pur + 5 tests verrouillant le contrat (audience, TTL, isolation secrets, anti-`aud`). Refactor à comportement préservé, 0 régression globale.
 Reste inchangé : 3 gates infra (secret relais / base migration / décision compta). Autres services sans spec colocated (connected-apps, terminals, airtable-ops) = candidats pour de prochains paquets couverture (non-gated).
+
+## PAQUET 188 — Test AirtableOpsMapper (sécurité import : prix/stock = high) (POS-AIRTABLE-188)
+- `airtable-ops/airtable-ops.mapper.spec.ts` (NOUVEAU) : couvre le mapper pur jusque-là sans spec.
+- Export POS→Airtable : mapping des champs (POS_ID/EAN/prix/coût/stock/…), défauts (coût null, description/image → '').
+- Import Airtable→POS (propositions) : SEO/copy = risk `low` ; validation/isActive = `medium` ; **PRIX et STOCK = risk `high` TOUJOURS** (invariant sécurité : jamais auto-appliqué) ; aucune op si valeur inchangée ; import vide → [].
+- Preuve : `jest airtable-ops.mapper.spec.ts` ⇒ 1 suite / **8 tests PASS** ; `tsc --noEmit` EXIT 0.
+- Valeur : verrouille l'invariant "changement financier = validation manuelle obligatoire" du connecteur Airtable.
+- Suite : P189 non-régression module + global, P190 docs, P191 audit.
