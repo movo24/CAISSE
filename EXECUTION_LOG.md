@@ -1617,3 +1617,12 @@ Prochains candidats (tous gated, nécessitent une décision/un accès) : (1) TD-
 - Preuve : `tsc --noEmit` back-office EXIT 0.
 - Honnêteté : NON résolu — la livraison réelle exige URL+secret de prod (hors sandbox). Seules les mécaniques sont prouvées.
 - Suite : P174 non-régression globale rapide, P175 audit+verdict.
+
+## PAQUET 174 — Non-régression GLOBALE backend (re-agrégat post loopback)
+Partition vérifiée (113 modules + 41 hors-modules = 154 = `jest --listTests`) :
+- A (a–m, intégration incluse) : 38 suites / 261 tests PASS.
+- B (n–z) : 75 suites / 502 tests PASS.
+- C (common/db/test) : 39 PASS + 2 skip / 301 PASS + 3 skip.
+- TOTAL : **152 suites PASS / 2 skip (154) ; 1064 tests PASS / 3 skip**.
+- Δ vs P156 : +1 suite / +5 tests = exactement le spec loopback (P171). 2 skip = `.pg.spec` (Postgres, gate). Zéro régression.
+- Suite : P175 audit de contrôle 171→174 + verdict.
