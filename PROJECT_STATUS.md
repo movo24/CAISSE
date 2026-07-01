@@ -75,6 +75,24 @@ Ces points datent d'avril 2026 ; plusieurs commits fiscaux/correctifs ont suivi.
 Voir `POS_BLOCKS.md` → premier paquet (PAQUET 1). Détail d'exécution dans `EXECUTION_LOG.md`.
 
 ---
+## État consolidé — 2026-07-01 (jalon PAQUET 247→251, v10 — points faibles STATE_INDEX)
+
+Paquet de renforcement des couches **maîtrisables** (hors gates externes), suite à `STATE_INDEX.md`.
+
+**Livré & prouvé (jest/vitest + tsc + nest build) :**
+- **P247** CRUD couverts : `connected-apps.service.spec` + `terminals.service.spec` (18 tests DI-mockés — branches org/not-found/Stripe-fallback/heartbeat/location-reuse). Comble le trou « services CRUD sans spec ».
+- **P248** **Reçu PDF** : endpoint public `GET /api/receipts/:saleId/pdf` → duplicata PDF (StreamableFile `application/pdf`), réutilise le `PdfService` déjà testé, **valeurs figées imprimées verbatim** (NF525, jamais recalculées). Comble le gap « receipt PDF absent » de STATE_INDEX. Tests : magic header `%PDF-`, 404 avant DB sur saleId non-UUID.
+- **P249** **Contrat consommateur Analytik R** (`consumer-contract.ts`) : validation d'enveloppe + `ReferenceConsumer` idempotent (dédup par id, skip forward-incompatible, rejet malformé, curseur résumable) + **garde de synchro** qui échoue si un `type` émis n'est pas déclaré. 15 tests. Zéro live.
+- **P250** Durcissement clients : mobile `deviceId` + `network` (8 tests unitaires, stubs navigateur) → mobile 3 suites/13 ; customer-app **ErrorBoundary** (anti écran blanc, parité mobile).
+- **P251** e2e Playwright **déjà scaffolé** (`e2e/pos-smoke.spec.ts`, parcours argent login→scan→paiement) : spec **collectable** prouvée (`playwright --list`), câblée en CI (`test:e2e:list`) ; mobile vitest ajouté en CI ; gates runtime documentées dans `GATES_READINESS.md`.
+
+**Non-régression (ce paquet) :** slices adjacentes vertes — intégration/receipts/terminals/connected-apps/documents **97 tests**, stock/reports/comptamax **149 tests**, gardes sécurité **27 tests** ; `nest build` RC 0. Additions purement additives (3 nouvelles suites backend + 2 tests receipts).
+
+**Compteurs (honnêtes) :** backend passe de 167 → **170 suites** (+connected-apps, +terminals, +consumer-contract), **+35 tests** backend (1128 → ~1163, 2 `.pg` skip inchangés). Front mobile +8 tests (+2 suites). ⚠️ Suite backend complète **non** re-jouée bout-en-bout ce paquet (cap 45 s/commande) : jalon 167/1128 tient, additions prouvées isolément.
+
+**Gates restantes (inchangées, non franchies)** — voir `GATES_READINESS.md` : TD-INT-RELAY (secrets), MIGRATION-1725 (accès DB cible), TD-INT-SOCIAL-ENTRIES (décision comptable) + gates runtime : **e2e run** (chromium+backend seedé), **build natif Capacitor** (`@capacitor/*` non installés en sandbox), **PIN login 500** (à vérifier en runtime DB).
+
+---
 ## État consolidé — 2026-07-01 (jalon PAQUET 202, v9)
 
 **Backend : 167 suites PASS / 2 skip (169) ; 1128 tests PASS / 3 skip.** (`jest`, maxWorkers=2/runInBand)
