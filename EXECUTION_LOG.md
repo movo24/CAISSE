@@ -2003,3 +2003,14 @@ Livrables reprise : scripts/preflight.sh, OUTBOX_RELAY_KIT.md, EXTERNAL_GATES_RU
 - Aucune modif de code backend src ce paquet (ci.yml/.env.example/preflight.sh/docs) → global backend inchangé (160 suites/1110 tests, cf. P220).
 - git clone propre.
 - Suite : P225 audit final + verdict.
+
+## PAQUET 225 — AUDIT FINAL 221→224 (reprise front + CI preflight)
+Preuves :
+- git : arbre propre, commits 7e51982/1219456/94824f8/365e2b8.
+- CI : step `npm run preflight` présent (échoue tôt sur drift env / doc manquante).
+- Front : les 2 packages ont un `.env.example` (backoffice créé P222) ; preflight vérifie backend + front, code de sortie 1 sur drift prouvé (P223).
+- preflight (rapide) exit 0 ; preflight:full OVERALL PASS (P224) ; backend global 160/1110 inchangé ; bundle complet (453 commits).
+- Interdits respectés : zéro secret, zéro prod, zéro migration cible, zéro appel réel, zéro activation OUTBOX, zéro mapping comptable inventé.
+
+VERDICT : ✅ SOLIDE — reprise "one-command" désormais complète et auto-défendue en CI : complétude env backend ET front vérifiée automatiquement (échec CI sur toute dérive), docs de reprise présentes contrôlées, gates toujours externes/prêtes.
+Reste inchangé à fournir : GATE1 OUTBOX_PUBLISH_URL+SECRET ; GATE2 DATABASE_URL cible+GO ; GATE3 plan de comptes social validé.
