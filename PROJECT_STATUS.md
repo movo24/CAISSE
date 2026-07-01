@@ -75,6 +75,22 @@ Ces points datent d'avril 2026 ; plusieurs commits fiscaux/correctifs ont suivi.
 Voir `POS_BLOCKS.md` → premier paquet (PAQUET 1). Détail d'exécution dans `EXECUTION_LOG.md`.
 
 ---
+## État consolidé — 2026-07-01 (jalon PAQUET 252→256, v11 — couverture services CRUD)
+
+Suite directe de v10 : on ferme des trous de couverture « services sans spec colocée » (audit P252).
+
+**Livré & prouvé (jest + tsc + nest build) :**
+- **P252** `stock-locations.service.spec` (8) — gardes locations/balances : code dupliqué (400), not-found (404), listing actif-only + ordre, balance par défaut 0, code mis en MAJUSCULE. (Les méthodes transactionnelles receive/transfer/dispatch restent couvertes par `dispatch-policy.spec`.)
+- **P253** `pos-session.service.spec` (14) — cycle de vie caisse (invariant γ : une session active par (store, terminal)) : champs requis, refus 2ᵉ session terminal (409), map unique-violation 23505 → 409, refus close cross-store/cross-employee, refus déjà-fermée, **outbox best-effort non bloquant** (ouverture réussit même si l'insert outbox échoue).
+- **P254** `occupancy.service.spec` (5) — feed radar in-memory : clamp négatif→0, arrondi, défaut sûr store inconnu, `getView` frais/périmé + niveau ; `mobile-cockpit.service.spec` (4) — cockpit read-only : requête anomalies tenant-scopée `status='detected'`, roll-up summary + overall ok/critical.
+
+**Non-régression (ce paquet) :** slice large stock-locations/pos-session/occupancy/mobile-cockpit/sales-guards/employees/products **137 tests verts (20 suites)** ; `nest build` RC 0 ; `tsc --noEmit` EXIT 0.
+
+**Compteurs (honnêtes) :** backend 170 → **174 suites** (+stock-locations, +pos-session, +occupancy, +mobile-cockpit), **+31 tests** (~1163 → ~1194, 2 `.pg` skip inchangés). ⚠️ Suite complète non re-jouée bout-en-bout (cap 45 s) ; additions purement additives (nouvelles suites uniquement, aucun code métier modifié).
+
+**Gates restantes : inchangées** (voir `GATES_READINESS.md`).
+
+---
 ## État consolidé — 2026-07-01 (jalon PAQUET 247→251, v10 — points faibles STATE_INDEX)
 
 Paquet de renforcement des couches **maîtrisables** (hors gates externes), suite à `STATE_INDEX.md`.
