@@ -42,3 +42,32 @@ cd packages/backend && npx jest src/modules/integration/outbox-publisher.spec.ts
 ## 5. Ce qui reste bloqué ici
 - Fournir `OUTBOX_PUBLISH_URL` + `OUTBOX_PUBLISH_SECRET` réels (secrets — hors sandbox).
 - Sans eux : simulation seule (comportement prouvé). Aucune autre inconnue.
+
+## 6. Répétition locale SANS secret réel (P288 — bloc B1)
+
+La chaîne complète est prouvée automatiquement par
+`src/modules/integration/relay-e2e-loopback.pgmem.spec.ts` (5 tests) :
+relay réel → `HttpOutboxPublisher` (vrai POST) → receveur HTTP réel (vérif HMAC + dédup)
+→ statuts DB (`published`, retry, dead-letter à 5, re-livraison dédupliquée).
+
+Pour une répétition manuelle interactive :
+```bash
+# Terminal 1 — receveur mock (implémente le côté receveur du contrat) :
+node scripts/mock-receiver.js          # port 4545, secret local de répétition
+
+# Terminal 2 — backend pointé dessus (valeurs LOCALES, pas des secrets réels) :
+export OUTBOX_PUBLISH_URL="http://localhost:4545/webhook/pos"
+export OUTBOX_PUBLISH_SECRET="local-rehearsal-secret"
+export OUTBOX_RELAY_ENABLED="true"
+npm run dev:backend
+# … générer des ventes, puis inspecter :
+curl -s http://localhost:4545/received | jq .           # événements acceptés (dédupliqués)
+curl -s -X POST http://localhost:4545/fail-next -d '{"n":3}'   # répéter le chemin retry/dead-letter
+```
+
+## 7. Ce que tu dois fournir, EXACTEMENT, pour la vraie GATE 1
+
+1. `OUTBOX_PUBLISH_URL` — l'URL webhook du consommateur réel (Comptamax24 / TimeWin24 / Analytik R).
+2. `OUTBOX_PUBLISH_SECRET` — le secret HMAC partagé, généré par `openssl rand -hex 32`, transmis hors dépôt.
+3. Confirmation que le receveur implémente le contrat (`POS_PUSH_CONTRACT.md` §3-4) — il peut copier `scripts/mock-receiver.js` comme référence.
+4. Le GO d'activation : poser les 3 variables sur l'environnement cible + `OUTBOX_RELAY_ENABLED=true`, redéployer, puis vérifier `GET /api/integration/outbox/stats` (published ↑, failed = 0).
