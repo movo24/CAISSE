@@ -1991,3 +1991,8 @@ Livrables reprise : scripts/preflight.sh, OUTBOX_RELAY_KIT.md, EXTERNAL_GATES_RU
 - `scripts/preflight.sh` §2bis : vérifie la complétude `.env.example` front (VITE_* lues vs documentées) pour backoffice-web ET pos-desktop ; FAIL si var lue non documentée ou .env.example absent alors que des VITE_* sont lues.
 - Preuve : `preflight` → front env backoffice-web PASS, pos-desktop PASS, OVERALL PASS.
 - Suite : P223 doc front env (RESUME_CHECKLIST), P224 consolidation, P225 audit.
+
+## PAQUET 223 — Preuve négative front + doc reprise front
+- Preuve négative : injection `import.meta.env.VITE_FAKE_DRIFT` (clone) → `preflight` = FAIL (front env backoffice-web) + **code de sortie 1** ; après nettoyage → PASS + code 0. Le garde front bloque donc bien la CI.
+- `RESUME_CHECKLIST.md` §2 : ajout config env front (cp .env.example des 2 packages) + note que preflight vérifie backend ET front (process.env.* + import.meta.env.VITE_*).
+- Suite : P224 consolidation, P225 audit final.

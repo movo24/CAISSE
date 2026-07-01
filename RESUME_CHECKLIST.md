@@ -27,10 +27,17 @@ Note bac à sable arm64 : si vite/vitest échoue sur `@rollup/rollup-linux-arm64
 
 ## 2. Configurer l'environnement
 ```bash
-cp packages/backend/.env.example packages/backend/.env   # 51 variables documentées, placeholders
+# Backend (51 variables documentées, placeholders) :
+cp packages/backend/.env.example packages/backend/.env
 # Remplir au minimum : DATABASE_URL, JWT_SECRET (≥32), JWT_REFRESH_SECRET (≥32).
 # La validation fail-fast au boot (validateRequiredEnv, testée) refuse un démarrage mal configuré.
+
+# Front (Vite) — les 2 packages ont un .env.example :
+cp packages/backoffice-web/.env.example packages/backoffice-web/.env   # VITE_API_URL
+cp packages/pos-desktop/.env.example   packages/pos-desktop/.env       # VITE_API_URL
 ```
+`npm run preflight` vérifie automatiquement la complétude .env.example backend ET front
+(échoue si une variable lue — `process.env.*` ou `import.meta.env.VITE_*` — n'est pas documentée).
 
 ## 3. État courant (voir PROJECT_STATUS.md v9)
 - Portée locale : épuisée proprement (intégration, interfaces, inventaire, arbitrages, couverture, hygiène, CI).
