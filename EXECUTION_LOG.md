@@ -1771,3 +1771,8 @@ Bilan couverture (183→190) : 2 modules sécurité-sensibles jusque-là sans sp
 - A (a–m) : 40 suites / 274 tests PASS ; C (hors modules, guards inclus) : 40 PASS + 2 skip / 304 PASS + 3 skip — identiques à P189. B (n–z) inchangé depuis P189 (75/502, aucune modif n-z).
 - TOTAL : **155 suites PASS / 2 skip (157) ; 1080 tests PASS / 3 skip** — inchangé : la suppression du fichier mort n'a impacté aucun test (confirme qu'il était bien du code mort).
 - Suite : P194 docs, P195 audit+verdict.
+
+## PAQUET 194 — Docs cohérence post-suppression
+- Vérif : aucun fichier de pilotage (.md hors EXECUTION_LOG) ne référençait `guards/permissions.ts` → rien à corriger.
+- `TECHNICAL_DEBT.md` : section "Dette résolue (traçabilité)" ajoutée avec TD-DEAD-PERMISSIONS (supprimé P192, matrice préservée, 0 régression).
+- Suite : P195 audit de contrôle 192→194 + verdict.

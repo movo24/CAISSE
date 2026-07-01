@@ -57,6 +57,12 @@
 | TD-VISIT-SEGMENT-THRESHOLDS | Seuils segment `new/regular/occasional/at_risk` = **défauts provisoires à ratifier** (décision produit). Vérifié : `segment` **non consommé** pour piloter un comportement (reporting-only). Ne PAS l'utiliser pour fidélité/relance sans ratification. | 🟡 | `customer-visits/visit-frequency.ts` | Ouvert — à ratifier |
 | TD-GIT-DANGLING | Paquets 2→35 **non commités sur branche** : working tree (source de vérité) + commits **pendants** non référencés (FUSE bloque `index.lock`/`HEAD.lock`). Branche = `c55e6c5` (PAQUET 1). | 🔴 | `git status`/`reflog` (cf. GIT_RECOVERY.md) | Ouvert — résoudre en local AVANT tout nouveau paquet |
 
+## Dette résolue (traçabilité)
+
+| ID | Item | Résolution |
+|---|---|---|
+| TD-DEAD-PERMISSIONS | `common/guards/permissions.ts` = code mort (hasMinRole/ROLE_HIERARCHY dupliquant role-hierarchy.ts, importé par personne) | ✅ Supprimé P192 ; matrice de permissions préservée dans `role-hierarchy.ts` ; source de vérité unique pour la hiérarchie de rôles. Non-régression P193 (155 suites/1080 tests, 0 impact). |
+
 ## Règle
 
 Chaque nouvelle dette détectée pendant un paquet est ajoutée ici avec ID, preuve, sévérité, statut.
