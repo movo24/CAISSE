@@ -1931,3 +1931,17 @@ VERDICT : ✅ PRÊT — les 3 gates sont préparées, durcies (garde-fous fail-c
 - TOTAL : **158 suites PASS / 2 skip (160) ; 1104 tests PASS / 3 skip**.
 - Δ vs P201 (155/1080) : +3 suites (social-entries-guard, migration-1725-dryrun, env-validation) / +24 tests (dont outbox-publisher +3). Partition 116 modules + 44 = 160 = `jest --listTests`. Zéro régression.
 - Suite : P215 audit final + verdict.
+
+## PAQUET 215 — AUDIT FINAL LOCAL 206→214 (préparation gates + reprise)
+Preuves :
+- git : arbre propre, 9 commits 206→214 (b3a131f→6e65751).
+- Câblage : `validateRequiredEnv` appelé par main.ts (2×, import+appel) ; 3 livrables reprise présents (OUTBOX_RELAY_KIT, EXTERNAL_GATES_RUNBOOK, RESUME_CHECKLIST).
+- Compile : `tsc --noEmit` EXIT 0 + `nest build` RC 0.
+- Tests : global backend 158 suites PASS/2 skip — 1104 tests PASS/3 skip (P214, +24, 0 régression).
+- Bundle : history complète (443 commits).
+- Interdits respectés : 0 secret, 0 prod, 0 migration cible, 0 appel OUTBOX réel, 0 arbitrage comptable inventé.
+
+VERDICT : ✅ PRÊT & SOLIDE — préparation de déblocage + sécurité de reprise complètes.
+- Gates durcies & prouvées : relais (anti demi-activation), migration (dry-run runner réel), social (garde fail-closed).
+- Reprise sécurisée : `.env.example` complet (0 var non documentée), validation boot testée (11 tests), 3 docs de reprise.
+- À fournir pour franchir : GATE1 `OUTBOX_PUBLISH_URL`+`OUTBOX_PUBLISH_SECRET` ; GATE2 `DATABASE_URL` cible+GO ; GATE3 plan de comptes social validé.
