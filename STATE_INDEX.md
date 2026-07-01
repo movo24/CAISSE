@@ -178,14 +178,16 @@ Preuve : `services/api.ts` (26 exports), `main.tsx` (29 routes), `receipts.contr
 
 **Manque pour une version exploitable end-to-end** : (a) jouer migration 1725 sur la base cible ; (b) fournir OUTBOX_PUBLISH_URL+SECRET pour l'envoi réel ; (c) valider le plan de comptes social ; (d) fournir les clés externes (OpenWeather/PRIM/Radar/Airtable) si ces signaux sont voulus ; (e) reçus PDF (si requis) ; (f) e2e + runtime DB de recette.
 
-### 10 prochains blocs prioritaires (ordre)
-1. **Runtime local de recette** : lancer backend + Postgres jetable, migration:run 1725, smoke-test des endpoints clés (lève #1 PIN-500 et valide le runtime DB). *(gated DB — hors sandbox)*
-2. **Relais outbox réel** contre un receveur de recette (OUTBOX_PUBLISH_URL+SECRET de test) → prouver `published` croît. *(gated secret)*
-3. **e2e Playwright** back-office + POS (parcours vente, remise, retour, écart) en CI.
-4. **Reçu PDF** (générer PDF depuis le HTML existant) + endpoint + test.
-5. **Consommateur Analytik R (contrat)** : figer le schéma d'events + un mock consumer testé (sans le produit Analytik R réel).
-6. **Clés externes météo/transport** en recette → prouver récupération réelle + fallback ; sinon retirer/annoncer « désactivé ».
-7. **TimeWin24 live** : test d'intégration contre un TW24 de recette (health + pos-feed) + circuit breaker.
-8. **Écritures sociales** : après validation comptable, brancher la production d'écritures derrière le garde `canPostSocialEntries`.
-9. **Couverture des CRUD non testés** (connected-apps, terminals) via specs DI.
-10. **Durcissement mobile/customer-app** : audit + tests + build en CI (aligner sur back-office/pos-desktop).
+### 10 prochains blocs prioritaires (ordre) — statut au 2026-07-02 (P272)
+1. ⛔ **Runtime local de recette** : backend + Postgres jetable, migration:run 1725, smoke-test endpoints clés (lève #1 PIN-500). *(gated DB — hors sandbox)*
+2. ⛔ **Relais outbox réel** contre un receveur de recette (OUTBOX_PUBLISH_URL+SECRET de test) → prouver `published` croît. *(gated secret)*
+3. 🟡 **e2e Playwright** : scaffold + CI `--list` FAIT (P251) ; le RUN reste gated (chromium + backend seedé).
+4. ✅ **Reçu PDF** — FAIT (P248) : `GET /api/receipts/:saleId/pdf`, valeurs figées verbatim, testé.
+5. ✅ **Consommateur Analytik R (contrat)** — FAIT (P249) : `consumer-contract.ts` + ReferenceConsumer idempotent + garde de synchro, 15 tests.
+6. ⛔ **Clés externes météo/transport** en recette → prouver récupération réelle + fallback. *(gated clé)*
+7. ⛔ **TimeWin24 live** : test d'intégration contre un TW24 de recette (health + pos-feed) + circuit breaker. *(gated accès)*
+8. ⛔ **Écritures sociales** : après validation comptable, brancher derrière `canPostSocialEntries`. *(gated décision)*
+9. ✅ **Couverture des CRUD non testés** — FAIT (P247) : connected-apps + terminals, 18 tests DI.
+10. 🟡 **Durcissement mobile/customer-app** : tests + ErrorBoundary FAITS (P250) ; build natif Capacitor gated (paquets non installés).
+
+> Re-preuve globale P272 (2026-07-02) : suite backend complète rejouée bout-en-bout — **188 suites PASS/2 skip, 1274 tests PASS/3 skip, 0 échec** ; front 14 fichiers/59 tests PASS ; tsc EXIT 0 ; nest build RC 0. Git réparé (refs inscriptibles), historique P271 restauré du bundle.

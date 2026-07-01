@@ -1,9 +1,9 @@
 # CLAUDE.md — Development Guide
 
-> Last updated: 2026-06-28 (full audit pass — counts re-verified against code)
+> Last updated: 2026-07-02 (P272 — counts re-verified against code after full suite re-run)
 > Rule: **Audit → Plan → Execute**. Each change must be minimal, targeted, testable and reversible.
-> Governance files at repo root: `PROJECT_STATUS.md`, `MASTER_ROADMAP.md`, `POS_BLOCKS.md`, `POS_*` maps, `TECHNICAL_DEBT.md`, `EXECUTION_LOG.md`.
-> Undocumented-but-present modules added since last audit: `documents`, `fiscal`, `pos-session`.
+> Governance files at repo root: `PROJECT_STATUS.md`, `STATE_INDEX.md`, `MASTER_ROADMAP.md`, `POS_BLOCKS.md`, `POS_*` maps, `TECHNICAL_DEBT.md`, `EXECUTION_LOG.md`, `GATES_READINESS.md`.
+> Modules added since the 06-28 audit (documented in STATE_INDEX): `documents`, `fiscal`, `pos-session`, `comptamax`, `integration`.
 
 ---
 
@@ -24,8 +24,8 @@ npm run docker:down      # Stop local PostgreSQL
 
 # Testing (always run before committing)
 npm run test             # All workspaces
-npm run test:backend     # Backend only (~1080 tests / 155 suites PASS; +2 .pg suites skip without TEST_DATABASE_URL)
-npm run test:front       # Front vitest (backoffice + pos-desktop): 46 tests / 11 files
+npm run test:backend     # Backend only (1274 tests / 188 suites PASS; +2 .pg suites skip without TEST_DATABASE_URL)
+npm run test:front       # Front vitest (backoffice + pos-desktop + mobile): 59 tests / 14 files
 
 # Code quality
 npm run lint             # ESLint (all workspaces)
@@ -73,7 +73,7 @@ or the dashboard. See `packages/backend/RUNBOOK.md` for exact curl commands.
 
 ---
 
-## Backend Modules (42)
+## Backend Modules (44)
 
 > POS-054 (2026-06-28): manual cashier discounts are policed by `sales/discount-policy.ts`
 > — POS terminal hard cap **30%** (responsable PIN + justification 21-30%); back-office
@@ -183,6 +183,7 @@ Current migrations (run in order):
 1722000000000-AddProductNormalizedName  # POS-066 — per-store name dedup
 1723000000000-AddProductPriceOverride   # POS-061 — store price override (priority over global)
 1724000000000-AddPromoUsageLimit        # POS-073 — promo usage cap (limit/count)
+1725000000000-AddIntegrationOutbox      # outbox integration events — NOT yet run on target DB (GATE2)
 ```
 
 ---
@@ -307,7 +308,7 @@ Validated at boot in `main.ts`. Missing required vars crash the server with a cl
 
 ## Tests
 
-~1080 tests PASS across 155 spec suites (157 files; 2 `.pg.spec` skip without `TEST_DATABASE_URL`) in `packages/backend/test/` + colocated `*.spec.ts`. Key suites:
+1274 tests PASS across 188 spec suites (190 files; 2 `.pg.spec` skip without `TEST_DATABASE_URL`) in `packages/backend/test/` + colocated `*.spec.ts`. Full-suite re-run proven 2026-07-02 (P272). Key suites:
 
 | File | Coverage |
 |------|----------|
@@ -346,8 +347,8 @@ packages/backend/
   src/main.ts                                   Bootstrap, env validation, Swagger, global pipes
   src/app.module.ts                             Module registry, TypeORM, rate-limit tiers
   src/database/typeorm.config.ts                Migration CLI config
-  src/database/entities/                        45 TypeORM entities
-  src/database/migrations/                      20 versioned migrations
+  src/database/entities/                        48 TypeORM entities
+  src/database/migrations/                      21 versioned migrations (1725 not yet run on target — GATE2)
   src/common/guards/roles.guard.ts              Role hierarchy (admin > manager > cashier)
   src/common/guards/jwt-auth.guard.ts           JWT authentication guard
   src/common/interceptors/tenant.interceptor.ts Multi-tenant storeId enforcement
