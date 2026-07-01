@@ -1808,3 +1808,7 @@ Bilan couverture/hygiène (183→194) : mobile-auth JWT testé, airtable mapper 
 - Vérif : StoreSwitcher/AppSwitcher supprimés ; safeErrorMessage utilisé dans 2 pages (plus orphelin).
 - Bilan front (196→198) : -2 composants morts, +1 util défensif branché+testé, 0 régression.
 - Suite : P199 docs, P200 audit+verdict.
+
+## PAQUET 199 — Docs traçabilité dette front résolue
+- `TECHNICAL_DEBT.md` : TD-FE-DEAD-SWITCHERS (✅ supprimés P196) + TD-FE-ORPHAN-UTIL (✅ safeErrorMessage branché+testé P197) ajoutés à la section "Dette résolue".
+- Suite : P200 audit de contrôle 196→199 + verdict.

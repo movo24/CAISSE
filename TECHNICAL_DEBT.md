@@ -62,6 +62,8 @@
 | ID | Item | Résolution |
 |---|---|---|
 | TD-DEAD-PERMISSIONS | `common/guards/permissions.ts` = code mort (hasMinRole/ROLE_HIERARCHY dupliquant role-hierarchy.ts, importé par personne) | ✅ Supprimé P192 ; matrice de permissions préservée dans `role-hierarchy.ts` ; source de vérité unique pour la hiérarchie de rôles. Non-régression P193 (155 suites/1080 tests, 0 impact). |
+| TD-FE-DEAD-SWITCHERS | `StoreSwitcher.tsx` (supplanté par le Scope Switcher inline du Layout) + `AppSwitcher.tsx` (bascule pos/timewin24 hors périmètre back-office) = composants morts jamais montés | ✅ Supprimés P196 ; tsc EXIT 0 + vitest 19, 0 impact. |
+| TD-FE-ORPHAN-UTIL | `utils/safeErrorMessage.ts` = util anti-crash React #310 inutilisé | ✅ Branché P197 dans ProductsPage + ConnectedAppsPage + testé (4 tests) ; passe d'orphelin à utilisé. |
 
 ## Règle
 
