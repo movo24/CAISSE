@@ -1759,3 +1759,10 @@ Preuves :
 
 VERDICT : ✅ SOLIDE — le connecteur Airtable (mapper export + classification de risque à l'import) est désormais couvert, avec verrouillage de l'invariant sécurité "prix/stock = high, jamais auto-appliqué". Code réellement branché, 0 régression.
 Bilan couverture (183→190) : 2 modules sécurité-sensibles jusque-là sans spec (mobile-auth JWT, airtable mapper) désormais testés. Restent sans spec colocated : connected-apps + terminals (CRUD/repo, peu de logique pure — testables via DI si souhaité). Gates infra inchangées (relais/migration/social).
+
+## PAQUET 192 — Suppression du doublon mort guards/permissions.ts (POS-192)
+- Audit couverture : `common/guards/permissions.ts` (hasMinRole + ROLE_HIERARCHY + ROLE_ALIASES) **importé par PERSONNE** → code mort dupliquant `role-hierarchy.ts` (canonique, déjà testé roleLevel/roleSatisfies + roles.guard).
+- Action : matrice de permissions (doc utile) déplacée dans `role-hierarchy.ts` (au-dessus du code qui l'implémente) ; `permissions.ts` supprimé.
+- Preuve : `tsc --noEmit` EXIT 0 (rien ne dépendait du fichier) ; `jest src/common/guards` ⇒ 2 suites / 16 tests PASS ; `nest build` RC 0.
+- Valeur : -1 fichier mort, -1 duplication de la hiérarchie de rôles (source de vérité unique = role-hierarchy.ts), doc de permissions préservée au bon endroit.
+- Suite : P193 non-régression global, P194 docs, P195 audit.
