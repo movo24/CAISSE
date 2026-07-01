@@ -1996,3 +1996,10 @@ Livrables reprise : scripts/preflight.sh, OUTBOX_RELAY_KIT.md, EXTERNAL_GATES_RU
 - Preuve négative : injection `import.meta.env.VITE_FAKE_DRIFT` (clone) → `preflight` = FAIL (front env backoffice-web) + **code de sortie 1** ; après nettoyage → PASS + code 0. Le garde front bloque donc bien la CI.
 - `RESUME_CHECKLIST.md` §2 : ajout config env front (cp .env.example des 2 packages) + note que preflight vérifie backend ET front (process.env.* + import.meta.env.VITE_*).
 - Suite : P224 consolidation, P225 audit final.
+
+## PAQUET 224 — Consolidation 221→223
+- `preflight:full` → OVERALL PASS (structure + tsc + tests ciblés, incl. checks env front).
+- Tests config/env : `src/common/config` + `env-example-completeness` ⇒ 3 suites / 17 tests PASS.
+- Aucune modif de code backend src ce paquet (ci.yml/.env.example/preflight.sh/docs) → global backend inchangé (160 suites/1110 tests, cf. P220).
+- git clone propre.
+- Suite : P225 audit final + verdict.
