@@ -2143,3 +2143,12 @@ VERDICT : ✅ SOLIDE — un vrai secret ne peut plus se faufiler nulle part dans
 - Backend global : A 41/284 + B 75/503 + C 51+2skip/341+3skip = **167 suites PASS / 2 skip (169) ; 1128 tests PASS / 3 skip**. Δ vs P239 : +1 test (verrou XSS receipts). Zéro régression.
 - `preflight:full` OVERALL PASS ; front back-office vitest 6/23 (StockAlertsPage durci) ; PROJECT_STATUS 1128.
 - Suite : P245 audit final + verdict.
+
+## PAQUET 245 — AUDIT FINAL 241→244 (risques hérités re-vérifiés + verrouillés)
+Preuves :
+- git : arbre propre, commits c9cd145/a4d14c8/a32fefe/be88876.
+- Verrou anti-XSS receipts présent + testé ; test:security 10 suites/34 tests PASS ; backend global 167 suites/1128 tests PASS ; preflight:full PASS ; bundle complet (473 commits).
+- Interdits respectés : zéro secret réel, zéro prod, zéro migration cible, zéro appel externe, zéro activation OUTBOX, zéro mapping comptable inventé.
+
+VERDICT : ✅ SOLIDE — les 6 risques hérités d'avril 2026 sont re-vérifiés honnêtement : 5 résolus/mitigés/intentionnels et PROUVÉS (secret scan, échappement testé, capability-URL UUID, erreurs surfacées, code mort supprimé) ; 1 seul reste "à vérifier en runtime local" (#1 PIN login 500, non reproductible sans DB/prod), explicitement marqué comme tel. Aucune sur-déclaration.
+À fournir pour franchir une gate (inchangé) : GATE1 OUTBOX_PUBLISH_URL+SECRET ; GATE2 DATABASE_URL cible+GO ; GATE3 plan de comptes social validé. Le #1 se vérifie au 1er démarrage local (auth PIN).
