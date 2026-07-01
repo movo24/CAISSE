@@ -227,7 +227,10 @@ Rules:
 
 - **TW24 = source of truth for employees and HR**
 - **CAISSE = source of truth for stores** (but imports from TW24 on sync)
-- Auth flow: TW24 first → CAISSE local DB fallback if TW24 unreachable
+- Auth flow: **LOCAL-FIRST** (product decision — local `employees` PIN check first, TW24 only as
+  secondary fallback for unknown employees). `POS_AUTH_AUTHORITY=timewin` restores the legacy
+  TW24-first flow. TW24 never blocks the caisse (circuit breaker + local fallback).
+  Full exchange contract: `TIMEWIN24_CONTRACT.md`.
 - Store sync endpoint: `POST /api/stores/sync` (@Roles('admin'))
   - Calls TW24 `/api/pos-feed/stores` → upserts stores in CAISSE DB
   - Auth: HMAC if `TIMEWIN24_POS_SECRET + TIMEWIN24_POS_KEY_ID` set, else Bearer `TIMEWIN24_API_KEY`
