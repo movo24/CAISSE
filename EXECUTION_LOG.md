@@ -1823,3 +1823,9 @@ Preuves :
 
 VERDICT : ✅ SOLIDE — front assaini : 2 composants morts supplantés supprimés (-189 lignes), 1 util défensif anti-crash React branché + testé (orphelin → utilisé). 0 orphelin restant en back-office. 0 régression (tsc ×2 verts, vitest 23).
 Bilan hygiène/couverture cumulé (183→199) : mobile-auth JWT testé, airtable mapper testé, guards/permissions doublon supprimé, 2 switchers morts supprimés, safeErrorMessage branché+testé. Gates infra inchangées (relais/migration/social).
+
+## PAQUET 201 — JALON : agrégat backend global autoritaire
+- A (a–m) 40/274 + B (n–z) 75/502 + C (hors modules) 40+2skip/304+3skip.
+- TOTAL backend : **155 suites PASS / 2 skip (157) ; 1080 tests PASS / 3 skip** (2 `.pg.spec` = Postgres réel, gate).
+- Partition vérifiée = 157 = `jest --listTests`. Aucune régression.
+- Suite : P202 preuve front complète (vitest + builds), P203/204 rafraîchissement pilotage, P205 audit jalon.
