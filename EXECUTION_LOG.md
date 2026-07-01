@@ -1657,3 +1657,9 @@ Prochains candidats (tous nécessitent accès/décision) : (1) fournir OUTBOX_PU
 - `TECHNICAL_DEBT.md` : ligne MIGRATION-1725 ajoutée (🟡, preuves P176/P177, action migration:run base cible).
 - Preuve : `tsc --noEmit` back-office EXIT 0.
 - Suite : P179 non-régression test/, P180 audit+verdict.
+
+## PAQUET 179 — Non-régression dossier test/ (hors modules)
+- `jest` hors-modules ⇒ **40 suites PASS + 2 skip / 42** ; **304 tests PASS + 3 skip / 307**.
+- Δ vs P174 : +1 suite / +3 tests = spec migration 1725 (P176). 2 skip = `.pg.spec` (Postgres).
+- Global backend recalculé : A 38/261 + B 75/502 + C 40+2skip/304+3skip = **153 suites PASS / 2 skip (155) ; 1067 tests PASS / 3 skip**. Zéro régression.
+- Suite : P180 audit de contrôle 176→179 + verdict.
