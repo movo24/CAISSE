@@ -1952,3 +1952,10 @@ VERDICT : ✅ PRÊT & SOLIDE — préparation de déblocage + sécurité de repr
 - Scripts npm : `preflight`, `preflight:full`.
 - Preuve : exécution réelle → `preflight` OVERALL PASS ; `preflight --full` OVERALL PASS (tsc + tests ciblés) ; `jest preflight-checks.spec.ts` 5/5.
 - Suite : P217 registre env testé, P218 doc symptôme→correction, P219 readiness gates, P220 consolidation.
+
+## PAQUET 217 — Garde-rail testé : complétude .env.example (anti-drift env)
+- `test/env-example-completeness.spec.ts` (NOUVEAU) : scanne réellement `src/**` pour `process.env.X` (hors spec) vs `.env.example`, échoue si une var lue n'est pas documentée. Réutilise `missingEnvVars()` (helper pur testé P216).
+- Preuve positive : 1 test PASS (0 manquante aujourd'hui).
+- Preuve négative (le garde ATTRAPE le drift) : injection temporaire `process.env.__FAKE_DRIFT_VAR__` dans le clone → test **échoue** en listant la var ; après retrait → re-PASS.
+- Valeur : toute nouvelle variable lue sans documentation casse la CI → plus de dérive silencieuse (registre env auto-vérifié).
+- Suite : P218 doc symptôme→correction, P219 readiness gates, P220 consolidation.
