@@ -1964,3 +1964,8 @@ VERDICT : ✅ PRÊT & SOLIDE — préparation de déblocage + sécurité de repr
 - `RESUME_CHECKLIST.md` §5bis : table couvrant build échoué, env invalide (boot), migration dry-run échouée, OUTBOX en simulation, écriture sociale bloquée, rollup natif, .pg skipped. Chaque ligne = commande de diagnostic + correction exacte.
 - Distingue clairement "attendu" (OUTBOX simulation, social bloqué, .pg skipped) vs vrai problème.
 - Suite : P219 rapport readiness gates, P220 consolidation.
+
+## PAQUET 219 — GATES_READINESS.md (rapport de préparation des gates)
+- `GATES_READINESS.md` (NOUVEAU) : tableau de bord par gate — Prêt (prouvé local) / Manquant (à fournir) / Pourquoi bloqué / Sévérité + détail + preuves (compteurs de tests). Renvoie vers preflight, kit, runbook.
+- Garde-fou : 0 secret affiché (placeholders uniquement).
+- Suite : P220 consolidation globale + verdict.
