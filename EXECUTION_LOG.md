@@ -2032,3 +2032,9 @@ Reste inchangé à fournir : GATE1 OUTBOX_PUBLISH_URL+SECRET ; GATE2 DATABASE_UR
 - `README.md` : section "▶ Reprise & gates externes (commencer ici)" en tête — preflight, RESUME_CHECKLIST, PROJECT_STATUS/EXECUTION_LOG, GATES_READINESS/EXTERNAL_GATES_RUNBOOK/OUTBOX_RELAY_KIT + rappel des gardes automatiques.
 - Vérif : les 6 fichiers liés existent.
 - Suite : P229 consolidation, P230 audit final.
+
+## PAQUET 229 — Consolidation globale (durcissement 226→228)
+- Backend global : A 41/284 + B 75/502 + C 47+2skip/333+3skip = **163 suites PASS / 2 skip (165) ; 1119 tests PASS / 3 skip**.
+- Δ vs P220 (160/1110) : +3 suites (secret-scan, env-example-no-secrets, ci-scripts-exist) / +9 tests. Partition 116 modules + 49 = 165 = `jest --listTests`. Zéro régression.
+- `preflight:full` → OVERALL PASS. git clone propre.
+- Suite : P230 audit final + verdict.
