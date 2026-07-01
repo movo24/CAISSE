@@ -77,7 +77,7 @@ Voir `POS_BLOCKS.md` → premier paquet (PAQUET 1). Détail d'exécution dans `E
 ---
 ## État consolidé — 2026-07-01 (jalon PAQUET 202, v9)
 
-**Backend : 155 suites PASS / 2 skip (157) ; 1080 tests PASS / 3 skip.** (`jest`, maxWorkers=2/runInBand)
+**Backend : 160 suites PASS / 2 skip (162) ; 1110 tests PASS / 3 skip.** (`jest`, maxWorkers=2/runInBand)
 - 2 suites skip = `test/*.pg.spec.ts` (auto-skip sans `TEST_DATABASE_URL` — CI Postgres réel).
 - `tsc --noEmit` EXIT 0 · `nest build` RC 0.
 
