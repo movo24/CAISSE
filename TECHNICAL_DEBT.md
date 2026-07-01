@@ -10,7 +10,7 @@
 | TD-FE-OFFLINE-DISCOUNT | Remise responsable hors-ligne (PIN serveur invérifiable) | 🟡 | arbitrage : `manual-discount-guard.ts` (bloque offline) câblé POSPage (bouton + garde vente) | ✅ RÉSOLU P159 (commit 7938cb6) — décision : interdire hors-ligne |
 | TD-FE-ROLLUP-NATIVE | Build/vitest front non exécutables en sandbox (binaire natif rollup) | 🟢 | binaire `@rollup/rollup-linux-arm64-gnu` installé (P169) → vitest **42 tests PASS** (backoffice 19 + pos 23) + `vite build` **2× verts** (backoffice 1988 / pos 2082 modules) + steps CI (P166) | ✅ RÉSOLU P169 — gate prouvé exécutable (sandbox + CI) |
 | TD-DOC-DRIFT | CLAUDE.md sous-compte modules (37→40), entités (45→47), migrations (11→16), tests (405→~488) | 🟠 | comparaison audit vs CLAUDE.md | Ouvert |
-| TD-API-MAP | Détail méthode/payload/erreurs/rôle manquant pour la plupart des 213 routes | 🟠 | `POS_API_MAP.md` | Ouvert |
+| TD-API-MAP | Détail méthode/payload/erreurs/rôle par route | 🟠 | `POS_API_MAP.md` | ✅ RÉSOLU P289 — `POS_API_MAP_DETAILED.md` généré depuis le code (42 controllers/230 routes, guards+rôles+tenant+DTO) via `npm run api:map` |
 | TD-MOBILE-COCKPIT | ~~`GET /api/mobile/v1/alerts` inexistant~~. **Résolu** : module `mobile-cockpit` créé (read-only, manager+, stock+anomalies, shaper testé 6/6, tsc clean). Runtime DB à valider local. | 🟡 | `modules/mobile-cockpit/` | Implémenté |
 | TD-112-MORE-ALERTS | Cockpit agrège stock + anomalies vente ; alertes paiement/fermeture pas encore (pas de source dédiée). | 🟡 | `mobile-cockpit.service` | Ouvert |
 | TD-PAYWIN | Paywin24 non branché (aucune réf code) | 🟠 | grep `paywin` = 0 | Ouvert (futur) |

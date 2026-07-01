@@ -27,7 +27,8 @@
     "lint": "npm run lint --workspaces",
     "format": "prettier --write \"**/*.{ts,tsx,json,md}\"",
     "docker:up": "docker compose -f docker/docker-compose.yml up -d",
-    "docker:down": "docker compose -f docker/docker-compose.yml down"
+    "docker:down": "docker compose -f docker/docker-compose.yml down",
+    "api:map": "node scripts/generate-api-map.js"
   },
   "devDependencies": {
     "@types/nodemailer": "^6.4.23",
