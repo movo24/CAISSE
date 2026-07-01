@@ -75,6 +75,21 @@ Ces points datent d'avril 2026 ; plusieurs commits fiscaux/correctifs ont suivi.
 Voir `POS_BLOCKS.md` → premier paquet (PAQUET 1). Détail d'exécution dans `EXECUTION_LOG.md`.
 
 ---
+## État consolidé — 2026-07-02 (jalon PAQUET 287, v22 — blocs A1→A6 : contrats d'intégration + ops durcis)
+
+- **A1/P282** MASTER_ROADMAP réécrit sur preuves (M0-M9 re-statués, chemin critique = gates). Écarts demande↔dépôt actés : pas d'`ops/` (réels : `scripts/preflight.sh`, `docker/deploy.sh`) ; pas de tables `tickets`/`register_events` (réelles : `sales`, `integration_events`) ; zéro référence Timescale préexistante.
+- **A2/P282** Cohérence code↔docs : compteurs re-vérifiés (44 modules · 42 controllers · 230 routes · 21 migrations · 197 specs) ; `fiscal` = CLI-only volontaire ; `documents` câblé via receipts ; STATE_INDEX + POS_API_MAP corrigés.
+- **A3/P283** **POS_PUSH_CONTRACT.md** (v1) : enveloppe (event_id/ticket_id→aggregateId/store_id/terminal_id/ts→occurredAt), auth HMAC-SHA256 + anti-rejeu 5 min, retry 5×/backoff/dead-letter, idempotence par event id, catalogue 11 types (Z-report = `cash_session.closed`), alternative pull keyset. Code additif : `x-pos-batch-id` (corrélation run de relais, jamais clé d'idempotence). **`wire-contract.spec.ts` gèle le contrat** (5 tests). Intégration 14 suites/102 tests PASS.
+- **A4/P284** **TIMEWIN24_CONTRACT.md** : autorité (TW24 alerte, ne bloque JAMAIS la caisse), flux sortants webhook HMAC 9 types + clock-in/out, entrants (sync employés/planning/paie), anomalies présence 4 types → cockpit read-only, circuit breaker prouvé. **Fix CLAUDE.md : auth = LOCAL-first** (le doc disait TW24-first, le code est local-first, `POS_AUTH_AUTHORITY=timewin` = legacy).
+- **A5/P285** Ops durcis (fichiers seulement, zéro action prod) : `docker/deploy.sh` gated (preflight → confirmation tapée → backup pré-déploiement → attente healthcheck réelle 120 s → smoke in-container [port 3001 non exposé à l'hôte] → hints rollback) ; **`docker/backup.sh` nouveau** (dump+intégrité+rétention 14, list/restore confirmé) ; RUNBOOK complété. `scripts/preflight.sh` relancé : OVERALL PASS.
+- **A6/P286** **TIMESCALE_PLAN.md** (préparation seule) : piège PK mono-colonne↔`ts` transposé aux vraies tables ; règle dure « ledger NF525 jamais hypertable » ; option A recommandée (Postgres+BRIN+MV+purge), option B (table `analytics_events` dérivée, dédup AVANT insertion), option C rejetée ; Neon sans extension timescaledb noté ; critères de GO.
+- **Bloc 7 (refactors)** : aucun refactor exécuté — aucune preuve de problème ne le justifiait (règle : pas de travail inventé).
+- **P287** consolidation : suite backend COMPLÈTE rejouée en 5 tranches —
+  **195 suites PASS / 3 skip (.pg) · 1311 tests PASS / 5 skip · 0 échec** (Δ v21 : +1 suite wire-contract, +5 tests). `nest build` RC 0 · preflight PASS · anti-secret 34 PASS.
+
+Commits : `3305c63` A1 · `4e13b6a` A2 · `a768834` A3 · `0bad4bb` A4 · `2943755` A5 · `f999f6f` A6. Interdits respectés : zéro push, zéro prod, zéro secret, zéro migration runtime.
+
+---
 ## État consolidé — 2026-07-02 (jalon PAQUET 281, v21 — cycle 3 Fab 5 : pg-mem chemins critiques stock/coupon/sync)
 
 - **P278** `stock.service.pgmem.spec` (6) — décrément atomique tenant-scoped + outbox, adjustStock transactionnel (absolute/delta clampés, audit old→new), **prédicat SQL POS-083 baseline-20 %** (COALESCE/CEIL) réellement exécuté, seuils bulk actifs-only, variance id+EAN + unmatched. **Bug pg-mem découvert et prouvé** : `col - $param` inverse les opérandes (`SELECT 12 - $1 [3]` → −9) → la sémantique exacte du décrément est épinglée dans un **jumeau réel-PG** `test/stock-decrement.pg.spec.ts` (gated TEST_DATABASE_URL, +test de concurrence 10 décréments parallèles).

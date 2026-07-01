@@ -2185,3 +2185,13 @@ Ces paquets ont été journalisés dans `PROJECT_STATUS.md` (v10→v18) et non i
 - P280 sync pg-mem (5 tests) — rejeu offline sans duplication de vente, rejected_no_id, server-wins, deltas tenant-scoped, pull incrémental.
 - P281 consolidation : **194 suites PASS/3 skip · 1306 tests PASS/5 skip · 0 échec** ; tsc EXIT 0.
 - Commits : bbc1b05 / 6034be3 / 7f330c0 ; bundle régénéré.
+
+## PAQUET 282→287 — Blocs A1→A6 (2026-07-02) : contrats d'intégration + ops durcis
+- A1 MASTER_ROADMAP réécrit (preuves v21) ; écarts demande↔dépôt actés (pas d'ops/, pas de tickets/register_events, zéro Timescale préexistant).
+- A2 cohérence : compteurs re-vérifiés (42 controllers/230 routes/197 specs), fiscal=CLI-only, POS_API_MAP re-daté.
+- A3 POS_PUSH_CONTRACT.md v1 + x-pos-batch-id (additif) + wire-contract.spec (gel du contrat, 5 tests).
+- A4 TIMEWIN24_CONTRACT.md + fix CLAUDE.md (auth local-first).
+- A5 deploy.sh durci (preflight/confirmation/backup/healthcheck/smoke/rollback) + backup.sh nouveau + RUNBOOK ; preflight PASS.
+- A6 TIMESCALE_PLAN.md (doc only, option A recommandée, ledger jamais hypertable). Bloc 7 refactors : rien à prouver → rien fait.
+- P287 consolidation : **195 suites PASS/3 skip · 1311 tests PASS/5 skip · 0 échec** ; nest build RC 0.
+- Commits : 3305c63 / 4e13b6a / a768834 / 0bad4bb / 2943755 / f999f6f ; bundle régénéré.
