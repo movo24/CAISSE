@@ -2021,3 +2021,9 @@ Reste inchangé à fournir : GATE1 OUTBOX_PUBLISH_URL+SECRET ; GATE2 DATABASE_UR
 - Preuve négative : injection `sk_live_...` dans un .env.example du clone → test **échoue** (pattern stripe-secret) ; après retrait → re-PASS.
 - Valeur : empêche qu'une vraie clé finisse commitée (règle sécurité 1/2 de CLAUDE.md, désormais testée).
 - Suite : P227 garde scripts CI, P228 index reprise, P229 consolidation, P230 audit.
+
+## PAQUET 227 — Garde-rail existence des scripts CI
+- `test/ci-scripts-exist.spec.ts` (NOUVEAU) : parse `.github/workflows/ci.yml` pour chaque `npm run X` et vérifie qu'il est défini dans `package.json` racine → échoue si un script CI est renommé/supprimé.
+- Positif : 1 test PASS (tous les scripts CI existent). Preuve négative : `npm run lint-DOESNOTEXIST` injecté → test **échoue** en listant le script ; restauré → re-PASS.
+- Valeur : évite une CI qui casse silencieusement sur un script disparu (sécurité reprise/CI).
+- Suite : P228 index reprise, P229 consolidation, P230 audit.
