@@ -4,6 +4,7 @@ import {
   Search, Filter, ChevronDown, Check, X,
 } from 'lucide-react';
 import { notificationsApi, stockApi } from '../services/api';
+import { safeErrorMessage } from '../utils/safeErrorMessage';
 import { useCurrentStoreId } from '../hooks/useCurrentStoreId';
 
 /* ── Types ── */
@@ -57,7 +58,7 @@ function AdjustModal({
       await stockApi.adjust(product.productId, { quantity: qty, reason });
       onAdjusted();
     } catch (err: any) {
-      setError(err?.response?.data?.message || 'Erreur lors de l\'ajustement');
+      setError(safeErrorMessage(err, 'Erreur lors de l\'ajustement'));
     } finally {
       setSaving(false);
     }

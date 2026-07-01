@@ -2127,3 +2127,9 @@ VERDICT : ✅ SOLIDE — un vrai secret ne peut plus se faufiler nulle part dans
 - NOUVEAU verrou e2e : `receipts.controller.spec.ts` — un `<script>alert(1)</script>` en nom produit + nom/adresse magasin → le HTML contient `&lt;script&gt;` et JAMAIS `<script>alert(1)</script>`. 4 tests PASS.
 - Audit risque #5 (receipts publics) : `GET :saleId` et `:saleId/html` sont publics MAIS `saleId` = `@PrimaryGeneratedColumn('uuid')` → capability-URL non énumérable (modèle Stripe). Design intentionnel, acceptable ; l'email est protégé par JwtAuthGuard.
 - Suite : P242 erreurs avalées front, P243 refresh §5 statuts, P244 conso, P245 audit.
+
+## PAQUET 242 — Risque hérité #3 (erreurs avalées front) : vérifié + durci
+- Audit `StockAlertsPage` : erreurs SURFACÉES (setError avec messages, chargement + ajustement) — pas avalées. `LabelsPage` : `catch` = fallback code-barres légitime + `.catch` charge produits avec `setLoadError` + console.warn — pas avalées. → Risque #3 périmé depuis avril 2026 (code évolué).
+- Durcissement réel : `StockAlertsPage` ajustement → `safeErrorMessage(err, ...)` (au lieu de l'extraction brute) : cohérence + anti-crash React si message objet.
+- Preuve : `tsc --noEmit` back-office EXIT 0 ; vitest inchangé PASS.
+- Suite : P243 refresh §5 statuts vérifiés, P244 conso, P245 audit.
