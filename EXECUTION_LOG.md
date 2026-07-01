@@ -1735,3 +1735,12 @@ Reste inchangé : 3 gates infra (secret relais / base migration / décision comp
 - Preuve : `jest airtable-ops.mapper.spec.ts` ⇒ 1 suite / **8 tests PASS** ; `tsc --noEmit` EXIT 0.
 - Valeur : verrouille l'invariant "changement financier = validation manuelle obligatoire" du connecteur Airtable.
 - Suite : P189 non-régression module + global, P190 docs, P191 audit.
+
+## PAQUET 189 — Non-régression GLOBALE backend (re-agrégat post airtable-mapper)
+Partition (115 modules + 42 hors-modules = 157 = `jest --listTests`) :
+- A (a–m, airtable-ops inclus) : 40 suites / 274 tests PASS.
+- B (n–z) : 75 suites / 502 tests PASS.
+- C (common/db/test) : 40 PASS + 2 skip / 304 PASS + 3 skip.
+- TOTAL : **155 suites PASS / 2 skip (157) ; 1080 tests PASS / 3 skip**.
+- Δ vs P185 : +1 suite / +8 tests = spec airtable mapper (P188). Zéro régression.
+- Suite : P190 docs, P191 audit+verdict.
