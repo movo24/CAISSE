@@ -2054,3 +2054,10 @@ VERDICT : ✅ SOLIDE — la reprise est maintenant "one-command", auto-vérifié
 - `test/docs-no-secrets.spec.ts` (NOUVEAU) : scanne tous les `.md` suivis (`git ls-files "*.md"`, fallback racine+backend) via `findSecretLeaks` → échoue si un vrai secret (Stripe/AWS/Google/JWT/URL DB) apparaît dans README, runbooks, checklists, docs gates. Placeholders tolérés.
 - Positif : 1 test PASS (aucun secret dans les docs). Preuve négative : `sk_live_...` injecté dans RESUME_CHECKLIST.md → test **échoue** (file+pattern listés) ; retiré → re-PASS.
 - Suite : P232 anti-log de secret, P233 gitignore/dockerignore, P234 checklist pré-gate, P235 consolidation.
+
+## PAQUET 232 — Garde anti-log de secret (valeurs jamais journalisées)
+- `common/config/redact.ts` (pur) : `maskSecret(v)` → '***' (jamais un caractère révélé) ; `redactForLog(env, keys)` → { NOM: '***' | '(unset)' } sûr à logger.
+- `redact.spec.ts` (4 tests) + preuves que `validateRequiredEnv` ne fuite PAS les valeurs : JWT_SECRET court → message cite le NOM pas la valeur ; vars manquantes → NOMS seulement.
+- Vérif bonus : `scripts/preflight.sh` imprime des NOMS de variables (via `comm`), jamais les valeurs.
+- Preuve : `jest redact.spec.ts` ⇒ 1 suite / **4 tests PASS** ; `tsc --noEmit` EXIT 0. Aucune valeur sensible réelle utilisée (valeurs simulées).
+- Suite : P233 gitignore/dockerignore, P234 checklist pré-gate, P235 consolidation.
