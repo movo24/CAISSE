@@ -75,6 +75,18 @@ Ces points datent d'avril 2026 ; plusieurs commits fiscaux/correctifs ont suivi.
 Voir `POS_BLOCKS.md` → premier paquet (PAQUET 1). Détail d'exécution dans `EXECUTION_LOG.md`.
 
 ---
+## État consolidé — 2026-07-02 (jalon PAQUET 277, v20 — cycle 2 Fab 5 : docs alignées + pg-mem money-path)
+
+- **P273** docs alignées sur le réel : CLAUDE.md (44 modules, 21 migrations dont 1725 gated, compteurs tests, 48 entités) + STATE_INDEX (les 10 priorités re-statuées : ✅ 4/5/9 faites, 🟡 3/10 partielles, ⛔ 5 gated).
+- **P274** `product-analytics.service.pgmem.spec` (5) — vraies requêtes d'agrégation prouvées sur pg-mem : fenêtres 7j/30j/prev-30j, `completed` uniquement (pending exclu), isolation tenant, `lastSoldAt` = MAX, CA quotidien bucketé jour local magasin, cache TTL store+jour.
+- **P275** `sales-guards.service.pgmem.spec` (5) — garde pré-vente (chemin argent) : enrichissement coût côté serveur **tenant-scoped** (produit d'un autre magasin → COST_MISSING, jamais son coût), vente sous coût = critical+blocking persistée `detected`, filtres/tri/count réels de `listAnomalies`, summary groupé par code/sévérité, machine à états review (detected→approved une seule fois, 404 sinon).
+- **P276** `customer-visits.service.pgmem.spec` (6) — fenêtre anti-doublon 5 min **par magasin** (vraie requête), insert transactionnel + UPDATE SQL brut `visit_count`/`last_visit_at` (pas d'incrément sur doublon), tri DESC, lecture sécurisée anti-IDOR (autre magasin interdit, bypass admin, 404). Note : artefact pg-mem documenté (incrément SQL brut rendu en texte) — assertions via Number(), réel PG non affecté.
+- **P277** consolidation : suite backend COMPLÈTE rejouée en 5 tranches —
+  **191 suites PASS / 2 skip (.pg) · 1290 tests PASS / 3 skip · 0 échec** (Δ v19 : +3 suites, +16 tests). `tsc --noEmit` EXIT 0.
+
+Commits locaux : `56b41ed` (P273) · `47c9113` (P274) · `506688f` (P275) · `f3fd2f9` (P276). Interdits respectés : zéro push, zéro secret, zéro prod, zéro migration cible.
+
+---
 ## État consolidé — 2026-07-02 (jalon PAQUET 272, v19 — reprise Fab 5 : git réparé + re-preuve globale)
 
 - **Git réparé (définitif)** : les locks résiduels `.git/HEAD.lock`/`index.lock` (28 juin, FUSE) ont pu être supprimés cette session → refs de nouveau inscriptibles. Historique complet restauré depuis `pos-recovery.bundle` : branche **`recovery/pos-audit-session`** fetchée (P271 = `579851c`), HEAD basculé dessus **sans modifier le working tree** (diff tree vs bundle tip = 0). Les 4 symlinks `node_modules` trackés par accident retirés de l'index (`28f57d9`). Les commits ne dépendent plus du bundle ; le bundle reste comme filet tant qu'aucun push n'est autorisé.

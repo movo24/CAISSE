@@ -2170,3 +2170,11 @@ Ces paquets ont été journalisés dans `PROJECT_STATUS.md` (v10→v18) et non i
 - Suite backend COMPLÈTE rejouée en 5 tranches : **188 suites PASS/2 skip · 1274 tests PASS/3 skip · 0 échec**. Front vitest 14 fichiers/59 tests PASS. `tsc --noEmit` EXIT 0 · `nest build` RC 0 · `test:security` 10/34 PASS.
 - Invariant remises re-vérifié conforme (cap 30 % pos, justif 21–30 %, responsable, back-office admin ≤100 %).
 - Interdits respectés : zéro push, zéro secret, zéro prod, zéro migration cible, zéro suppression irréversible (hors fichiers *.lock vides).
+
+## PAQUET 273→277 — Cycle 2 Fab 5 (2026-07-02) : docs alignées + couverture pg-mem money-path
+- P273 : CLAUDE.md + STATE_INDEX alignés sur l'état réel (compteurs, priorités re-statuées, migration 1725 marquée gated).
+- P274 : product-analytics pg-mem (5 tests) — agrégations réelles, tenant, jour local, cache TTL.
+- P275 : sales-guards pg-mem (5 tests) — enrichissement coût tenant-scoped, sous-coût critical persisté, list/summary/review réels.
+- P276 : customer-visits pg-mem (6 tests) — anti-doublon 5 min par magasin, transaction + SQL brut, anti-IDOR.
+- P277 : consolidation globale — **191 suites PASS/2 skip · 1290 tests PASS/3 skip · 0 échec** ; tsc EXIT 0 ; test:security 10/34 PASS.
+- Preuves : commits 56b41ed / 47c9113 / 506688f / f3fd2f9 ; bundle régénéré.
