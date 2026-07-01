@@ -1912,3 +1912,11 @@ VERDICT : ✅ PRÊT — les 3 gates sont préparées, durcies (garde-fous fail-c
 - Re-diff : **0 variable manquante**. Garde-fou : aucun secret réel (placeholders uniquement, règle sécurité respectée).
 - Valeur reprise : plus aucune variable lue non documentée → pas de surprise "missing var" au boot.
 - Suite : P212 tests validation env au boot, P213 checklist reprise, P214 audit.
+
+## PAQUET 212 — Validation env au boot extraite + testée (sécurité reprise)
+- `common/config/env-validation.ts` (NOUVEAU, pur) : `validateRequiredEnv(env)` — extrait de main.ts (comportement préservé) : vars requises (DATABASE_URL/JWT_SECRET/JWT_REFRESH_SECRET), rejet défauts non sûrs, longueur JWT≥32, checks prod (TYPEORM_SYNCHRONIZE interdit, REDIS requis sauf ALLOW_INMEMORY_CACHE, CORS explicite non-wildcard).
+- `main.ts` re-câblé : délègue les throws au module pur ; garde les warnings non fatals (logger).
+- `env-validation.spec.ts` : 11 tests (requises manquantes ×3, défauts non sûrs, longueur, prod sync/redis/cors, dev permissif).
+- Preuve : `jest` ⇒ 1 suite / **11 tests PASS** ; `tsc --noEmit` EXIT 0 ; `nest build` RC 0.
+- Valeur reprise : les règles fail-fast du boot sont désormais testées → toute régression de config est attrapée en CI.
+- Suite : P213 checklist reprise, P214 audit final.

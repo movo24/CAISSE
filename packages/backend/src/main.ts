@@ -31,6 +31,7 @@ import {
 } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import helmet from 'helmet';
+import { validateRequiredEnv } from './common/config/env-validation';
 import * as cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 import { TenantInterceptor } from './common/interceptors/tenant.interceptor';
@@ -130,63 +131,17 @@ class GlobalExceptionFilter implements ExceptionFilter {
 function validateEnvironment() {
   const logger = new Logger('EnvValidation');
 
-  // Critical secrets — app MUST NOT start without these
-  const required = [
-    'DATABASE_URL',
-    'JWT_SECRET',
-    'JWT_REFRESH_SECRET',
-  ];
-  const missing = required.filter((key) => !process.env[key]);
-  if (missing.length > 0) {
-    throw new Error(
-      `FATAL: Missing required environment variables: ${missing.join(', ')}. ` +
-      'Copy .env.example to .env and fill in all values.',
-    );
-  }
+  // Fail-fast fatal checks (pure, tested in env-validation.spec.ts).
+  validateRequiredEnv(process.env);
 
-  // Reject insecure defaults
-  if (process.env.JWT_SECRET === 'dev-jwt-secret' || process.env.JWT_REFRESH_SECRET === 'dev-refresh-secret') {
-    throw new Error('JWT secrets must not use insecure defaults. Generate with: openssl rand -hex 32');
-  }
-
-  // Minimum secret length
-  if (process.env.JWT_SECRET!.length < 32) {
-    throw new Error('JWT_SECRET must be at least 32 characters');
-  }
-
-  // Production-only checks
+  // Production-only non-fatal warnings (recommendations).
   const isProd = process.env.NODE_ENV === 'production';
   if (isProd) {
-    if (process.env.TYPEORM_SYNCHRONIZE === 'true') {
-      throw new Error('FATAL: TYPEORM_SYNCHRONIZE=true is forbidden in production');
-    }
-    // REDIS_URL is required in production (token revocation / OTP / rate-limit must
-    // be shared across instances). A single-pod deployment can consciously opt out
-    // of Redis with ALLOW_INMEMORY_CACHE=true — otherwise we fail fast.
-    if (!process.env.REDIS_URL) {
-      if (process.env.ALLOW_INMEMORY_CACHE === 'true') {
-        logger.warn('REDIS_URL not set — in-memory cache (ALLOW_INMEMORY_CACHE=true). NOT multi-instance safe.');
-      } else {
-        throw new Error(
-          'REDIS_URL must be set in production (shared cache for token revocation / OTP / rate-limit). ' +
-            'For a single-pod deployment only, set ALLOW_INMEMORY_CACHE=true to opt out.',
-        );
-      }
+    if (!process.env.REDIS_URL && process.env.ALLOW_INMEMORY_CACHE === 'true') {
+      logger.warn('REDIS_URL not set — in-memory cache (ALLOW_INMEMORY_CACHE=true). NOT multi-instance safe.');
     }
     if (!process.env.TIMEWIN24_API_KEY) {
       logger.warn('TIMEWIN24_API_KEY not set — TimeWin24 integration disabled');
-    }
-    // CORS is strict in production: credentials are enabled, so a wildcard or an
-    // unset origin is a security hole — fail fast rather than ship it.
-    if (!process.env.CORS_ORIGIN) {
-      throw new Error(
-        'CORS_ORIGIN must be set to an explicit, comma-separated origin list in production (credentials are enabled)',
-      );
-    }
-    if (process.env.CORS_ORIGIN.trim() === '*') {
-      throw new Error(
-        'CORS_ORIGIN cannot be "*" in production — a wildcard with credentials is unsafe',
-      );
     }
   }
 
