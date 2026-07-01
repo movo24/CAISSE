@@ -2138,3 +2138,8 @@ VERDICT : ✅ SOLIDE — un vrai secret ne peut plus se faufiler nulle part dans
 - §5 mis à jour honnêtement : #2 VÉRIFIÉ PROPRE (scan), #3 PÉRIMÉ (audit P242), #4 MITIGÉ+TESTÉ (P241), #5 INTENTIONNEL (UUID capability-URL), #6 traité (hygiène). #1 (PIN login 500) = ⏳ À VÉRIFIER en runtime local (non reproductible sans DB/prod).
 - Aucune sur-déclaration : le seul point restant "À vérifier" (#1) est explicitement marqué comme nécessitant un runtime local.
 - Suite : P244 consolidation, P245 audit final.
+
+## PAQUET 244 — Consolidation globale (risques hérités 241→243)
+- Backend global : A 41/284 + B 75/503 + C 51+2skip/341+3skip = **167 suites PASS / 2 skip (169) ; 1128 tests PASS / 3 skip**. Δ vs P239 : +1 test (verrou XSS receipts). Zéro régression.
+- `preflight:full` OVERALL PASS ; front back-office vitest 6/23 (StockAlertsPage durci) ; PROJECT_STATUS 1128.
+- Suite : P245 audit final + verdict.
