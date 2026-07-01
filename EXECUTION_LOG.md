@@ -1794,3 +1794,10 @@ Bilan couverture/hygiène (183→194) : mobile-auth JWT testé, airtable mapper 
 - Action : suppression des 2 fichiers.
 - Preuve : `tsc --noEmit` EXIT 0 (rien ne les importait) ; vitest 5 fichiers / **19 tests PASS**.
 - Suite : P197 brancher `safeErrorMessage` (util défensif inutilisé) sur les points d'erreur bruts, P198 non-régression, P199 docs, P200 audit.
+
+## PAQUET 197 — safeErrorMessage branché + testé (util défensif, POS-FE-197)
+- `utils/safeErrorMessage.ts` était orphelin (0 usage) — util anti-crash React #310 (objet rendu comme enfant).
+- Test : `safeErrorMessage.test.ts` (4 tests) — string, string[] joint, objet → JSON string (anti-crash), fallback err.message puis défaut.
+- Câblage : `ProductsPage` (2 spots : setError chargement + alert sauvegarde, remplace les extractions manuelles dupliquées) et `ConnectedAppsPage` (setError). L'util passe d'orphelin à utilisé (2 pages).
+- Preuve : `tsc --noEmit` EXIT 0 ; vitest 6 fichiers / **23 tests PASS** (dont safeErrorMessage 4/4).
+- Suite : P198 non-régression vitest complète, P199 docs, P200 audit.

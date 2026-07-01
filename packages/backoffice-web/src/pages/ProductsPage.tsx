@@ -16,6 +16,7 @@ import {
   X,
 } from 'lucide-react';
 import { productsApi } from '../services/api';
+import { safeErrorMessage } from '../utils/safeErrorMessage';
 import { useAuthStore } from '../stores/authStore';
 import { useCurrentStoreId } from '../hooks/useCurrentStoreId';
 import { PriceAnalyticsPanel } from '../components/PriceAnalyticsPanel';
@@ -94,8 +95,7 @@ export function ProductsPage() {
       );
       setError(null);
     } catch (err: any) {
-      const msg = err.response?.data?.message;
-      setError(typeof msg === 'string' ? msg : Array.isArray(msg) ? msg.join(', ') : 'Erreur lors du chargement des produits');
+      setError(safeErrorMessage(err, 'Erreur lors du chargement des produits'));
     } finally {
       setLoading(false);
     }
@@ -207,9 +207,7 @@ export function ProductsPage() {
       resetForm();
       await fetchProducts();
     } catch (err: any) {
-      const rawMsg = err.response?.data?.message;
-      const msg = typeof rawMsg === 'string' ? rawMsg : Array.isArray(rawMsg) ? rawMsg.join(', ') : 'Erreur lors de la sauvegarde';
-      alert(typeof msg === 'string' ? msg : JSON.stringify(msg));
+      alert(safeErrorMessage(err, 'Erreur lors de la sauvegarde'));
     } finally {
       setSaving(false);
     }

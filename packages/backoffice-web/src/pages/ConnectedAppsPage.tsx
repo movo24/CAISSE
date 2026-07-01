@@ -4,6 +4,7 @@ import {
   CheckCircle2, Loader2, AlertCircle, Clock,
 } from 'lucide-react';
 import { connectedAppsApi, organizationsApi } from '../services/api';
+import { safeErrorMessage } from '../utils/safeErrorMessage';
 
 interface ConnectedApp {
   id: string;
@@ -100,7 +101,7 @@ export function ConnectedAppsPage() {
       loadApps();
       setTimeout(() => setSuccess(null), 2000);
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur');
+      setError(safeErrorMessage(err, 'Erreur'));
     } finally {
       setSubmitting(false);
     }
