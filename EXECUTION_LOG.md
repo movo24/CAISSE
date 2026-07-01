@@ -2084,3 +2084,11 @@ Preuves :
 VERDICT : ✅ SOLIDE — le projet est désormais "anti-erreur humaine" côté secrets : aucun vrai secret ne peut finir dans .env.example NI dans une doc .md suivie (tests), les valeurs sensibles ne sont jamais loggées (redact + preuve validation), les artefacts sensibles sont ignorés (gitignore/dockerignore testés, bundle préservé), et une checklist stricte encadre chaque branchement de gate. 6 gardes automatiques en CI.
 Gardes de sécurité/reprise (6) : env-completeness, env-no-secrets, docs-no-secrets, redact/anti-log, gitignore-hardening, ci-scripts-exist (+ preflight en CI).
 À fournir pour franchir une gate (inchangé) : GATE1 OUTBOX_PUBLISH_URL+SECRET ; GATE2 DATABASE_URL cible+GO ; GATE3 plan de comptes social validé.
+
+## PAQUET 236 — Garde anti-secret étendu à TOUS les .env* suivis (+ fix faux positif)
+- Audit ciblé (risque PROJECT_STATUS §5 #2) : `docker/.env.production.example` = propre ; `packages/backend/.env.production.example` ligne 11 = `postgresql://user:password@host` → **faux positif** du scanner (placeholder évident).
+- Fix scanner (`secret-scan.ts`) : PLACEHOLDER_HINTS tolère `:password@ / @host / user:pass / :pass@` (placeholders génériques) SANS affaiblir la détection réelle.
+- Garde étendu (`test/env-example-no-secrets.spec.ts` → POS-INT-236) : scanne désormais **tous les fichiers `.env*` suivis** via `git ls-files` (couvre `.env.production.example`, docker), pas seulement `.env.example`. Vrais `.env` = gitignorés, non scannés.
+- Preuve : positif 7 tests PASS (tous les .env* suivis propres) ; négatif : `sk_live_...` injecté dans `.env.production.example` → **échec** (file+pattern) ; retiré → re-PASS.
+- Vérif : les vrais `.env` (backend/pos-desktop) ne sont PAS suivis (gitignore OK).
+- Suite : P237 scan secret du code source, P238 script test:security, P239 conso, P240 audit.

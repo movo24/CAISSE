@@ -16,7 +16,8 @@ const SECRET_PATTERNS: { name: string; re: RegExp }[] = [
 ];
 
 /** Value tokens that are obviously placeholders (never flagged). */
-const PLACEHOLDER_HINTS = /replace|example|placeholder|your|xxxx|\.\.\.|<[^>]+>|change-?me|dummy|fake/i;
+const PLACEHOLDER_HINTS =
+  /replace|example|placeholder|your|xxxx|\.\.\.|<[^>]+>|change-?me|dummy|fake|:password@|@host[:/\s]|user:pass|:pass@/i;
 
 export interface SecretHit {
   pattern: string;
