@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { TimewinService } from '../timewin/timewin.service';
 import { NotificationService } from '../../common/messaging/notification.service';
+import { isQuietHour, isHoliday } from './quiet-hours';
 
 /** A shift normalized from whatever shape TimeWin24's today-shifts feed returns. */
 export interface NormalizedShift {
@@ -29,12 +30,31 @@ export class ShiftReminderService {
   private firedToday = new Set<string>();
   private firedDay = '';
 
+  private readonly quietStart: number;
+  private readonly quietEnd: number;
+  private readonly holidays: Set<string>;
+
   constructor(
     private readonly config: ConfigService,
     private readonly timewin: TimewinService,
     private readonly notifications: NotificationService,
   ) {
     this.lookaheadMin = parseInt(this.config.get('SHIFT_REMINDER_LOOKAHEAD_MIN', '60'), 10);
+    // POS-055 (TD-055 wiring) — pure config, OFF by default: with no env set,
+    // start === end → empty window → zero behavior change. Hours are SERVER-LOCAL.
+    this.quietStart = parseInt(this.config.get('SHIFT_REMINDER_QUIET_START_HOUR', '0'), 10);
+    this.quietEnd = parseInt(this.config.get('SHIFT_REMINDER_QUIET_END_HOUR', '0'), 10);
+    this.holidays = new Set(
+      (this.config.get('SHIFT_REMINDER_HOLIDAYS_ISO', '') as string)
+        .split(',')
+        .map((s) => s.trim())
+        .filter((s) => /^\d{4}-\d{2}-\d{2}$/.test(s)),
+    );
+  }
+
+  /** POS-055 — true when the sweep must stay silent (quiet window or holiday). */
+  isSuppressed(now: Date): boolean {
+    return isQuietHour(now.getHours(), this.quietStart, this.quietEnd) || isHoliday(now, this.holidays);
   }
 
   isEnabled(): boolean {
@@ -97,6 +117,11 @@ export class ShiftReminderService {
   /** Orchestration: per store, fetch shifts, pick due ones, notify, dedupe. */
   async runReminderSweep(now: Date): Promise<{ stores: number; reminded: number }> {
     this.rotateDayIfNeeded(now);
+
+    if (this.isSuppressed(now)) {
+      this.logger.log('[SHIFT_REMINDER] suppressed (quiet hours / holiday) — no reminders sent');
+      return { stores: 0, reminded: 0 };
+    }
 
     let stores: any[] = [];
     try {

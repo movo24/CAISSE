@@ -51,7 +51,7 @@
 
 | TD-061-OVERRIDE | ~~Pas de mécanisme override~~. **Résolu** : colonne `price_override_minor_units` (migration 1723) + `resolveEffectivePrice` (override>global) branché dans `createSale`. Tests 4/4. Reste : UI back-office pour saisir l'override (`TD-061-UI`). | ✅ | `product.entity.ts`, migration 1723, `price-resolve.ts` | Résolu (UI à faire) |
 
-| TD-055-QUIET-HOURS-WIRING | Helper quiet-hours/fériés testé mais non branché dans le sweep `shift-reminders` (fenêtre + calendrier fériés = config/décision). | 🟡 | `shift-reminders/quiet-hours.ts`, `shift-reminder.service.ts` | Ouvert |
+| TD-055-QUIET-HOURS-WIRING | Helper quiet-hours/fériés branché dans le sweep | 🟡 | `shift-reminders/` | ✅ RÉSOLU P292 — câblé en pure config env (fenêtre vide par défaut = zéro changement sans config), 4 tests de wiring (suppression fenêtre/férié, défaut jamais supprimé, sweep supprimé n appelle même pas TW24) |
 
 | TD-094-FREQ-ENDPOINT | ~~Endpoint non livré~~. **Résolu (PAQUET 36)** : `GET /api/customer-visits/:customerId/frequency` (JwtAuthGuard+RolesGuard `manager` fail-closed) + anti-IDOR `canAccessCustomer` (4/4, customer hors store → Forbidden, admin bypass) + `getFrequencySecured`. tsc clean. Runtime DB à valider local. | ✅ | `customer-visits.controller.ts`, `customer-access.ts`, `customer-visits.service.ts` | Résolu |
 | TD-VISIT-SEGMENT-THRESHOLDS | Seuils segment `new/regular/occasional/at_risk` = **défauts provisoires à ratifier** (décision produit). Vérifié : `segment` **non consommé** pour piloter un comportement (reporting-only). Ne PAS l'utiliser pour fidélité/relance sans ratification. | 🟡 | `customer-visits/visit-frequency.ts` | Ouvert — à ratifier |

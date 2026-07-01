@@ -98,3 +98,50 @@ describe('ShiftReminderService', () => {
     });
   });
 });
+
+// P292 (bloc B5) — TD-055 wiring: quiet hours / holidays actually suppress the sweep.
+describe('quiet hours & holidays wiring (POS-055 / TD-055)', () => {
+  const tw = { fetchStores: jest.fn().mockResolvedValue([]) } as unknown as TimewinService;
+  const notif = { smsEnabled: true, emailEnabled: false, notify: jest.fn() } as unknown as NotificationService;
+
+  it('default config (no env) = empty window → NEVER suppressed (zero behavior change)', () => {
+    const svc = new ShiftReminderService(cfg({}), tw, notif);
+    for (let h = 0; h < 24; h++) {
+      expect(svc.isSuppressed(new Date(Date.UTC(2026, 5, 8, h)))).toBe(false);
+    }
+  });
+
+  it('suppresses inside a midnight-wrapping quiet window (21h→8h) and not outside', () => {
+    const svc = new ShiftReminderService(
+      cfg({ SHIFT_REMINDER_QUIET_START_HOUR: '21', SHIFT_REMINDER_QUIET_END_HOUR: '8' }),
+      tw,
+      notif,
+    );
+    const at = (h: number) => { const d = new Date('2026-06-08T00:00:00'); d.setHours(h); return d; };
+    expect(svc.isSuppressed(at(23))).toBe(true);
+    expect(svc.isSuppressed(at(3))).toBe(true);
+    expect(svc.isSuppressed(at(12))).toBe(false);
+  });
+
+  it('suppresses on a configured holiday (ISO list), ignores malformed entries', () => {
+    const svc = new ShiftReminderService(
+      cfg({ SHIFT_REMINDER_HOLIDAYS_ISO: '2026-07-14, not-a-date, 2026-12-25' }),
+      tw,
+      notif,
+    );
+    expect(svc.isSuppressed(new Date('2026-07-14T10:00:00Z'))).toBe(true);
+    expect(svc.isSuppressed(new Date('2026-07-15T10:00:00Z'))).toBe(false);
+  });
+
+  it('a suppressed sweep sends nothing and does not even call TimeWin24', async () => {
+    const twSpy = { fetchStores: jest.fn().mockResolvedValue([{ id: 's1' }]) } as unknown as TimewinService;
+    const svc = new ShiftReminderService(
+      cfg({ SHIFT_REMINDER_QUIET_START_HOUR: '0', SHIFT_REMINDER_QUIET_END_HOUR: '24' }),
+      twSpy,
+      notif,
+    );
+    const report = await svc.runReminderSweep(new Date('2026-06-08T12:00:00'));
+    expect(report).toEqual({ stores: 0, reminded: 0 });
+    expect((twSpy as any).fetchStores).not.toHaveBeenCalled();
+  });
+});
