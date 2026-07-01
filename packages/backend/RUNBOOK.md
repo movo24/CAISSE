@@ -154,3 +154,11 @@ curl -sS -X POST $URL/api/mobile/auth/login \
 - Empty `@Body()` was not validated until DTO classes were added — historical bug fixed in commit `0eef6ca`.
 - `jsonwebtoken` throws when `aud` is set both in payload AND `audience` option — historical bug fixed in commit `43ddd71`.
 - `customer.store_id` column is `character varying` in prod (not `uuid`) — entity must use `type: 'varchar'`.
+
+### Docker-compose path: backup / restore / hardened deploy (P285)
+
+- `./docker/backup.sh` — compressed `pg_dump` of the `caisse-postgres` container into `docker/backups/`
+  (gitignored ; integrity-checked ; retention 14). `list` / `restore <file>` subcommands (restore asks confirmation).
+- `./docker/deploy.sh` — now gated: preflight → typed confirmation (`deploy`) → pre-deploy backup →
+  build/up → real healthcheck wait (120 s max, no blind sleep) → in-container smoke tests (health 200,
+  auth-guard 401) → status. Failure paths print the exact rollback commands. `YES=1` (CI) / `SKIP_BACKUP=1` overrides.
