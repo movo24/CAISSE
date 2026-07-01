@@ -8,6 +8,7 @@ import {
   BadRequestException,
   NotFoundException,
   Logger,
+  StreamableFile,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -20,6 +21,7 @@ import { SkipTenantCheck } from '../../common/interceptors/tenant.interceptor';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { escapeHtml } from '../../common/html-escape';
 import { MailService } from '../../common/messaging/mail.service';
+import { PdfService, SaleDuplicataInput } from '../documents/pdf.service';
 
 /** Human labels for payment methods on the receipt. */
 const PAYMENT_LABELS: Record<string, string> = {
@@ -50,6 +52,7 @@ export class ReceiptsController {
     @InjectRepository(SalePaymentEntity) private payRepo: Repository<SalePaymentEntity>,
     @InjectRepository(StoreEntity) private storeRepo: Repository<StoreEntity>,
     private readonly mail: MailService,
+    private readonly pdf: PdfService,
   ) {}
 
   /**
@@ -113,6 +116,24 @@ export class ReceiptsController {
   }
 
   /**
+   * GET /api/receipts/:saleId/pdf
+   * Public — returns a PDF duplicata of the FROZEN sale (never recalculated).
+   * The PdfService prints already-validated values verbatim (NF525-safe);
+   * every re-print is stamped DUPLICATA, the original being the thermal ticket.
+   */
+  @Get(':saleId/pdf')
+  @SkipTenantCheck()
+  @ApiOperation({ summary: 'Get digital receipt as a PDF duplicata (public)' })
+  async getReceiptPdf(@Param('saleId') saleId: string): Promise<StreamableFile> {
+    const { bytes, ticketNumber } = await this.buildReceiptPdf(saleId);
+    const safeName = ticketNumber.replace(/[^A-Za-z0-9._-]/g, '_') || 'recu';
+    return new StreamableFile(Buffer.from(bytes), {
+      type: 'application/pdf',
+      disposition: `inline; filename="recu-${safeName}.pdf"`,
+    });
+  }
+
+  /**
    * POST /api/receipts/:saleId/email
    * Email a dematerialized receipt. Authenticated (POS action) to avoid an open
    * email relay. Degrades gracefully: if no mail provider is configured, returns
@@ -149,6 +170,57 @@ export class ReceiptsController {
     }
     this.logger.log(`[RECEIPT_EMAIL] ${data.ticketNumber} → ${email}`);
     return { sent: true };
+  }
+
+  /**
+   * Build a PDF duplicata from the FROZEN sale entities.
+   * NF525: values are passed verbatim (minor units), never recalculated here —
+   * PdfService prints them as-is. Returns raw bytes + ticket number for naming.
+   */
+  private async buildReceiptPdf(
+    saleId: string,
+  ): Promise<{ bytes: Uint8Array; ticketNumber: string }> {
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(saleId)) throw new NotFoundException('Reçu introuvable');
+
+    const sale = await this.saleRepo.findOne({ where: { id: saleId } });
+    if (!sale) throw new NotFoundException('Reçu introuvable');
+
+    const lineItems = await this.lineRepo.find({ where: { saleId: sale.id } });
+    const payments = await this.payRepo.find({ where: { saleId: sale.id } });
+    const store = await this.storeRepo.findOne({ where: { id: sale.storeId } });
+
+    const input: SaleDuplicataInput = {
+      storeName: store?.name || 'Magasin',
+      storeAddress: [store?.address, store?.city].filter(Boolean).join(', ') || undefined,
+      siret: store?.siret || undefined,
+      tvaIntracom: store?.tvaIntracom || undefined,
+      ticketNumber: sale.ticketNumber,
+      createdAt: sale.createdAt,
+      employeeName: sale.employeeNameSnapshot || undefined,
+      currencyCode: sale.currencyCode || 'EUR',
+      lines: lineItems.map((li) => ({
+        productName: li.productName || 'Produit',
+        quantity: li.quantity,
+        unitPriceMinorUnits: li.unitPriceMinorUnits,
+        lineTotalMinorUnits: li.lineTotalMinorUnits,
+        taxRate: li.taxRate,
+      })),
+      subtotalMinorUnits: sale.subtotalMinorUnits,
+      discountTotalMinorUnits: sale.discountTotalMinorUnits || 0,
+      taxTotalMinorUnits: sale.taxTotalMinorUnits || 0,
+      totalMinorUnits: sale.totalMinorUnits,
+      payments: payments.map((p) => ({
+        method: PAYMENT_LABELS[p.method] ?? p.method,
+        amountMinorUnits: p.amountMinorUnits,
+      })),
+      hashChainCurrent: sale.hashChainCurrent || undefined,
+      footerMessage: 'Merci de votre visite !',
+    };
+
+    this.logger.log(`[RECEIPT_PDF] ${sale.ticketNumber} (sale ${saleId.slice(0, 8)})`);
+    const bytes = await this.pdf.renderSaleDuplicata(input);
+    return { bytes, ticketNumber: sale.ticketNumber };
   }
 
   /** Build the self-contained HTML receipt page for a sale. */
