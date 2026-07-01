@@ -2049,3 +2049,8 @@ Preuves :
 
 VERDICT : ✅ SOLIDE — la reprise est maintenant "one-command", auto-vérifiée ET auto-défendue : toute dérive (env non documenté, secret réel commité, script CI manquant) casse la CI/les tests. Point d'entrée unique dans le README. Les 3 gates restent externes, prêtes, documentées.
 À fournir pour franchir : GATE1 OUTBOX_PUBLISH_URL+SECRET ; GATE2 DATABASE_URL cible+GO ; GATE3 plan de comptes social validé.
+
+## PAQUET 231 — Garde anti-secret étendu aux docs .md suivies
+- `test/docs-no-secrets.spec.ts` (NOUVEAU) : scanne tous les `.md` suivis (`git ls-files "*.md"`, fallback racine+backend) via `findSecretLeaks` → échoue si un vrai secret (Stripe/AWS/Google/JWT/URL DB) apparaît dans README, runbooks, checklists, docs gates. Placeholders tolérés.
+- Positif : 1 test PASS (aucun secret dans les docs). Preuve négative : `sk_live_...` injecté dans RESUME_CHECKLIST.md → test **échoue** (file+pattern listés) ; retiré → re-PASS.
+- Suite : P232 anti-log de secret, P233 gitignore/dockerignore, P234 checklist pré-gate, P235 consolidation.
