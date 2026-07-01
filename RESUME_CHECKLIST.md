@@ -1,78 +1,88 @@
-# RESUME_CHECKLIST — reprise propre du projet (sécurité de reprise)
+# RESUME_CHECKLIST — reprise du projet (humain ou agent) — LIRE EN PREMIER
 
-> But : reprendre le projet sans redécouverte, vérifier qu'il est sain, puis
-> traiter les gates externes. Aucune étape ci-dessous n'exige de secret/prod.
+> Réécrit P295 (2026-07-02). C'est LE point d'entrée unique de reprise.
+> Règle de la maison : **preuve avant affirmation** — rien n'est « fait/testé/branché » sans commande + résultat.
 
-## 0. Récupérer le code (si besoin, depuis le bundle)
-Le travail des paquets est sur la branche `recovery/pos-audit-session`, packagé dans
-`pos-recovery.bundle` (à la racine + dans les sorties).
-```bash
-git clone pos-recovery.bundle caisse-restore
-cd caisse-restore && git checkout recovery/pos-audit-session
-# ou, dépôt existant :
-git bundle verify pos-recovery.bundle && git fetch pos-recovery.bundle 'refs/heads/*:refs/heads/*'
-```
+## 0. Où commencer (5 minutes)
 
-## 1. Installer & vérifier la santé (local, non dangereux)
+1. Lis ce fichier en entier.
+2. État réel détaillé : `PROJECT_STATUS.md` (jalons v19→v22 en tête) + `STATE_INDEX.md` (index par module).
+3. Séquence de travail : `MASTER_ROADMAP.md`. Journal : `EXECUTION_LOG.md` (P1→P294).
+4. Contrats d'intégration : `POS_PUSH_CONTRACT.md` (push POS), `TIMEWIN24_CONTRACT.md` (RH), `TIMESCALE_PLAN.md` (time-series, doc only).
+5. API : `POS_API_MAP_DETAILED.md` (générée — `npm run api:map` pour rafraîchir).
+6. Serveur neuf : `SERVER_SETUP_RUNBOOK.md`. Railway/Neon existant : `packages/backend/RUNBOOK.md`.
+
+## 1. État réel (vérifié P294)
+
+- **Git SAIN** : branche de travail `recovery/pos-audit-session` (l'ancien blocage FUSE des refs est réparé depuis P272 ; `GIT_RECOVERY.md` = historique, plus une procédure à suivre). `pos-recovery.bundle` à la racine = filet de secours, régénéré à chaque jalon.
+- **Backend vert** : ~196 suites PASS / 3 skip `.pg` (gated `TEST_DATABASE_URL`) · ~1320 tests / 0 échec · `tsc` EXIT 0 · `nest build` RC 0. Front : 14 fichiers / 59 tests vitest. Compteurs exacts : dernier jalon de `PROJECT_STATUS.md`.
+- **Zéro push distant effectué** — tout est en commits locaux + bundle.
+
+## 2. Vérifier la santé avant de toucher quoi que ce soit
+
 ```bash
 npm install
-npm run test:backend      # attendu : ~1080 tests / 155 suites PASS (+2 .pg skip)
-npm run test:front        # attendu : 46 tests / 11 fichiers PASS
-cd packages/backend && npx tsc --noEmit && npx nest build   # EXIT 0 / RC 0
-cd ../backoffice-web && npx tsc --noEmit && npx vite build   # EXIT 0 / build vert
-cd ../pos-desktop && npx tsc --noEmit && npx vite build      # EXIT 0 / build vert
+bash scripts/preflight.sh              # attendu : OVERALL PASS
+npm run test:security                  # attendu : 10 suites / 34 tests PASS
+npm run test:backend                   # complet (long) — par tranches si timeout (cf. §7 dernière ligne)
+npm run test:front
 ```
-Note bac à sable arm64 : si vite/vitest échoue sur `@rollup/rollup-linux-arm64-gnu`,
-`npm i -D @rollup/rollup-linux-arm64-gnu --no-save` (optionnel par-arch ; la CI x64 le gère seule).
 
-## 2. Configurer l'environnement
-```bash
-# Backend (51 variables documentées, placeholders) :
-cp packages/backend/.env.example packages/backend/.env
-# Remplir au minimum : DATABASE_URL, JWT_SECRET (≥32), JWT_REFRESH_SECRET (≥32).
-# La validation fail-fast au boot (validateRequiredEnv, testée) refuse un démarrage mal configuré.
+## 3. Gates bloquantes (les VRAIS stops — ne pas contourner)
 
-# Front (Vite) — les 2 packages ont un .env.example :
-cp packages/backoffice-web/.env.example packages/backoffice-web/.env   # VITE_API_URL
-cp packages/pos-desktop/.env.example   packages/pos-desktop/.env       # VITE_API_URL
-```
-`npm run preflight` vérifie automatiquement la complétude .env.example backend ET front
-(échoue si une variable lue — `process.env.*` ou `import.meta.env.VITE_*` — n'est pas documentée).
-
-## 3. État courant (voir PROJECT_STATUS.md v9)
-- Portée locale : épuisée proprement (intégration, interfaces, inventaire, arbitrages, couverture, hygiène, CI).
-- Restent 3 gates externes → voir `EXTERNAL_GATES_RUNBOOK.md`.
-
-## 4. Traiter les gates externes (quand infos/accès fournis)
-| Gate | Doc | Info à fournir |
+| Gate | Il manque | Kit prêt |
 |---|---|---|
-| TD-INT-RELAY | `OUTBOX_RELAY_KIT.md` | `OUTBOX_PUBLISH_URL` + `OUTBOX_PUBLISH_SECRET` |
-| MIGRATION-1725 | `EXTERNAL_GATES_RUNBOOK.md` §2 | `DATABASE_URL` cible + GO |
-| TD-INT-SOCIAL-ENTRIES | `EXTERNAL_GATES_RUNBOOK.md` §3 | plan de comptes social validé (codes + validatedBy) |
+| **GATE 1 — push réel outbox** | `OUTBOX_PUBLISH_URL` + `OUTBOX_PUBLISH_SECRET` (+ `OUTBOX_RELAY_ENABLED=true`) | `OUTBOX_RELAY_KIT.md` §6-7 ; répétition locale : `node scripts/mock-receiver.js` ; chaîne prouvée par `relay-e2e-loopback.pgmem.spec.ts` |
+| **GATE 2 — migration 1725** | `DATABASE_URL` cible + GO écrit | `EXTERNAL_GATES_RUNBOOK.md` §2 (dry-run prouvé) |
+| **GATE 3 — écritures sociales** | plan de comptes validé comptable (codes + validatedBy) | garde `canPostSocialEntries` fail-closed |
+| Runtime recette | Postgres jetable (lever #1 PIN-500, e2e Playwright RUN) | `GATES_READINESS.md` |
+| TW24 live | accès réseau + secrets TW24 | `TIMEWIN24_CONTRACT.md` §7 |
 
-## 5. Garde-fous en place (fail-closed, testés)
-- Relais : simulation tant que URL+SECRET absents (jamais de demi-activation).
-- Migration : additive/réversible (dry-run prouvé sur base jetable).
-- Social : `canPostSocialEntries` refuse sans plan validé.
-- Boot : `validateRequiredEnv` refuse un démarrage mal configuré (secrets, prod CORS/Redis/synchronize).
+## 4. Ce qu'il ne faut SURTOUT PAS faire
 
-## 5bis. Dépannage (symptôme → cause probable → diagnostic → correction)
+- ❌ Toucher Backend A (`api.addxintelligence.com`) — prod canonique, GO explicite requis.
+- ❌ Push distant, régénération JWT, cutover DNS sans GO.
+- ❌ `TYPEORM_SYNCHRONIZE=true` ou `db:push` en prod ; UPDATE/DELETE sur `audit_entry`, ventes validées, Z-reports.
+- ❌ Convertir `sales`/`integration_events`/`audit_entry` en hypertables Timescale (casse idempotence + NF525 — `TIMESCALE_PLAN.md` §1-2).
+- ❌ Inventer des règles métier (plan comptable, fériés, barèmes) ou committer un secret (7 gardes CI le bloquent).
+- ❌ « Corriger » `wire-contract.spec.ts` si le contrat push change : c'est un GEL — bump `schemaVersion` + coordination consommateurs.
 
-| Symptôme | Cause probable | Commande de diagnostic | Correction |
-|---|---|---|---|
-| `preflight` = FAIL "env.example completeness" | une `process.env.X` lue non documentée | `npm run preflight` puis `cd packages/backend && npx jest test/env-example-completeness.spec.ts` | ajouter la variable (placeholder) dans `packages/backend/.env.example` |
-| Boot backend crash "Missing required environment variables" | `DATABASE_URL`/`JWT_SECRET`/`JWT_REFRESH_SECRET` absents | lire le message ; `grep -E "^(DATABASE_URL\|JWT_SECRET\|JWT_REFRESH_SECRET)=" packages/backend/.env` | remplir ces clés dans `.env` (JWT ≥ 32 car., `openssl rand -hex 32`) |
-| Boot crash "JWT_SECRET must be at least 32 characters" / "insecure defaults" | secret trop court ou valeur par défaut | `npx jest src/common/config/env-validation.spec.ts` | régénérer un secret ≥ 32 (`openssl rand -hex 32`) |
-| Boot prod crash "REDIS_URL must be set" | prod sans Redis et sans opt-out | vérifier `NODE_ENV`, `REDIS_URL`, `ALLOW_INMEMORY_CACHE` | fournir `REDIS_URL`, ou `ALLOW_INMEMORY_CACHE=true` (mono-pod uniquement) |
-| Boot prod crash "CORS_ORIGIN ..." | CORS absent ou `*` en prod | vérifier `CORS_ORIGIN` | liste explicite d'origines, jamais `*` |
-| Build front échoue `@rollup/rollup-linux-arm64-gnu` | binaire natif par-arch manquant (bac à sable arm64) | `node -e "console.log(process.arch)"` | `npm i -D @rollup/rollup-linux-arm64-gnu --no-save` (CI x64 le gère seule) |
-| `tsc`/`nest build` échoue | régression type / import | `cd packages/backend && npx tsc --noEmit` | corriger l'erreur affichée (fichier:ligne) |
-| Migration dry-run échoue | SQL/entité divergents | `npx jest test/migration-1725-dryrun.spec.ts test/migration-1725-outbox.spec.ts` | corriger la migration/entité (parité P177) ; ne PAS jouer sur cible avant PASS |
-| OUTBOX reste en "simulation" | `OUTBOX_PUBLISH_URL`/`OUTBOX_PUBLISH_SECRET` absents (attendu) | `npx jest src/modules/integration/outbox-publisher.spec.ts` | fournir les 2 secrets (cf. OUTBOX_RELAY_KIT.md) — sinon comportement normal |
-| Écriture sociale "bloquée" | plan de comptes non validé (attendu) | `npx jest src/modules/comptamax/social-entries-guard.spec.ts` | fournir plan validé (codes + `validatedBy`) — décision comptable |
-| Tests `.pg.spec` "skipped" | pas de Postgres réel (attendu) | — | fournir `TEST_DATABASE_URL` (CI Postgres) si besoin de les exécuter |
+## 5. Commandes utiles
 
-## 6. Sécurité (immuable — cf. CLAUDE.md)
-- Jamais de secret commité ; `.env.example` = placeholders uniquement.
-- Backend A (`api.addxintelligence.com`) = prod canonique, INTOUCHABLE sans GO.
-- Pas de DNS cutover / régénération JWT sans GO explicite.
+```bash
+npm run api:map                        # régénérer la carto API
+npm run test:security                  # gardes anti-secret
+cd packages/backend && npm run fiscal:verify   # vérif chaînes NF525 (lecture seule, requiert DB)
+node scripts/mock-receiver.js          # receveur de recette local (GATE 1 rehearsal)
+./docker/backup.sh [list|restore f]    # backup/restore Postgres compose
+./docker/deploy.sh                     # déploiement gardé (voir SERVER_SETUP_RUNBOOK.md)
+git bundle create pos-recovery.bundle --all   # rafraîchir le filet
+```
+
+## 6. Prochaines décisions BUSINESS (aucune n'est du code)
+
+1. **Fournir GATE 1** (URL+secret du premier consommateur réel) → première preuve de push end-to-end. **Débloquant n°1.**
+2. GO GATE 2 (migration 1725 sur base cible).
+3. Plan de comptes social (GATE 3).
+4. Modèle des **variantes produit** (TD-PRODUCT-VARIANTS — la règle produit les veut, le modèle n'existe pas).
+5. Canal TW24 : webhook dédié actuel vs consommateur outbox standard.
+6. Paywin24 : périmètre paie à définir avant tout code.
+
+## 7. Dépannage (symptôme → cause → correction)
+
+| Symptôme | Cause probable | Correction |
+|---|---|---|
+| `preflight` FAIL env completeness | variable lue non documentée | l'ajouter (placeholder) dans `.env.example` (`npx jest test/env-example-completeness.spec.ts` pour la localiser) |
+| Boot crash « Missing required environment variables » | `.env` incomplet | `DATABASE_URL`, `JWT_SECRET`/`JWT_REFRESH_SECRET` ≥ 32 (`openssl rand -hex 32`) |
+| Boot prod crash Redis/CORS | prod sans `REDIS_URL` / CORS `*` | `REDIS_URL` ou `ALLOW_INMEMORY_CACHE=true` (mono-pod) ; CORS liste explicite |
+| vite/vitest échoue `@rollup/rollup-linux-arm64-gnu` | binaire natif par-arch (sandbox arm64) | `npm i -D @rollup/rollup-linux-arm64-gnu --no-save` |
+| Migration dry-run échoue | SQL/entité divergents | `npx jest test/migration-1725-dryrun.spec.ts test/migration-1725-outbox.spec.ts` ; ne PAS jouer sur cible avant PASS |
+| Tests `.pg.spec` skipped | pas de Postgres réel | attendu ; fournir `TEST_DATABASE_URL` pour les jouer |
+| OUTBOX reste « simulation » | secrets absents | attendu (fail-closed) ; cf. GATE 1 |
+| Écriture sociale « bloquée » | plan de comptes non validé | attendu ; cf. GATE 3 |
+| `stores/sync` → `total: 0` | secrets TW24 absents sur l'env | `TIMEWIN24_POS_SECRET`/`API_KEY` |
+| jest timeout global (sandbox ~45 s/commande) | suite complète trop longue | `npx jest --listTests \| split -n l/5`, lancer chaque tranche avec `--maxWorkers=2` |
+
+## 8. Sécurité (immuable — cf. CLAUDE.md)
+
+Jamais de secret commité ; `.env.example` = placeholders uniquement ; argent = centimes entiers ; audit append-only ; hash-chain intouchable ; idempotence sur toute écriture d'argent ; Backend A intouchable sans GO.
