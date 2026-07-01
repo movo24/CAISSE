@@ -1874,3 +1874,10 @@ Portée sandbox-complétable : ÉPUISÉE proprement (intégration, interfaces, �
 - Vérification post-migration cible : `\d integration_events` (17 colonnes) + `SELECT * FROM migrations WHERE name='AddIntegrationOutbox1725000000000';`
 - Rollback cible : `npm run migration:revert` (down() drop la table, additif/réversible).
 - Suite : P208 verrouillage comptable social.
+
+## PAQUET 208 — TD-INT-SOCIAL-ENTRIES : garde-fou comptable (plan validé requis)
+- `social-entries-guard.ts` (NOUVEAU, pur, NEUTRE — n'invente aucun mapping) : `canPostSocialEntries(envFlag, chart)` + `assertSocialEntriesAllowed` (fail-closed).
+- Comptes attendus (slots sémantiques, codes à remplir par le comptable) : grossSalaries (~641), employerCharges (~645), socialAgenciesPayable (~431), netPayable (~421). Les classes PCG sont documentaires ; les codes réels DOIVENT venir du plan validé.
+- Zones nécessitant validation comptable = isolées derrière le garde : refus si (a) `SOCIAL_ENTRIES_ENABLED`≠true, (b) aucun chart, (c) chart incomplet (slots manquants listés), (d) `validatedBy` manquant (preuve de validation comptable).
+- Preuve : `jest social-entries-guard.spec.ts` ⇒ 1 suite / **7 tests PASS** ; `tsc --noEmit` EXIT 0. Aucune écriture réelle, aucun arbitrage inventé.
+- Suite : P209 EXTERNAL_GATES_RUNBOOK.md, P210 audit final.
