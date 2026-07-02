@@ -15,7 +15,7 @@ import {
   Loader2,
   X,
 } from 'lucide-react';
-import { productsApi } from '../services/api';
+import { productsApi, suppliersApi } from '../services/api';
 import { safeErrorMessage } from '../utils/safeErrorMessage';
 import { buildProductPayload } from '../lib/product-payload';
 import { useAuthStore } from '../stores/authStore';
@@ -35,6 +35,8 @@ interface Product {
   priceOverride?: number | null;
   brand?: string;
   variantLabel?: string;
+  supplierId?: string | null;
+  parentProductId?: string | null;
   image: string | null;
 }
 
@@ -76,7 +78,7 @@ export function ProductsPage() {
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ name: '', ean: '', price: '', stock: '', category: '', priceOverride: '', brand: '', variantLabel: '' });
+  const [form, setForm] = useState({ name: '', ean: '', price: '', stock: '', category: '', priceOverride: '', brand: '', variantLabel: '', supplierId: '' });
 
   // Price analytics panel
   const [analyticsProductId, setAnalyticsProductId] = useState<string | null>(null);
@@ -98,6 +100,8 @@ export function ProductsPage() {
           priceOverride: p.priceOverrideMinorUnits != null ? p.priceOverrideMinorUnits / 100 : null,
           brand: p.brand ?? '',
           variantLabel: p.variantLabel ?? '',
+          supplierId: p.supplierId ?? null,
+          parentProductId: p.parentProductId ?? null,
         })),
       );
       setError(null);
@@ -111,6 +115,12 @@ export function ProductsPage() {
   useEffect(() => {
     fetchProducts();
   }, [fetchProducts]);
+
+  // P329 (cycle L) — référentiel fournisseurs pour le sélecteur du modal.
+  const [suppliers, setSuppliers] = useState<{ id: string; name: string }[]>([]);
+  useEffect(() => {
+    suppliersApi.list().then((res) => setSuppliers(Array.isArray(res.data) ? res.data : [])).catch(() => setSuppliers([]));
+  }, []);
 
   const categories = [...new Set(products.map((p) => p.category))];
 
@@ -158,7 +168,7 @@ export function ProductsPage() {
   };
 
   const resetForm = () => {
-    setForm({ name: '', ean: '', price: '', stock: '', category: '', priceOverride: '', brand: '', variantLabel: '' });
+    setForm({ name: '', ean: '', price: '', stock: '', category: '', priceOverride: '', brand: '', variantLabel: '', supplierId: '' });
     setEditingId(null);
   };
 
@@ -177,6 +187,7 @@ export function ProductsPage() {
       priceOverride: p.priceOverride != null ? String(p.priceOverride) : '',
       brand: p.brand ?? '',
       variantLabel: p.variantLabel ?? '',
+      supplierId: p.supplierId ?? '',
     });
     setOriginalPrice(p.price);
     setEditingId(p.id);
@@ -562,6 +573,19 @@ export function ProductsPage() {
                     value={form.variantLabel}
                     onChange={(e) => setForm({ ...form, variantLabel: e.target.value })}
                   />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1.5">Fournisseur</label>
+                  <select
+                    className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-bo-accent/30 focus:border-bo-accent bg-white"
+                    value={form.supplierId}
+                    onChange={(e) => setForm({ ...form, supplierId: e.target.value })}
+                  >
+                    <option value="">— Aucun —</option>
+                    {suppliers.map((sup) => (
+                      <option key={sup.id} value={sup.id}>{sup.name}</option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1.5">Stock</label>
