@@ -1,14 +1,13 @@
 import React, { useState, useMemo } from 'react';
 import { Percent, X, ShieldAlert } from 'lucide-react';
+import { computeDiscountAmount, evaluateDiscountEntry } from '../../lib/discount-entry-policy';
 
 /**
  * POS-054 — manual cashier discount entry.
- * Mirrors the server policy for UX (hard cap 30%, responsable PIN above 20%,
- * written motive mandatory 21-30%). The SERVER is authoritative: it re-verifies
- * the PIN, the cap and the motive and rejects with a clear message.
+ * Validation extracted to lib/discount-entry-policy.ts (P303) and ALIGNED with
+ * the server: hard cap 30%, responsable PIN for ANY discount > 0%, written
+ * motive from 21%. The SERVER stays authoritative and re-verifies everything.
  */
-const HARD_CAP_PCT = 30;
-const PIN_THRESHOLD_PCT = 20; // above this, responsable PIN + motive required
 
 interface Props {
   open: boolean;
@@ -24,19 +23,15 @@ export function DiscountModal({ open, subtotalMinorUnits, current, onClose, onAp
   const [reason, setReason] = useState(current?.reason ?? '');
   const [pin, setPin] = useState('');
 
-  const amountMinorUnits = useMemo(() => {
-    const v = parseFloat((value || '').replace(',', '.'));
-    if (!Number.isFinite(v) || v <= 0) return 0;
-    if (mode === 'pct') return Math.round(subtotalMinorUnits * Math.min(v, 100) / 100);
-    return Math.round(v * 100);
-  }, [value, mode, subtotalMinorUnits]);
+  const amountMinorUnits = useMemo(
+    () => computeDiscountAmount(mode, value, subtotalMinorUnits),
+    [value, mode, subtotalMinorUnits],
+  );
 
-  const pct = subtotalMinorUnits > 0 ? (amountMinorUnits / subtotalMinorUnits) * 100 : 0;
-  const overCap = pct > HARD_CAP_PCT + 1e-9;
-  const needsAuth = pct > PIN_THRESHOLD_PCT;
-  const motiveOk = !needsAuth || reason.trim().length >= 3;
-  const pinOk = !needsAuth || pin.trim().length >= 4;
-  const canApply = amountMinorUnits > 0 && amountMinorUnits <= subtotalMinorUnits && !overCap && motiveOk && pinOk;
+  const { pct, overCap, needsPin, needsMotive, canApply } = useMemo(
+    () => evaluateDiscountEntry({ amountMinorUnits, subtotalMinorUnits, reason, pin }),
+    [amountMinorUnits, subtotalMinorUnits, reason, pin],
+  );
 
   if (!open) return null;
 
@@ -70,14 +65,20 @@ export function DiscountModal({ open, subtotalMinorUnits, current, onClose, onAp
           </div>
         )}
 
-        {needsAuth && !overCap && (
+        {needsPin && !overCap && (
           <div className="space-y-2 mb-3">
-            <div className="text-xs text-amber-700">Au-delà de 20 % : PIN responsable + motif obligatoires.</div>
-            <input
-              type="text" value={reason} onChange={(e) => setReason(e.target.value)}
-              placeholder="Motif (obligatoire)"
-              className="w-full border rounded-lg px-3 py-2 text-sm"
-            />
+            <div className="text-xs text-amber-700">
+              {needsMotive
+                ? 'À partir de 21 % : PIN responsable + motif écrit obligatoires.'
+                : 'Toute remise manuelle nécessite le PIN d’un responsable.'}
+            </div>
+            {needsMotive && (
+              <input
+                type="text" value={reason} onChange={(e) => setReason(e.target.value)}
+                placeholder="Motif (obligatoire)"
+                className="w-full border rounded-lg px-3 py-2 text-sm"
+              />
+            )}
             <input
               type="password" value={pin} onChange={(e) => setPin(e.target.value)}
               placeholder="PIN responsable"
