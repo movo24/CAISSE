@@ -23,6 +23,7 @@ import { applyStockAdjustment } from '../stock/stock-level';
 import { resolveEffectivePrice } from '../products/price-resolve';
 import { recordSaleMovements } from '../stock/stock-movement-journal';
 import { formatTicketNumber } from './ticket-number';
+import { PinAttemptLimiter } from './pin-attempt-limiter';
 import { loyaltyPointsEarned } from './loyalty-points';
 import { EmployeeEntity } from '../../database/entities/employee.entity';
 import { SaleEntity } from '../../database/entities/sale.entity';
@@ -119,11 +120,21 @@ export class SalesService {
    * model; it does not introduce a new secret. Not declared "security-complete": rate
    * limiting / lockout on PIN attempts is a follow-up (see TECHNICAL_DEBT TD-RESP-PIN).
    */
+  /** P316 — TD-RESP-PIN: per-store throttle on responsable-PIN guesses (in-memory, cf. limiter doc). */
+  private readonly respPinLimiter = new PinAttemptLimiter();
+
   private async verifyResponsablePin(
     storeId: string,
     pin?: string,
   ): Promise<{ id: string; name: string; role: string } | null> {
     if (!pin || !/^\d{4,8}$/.test(pin)) return null;
+    // TD-RESP-PIN (P316): fail-closed while locked — no bcrypt compare at all.
+    if (this.respPinLimiter.isLocked(storeId)) {
+      this.logger.warn(
+        `[RESP_PIN_LOCKED] store=${storeId} — responsable PIN verification locked (${Math.ceil(this.respPinLimiter.remainingMs(storeId) / 60000)} min left)`,
+      );
+      return null;
+    }
     const candidates = await this.employeeRepo.find({
       where: { storeId, isActive: true },
     });
@@ -132,8 +143,13 @@ export class SalesService {
       if (emp.role !== 'manager' && emp.role !== 'admin') continue;
       if (await bcrypt.compare(pin, emp.pinHash)) {
         const name = `${emp.firstName ?? ''} ${emp.lastName ?? ''}`.trim();
+        this.respPinLimiter.recordSuccess(storeId);
         return { id: emp.id, name, role: emp.role };
       }
+    }
+    const nowLocked = this.respPinLimiter.recordFailure(storeId);
+    if (nowLocked) {
+      this.logger.error(`[RESP_PIN_BRUTEFORCE] store=${storeId} — 5 échecs consécutifs, verrouillage 15 min`);
     }
     return null;
   }
