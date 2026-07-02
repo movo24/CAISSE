@@ -5,6 +5,7 @@ import { ProductsService } from './products.service';
 import { ProductEntity } from '../../database/entities/product.entity';
 import { PriceHistoryEntity } from '../../database/entities/price-history.entity';
 import { ProductCategoryEntity } from '../../database/entities/product-category.entity';
+import { SupplierEntity } from '../../database/entities/supplier.entity';
 import { AuditService } from '../audit/audit.service';
 
 /**
@@ -32,6 +33,7 @@ describe('ProductsService — getStockAlerts pagination', () => {
         { provide: getRepositoryToken(ProductEntity), useValue: productRepo },
         { provide: getRepositoryToken(PriceHistoryEntity), useValue: {} },
         { provide: getRepositoryToken(ProductCategoryEntity), useValue: {} },
+        { provide: getRepositoryToken(SupplierEntity), useValue: {} },
         { provide: AuditService, useValue: { log: jest.fn() } },
       ],
     }).compile();
@@ -93,6 +95,7 @@ describe('ProductsService — create dedup (POS-066)', () => {
         { provide: getRepositoryToken(ProductEntity), useValue: productRepo },
         { provide: getRepositoryToken(PriceHistoryEntity), useValue: {} },
         { provide: getRepositoryToken(ProductCategoryEntity), useValue: {} },
+        { provide: getRepositoryToken(SupplierEntity), useValue: {} },
         { provide: AuditService, useValue: { log: jest.fn() } },
       ],
     }).compile();

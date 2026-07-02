@@ -9,6 +9,7 @@ import { Repository } from 'typeorm';
 import { ProductEntity } from '../../database/entities/product.entity';
 import { PriceHistoryEntity } from '../../database/entities/price-history.entity';
 import { ProductCategoryEntity } from '../../database/entities/product-category.entity';
+import { SupplierEntity } from '../../database/entities/supplier.entity';
 import { AuditService } from '../audit/audit.service';
 import { PaginatedResult } from '../../common/dto/pagination.dto';
 import { computePriceVerdict, PriceVerdict } from './price-verdict';
@@ -33,8 +34,58 @@ export class ProductsService {
     private priceHistoryRepo: Repository<PriceHistoryEntity>,
     @InjectRepository(ProductCategoryEntity)
     private categoryRepo: Repository<ProductCategoryEntity>,
+    @InjectRepository(SupplierEntity)
+    private supplierRepo: Repository<SupplierEntity>,
     private auditService: AuditService,
   ) {}
+
+  /**
+   * Cycle P — intégrité des références catalogue (tenant + métier).
+   * Vérifie, pour toute NOUVELLE assignation (création, ou changement de
+   * valeur en update) :
+   *  - supplierId : le fournisseur existe DANS CE MAGASIN et est actif
+   *    (les références existantes vers un fournisseur désactivé restent
+   *    valides — on ne bloque que les nouvelles assignations) ;
+   *  - parentProductId : le parent existe DANS CE MAGASIN, n'est pas le
+   *    produit lui-même, et n'est pas lui-même une variante (1 seul niveau).
+   * `null` (clear) reste toujours autorisé.
+   */
+  private async assertCatalogRefs(
+    data: Partial<ProductEntity>,
+    storeId: string,
+    existing?: ProductEntity,
+  ): Promise<void> {
+    if (data.supplierId && data.supplierId !== existing?.supplierId) {
+      const supplier = await this.supplierRepo.findOne({
+        where: { id: data.supplierId, storeId },
+      });
+      if (!supplier) {
+        throw new ForbiddenException('Fournisseur introuvable dans ce magasin.');
+      }
+      if (!supplier.isActive) {
+        throw new ConflictException(
+          `Le fournisseur « ${supplier.name} » est désactivé — réactivez-le ou choisissez-en un autre.`,
+        );
+      }
+    }
+
+    if (data.parentProductId && data.parentProductId !== existing?.parentProductId) {
+      if (existing && data.parentProductId === existing.id) {
+        throw new ConflictException('Un produit ne peut pas être son propre parent.');
+      }
+      const parent = await this.productRepo.findOne({
+        where: { id: data.parentProductId, storeId },
+      });
+      if (!parent) {
+        throw new ForbiddenException('Produit parent introuvable dans ce magasin.');
+      }
+      if (parent.parentProductId) {
+        throw new ConflictException(
+          'Une variante ne peut pas servir de parent (un seul niveau de variantes).',
+        );
+      }
+    }
+  }
 
   async create(
     data: Partial<ProductEntity>,
@@ -54,6 +105,9 @@ export class ProductsService {
       }
       data = { ...data, normalizedName };
     }
+
+    // Cycle P — références catalogue validées (tenant + fournisseur actif + parent 1 niveau).
+    if (data.storeId) await this.assertCatalogRefs(data, data.storeId);
 
     const product = this.productRepo.create(data);
     const saved = await this.productRepo.save(product);
@@ -156,6 +210,9 @@ export class ProductsService {
     const existing = storeId
       ? await this.findOneForStore(id, storeId)
       : await this.findOne(id);
+
+    // Cycle P — références catalogue validées sur changement de valeur uniquement.
+    await this.assertCatalogRefs(data, existing.storeId, existing);
 
     // Track price changes (non-blocking: don't crash product update if history fails)
     if (

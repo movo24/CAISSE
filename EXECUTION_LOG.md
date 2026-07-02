@@ -2287,3 +2287,9 @@ Ces paquets ont été journalisés dans `PROJECT_STATUS.md` (v10→v18) et non i
 - Helper pur `catalog-filter.ts` (fournisseur exact/'none', marque exacte/'none', type simple/parent/variant déterminé sur la liste COMPLÈTE, tri stable départage nom+id) — **9/9 tests**.
 - ProductsPage : 3 selects (fournisseur/marque/type) branchés, filtre+tri inline remplacés par le helper testé ; regroupement variantes préservé (appliqué après filtre).
 - Backoffice : tsc RC 0 · vitest **11 fichiers/47 tests PASS** · build vert. Zéro impact caisse (read-only back-office).
+
+## PAQUET 338 — Cycle P (2026-07-02) : intégrité des références catalogue (tenant + métier)
+- Trou réel corrigé : `products.create/update` persistaient `supplierId`/`parentProductId` SANS validation (fournisseur d'un autre magasin, inexistant ou désactivé accepté ; parent cross-tenant, auto-parent, variante-de-variante possibles).
+- Garde `assertCatalogRefs` (nouvelle assignation uniquement — références existantes vers fournisseur désactivé préservées ; clear=null toujours autorisé) : fournisseur même magasin + actif ; parent même magasin, ≠ soi-même, non-variante (1 niveau).
+- Preuves SQL réel (pg-mem) : +4 tests (cross-tenant fournisseur, inexistant, désactivé-nouvelle-assignation vs référence existante, parent inexistant/cross-tenant/auto/variante-de-variante) — `products.service.pgmem+spec` **17/17** ; tsc RC 0.
+- RBAC/tenant fournisseurs déjà corrects (lecture JWT, écriture manager+, scope storeId JWT) — vérifiés, rien à changer.
