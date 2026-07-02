@@ -2212,3 +2212,11 @@ Ces paquets ont été journalisés dans `PROJECT_STATUS.md` (v10→v18) et non i
 - C3 CI : POS_API_MAP_DETAILED régénéré en CI, échec sur diff (générateur déterministe).
 - P300 : **197 suites PASS/3 skip · 1328 tests PASS/5 skip · 0 échec** ; tsc EXIT 0.
 - Commits 8b56ebd / ee9072b / 3b2cd1e ; bundle régénéré.
+
+## PAQUET 301→305 — Cycle D (2026-07-02) : inventaire/retours SQL réel + bug front remise + arbitrage stock
+- D1 inventory-scan pg-mem (6) : idempotence clientEntryId, tenant, absolu/delta, re-apply no-op.
+- D2 returns read-paths pg-mem (4) : tenant avoirs, spendable, quantités retournées (cancelled exclu), pagination.
+- D3 **bug front corrigé** : DiscountModal aligné serveur (PIN dès >0 %, motif dès 21 %) + helper pur + 8 tests vitest.
+- D4 STOCK_UNIFICATION_DECISION.md (option 1 recommandée, GO requis) + commentaire mensonger corrigé + TD-GIT-DANGLING clos.
+- P305 : **199 suites PASS/3 skip · 1338 tests PASS/5 skip · 0 échec** ; front 15 fichiers/67 tests ; tsc EXIT 0.
+- Commits a36bf1c / 4b599c5 / c1205be / 7e5ae9a ; bundle régénéré.

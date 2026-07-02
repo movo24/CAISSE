@@ -75,6 +75,18 @@ Ces points datent d'avril 2026 ; plusieurs commits fiscaux/correctifs ont suivi.
 Voir `POS_BLOCKS.md` → premier paquet (PAQUET 1). Détail d'exécution dans `EXECUTION_LOG.md`.
 
 ---
+## État consolidé — 2026-07-02 (jalon PAQUET 305, v25 — cycle D : inventaire/retours SQL réel + bug front remise corrigé + arbitrage stock)
+
+- **D1/P301 — inventory-scan pg-mem (6 tests)** : rejeu idempotent `clientEntryId` (même ligne, zéro doublon), lookup code-barres tenant-scoped (EAN du magasin voisin = `new`), apply atomique (inventory=recomptage ABSOLU, receiving=DELTA, re-apply no-op), store sans code refusé, stats session.
+- **D2/P302 — returns read-paths pg-mem (4 tests)** : isolation tenant des avoirs (findOne/lookup cross-store = 404), règles spendable réelles (refund/épuisé non dépensables), SQL groupé des quantités retournées (notes `cancelled` exclues), returnable = vendu−retourné, pagination DESC.
+- **D3/P303 — BUG FRONT CORRIGÉ (DiscountModal)** : le modal n'exigeait le PIN responsable qu'au-dessus de 20 % alors que le serveur l'exige **dès >0 %** → une remise de 10 % passait le modal puis était rejetée au paiement. Aligné (PIN dès >0 %, motif dès 21 % = seuils serveur), validation extraite en helper pur `discount-entry-policy` + **8 tests vitest** (bornes 30/30.01, 20/21, PIN, dépassement sous-total, parsing virgule). vite build vert.
+- **D4/P304 — arbitrage TD-STOCK-TWO-SYSTEMS** : `STOCK_UNIFICATION_DECISION.md` (2 systèmes prouvés A compteur / B journal, divergence démontrée, 3 options, **option 1 recommandée** : journal dérivé append-only alimenté par vente/retour/ajustement — GO requis, rien exécuté). Commentaire mensonger de `stock-movement.entity.ts` corrigé (« auto-created by SalesService » = faux). TD-GIT-DANGLING marqué résolu (P272).
+- **P305 consolidation** : backend COMPLET en 5 tranches —
+  **199 suites PASS / 3 skip (.pg) · 1338 tests PASS / 5 skip · 0 échec** (Δ v24 : +2 suites, +10 tests). Front : **15 fichiers / 67 tests PASS** (back-office 23, pos-desktop 31, mobile 13). `tsc` EXIT 0 back+pos · vite build pos vert.
+
+Commits : `a36bf1c` D1 · `4b599c5` D2 · `c1205be` D3 · `7e5ae9a` D4. Interdits respectés : zéro push, zéro prod, zéro secret, zéro migration runtime.
+
+---
 ## État consolidé — 2026-07-02 (jalon PAQUET 300, v24 — cycle C : bug money-path TD-073 corrigé + catalogue durci)
 
 - **C1/P297 — TD-073-USAGE-INCREMENT ✅ RÉSOLU (vrai bug)** : le plafond d'usage des promos ne décomptait JAMAIS (`usage_count` incrémenté nulle part → promo « limitée » en réalité illimitée). Fix : UPDATE atomique dans la transaction de vente (1 usage/promo/vente, ids distincts, tenant-scoped). Preuve e2e : cap 1 → vente 1 remisée + count 0→1, vente 2 plein tarif + count reste 1 (money-flow 8/8). + durcissement `isPromoApplicable` : normalisation jsonb string (une promo aux ids sérialisés en string était silencieusement désactivée).
