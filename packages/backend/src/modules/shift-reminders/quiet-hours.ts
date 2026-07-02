@@ -1,9 +1,11 @@
 /**
  * POS-055 — Quiet hours & holidays (pure, unit-testable).
  *
- * Foundation for suppressing reminders/alerts during quiet windows and on holidays.
- * NOT yet wired into the reminder sweep (the exact quiet window + holiday calendar are a
- * configuration/product decision) — see TECHNICAL_DEBT TD-055-QUIET-HOURS-WIRING.
+ * Suppresses reminders/alerts during quiet windows and on holidays.
+ * WIRED into the reminder sweep since P292 (`shift-reminder.service.isSilentNow`,
+ * env: SHIFT_REMINDER_QUIET_START_HOUR / _END_HOUR / SHIFT_REMINDER_HOLIDAYS ;
+ * défaut = fenêtre vide → jamais supprimé, zéro changement de comportement).
+ * TD-055-QUIET-HOURS-WIRING : clos.
  */
 
 /**

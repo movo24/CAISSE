@@ -2328,3 +2328,9 @@ Ces paquets ont été journalisés dans `PROJECT_STATUS.md` (v10→v18) et non i
 - **POS-020 ✅** : `offlineStore.test.ts` **9/9** — bascule journalisée, paiements dégradés (cash/carte-TPE-autonome/QR-wallet), file persistante (redémarrage), garde-fous anti-fraude offline (voids consécutifs/quotidiens, plafonds espèces et ticket, anomalies resync).
 - **POS-037 🟡→imprimante prouvée** : builders ESC/POS exportés (pur, zéro comportement changé) + `escpos-builders.test.ts` **6/6** (reset/coupe, mentions fiscales, rendu/remise conditionnels, impulsion tiroir exacte). Scanner = follow-up.
 - pos-desktop : **10 fichiers/52 tests PASS**, tsc RC 0.
+
+## PAQUET 349 — Cycle W (2026-07-02) : POS-049/055 réconciliés + TD-054D-TERMINAL clos
+- POS-049 ✅ : synchro cloud prouvée AUJOURD'HUI (suites sync 3/17 vertes + verrou insert-only P332 + dedup rejeu e2e).
+- POS-055 ✅ : déjà câblé depuis P292 (`isSilentNow` dans le sweep cron, env-driven, défaut inoffensif) — registre + commentaire de code mensonger (« NOT yet wired ») corrigés. TD-055 clos.
+- TD-054D-TERMINAL clos : `terminalId` (dispo depuis P326/POS-INT-83) ajouté aux détails d'audit `manual_discount_applied` et `manual_discount_blocked` (2 lignes, append-only inchangé).
+- Preuves : shift-reminders + sales.audit + sale-transaction **4 suites/28 tests PASS** ; tsc RC 0.

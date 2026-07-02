@@ -452,6 +452,7 @@ export class SalesService {
             responsableId: responsable?.id ?? null,
             justificationProvided: !!dto.discountJustification,
             employeeRole: employeeSnapshot?.employeeRole ?? null,
+            terminalId: employeeSnapshot?.terminalId ?? null, // TD-054D-TERMINAL (P349)
           });
           if (e.code === 'POS_OVER_CAP') throw new ConflictException(e.message);
           throw new BadRequestException(e.message);
@@ -848,6 +849,7 @@ export class SalesService {
               responsableId: manualDiscountAudit.responsableId,
               responsableName: manualDiscountAudit.responsableName,
               justification: manualDiscountAudit.justification,
+              terminalId: employeeSnapshot?.terminalId ?? null, // TD-054D-TERMINAL (P349)
               storeId,
             },
           });

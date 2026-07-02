@@ -57,7 +57,7 @@
 | POS-046 | Remboursement | ✅ math extrait+testé, régression OK | P1 | `returns.service` + `returns-policy.ts` (`returnableQuantity`, `computeLineRefund` proportionnel) — `returns-policy` 7/7 + `returns.service.spec` **17/17 sans régression** |
 | POS-047 | Idempotence stricte (double paiement interdit) | ✅ prouvé (idempotency.spec + e2e replay, P343) | P0 | `sales.service.ts` L176-184 replay + L350-355 in-tx + L509-519 persist même tx + expiry 7j + ConflictException |
 | POS-048 | Cohérence paiement ≥ total avant finalisation | ✅ branché+testé | P0 | extrait en `payment-policy.validatePayments` (pur, **7/7**), appelé dans `createSale` (messages identiques → comportement préservé ; mapping BadRequestException). |
-| POS-049 | Synchro paiement cloud | ⚠️ | P1 | `sync` |
+| POS-049 | Synchro paiement cloud | ✅ prouvé (P349) | P1 | `sync` : push offline insert-only (ids existants filtrés — verrou P332), rejeu dédupliqué (e2e), résolution conflit server-wins testée — suites sync **3/17** re-exécutées vertes + e2e « offline sync push replay deduped ». |
 
 ## Règles caisse
 
@@ -70,9 +70,9 @@
 | POS-054 | Politique remise (caisse 30% strict / justif 21-30% / back-office 100% admin) — **moteur pur** | ✅ code+test (14/14 vérifié) | P0 | `sales/discount-policy.ts` + `discount-policy.spec.ts` (matrice produit complète, exécutée verte dans le sandbox) |
 | POS-054b | Câblage caisse : champs DTO (`manualDiscountMinorUnits`, `responsablePin`, `discountJustification`) + appel politique + distribution sur lignes (TVA cohérente) dans `createSale` | ✅ codé+branché, **tsc clean** ; ⚠️ test runtime vente à exécuter localement | P0 | `common/dto/sales.dto.ts`, `sales.service.ts` (bloc avant calcul totaux). N'altère PAS les promotions. |
 | POS-054c | Vérification réelle du code responsable | ✅ branché (réel) | P0 | `sales.service.verifyResponsablePin` : PIN employé `manager`/`admin` (bcrypt `pin_hash`) du magasin. Pas de nouveau secret. Dette : rate-limit/lockout (`TD-RESP-PIN`). |
-| POS-054d | Persistance audit remise (append-only) | ✅ branché (audit_entry) ; ⚠️ terminal id non threadé | P0 | `auditService.log` actions `manual_discount_applied` / `manual_discount_blocked` (caissier, responsable, %, motif, ticket, magasin). **Pas de migration** (audit_entry existant, hash-chain). Terminal id absent de `createSale` → `TD-054D-TERMINAL`. |
+| POS-054d | Persistance audit remise (append-only) | ✅ complet (terminal id threadé P349) | P0 | `auditService.log` actions `manual_discount_applied` / `manual_discount_blocked` (caissier, responsable, %, motif, ticket, magasin). **Pas de migration** (audit_entry existant, hash-chain). `terminalId` (X-Terminal-Id, POS-INT-83) désormais dans les détails `manual_discount_applied`/`blocked` — TD-054D clos. |
 | POS-054e | Endpoint remise back-office (≤100%, admin only, motif+validateur+audit) | ✅ codé+branché+testé (5/5) | P1 | nouveau module `backoffice-discounts` : `POST /api/backoffice/discounts/authorize` (`@Roles('admin')`). Jamais 100% depuis caisse (channel séparé). Application à une vente = follow-up `TD-054E-APPLY`. |
-| POS-055 | Jours fériés paramétrables + quiet hours alertes | 🟡 helper testé, non branché | P2 | `shift-reminders/quiet-hours.ts` (`isQuietHour` wrap-midnight, `isHoliday`) **5/5**. Câblage sweep + fenêtre/calendrier = `TD-055-QUIET-HOURS-WIRING`. |
+| POS-055 | Jours fériés paramétrables + quiet hours alertes | ✅ branché+prouvé (P292, réconcilié P349) | P2 | `isSilentNow` câblé dans le sweep cron (env QUIET_START/END_HOUR + HOLIDAYS, défaut fenêtre vide = zéro changement). Specs : helper 5/5 + wiring 4 tests (fenêtre 21h→8h wrap, férié ISO, sweep supprimé n'appelle même pas TW24). TD-055 clos. |
 | POS-056 | Audit log actions sensibles, aucune suppression silencieuse | ✅ primitives testées | P0 | `audit/audit-hash.ts` (`computeAuditHash`+`verifyAuditChain`) extrait+testé **8/8** ; `audit.service` refactor behavior-preserving (controller spec 6/6) ; entité append-only. Dup `shared.createAuditHash` → `TD-AUDIT-HASH-DUP`. |
 
 ## Produits / catalogue

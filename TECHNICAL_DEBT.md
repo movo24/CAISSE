@@ -72,3 +72,9 @@ Chaque nouvelle dette détectée pendant un paquet est ajoutée ici avec ID, pre
 
 ## TD-DEAD-UPDATESTOCK (P339)
 `products.service.updateStock` n'a aucun appelant (grep src, hors définition). Ni audité ni exposé. À supprimer lors d'un prochain nettoyage volontaire (pas de suppression opportuniste en cycle audit).
+
+## TD-054D-TERMINAL — CLOS (P349)
+Voir EXECUTION_LOG PAQUET 349.
+
+## TD-055-QUIET-HOURS-WIRING — CLOS (P349)
+Voir EXECUTION_LOG PAQUET 349.
