@@ -75,6 +75,19 @@ Ces points datent d'avril 2026 ; plusieurs commits fiscaux/correctifs ont suivi.
 Voir `POS_BLOCKS.md` → premier paquet (PAQUET 1). Détail d'exécution dans `EXECUTION_LOG.md`.
 
 ---
+## État consolidé — 2026-07-02 (jalon PAQUET 326, v31 — cycle J : écran clôture de caisse POS livré)
+
+- **P325 — l'UI session POS existe désormais** (choix UX documentés, réversibles) :
+  - `lib/terminal-id.ts` : identité terminal STABLE par appareil (localStorage, override admin possible « CAISSE-1 »), 3 tests.
+  - `posSessionsApi.ensure` : find-or-open de la session γ du terminal, **best-effort** — hors-ligne/échec ⇒ mode sans-session, la caisse vend exactement comme avant (jamais bloquante).
+  - **`CloseSessionModal`** : résumé de session (ventes, espèces, total), fond de caisse + comptage physique, **écart signé affiché** (exact/excédent/manquant) — jamais auto-corrigé, confirmation explicite en cas d'écart.
+  - Câblage POSPage : session au montage/retour réseau, bouton « Clôture de caisse (comptage) », modal.
+  - **FIX trou réel découvert au câblage** : le POS n'envoyait JAMAIS `X-Terminal-Id` → le stamp session P312 et POS-INT-83 étaient inertes en usage réel. L'intercepteur envoie désormais l'identité terminal sur TOUTES les requêtes POS (best-effort).
+- **P326 consolidation** : backend COMPLET en 5 tranches — **207 suites PASS / 3 skip (.pg) · 1373 tests PASS / 5 skip · 0 échec** (inchangé v30 : le cycle J est front). Front pos-desktop : **8 fichiers / 37 tests** vitest, tsc EXIT 0, vite build vert.
+
+Commit : `b7eb168`. Interdits respectés : zéro push, zéro prod, zéro secret, zéro migration runtime.
+
+---
 ## État consolidé — 2026-07-02 (jalon PAQUET 324, v30 — cycle I : les gates transformées en livrables prêts-à-brancher)
 
 - **I1/P318 — GATE 1 close côté préparation** : anti-rejeu prouvé e2e (receveur à horloge décalée refuse hors fenêtre 5 min, ligne retryable) — la chaîne loopback couvre désormais TOUT le contrat (HMAC, rejeu, retry, dead-letter, batch_id, dédup event_id — 6 tests). Ne manque que URL+secret réels (kit §7).

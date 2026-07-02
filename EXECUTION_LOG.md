@@ -2257,3 +2257,9 @@ Ces paquets ont été journalisés dans `PROJECT_STATUS.md` (v10→v18) et non i
 - I6 revue H : H1/H2 sans trou ; H3 message de verrou distinct (UX corrigée).
 - P324 : **207 suites PASS/3 skip · 1373 tests PASS/5 skip · 0 échec** ; fronts 30+34 tests, builds verts.
 - Commits 1517357/59d0c08/13a10a1/94b0505/fedd5d2/af39ede ; bundle régénéré.
+
+## PAQUET 325→326 — Cycle J (2026-07-02) : écran clôture de caisse POS livré
+- terminal-id stable (localStorage, override admin) + posSessionsApi.ensure (best-effort, jamais bloquant) + CloseSessionModal (comptage, écart signé, confirmation) + câblage POSPage.
+- **Fix trou réel** : X-Terminal-Id désormais sur toutes les requêtes POS (le stamp P312/POS-INT-83 était inerte sans lui).
+- P326 : backend inchangé **207 suites/1373 tests PASS** ; pos-desktop 8 fichiers/37 tests, build vert.
+- Commit b7eb168 ; bundle régénéré.
