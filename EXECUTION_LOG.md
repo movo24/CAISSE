@@ -2242,3 +2242,10 @@ Ces paquets ont été journalisés dans `PROJECT_STATUS.md` (v10→v18) et non i
 - Preuve e2e 10/10 (stampée, sans-terminal NULL, résumé exact) ; mocks adaptés ; api-map 232 routes.
 - P313 : **202 suites PASS/3 skip · 1349 tests PASS/5 skip · 0 échec** ; nest build RC 0.
 - Commit 353080f ; bundle régénéré.
+
+## PAQUET 314→317 — Cycle H (2026-07-02) : les 3 derniers items sans-décision
+- H1 verrou anti-dérive hash audit (8 cas adversariaux) — TD-AUDIT-HASH-DUP : risque neutralisé, unification = décision build.
+- H2 TD-018 ✅ : filtres historique ventes prouvés SQL réel (4 tests pg-mem).
+- H3 TD-RESP-PIN ✅ : PinAttemptLimiter par magasin (5→verrou 15 min, fail-closed, reset sur succès, 4 tests).
+- P317 : **205 suites PASS/3 skip · 1365 tests PASS/5 skip · 0 échec** ; nest build RC 0.
+- Commits fedda4b/8c7c2e4/fdcd387 ; bundle régénéré. **Backlog sans-décision : ÉPUISÉ** — tout le reste attend une entrée utilisateur (gates/décisions).

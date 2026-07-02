@@ -75,6 +75,18 @@ Ces points datent d'avril 2026 ; plusieurs commits fiscaux/correctifs ont suivi.
 Voir `POS_BLOCKS.md` → premier paquet (PAQUET 1). Détail d'exécution dans `EXECUTION_LOG.md`.
 
 ---
+## État consolidé — 2026-07-02 (jalon PAQUET 317, v29 — cycle H : 3 derniers items sans-décision fermés)
+
+- **H1/P314 — TD-AUDIT-HASH-DUP risque neutralisé** : `audit-hash-drift-guard.spec.ts` (8 cas adversariaux : clés désordonnées, imbrication, accents/emoji, null/bool/gros nombres, chaînage depuis genesis) échoue à la PREMIÈRE dérive entre `audit-hash.ts` (backend) et `shared/hash.ts`. L'unification physique reste une décision build (inchangé) — mais la dérive silencieuse est désormais impossible.
+- **H2/P315 — TD-018-FILTERS-RUNTIME ✅ RÉSOLU** : filtres historique ventes prouvés sur SQL réel (4 tests pg-mem : tenant + tri DESC, employeeId, bornes from/to inclusives, status, combinaison AND).
+- **H3/P316 — TD-RESP-PIN ✅ RÉSOLU** : anti-bruteforce du PIN responsable — `PinAttemptLimiter` par magasin (5 échecs consécutifs → verrou 15 min, **fail-closed sans comparaison bcrypt pendant le verrou**, succès = reset, horloge injectable ; 4 tests + non-régression sales 25 suites/161 tests + e2e 10/10). Limite honnête : in-memory (mono-instance, même posture que ALLOW_INMEMORY_CACHE).
+- **P317 consolidation** : backend COMPLET en 5 tranches —
+  **205 suites PASS / 3 skip (.pg) · 1365 tests PASS / 5 skip · 0 échec** (Δ v28 : +3 suites, +16 tests). `nest build` RC 0.
+- **État du backlog : le stock d'items exécutables SANS décision utilisateur est épuisé.** Tout le reste attend une entrée : GATE 1 (URL+secret), GATE 2 (DATABASE_URL + GO — migrations 1725+1726 en file), GATE 3 (plan de comptes), variantes produit (modèle), TD-TAX-DUP (décision fiscale), unification physique du hash (décision build), backfill:names sur cible, écrans comptage/stock-locations (souhait produit).
+
+Commits : `fedda4b` H1+H2 · `8c7c2e4` H3 · `fdcd387` docs. Interdits respectés : zéro push, zéro prod, zéro secret, zéro migration runtime.
+
+---
 ## État consolidé — 2026-07-02 (jalon PAQUET 313, v28 — cycle G : TD-017-SESSION-LINK RÉSOLU, comptage session débloqué)
 
 - **G1/P312 — lien vente↔session POS** : migration **1726-AddSalePosSessionId** (colonne uuid nullable + index composite ; additive/réversible ; ⚠️ NON jouée sur la base cible — même gate que 1725/GATE 2) + `sale.posSessionId` (hors empreinte fiscale, lien de métadonnée) + **stamp best-effort dans createSale** : session active du (store, terminal) résolue pré-transaction, échec ou absence de session ⇒ NULL, **jamais** une vente bloquée.
