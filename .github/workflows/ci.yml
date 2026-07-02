@@ -35,6 +35,12 @@ jobs:
       - name: Security guards (secrets / env / gitignore / CI scripts)
         run: npm run test:security
 
+      - name: API map freshness (POS_API_MAP_DETAILED matches the controllers)
+        run: |
+          npm run api:map
+          git diff --exit-code POS_API_MAP_DETAILED.md || {
+            echo "::error::POS_API_MAP_DETAILED.md est périmé — lancer 'npm run api:map' et committer le résultat."; exit 1; }
+
       - name: Backend tests
         run: npm run test:backend
 

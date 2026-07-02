@@ -72,10 +72,12 @@ const files = walk(SRC).sort();
 const controllers = files.map(parseController);
 const totalRoutes = controllers.reduce((s, c) => s + c.routes.length, 0);
 
+// NOTE: no timestamp in the output — the file must be byte-deterministic so CI
+// can regenerate it and fail on drift (git diff --exit-code).
 let md = `# POS_API_MAP_DETAILED.md — Cartographie API générée depuis le code
 `;
 md += `
-> Générée le ${new Date().toISOString().slice(0, 10)} par \`node scripts/generate-api-map.js\` — NE PAS éditer à la main, régénérer.
+> Générée par \`npm run api:map\` — NE PAS éditer à la main, régénérer (la CI échoue si ce fichier ne correspond plus aux controllers).
 > **${controllers.length} controllers · ${totalRoutes} routes.** Auth : \`JwtAuthGuard\` (JWT employé) · \`MobileAuthGuard\` (JWT Wesley Club, audience mobile-app) · \`RolesGuard\` (hiérarchie admin>manager>cashier) · TenantInterceptor global (storeId du JWT) sauf \`@SkipTenantCheck\`.
 > Colonne Rôles vide = tout JWT valide du guard indiqué ; Guards vide = route publique (vérifier le contexte du controller).
 `;
