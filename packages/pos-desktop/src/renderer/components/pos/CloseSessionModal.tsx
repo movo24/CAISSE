@@ -48,7 +48,10 @@ export function CloseSessionModal({ open, sessionId, onClose, onClosed }: Props)
   const doClose = async () => {
     try {
       setClosing(true);
-      await posSessionsApi.close(sessionId);
+      // P351 — le comptage saisi est PERSISTÉ : le serveur calcule et fige
+      // l'écart signé (compté − fond − espèces session). Sans saisie, la
+      // clôture reste possible (champs NULL, comportement historique).
+      await posSessionsApi.close(sessionId, counted ?? undefined);
       onClosed();
     } catch (e: any) {
       setLoadError(e?.response?.data?.message ?? 'Échec de la clôture — réessayez.');

@@ -1,6 +1,6 @@
 # CLAUDE.md — Development Guide
 
-> Last updated: 2026-07-02 (P343 — jalon v34 : 45 modules, 212 suites/1407 tests backend, 238 routes, migrations queue 1725-1727 gated)
+> Last updated: 2026-07-02 (P343 — jalon v34 : 45 modules, 212 suites/1407 tests backend, 238 routes, migrations queue 1725-1728 gated)
 > Rule: **Audit → Plan → Execute**. Each change must be minimal, targeted, testable and reversible.
 > Governance files at repo root: `PROJECT_STATUS.md`, `STATE_INDEX.md`, `MASTER_ROADMAP.md`, `POS_BLOCKS.md`, `POS_*` maps, `TECHNICAL_DEBT.md`, `EXECUTION_LOG.md`, `GATES_READINESS.md`.
 > Modules added since the 06-28 audit (documented in STATE_INDEX): `documents`, `fiscal`, `pos-session`, `comptamax`, `integration`.
@@ -187,6 +187,7 @@ Current migrations (run in order):
 1725000000000-AddIntegrationOutbox      # outbox integration events — NOT yet run on target DB (GATE2)
 1726000000000-AddSalePosSessionId       # TD-017 — sale↔POS-session link (nullable) — NOT yet run on target DB (GATE2)
 1727000000000-AddProductVariantsAndSuppliers  # P327 — variantes option A + suppliers — NOT yet run on target DB (GATE2)
+1728000000000-AddPosSessionCashFields         # P351 — fond de caisse + comptage/écart figé — NOT yet run on target DB (GATE2)
 ```
 
 ---
@@ -354,7 +355,7 @@ packages/backend/
   src/app.module.ts                             Module registry, TypeORM, rate-limit tiers
   src/database/typeorm.config.ts                Migration CLI config
   src/database/entities/                        48 TypeORM entities (incl. suppliers P327)
-  src/database/migrations/                      24 versioned migrations (1725/1726/1727 not yet run on target — GATE2)
+  src/database/migrations/                      25 versioned migrations (1725→1728 not yet run on target — GATE2)
   src/common/guards/roles.guard.ts              Role hierarchy (admin > manager > cashier)
   src/common/guards/jwt-auth.guard.ts           JWT authentication guard
   src/common/interceptors/tenant.interceptor.ts Multi-tenant storeId enforcement

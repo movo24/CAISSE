@@ -48,19 +48,27 @@ export class PosSessionController {
       {
         terminalId,
         offlineMode: dto.offlineMode,
+        openingFloatMinorUnits: dto.openingFloatMinorUnits ?? null, // P351
       },
     );
   }
 
   @Post(':id/close')
   @ApiOperation({
-    summary: 'Close an active POS session. Only the owning employee can close their session.',
+    summary:
+      'Close an active POS session. Only the owning employee can close their session. ' +
+      'P351: optional countedCashMinorUnits — server computes and freezes the signed cash variance.',
   })
-  close(@Param('id', ParseUUIDPipe) id: string, @Request() req: any) {
+  close(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: { countedCashMinorUnits?: number | null } | undefined,
+    @Request() req: any,
+  ) {
     return this.service.closeSession(
       id,
       req.user.storeId,
       req.user.employeeId,
+      { countedCashMinorUnits: body?.countedCashMinorUnits ?? null },
     );
   }
 

@@ -222,10 +222,19 @@ export const customersApi = {
 export const posSessionsApi = {
   active: (terminalId: string) =>
     api.get('/pos-sessions/active', { headers: { 'X-Terminal-Id': terminalId } }),
-  open: (terminalId: string) =>
-    api.post('/pos-sessions/open', {}, { headers: { 'X-Terminal-Id': terminalId } }),
+  open: (terminalId: string, openingFloatMinorUnits?: number) =>
+    api.post(
+      '/pos-sessions/open',
+      openingFloatMinorUnits !== undefined ? { openingFloatMinorUnits } : {},
+      { headers: { 'X-Terminal-Id': terminalId } },
+    ),
   cashSummary: (sessionId: string) => api.get(`/pos-sessions/${sessionId}/cash-summary`),
-  close: (sessionId: string) => api.post(`/pos-sessions/${sessionId}/close`),
+  /** P351 — comptage optionnel : le serveur calcule et FIGE l'écart signé. */
+  close: (sessionId: string, countedCashMinorUnits?: number) =>
+    api.post(
+      `/pos-sessions/${sessionId}/close`,
+      countedCashMinorUnits !== undefined ? { countedCashMinorUnits } : {},
+    ),
   /** P325 — find-or-open the terminal's session. Best-effort: any failure → null (offline-tolerant, never blocks the till). */
   async ensure(terminalId: string): Promise<{ id: string } | null> {
     try {

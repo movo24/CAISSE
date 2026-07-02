@@ -1,4 +1,4 @@
-import { IsOptional, IsBoolean } from 'class-validator';
+import { IsOptional, IsBoolean, IsInt, Min } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 /**
@@ -19,4 +19,14 @@ export class OpenSessionDto {
   @IsOptional()
   @IsBoolean()
   offlineMode?: boolean;
+
+  /**
+   * P351 (POS-016) — fond de caisse déclaré à l'ouverture, en CENTIMES.
+   * Optionnel (magasins sans procédure de float) ; entier ≥ 0.
+   */
+  @ApiProperty({ required: false, description: 'Fond de caisse en centimes (entier ≥ 0)' })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  openingFloatMinorUnits?: number | null;
 }

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════════════════
-# GATE 2 — Jouer les migrations 1725 + 1726 + 1727 sur la base cible.
+# GATE 2 — Jouer les migrations 1725 + 1726 + 1727 + 1728 sur la base cible.
 # GO utilisateur enregistré le 2026-07-02 (EXECUTION_LOG P350).
 #
 # Usage (depuis la racine du repo, sur une machine qui ATTEINT la base) :
@@ -35,9 +35,9 @@ echo "✅ Backup OK : $DUMP ($(du -h "$DUMP" | cut -f1))"
 echo "── B. ÉTAT AVANT ───────────────────────────────────────────────────────"
 LAST=$(psql "$DATABASE_URL" -tAc "SELECT name FROM migrations ORDER BY timestamp DESC LIMIT 1;")
 echo "Dernière migration en base : $LAST"
-if [[ "$LAST" == *"1727"* ]]; then echo "✅ 1727 déjà jouée — rien à faire."; exit 0; fi
-if [[ "$LAST" != *"1724"* && "$LAST" != *"1725"* && "$LAST" != *"1726"* ]]; then
-  echo "❌ Tête inattendue ($LAST ≠ 1724/25/26) — vérifie que c'est la bonne base. STOP."
+if [[ "$LAST" == *"1728"* ]]; then echo "✅ 1728 déjà jouée — rien à faire."; exit 0; fi
+if [[ "$LAST" != *"1724"* && "$LAST" != *"1725"* && "$LAST" != *"1726"* && "$LAST" != *"1727"* ]]; then
+  echo "❌ Tête inattendue ($LAST ≠ 1724/25/26/27) — vérifie que c'est la bonne base. STOP."
   exit 1
 fi
 SALES_BEFORE=$(psql "$DATABASE_URL" -tAc "SELECT COUNT(*) FROM sales;")
@@ -58,14 +58,15 @@ check "integration_events (table neuve, vide)" "0" "SELECT COUNT(*) FROM integra
 check "sales.pos_session_id non-NULL (legacy)" "0" "SELECT COUNT(*) FROM sales WHERE pos_session_id IS NOT NULL;"
 check "COUNT(sales) inchangé" "$SALES_BEFORE" "SELECT COUNT(*) FROM sales;"
 check "suppliers (table neuve, vide)" "0" "SELECT COUNT(*) FROM suppliers;"
+check "pos_sessions.opening_float non-NULL (legacy)" "0" "SELECT COUNT(*) FROM pos_sessions WHERE opening_float_minor_units IS NOT NULL;"
 NEWLAST=$(psql "$DATABASE_URL" -tAc "SELECT name FROM migrations ORDER BY timestamp DESC LIMIT 1;")
 echo "Tête migrations : $NEWLAST"
-[[ "$NEWLAST" == *"1727"* ]] || { echo "❌ 1727 pas en tête"; FAIL=1; }
+[[ "$NEWLAST" == *"1728"* ]] || { echo "❌ 1728 pas en tête"; FAIL=1; }
 
 if [[ $FAIL -eq 0 ]]; then
   echo ""
   echo "════ GATE 2 : SUCCÈS ✅ — garde le dump $DUMP quelques jours. ════"
-  echo "Rollback si besoin : cd packages/backend && npm run migration:revert (×3, cf MIGRATION_RUNBOOK §3)"
+  echo "Rollback si besoin : cd packages/backend && npm run migration:revert (×4, cf MIGRATION_RUNBOOK §3)"
 else
   echo ""
   echo "════ ⚠️ CONTRÔLES EN ÉCHEC — NE PAS déployer. Voir MIGRATION_RUNBOOK §3 (rollback) ════"

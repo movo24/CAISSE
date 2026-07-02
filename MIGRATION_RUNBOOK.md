@@ -1,4 +1,6 @@
-# MIGRATION_RUNBOOK.md — Jouer 1725 + 1726 + 1727 sur la base cible (GATE 2)
+# MIGRATION_RUNBOOK.md — Jouer 1725 + 1726 + 1727 + 1728 sur la base cible (GATE 2)
+
+> P351 : **1728-AddPosSessionCashFields** rejoint la file — 3 colonnes nullables sur `pos_sessions` (fond de caisse, compté, écart figé), additive, `down()` = DROP, dry-run pg-mem 2 tests. Utiliser `scripts/run-gate2.sh` (à jour 1728).
 
 > P319 (cycle I2) — 2026-07-02. Procédure humaine, pas à pas. **Rien ici ne s'exécute tout seul** : il te faut le `DATABASE_URL` cible et ta décision. Durée ≈ 10 min, fenêtre calme recommandée (les deux migrations sont additives → pas de coupure nécessaire, mais prudence d'abord).
 

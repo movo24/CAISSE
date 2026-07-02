@@ -266,4 +266,64 @@ describe('PosSession primitive — γ (terminal-bound)', () => {
       ).rejects.toThrow(BadRequestException);
     });
   });
+
+  // ── P351 — fond de caisse + comptage persisté (POS-016/017/017b) ──────────
+
+  describe('P351 — opening float & till count', () => {
+    it('persiste le fond de caisse à l’ouverture ; absent = NULL ; refuse float/négatif', async () => {
+      const withFloat = await service.openSession(STORE_ID, EMPLOYEE_A, SNAP, {
+        terminalId: TERMINAL_1, openingFloatMinorUnits: 10000, // 100,00 €
+      });
+      expect(withFloat.openingFloatMinorUnits).toBe(10000);
+
+      const without = await service.openSession(STORE_ID, EMPLOYEE_B, SNAP, {
+        terminalId: TERMINAL_2,
+      });
+      expect(without.openingFloatMinorUnits).toBeNull();
+
+      await expect(
+        service.openSession(STORE_ID, EMPLOYEE_A, SNAP, { terminalId: 'caisse-03', openingFloatMinorUnits: 99.5 }),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        service.openSession(STORE_ID, EMPLOYEE_A, SNAP, { terminalId: 'caisse-03', openingFloatMinorUnits: -1 }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('clôture avec comptage : écart signé calculé SERVEUR (compté − fond − espèces session) et FIGÉ', async () => {
+      const s = await service.openSession(STORE_ID, EMPLOYEE_A, SNAP, {
+        terminalId: TERMINAL_1, openingFloatMinorUnits: 10000,
+      });
+      // aucune vente stampée → attendu = 10000 ; compté 9 950 → écart -50
+      const closed = await service.closeSession(s.id, STORE_ID, EMPLOYEE_A, {
+        countedCashMinorUnits: 9950,
+      });
+      expect(closed.countedCashMinorUnits).toBe(9950);
+      expect(closed.cashVarianceMinorUnits).toBe(-50);
+      expect(closed.isActive).toBe(false);
+
+      // figé : la ligne en base porte l'écart, session close
+      const [row] = await ds.query(
+        `SELECT counted_cash_minor_units, cash_variance_minor_units FROM pos_sessions WHERE id = $1`, [s.id],
+      );
+      expect(Number(row.cash_variance_minor_units)).toBe(-50);
+    });
+
+    it('clôture SANS comptage : champs NULL (comportement existant intact) ; comptage invalide refusé', async () => {
+      const s = await service.openSession(STORE_ID, EMPLOYEE_A, SNAP, { terminalId: TERMINAL_1 });
+      await expect(
+        service.closeSession(s.id, STORE_ID, EMPLOYEE_A, { countedCashMinorUnits: -5 }),
+      ).rejects.toThrow(BadRequestException);
+      const closed = await service.closeSession(s.id, STORE_ID, EMPLOYEE_A);
+      expect(closed.countedCashMinorUnits).toBeNull();
+      expect(closed.cashVarianceMinorUnits).toBeNull();
+    });
+
+    it('sans fond de caisse déclaré, l’attendu = espèces session seules (fond traité comme 0)', async () => {
+      const s = await service.openSession(STORE_ID, EMPLOYEE_A, SNAP, { terminalId: TERMINAL_1 });
+      const closed = await service.closeSession(s.id, STORE_ID, EMPLOYEE_A, {
+        countedCashMinorUnits: 200,
+      });
+      expect(closed.cashVarianceMinorUnits).toBe(200); // 200 − (0 + 0)
+    });
+  });
 });

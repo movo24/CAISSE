@@ -131,6 +131,8 @@ export class PosSessionService {
     options: {
       terminalId?: string;
       offlineMode?: boolean;
+      /** P351 (POS-016) — fond de caisse déclaré à l'ouverture (centimes). */
+      openingFloatMinorUnits?: number | null;
     } = {},
   ): Promise<PosSessionEntity> {
     if (!storeId) {
@@ -144,6 +146,15 @@ export class PosSessionService {
         'X-Terminal-Id header is required to open a POS session ' +
           '(sessions are terminal-bound)',
       );
+    }
+    // P351 — fond de caisse : optionnel, mais s'il est fourni ce doit être
+    // un entier ≥ 0 en centimes (jamais de float d'argent — règle projet).
+    if (
+      options.openingFloatMinorUnits !== undefined &&
+      options.openingFloatMinorUnits !== null &&
+      (!Number.isInteger(options.openingFloatMinorUnits) || options.openingFloatMinorUnits < 0)
+    ) {
+      throw new BadRequestException('openingFloatMinorUnits doit être un entier ≥ 0 (centimes)');
     }
 
     // γ invariant: one active session per (store, terminal) — regardless of
@@ -168,6 +179,7 @@ export class PosSessionService {
     session.permissions = {};
     session.isActive = true;
     session.offlineMode = options.offlineMode ?? false;
+    session.openingFloatMinorUnits = options.openingFloatMinorUnits ?? null;
 
     let saved: PosSessionEntity;
     try {
@@ -217,6 +229,10 @@ export class PosSessionService {
     sessionId: string,
     storeId: string,
     employeeId: string,
+    options: {
+      /** P351 (POS-017) — espèces comptées à la clôture (centimes). */
+      countedCashMinorUnits?: number | null;
+    } = {},
   ): Promise<PosSessionEntity> {
     const session = await this.repo.findOne({ where: { id: sessionId } });
     if (!session) {
@@ -234,6 +250,20 @@ export class PosSessionService {
     }
     if (!session.isActive) {
       throw new ConflictException('POS session is already closed');
+    }
+
+    // P351 — comptage optionnel ; s'il est fourni, l'écart signé est calculé
+    // CÔTÉ SERVEUR contre les espèces des ventes stampées + le fond de caisse,
+    // puis FIGÉ sur la session (le contrôle s'appuie dessus, jamais recalculé).
+    const counted = options.countedCashMinorUnits;
+    if (counted !== undefined && counted !== null) {
+      if (!Number.isInteger(counted) || counted < 0) {
+        throw new BadRequestException('countedCashMinorUnits doit être un entier ≥ 0 (centimes)');
+      }
+      const summary = await this.getSessionCashSummary(sessionId, storeId);
+      const expected = (session.openingFloatMinorUnits ?? 0) + summary.cashCapturedMinorUnits;
+      session.countedCashMinorUnits = counted;
+      session.cashVarianceMinorUnits = counted - expected;
     }
 
     session.isActive = false;

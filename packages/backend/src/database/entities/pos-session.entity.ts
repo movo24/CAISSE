@@ -75,4 +75,26 @@ export class PosSessionEntity {
   /** Was this session started in offline mode? */
   @Column({ name: 'offline_mode', default: false })
   offlineMode: boolean;
+
+  /**
+   * P351 (POS-016) — fond de caisse déclaré à l'OUVERTURE, en centimes.
+   * Nullable : les sessions antérieures à la migration 1728 n'en ont pas.
+   */
+  @Column({ name: 'opening_float_minor_units', type: 'int', nullable: true })
+  openingFloatMinorUnits: number | null;
+
+  /**
+   * P351 (POS-017) — espèces COMPTÉES à la clôture, en centimes.
+   * Persisté uniquement si l'opérateur a saisi un comptage.
+   */
+  @Column({ name: 'counted_cash_minor_units', type: 'int', nullable: true })
+  countedCashMinorUnits: number | null;
+
+  /**
+   * P351 — écart signé calculé CÔTÉ SERVEUR à la clôture :
+   * compté − (fond de caisse + espèces des ventes stampées de la session).
+   * Figé à la clôture (le contrôle s'appuie dessus) — jamais recalculé.
+   */
+  @Column({ name: 'cash_variance_minor_units', type: 'int', nullable: true })
+  cashVarianceMinorUnits: number | null;
 }
