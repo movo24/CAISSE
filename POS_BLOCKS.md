@@ -84,7 +84,7 @@
 | POS-062 | Marque / fournisseur / catégories / images | ⚠️ | P2 | `product-category`, `product` |
 | POS-063 | TVA / prix TTC | ✅ extraction testée+branchée | P0 | `sales/tax.ts` (`extractLineTax`/`sumLineTax`) — **6/6** dont test-propriété = formule fiscale inline (hash-safe). Branché dans `createSale`. Doublon `shared.extractTax` (arrondi net-first) → `TD-TAX-DUP`. |
 | POS-064 | Statut actif/inactif | ⚠️ | P2 | `product` |
-| POS-065 | Import/export catalogue | ⚠️ | P2 | `products` (export à vérifier) |
+| POS-065 | Import/export catalogue | ✅ (P340) | P2 | Export CSV back-office existant + **import** `POST /api/products/import` (dry-run par défaut, doublons EAN/nom in-file+magasin refusés, fournisseur par nom sans création implicite, cap 2000, audit synthétique) — validation pure 5/5 + preuves pg-mem. |
 | POS-066 | Anti-doublons SKU/EAN/nom normalisé | ✅ branché+testé | P1 | EAN : index unique `(ean,storeId)`. Nom : **dédup branchée** dans `products.service.create` (même nom normalisé/même magasin → ConflictException) + colonne `normalized_name` (migration `1722`) + sync sur update. `name-normalize` 6/6 + `products.service.spec` dédup **7/7**. Legacy backfill accents = `TD-066-LEGACY-BACKFILL`. Pas de SKU → `TD-066-SKU`. |
 
 ## Promotions / remises

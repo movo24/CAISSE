@@ -2315,3 +2315,10 @@ Ces paquets ont été journalisés dans `PROJECT_STATUS.md` (v10→v18) et non i
 - Helper pur `catalog-summary.ts` (totaux parents/variantes/simples/marques/fournisseurs + 5 anomalies : variante orpheline, variante-de-variante, fournisseur désactivé référencé par produit ACTIF, fournisseur inconnu (données pré-Cycle P), prix 0 centime actif) — **4/4** ; constat pur, zéro correction automatique.
 - `GET /api/products/catalog-summary` (admin/manager, tenant JWT, placé avant `:id`) ; preuve pg-mem read-only + tenant-scoped.
 - Module products **9 suites/63 tests PASS** ; tsc RC 0 ; api-map régénérée (43/238).
+
+## PAQUET 343 — Cycle U (2026-07-02) : consolidation lourde + jalon v34
+- Suite backend COMPLÈTE re-exécutée (5 shards) : **212 suites PASS / 3 skip (.pg sans TEST_DATABASE_URL) · 1407 tests PASS / 5 skip · 0 échec** (un faux "failed" shard 4 = worker force-exited, re-run vert). nest build RC 0.
+- Fronts : backoffice **11 fichiers/47 tests**, pos-desktop **8/37**, mobile **3/13** → **22 fichiers/97 tests PASS** ; builds verts (backoffice re-buildé P337).
+- Docs alignées : CLAUDE.md (compteurs 212/1407, front 97/22, 238 routes), POS_BLOCKS (POS-065 ✅), api-map 43/238.
+- File GATE 2 (1725-1727) inchangée et réversible. Bundle régénéré (jalon v34).
+- Delta depuis v33 : +3 suites (immutability-guard, import-catalog, catalog-summary), +29 tests backend, +12 tests front, +2 routes (import, catalog-summary), 2 trous réels corrigés (références catalogue non validées ; erreur LabelsPage invisible), 1 confirmation sécurité (POS-131 clés à révoquer).
