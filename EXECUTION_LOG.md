@@ -2334,3 +2334,9 @@ Ces paquets ont été journalisés dans `PROJECT_STATUS.md` (v10→v18) et non i
 - POS-055 ✅ : déjà câblé depuis P292 (`isSilentNow` dans le sweep cron, env-driven, défaut inoffensif) — registre + commentaire de code mensonger (« NOT yet wired ») corrigés. TD-055 clos.
 - TD-054D-TERMINAL clos : `terminalId` (dispo depuis P326/POS-INT-83) ajouté aux détails d'audit `manual_discount_applied` et `manual_discount_blocked` (2 lignes, append-only inchangé).
 - Preuves : shift-reminders + sales.audit + sale-transaction **4 suites/28 tests PASS** ; tsc RC 0.
+
+## PAQUET 350 — GO GATE 2 enregistré (2026-07-02) : exécution impossible du sandbox, script livré
+- **GO utilisateur reçu** pour les migrations 1725-1727 sur la base cible.
+- Blocage réel prouvé : aucun DATABASE_URL cible dans l'environnement (`.env` local = localhost:5432 ; le reste = placeholders) ET l'hôte Neon ne résout pas depuis le sandbox (réseau restreint). Barrière fail-closed du runbook §4 — infranchissable même avec l'URL.
+- Livré : `scripts/run-gate2.sh` (exécutable, syntaxe vérifiée, garde sans-URL testée) — encapsule TOUT le runbook : backup pg_dump vérifié (taille + pg_restore --list) AVANT toute écriture, état-avant (tête migrations, COUNT ventes), migration:run, 5 contrôles post-migration, verdict GO/NO-GO, rappel rollback. Refuse localhost sans confirmation ; s'arrête à la première anomalie ; idempotent (sort proprement si 1727 déjà en tête).
+- **Deux façons d'exécuter le GO** : ① sur une machine avec accès Neon : `DATABASE_URL="..." ./scripts/run-gate2.sh` (≈10 min) ; ② voie Railway existante : redéployer le backend B (`serviceInstanceDeployV2`, cf RUNBOOK) — les migrations se jouent AU BOOT (`migrationsRun: isProd`), sans le backup contrôlé de ①. ① recommandé.
