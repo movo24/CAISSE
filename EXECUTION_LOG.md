@@ -2205,3 +2205,10 @@ Ces paquets ont été journalisés dans `PROJECT_STATUS.md` (v10→v18) et non i
 - B6 monitoring §8 (UptimeRobot/AlertService/Sentry/logs — rien connecté). B7 SERVER_SETUP_RUNBOOK. B8 RESUME_CHECKLIST réécrit.
 - P296 : **196 suites PASS/3 skip · 1321 tests PASS/5 skip · 0 échec** ; tsc EXIT 0 ; preflight PASS.
 - Commits f8ac011/7557e5f/3201f84/7f0f04d/4b12fcd/e4771a0/601a7e5/a551822 ; bundle régénéré.
+
+## PAQUET 297→300 — Cycle C (2026-07-02) : bug money-path corrigé + catalogue durci
+- C1 **TD-073-USAGE-INCREMENT résolu (vrai bug)** : usage_count jamais incrémenté → plafond promo inopérant. UPDATE atomique dans la transaction de vente + preuve e2e (cap réel). Durcissement isPromoApplicable (jsonb string).
+- C2 products pg-mem (6 tests) : dédup nom/magasin, UNIQUE (ean,store) en dernier rempart, rename→resync, price-history+audit, findAll ILIKE.
+- C3 CI : POS_API_MAP_DETAILED régénéré en CI, échec sur diff (générateur déterministe).
+- P300 : **197 suites PASS/3 skip · 1328 tests PASS/5 skip · 0 échec** ; tsc EXIT 0.
+- Commits 8b56ebd / ee9072b / 3b2cd1e ; bundle régénéré.

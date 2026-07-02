@@ -75,6 +75,17 @@ Ces points datent d'avril 2026 ; plusieurs commits fiscaux/correctifs ont suivi.
 Voir `POS_BLOCKS.md` → premier paquet (PAQUET 1). Détail d'exécution dans `EXECUTION_LOG.md`.
 
 ---
+## État consolidé — 2026-07-02 (jalon PAQUET 300, v24 — cycle C : bug money-path TD-073 corrigé + catalogue durci)
+
+- **C1/P297 — TD-073-USAGE-INCREMENT ✅ RÉSOLU (vrai bug)** : le plafond d'usage des promos ne décomptait JAMAIS (`usage_count` incrémenté nulle part → promo « limitée » en réalité illimitée). Fix : UPDATE atomique dans la transaction de vente (1 usage/promo/vente, ids distincts, tenant-scoped). Preuve e2e : cap 1 → vente 1 remisée + count 0→1, vente 2 plein tarif + count reste 1 (money-flow 8/8). + durcissement `isPromoApplicable` : normalisation jsonb string (une promo aux ids sérialisés en string était silencieusement désactivée).
+- **C2/P298 — products pg-mem (6 tests)** : dédup nom normalisé par magasin (accents/casse) + index UNIQUE `(ean, store_id)` prouvé en dernier rempart (bypass service → refus DB) + rename resynchronise `normalized_name` (ancien nom libéré, nouveau réservé) + price-history/audit sur changement de prix (rien sur no-op) + findAll tenant/actifs/ILIKE.
+- **C3/P299 — CI anti-pourrissement API map** : la CI régénère `POS_API_MAP_DETAILED.md` et échoue sur diff (générateur rendu byte-déterministe). La carto ne peut plus diverger des controllers.
+- **P300 consolidation** : suite backend COMPLÈTE en 5 tranches —
+  **197 suites PASS / 3 skip (.pg) · 1328 tests PASS / 5 skip · 0 échec** (Δ v23 : +1 suite, +7 tests). `tsc` EXIT 0.
+
+Commits : `8b56ebd` C1 · `ee9072b` C2 · `3b2cd1e` C3. Interdits respectés : zéro push, zéro prod, zéro secret, zéro migration runtime.
+
+---
 ## État consolidé — 2026-07-02 (jalon PAQUET 296, v23 — blocs B1→B8 : GATE 1 prouvée loopback + dettes résolues)
 
 - **B1/P288 — GATE 1 répétée sans secret réel** : `relay-e2e-loopback.pgmem.spec.ts` (5 tests) prouve la CHAÎNE COMPLÈTE relay réel → `HttpOutboxPublisher` (vrai POST) → receveur HTTP réel (vérif HMAC) → statuts DB : publication+batch id, jamais de re-envoi, mauvais secret → 401 + ligne retryable, dead-letter à 5, re-livraison dédupliquée par event id. + `scripts/mock-receiver.js` (receveur contractuel exécutable : /received, /fail-next) + kit §6-7 (fourniture exacte GATE 1).
