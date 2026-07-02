@@ -47,7 +47,7 @@
 | TD-AUDIT-HASH-DUP | Deux copies de la formule de hash audit : `audit/audit-hash.ts` (backend, utilisée) et `shared/utils/hash.ts#createAuditHash` (non importée par le backend). Identiques aujourd'hui ; risque de dérive. Le backend n'importe pas `@caisse/shared` → unification = décision build. | 🟡 | `audit/audit-hash.ts`, `shared/utils/hash.ts` | Ouvert |
 
 | TD-066-NAME-WIRING | ~~Helper non branché~~. **Résolu** : dédup nom normalisé branchée dans `products.service.create` (+ colonne `normalized_name` migration 1722, sync update). Tests `products.service.spec` 7/7. | ✅ | `products.service.ts`, migration 1722 | Résolu |
-| TD-066-LEGACY-BACKFILL | Backfill migration 1722 = `lower(trim(name))` (accents non repliés pour les lignes héritées). Un script one-off appliquant `normalizeName()` aux lignes existantes reste à faire pour une dédup accent-insensible rétroactive. | 🟡 | migration 1722, `name-normalize.ts` | Ouvert |
+| TD-066-LEGACY-BACKFILL | Backfill accent-insensible des lignes héritées 1722 | 🟡 | `scripts/backfill-normalized-names.ts` | ✅ RÉSOLU P309 (script livré, prouvé pg-mem 2 tests : plan+apply idempotent, collisions même-magasin QUARANTAINÉES pour arbitrage humain, jamais fusion silencieuse ; dry-run par défaut, `BACKFILL_APPLY=true` pour appliquer) — exécution base cible = gated DATABASE_URL+GO |
 
 | TD-061-OVERRIDE | ~~Pas de mécanisme override~~. **Résolu** : colonne `price_override_minor_units` (migration 1723) + `resolveEffectivePrice` (override>global) branché dans `createSale`. Tests 4/4. Reste : UI back-office pour saisir l'override (`TD-061-UI`). | ✅ | `product.entity.ts`, migration 1723, `price-resolve.ts` | Résolu (UI à faire) |
 
