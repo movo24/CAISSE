@@ -310,6 +310,8 @@ export const promosApi = {
 export const stockApi = {
   alerts: (storeId: string) =>
     api.get('/stock/alerts', { params: { storeId } }),
+  // P322 — read-only reconciliation: counter vs movement-journal net vs legacy balance.
+  reconcile: () => api.get('/stock/reconcile'),
   adjust: (productId: string, data: { quantity: number; reason: string; mode?: 'absolute' | 'delta' }) =>
     api.post(`/stock/${productId}/adjust`, data),
   updateDefaultThresholds: (data: { alertThreshold: number; criticalThreshold: number }) =>

@@ -56,6 +56,7 @@ const navItems: NavItem[] = [
   // Couche 3 — Exploitation magasin
   { path: '/products', label: 'Produits', icon: Package, scope: 'store' },
   { path: '/stock-alerts', label: 'Alertes Stock', icon: AlertTriangle, scope: 'store' },
+  { path: '/stock-reconcile', label: 'Réconciliation Stock', icon: AlertTriangle, scope: 'store' },
   { path: '/labels', label: 'Etiquettes', icon: Tag, minRole: 'manager', scope: 'store' },
   { path: '/performance', label: 'Performance', icon: BarChart3, minRole: 'manager', scope: 'store' },
 

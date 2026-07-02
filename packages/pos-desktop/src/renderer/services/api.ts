@@ -207,6 +207,16 @@ export const customersApi = {
 };
 
 // Reports
+// P322 (cycle I5) — POS sessions: cash summary for the till count (POS-017b).
+// Ready-to-wire: the POS has no session open/close UI yet (product/UX decision) —
+// this client + lib/cash-count.ts are the API side, tested and waiting.
+export const posSessionsApi = {
+  active: (terminalId: string) =>
+    api.get('/pos-sessions/active', { headers: { 'X-Terminal-Id': terminalId } }),
+  cashSummary: (sessionId: string) => api.get(`/pos-sessions/${sessionId}/cash-summary`),
+  close: (sessionId: string) => api.post(`/pos-sessions/${sessionId}/close`),
+};
+
 export const reportsApi = {
   generateZReport: (date: string) =>
     api.post('/reports/z-report', null, { params: { date } }),

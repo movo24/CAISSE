@@ -13,6 +13,7 @@ import { IntegrationSupervisionPage } from './pages/IntegrationSupervisionPage';
 import { InventoryVariancePage } from './pages/InventoryVariancePage';
 import { SettingsPage } from './pages/SettingsPage';
 import { StockAlertsPage } from './pages/StockAlertsPage';
+import { StockReconcilePage } from './pages/StockReconcilePage';
 import { StockNetworkPage } from './pages/StockNetworkPage';
 import { LabelsPage } from './pages/LabelsPage';
 import { ProductPerformancePage } from './pages/ProductPerformancePage';
@@ -75,6 +76,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             <Route path="/" element={<DashboardPage />} />
             <Route path="/products" element={<ProductsPage />} />
             <Route path="/stock-alerts" element={<StockAlertsPage />} />
+            <Route path="/stock-reconcile" element={<StockReconcilePage />} />
             <Route path="/labels" element={<LabelsPage />} />
             <Route path="/performance" element={<ProductPerformancePage />} />
 
