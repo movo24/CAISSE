@@ -2352,3 +2352,8 @@ Ces paquets ont été journalisés dans `PROJECT_STATUS.md` (v10→v18) et non i
 - Moteur pur `deferred-card-policy.ts` **12/12** : fenêtre exacte du différé (refusé online et refusé si TPE autonome), plafonds, encours calculé sur la file offline, issues de capture, **preuve NF525 : aucun chemin ne finalise une vente sans capture réussie**.
 - Restant honnête : exécuteur de capture au retour réseau (stripe-terminal) + UI usePayment = `TD-042-EXECUTOR` (preuve de bout en bout impossible sans TPE réel).
 - pos-desktop : **11 fichiers/64 tests PASS**, tsc RC 0.
+
+## PAQUET 353 — Cycle Z (2026-07-02) : exécuteur de capture différée prouvé (TD-042 réduit à l'irréductible)
+- `deferred-capture-executor.ts` (deps injectées : capture/finalize/void/statut/notify) — **6/6** : captured→finalize PUIS synced ; declined→abandon vente (jamais finalisée) ; error ET exception→retry ; **cas critique prouvé : capture OK + finalisation KO ⇒ entrée rejouable, MÊME clé au rejeu ⇒ zéro double charge** ; synced/failed jamais retraités ; zéro échec silencieux (notification systématique).
+- TD-042-EXECUTOR réduit : reste uniquement l'adaptateur TPE physique, le branchement UI et le hook goOnline — tout le reste est prouvé.
+- pos-desktop : **12 fichiers/70 tests PASS**, tsc RC 0.
