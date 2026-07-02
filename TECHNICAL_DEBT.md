@@ -68,4 +68,4 @@
 ## Règle
 
 Chaque nouvelle dette détectée pendant un paquet est ajoutée ici avec ID, preuve, sévérité, statut.
-| TD-PRODUCT-VARIANTS | Variantes produit (déclinaisons SKU : taille/parfum/format) — la règle produit dit « variantes OUI » mais AUCUN modèle de variante n'existe (seul `unit_type` unit/weight). Vérifié P290 : zéro entité/colonne/écran variante. | 🟠 | `product.entity.ts` | ⛔ Gate décision produit — modèle à trancher (variante = produit lié par `parent_id` ? attributs JSON ? table dédiée ?) avant tout code. Doublons/EAN et prix override devront s'appliquer PAR variante. |
+| TD-PRODUCT-VARIANTS | Variantes produit (déclinaisons SKU : taille/parfum/format) — la règle produit dit « variantes OUI » mais AUCUN modèle de variante n'existe (seul `unit_type` unit/weight). Vérifié P290 : zéro entité/colonne/écran variante. | 🟠 | `product.entity.ts` | ⛔ Gate décision — dossier complet : `PRODUCT_VARIANTS_DECISION.md` (P321, option A recommandée : variante=produit + parent_id/label/brand/supplier, zéro impact caisse). Attend « GO variantes option A ». |
