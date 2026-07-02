@@ -75,6 +75,20 @@ Ces points datent d'avril 2026 ; plusieurs commits fiscaux/correctifs ont suivi.
 Voir `POS_BLOCKS.md` → premier paquet (PAQUET 1). Détail d'exécution dans `EXECUTION_LOG.md`.
 
 ---
+## État consolidé — 2026-07-02 (jalon PAQUET 307, v26 — cycle E : GO option 1 exécuté, TD-STOCK-TWO-SYSTEMS RÉSOLU)
+
+- **GO utilisateur reçu** sur l'option 1 du dossier `STOCK_UNIFICATION_DECISION.md` → exécutée intégralement (P306) :
+  - `stock/stock-movement-journal.ts` : fonctions pures sur EntityManager — `ensureStoreLocation` (mapping magasin→location **paresseux et idempotent**, code stable `ST-…`), `recordSaleMovements` (POS-081, from=magasin→null), `recordReturnMovements` (POS-082, null→magasin), `recordAdjustMovement` (delta signé, 0 = rien), `journalNetQuantities` (**projection reconstruite** = sous-choix retenu ; aucune écriture `stock_balance` depuis la caisse).
+  - **5 chemins d'écriture stock câblés, MÊME transaction que le fait métier** : `createSale`, `createReturn`, `stock.adjustStock`, `inventory-scan.applyScansToStock`, `sync.push` (offline, émis seulement si la ligne du bon magasin est réellement touchée). Le journal ne peut plus diverger d'un fait commis ; `products.stock_quantity` reste LE compteur opérationnel (zéro impact caisse, réversible en cessant d'émettre).
+  - Preuves : `stock-movement-journal.pgmem.spec.ts` (4 tests — lazy/idempotent, directions par type, projection nette Σin−Σout, items invalides ignorés) + **assertion e2e** (vente et retour réels écrivent leurs mouvements ; une seule location auto-créée) ; mocks des suites unitaires adaptés (insert/create/save 1-arg).
+  - `TECHNICAL_DEBT.md` : **TD-STOCK-TWO-SYSTEMS ✅ RÉSOLU P306** ; dossier §6 « EXÉCUTÉ ».
+- **P307 consolidation** : backend COMPLET en 5 tranches —
+  **200 suites PASS / 3 skip (.pg) · 1343 tests PASS / 5 skip · 0 échec** (Δ v25 : +1 suite, +5 tests). `tsc` EXIT 0 · `nest build` RC 0.
+- Reste (documenté, non bloquant) : backfill historique du journal = optionnel non requis ; écrans stock-locations lisent encore `stock_balance` incrémentale (la projection `journalNetQuantities` est disponible pour les basculer — paquet futur si souhaité).
+
+Commit : `342547f` (E1-E3). Interdits respectés : zéro push, zéro prod, zéro secret, zéro migration runtime (le journal utilise les tables EXISTANTES de la migration 1713).
+
+---
 ## État consolidé — 2026-07-02 (jalon PAQUET 305, v25 — cycle D : inventaire/retours SQL réel + bug front remise corrigé + arbitrage stock)
 
 - **D1/P301 — inventory-scan pg-mem (6 tests)** : rejeu idempotent `clientEntryId` (même ligne, zéro doublon), lookup code-barres tenant-scoped (EAN du magasin voisin = `new`), apply atomique (inventory=recomptage ABSOLU, receiving=DELTA, re-apply no-op), store sans code refusé, stats session.

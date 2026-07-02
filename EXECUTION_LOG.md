@@ -2220,3 +2220,10 @@ Ces paquets ont été journalisés dans `PROJECT_STATUS.md` (v10→v18) et non i
 - D4 STOCK_UNIFICATION_DECISION.md (option 1 recommandée, GO requis) + commentaire mensonger corrigé + TD-GIT-DANGLING clos.
 - P305 : **199 suites PASS/3 skip · 1338 tests PASS/5 skip · 0 échec** ; front 15 fichiers/67 tests ; tsc EXIT 0.
 - Commits a36bf1c / 4b599c5 / c1205be / 7e5ae9a ; bundle régénéré.
+
+## PAQUET 306→307 — Cycle E (2026-07-02) : GO option 1 — TD-STOCK-TWO-SYSTEMS RÉSOLU
+- GO utilisateur → option 1 exécutée : `stock-movement-journal.ts` (location paresseuse idempotente, sale/return/adjust, projection nette).
+- **5 chemins câblés même transaction** : vente, retour, ajustement, apply inventaire, sync offline (émis seulement si ligne du bon magasin touchée).
+- Preuves : 4 tests pg-mem journal + assertion e2e (vente/retour réels écrivent leurs mouvements, 1 seule location auto-créée) ; mocks unitaires adaptés.
+- P307 : **200 suites PASS/3 skip · 1343 tests PASS/5 skip · 0 échec** ; tsc EXIT 0 ; nest build RC 0.
+- Commit 342547f ; bundle régénéré. Reste optionnel documenté : backfill historique, bascule écrans stock-locations sur la projection.
