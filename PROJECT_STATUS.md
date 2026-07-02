@@ -75,6 +75,18 @@ Ces points datent d'avril 2026 ; plusieurs commits fiscaux/correctifs ont suivi.
 Voir `POS_BLOCKS.md` → premier paquet (PAQUET 1). Détail d'exécution dans `EXECUTION_LOG.md`.
 
 ---
+## État consolidé — 2026-07-02 (jalon PAQUET 313, v28 — cycle G : TD-017-SESSION-LINK RÉSOLU, comptage session débloqué)
+
+- **G1/P312 — lien vente↔session POS** : migration **1726-AddSalePosSessionId** (colonne uuid nullable + index composite ; additive/réversible ; ⚠️ NON jouée sur la base cible — même gate que 1725/GATE 2) + `sale.posSessionId` (hors empreinte fiscale, lien de métadonnée) + **stamp best-effort dans createSale** : session active du (store, terminal) résolue pré-transaction, échec ou absence de session ⇒ NULL, **jamais** une vente bloquée.
+- **G2/P312 — `GET /api/pos-sessions/:id/cash-summary`** : agrégat de comptage (POS-017b débloqué) — ventes complétées stampées de la session : `salesCount`, `cashCapturedMinorUnits`, `totalCapturedMinorUnits`. Limite honnête : les ventes antérieures au lien (NULL) sont exclues par construction.
+- Preuve e2e (money-flow **10/10**) : vente sur terminal avec session ouverte → stampée avec le bon id ; vente sans terminal → NULL ; résumé cash exact (1 vente, 500, 500). Mocks unitaires adaptés (DataSource dans pos-session.spec) ; api-map régénérée (232 routes).
+- `TECHNICAL_DEBT.md` : **TD-017-SESSION-LINK ✅ RÉSOLU P312**. CLAUDE.md : migration 1726 listée (gate cible).
+- **P313 consolidation** : backend COMPLET en 5 tranches —
+  **202 suites PASS / 3 skip (.pg) · 1349 tests PASS / 5 skip · 0 échec** (Δ v27 : +1 test e2e). `tsc` EXIT 0 · `nest build` RC 0.
+
+Commit : `353080f`. Interdits respectés : zéro push, zéro prod, zéro secret, zéro migration runtime (1726 = fichier versionné, exécution cible gated).
+
+---
 ## État consolidé — 2026-07-02 (jalon PAQUET 311, v27 — cycle F : réconciliation stock + 2 dettes fermées + bug contrat produits corrigé)
 
 - **F1/P308 — `GET /api/stock/reconcile`** (admin/manager, read-only) : réconciliation par produit compteur A vs net journal (P306+, honnête : variation, pas stock absolu sans backfill) vs balance legacy B, avec `balanceDrift` + `driftCount`. 3 tests pg-mem (drift détecté, magasin sans location, tenant). Api-map régénérée (231 routes).

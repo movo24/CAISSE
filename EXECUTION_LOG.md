@@ -2235,3 +2235,10 @@ Ces paquets ont été journalisés dans `PROJECT_STATUS.md` (v10→v18) et non i
 - Garde env-completeness a attrapé BACKFILL_APPLY → .env.example complété (garde validée en conditions réelles).
 - P311 : **202 suites PASS/3 skip · 1348 tests PASS/5 skip · 0 échec** ; back-office 27 tests ; nest build RC 0.
 - Commits 0808f29 / e9d6688 / 8866337 ; bundle régénéré.
+
+## PAQUET 312→313 — Cycle G (2026-07-02) : TD-017-SESSION-LINK RÉSOLU
+- Migration 1726 pos_session_id (nullable, additive, cible gated) + stamp best-effort createSale (jamais bloquant, hors hash fiscal).
+- GET /pos-sessions/:id/cash-summary — comptage POS-017b (ventes stampées : count/cash/total).
+- Preuve e2e 10/10 (stampée, sans-terminal NULL, résumé exact) ; mocks adaptés ; api-map 232 routes.
+- P313 : **202 suites PASS/3 skip · 1349 tests PASS/5 skip · 0 échec** ; nest build RC 0.
+- Commit 353080f ; bundle régénéré.
