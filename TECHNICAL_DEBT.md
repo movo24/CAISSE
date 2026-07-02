@@ -25,7 +25,7 @@
 | TD-UNTRACKED | `InventoryVariancePage.tsx` non commité, `RAPPORT_20H.md` non suivi | 🟡 | `git status` | Ouvert |
 | TD-DISCOUNT-CAP | Plafond remise 30% : moteur + distribution **testés 25/25**, câblage caisse + back-office **branchés & tsc clean**. Reste : test runtime vente en local. | 🟡 | `discount-policy.ts`, `sales.service.ts`, `backoffice-discounts/` | Largement traité |
 | TD-054B-RUNTIME | Câblage `createSale` (distribution remise/lignes/TVA) non couvert par test exécuté ici (spec lourde > 45 s sandbox). | 🟠 | `sales.service.ts` | À tester localement (`npm run test:backend`) |
-| TD-RESP-PIN | Vérif PIN responsable sans rate-limit / lockout sur tentatives. | 🟠 | `sales.service.verifyResponsablePin` | Ouvert — ne PAS déclarer "sécurité terminée" |
+| TD-RESP-PIN | Anti-bruteforce PIN responsable | 🟠 | `sales/pin-attempt-limiter.ts` | ✅ RÉSOLU P316 — verrou par magasin (5 échecs → 15 min, fail-closed sans bcrypt pendant le verrou, succès = reset, 4 tests). Limite honnête : in-memory (mono-instance, posture ALLOW_INMEMORY_CACHE) |
 | TD-054D-TERMINAL | `createSale` ne reçoit pas le terminal/caisse id → absent de l'audit remise. | 🟡 | `sales.service.ts`, `sales.controller.ts`, `pos-session` | Ouvert |
 | TD-054E-APPLY | Endpoint back-office autorise/audite une remise mais ne l'applique pas encore à une vente/ticket précis. | 🟡 | `backoffice-discounts/` | Ouvert |
 
