@@ -2357,3 +2357,9 @@ Ces paquets ont été journalisés dans `PROJECT_STATUS.md` (v10→v18) et non i
 - `deferred-capture-executor.ts` (deps injectées : capture/finalize/void/statut/notify) — **6/6** : captured→finalize PUIS synced ; declined→abandon vente (jamais finalisée) ; error ET exception→retry ; **cas critique prouvé : capture OK + finalisation KO ⇒ entrée rejouable, MÊME clé au rejeu ⇒ zéro double charge** ; synced/failed jamais retraités ; zéro échec silencieux (notification systématique).
 - TD-042-EXECUTOR réduit : reste uniquement l'adaptateur TPE physique, le branchement UI et le hook goOnline — tout le reste est prouvé.
 - pos-desktop : **12 fichiers/70 tests PASS**, tsc RC 0.
+
+## PAQUET 354 (2026-07-02) : S2 désamorcé localement — valeurs compromises retirées, mode no-key
+- Constat honnête : la nouvelle clé PRIM annoncée n'était PAS dans `packages/backend/.env` de ce dépôt (ancienne valeur fuitée toujours présente). Décision : RETRAIT défensif des 2 valeurs compromises du `.env` (retirer un secret fuité ≠ en poser un — dans le mandat) ; lignes commentées avec instructions.
+- Google Maps : désactivé VOLONTAIREMENT (décision utilisateur — CB Google requise) ; le service `external-context` a un mode fail-safe no-key prouvé (4 tests) → aucun blocage du reste du travail.
+- Preuves post-retrait : anciennes valeurs = **0 occurrence** dans tout l'arbre de travail ; gardes anti-secret + external-context : **5 suites/11 tests PASS**.
+- Restant S2 (utilisateur) : révocation console des 2 anciennes clés (l'historique git les expose toujours) ; pose de la NOUVELLE clé PRIM dans `.env` (par lui seul) ; Railway éventuel.

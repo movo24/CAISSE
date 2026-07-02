@@ -151,7 +151,7 @@
 | # | Titre | Statut | Prio |
 |---|---|---|---|
 | POS-130 | PIN login prod 500 | ⚠️ | P0 |
-| POS-131 | Secrets dans historique git | 🔴 CONFIRMÉ (P332) → ⛔ rotation utilisateur | P0 | Scan historique complet : 2 vraies clés (PRIM + Google Maps) dans `f2ad1b5` (toujours dans l'historique) et encore utilisées dans `.env` local. Rien d'autre (Stripe/AWS/DB/JWT propres). **Action : révoquer+régénérer les 2 clés** — détail POS_SECURITY.md S2. |
+| POS-131 | Secrets dans historique git | 🟠 désamorcé localement (P354) ; révocation console = utilisateur | P0 | Valeurs compromises RETIRÉES du `.env` local (0 occurrence arbre, vérifié) ; Google Maps volontairement désactivé (no-key testé) ; nouvelle clé PRIM régénérée (pose locale = utilisateur seul). Restant : révocation des 2 anciennes clés en console + Railway éventuel. Détail S2. |
 | POS-132 | Receipts auth + anti-XSS | ✅ XSS testé ; auth publique by-design | P0 | `escapeHtml` extrait+testé **5/5** (payloads neutralisés) + appliqué à tous les champs du reçu HTML. Endpoint reçu public = design QR client (note, pas un écart). |
 | POS-133 | Erreurs front non avalées | ✅ corrigé+verrouillé (P332) | P1 | StockAlertsPage affichait déjà son erreur ; LabelsPage settait `loadError` **sans jamais le rendre** → bandeau d'erreur ajouté (`data-testid="labels-load-error"`). Verrou source vitest `errors-not-swallowed.test.ts` **3/3** (catch→état→rendu JSX pour les 2 pages). |
 
