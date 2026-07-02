@@ -178,21 +178,33 @@ export class PromotionsService {
     return dedupeBestPerProduct(results);
   }
 
-  private isPromoApplicable(promo: PromoRuleEntity, item: CartItem): boolean {
-    if (
-      (!promo.applicableProductIds ||
-        promo.applicableProductIds.length === 0) &&
-      (!promo.applicableCategoryIds ||
-        promo.applicableCategoryIds.length === 0)
-    ) {
-      return true;
+  /**
+   * Defensive jsonb normalization (money path). Depending on the driver /
+   * serialization path, the applicable-ids columns can surface as a JSON
+   * *string* instead of an array (observed: pg-mem returns the column DEFAULT
+   * '[]' as the raw string; a raw-SQL writer could double-encode too). A
+   * stringly "[]" would fail BOTH the empty-check ("[]".length === 2) and the
+   * includes-check → the promo would be silently disabled. Normalize instead.
+   */
+  private static idList(value: unknown): string[] {
+    if (Array.isArray(value)) return value as string[];
+    if (typeof value === 'string') {
+      try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
     }
-    if (promo.applicableProductIds?.includes(item.productId)) return true;
-    if (
-      item.categoryId &&
-      promo.applicableCategoryIds?.includes(item.categoryId)
-    )
-      return true;
+    return [];
+  }
+
+  private isPromoApplicable(promo: PromoRuleEntity, item: CartItem): boolean {
+    const productIds = PromotionsService.idList(promo.applicableProductIds);
+    const categoryIds = PromotionsService.idList(promo.applicableCategoryIds);
+    if (productIds.length === 0 && categoryIds.length === 0) return true;
+    if (productIds.includes(item.productId)) return true;
+    if (item.categoryId && categoryIds.includes(item.categoryId)) return true;
     return false;
   }
 }

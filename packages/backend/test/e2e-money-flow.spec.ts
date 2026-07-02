@@ -185,6 +185,44 @@ describe('E2E — money flow (login → sale → return → avoir → pay → Z)
     expect(count).toBe(1);
   });
 
+  it('POS-073 wiring (TD-073-USAGE-INCREMENT): a promo usage cap really counts down across REAL sales', async () => {
+    // product + a 50% percentage promo capped at usage_limit=1
+    await ds.getRepository(ProductEntity).save({
+      id: uuidv4(), storeId: STORE_ID, ean: '3000000000003', name: 'Caramel cap test',
+      priceMinorUnits: 1000, taxRate: 20, stockQuantity: 50,
+      stockAlertThreshold: 2, stockCriticalThreshold: 1, isActive: true,
+    } as any);
+    const promoRepo = ds.getRepository('promo_rules');
+    const promo: any = await promoRepo.save({
+      id: uuidv4(), storeId: STORE_ID, name: 'Cap 1 usage', type: 'percentage',
+      discountPercent: 50, isActive: true, usageLimit: 1, usageCount: 0,
+      startDate: new Date(Date.now() - 86_400_000), endDate: new Date(Date.now() + 86_400_000),
+    } as any);
+    const snap = { employeeName: 'Alice Caisse', employeeRole: 'admin', maxDiscount: 100 };
+
+    // Sale 1: promo applies (pay 500), usage_count 0→1
+    const sale1: any = await sales.createSale(
+      STORE_ID, EMP_ID,
+      { items: [{ ean: '3000000000003', quantity: 1 }], payments: [{ method: 'cash', amountMinorUnits: 500 }] } as any,
+      snap, 'idem-promo-cap-1',
+    );
+    expect(sale1.totalMinorUnits ?? sale1.total_minor_units).toBe(500);
+    expect(Number((await promoRepo.findOne({ where: { id: promo.id } as any }) as any).usageCount)).toBe(1);
+
+    // pg-mem quirk (documented in stock-decrement.pg.spec.ts): `stock - $1` swaps
+    // operands and clamps to 0 → restore the fixture stock before the 2nd sale.
+    await ds.query(`UPDATE products SET stock_quantity = 50 WHERE ean = '3000000000003'`);
+
+    // Sale 2: promo is AT CAP → excluded by getActivePromos → full price, count stays 1
+    const sale2: any = await sales.createSale(
+      STORE_ID, EMP_ID,
+      { items: [{ ean: '3000000000003', quantity: 1 }], payments: [{ method: 'cash', amountMinorUnits: 1000 }] } as any,
+      snap, 'idem-promo-cap-2',
+    );
+    expect(sale2.totalMinorUnits ?? sale2.total_minor_units).toBe(1000);
+    expect(Number((await promoRepo.findOne({ where: { id: promo.id } as any }) as any).usageCount)).toBe(1);
+  });
+
   it('POS-061 wiring: a REAL sale charges the store price override, not the global price', async () => {
     // global 10.00 €, store override 7.50 € → the sale line must use 750
     await ds.getRepository(ProductEntity).save({

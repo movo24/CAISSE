@@ -38,7 +38,7 @@
 | TD-017-SESSION-LINK | Pas de lien vente↔session POS : impossible d'agréger les ventes cash d'une session pour le comptage sans ce lien. | 🟠 | `sale.entity.ts` (pas de `pos_session_id`), `pos-session` | Ouvert (préalable POS-017b) |
 
 | TD-073-USAGE-LIMIT | ~~Pas de champ usage~~. **Résolu (exclusion)** : `usage_limit`/`usage_count` (migration 1724) + `getActivePromos` exclut les promos au plafond. Tests 14/14. | ✅ | `promo-rule.entity.ts`, migration 1724, `promotions.service.ts` | Résolu (exclusion) |
-| TD-073-USAGE-INCREMENT | L'incrément de `usage_count` à chaque application de promo n'est pas câblé (write money-path, à tester local). Sans lui, le plafond ne décompte pas. | 🟠 | `sales.service.createSale` / `applyPromos` | Ouvert |
+| TD-073-USAGE-INCREMENT | Incrément `usage_count` à l'application d'une promo | 🟠 | `sales.service.createSale` | ✅ RÉSOLU P297 — UPDATE atomique dans la transaction de vente (1 usage/promo/vente, ids distincts, tenant-scoped) ; prouvé e2e : cap 1 → vente 1 remisée + count 0→1, vente 2 plein tarif + count reste 1 |
 | TD-073-STACKING | ~~Cumul promos~~. **Résolu** : `applyPromos` retourne `dedupeBestPerProduct` (anti-cumul). Prouvé par `promotions.service.spec` **11/11** (test anti-stacking inclus), exécuté en sandbox. | ✅ | `promotions.service.applyPromos`, `promo-policy.ts` | Résolu |
 | TD-018-FILTERS-RUNTIME | Filtres historique ventes (employeeId/from/to/status) ajoutés + tsc clean, mais non testés runtime ici (DB). | 🟡 | `sales.service.findByStore`, `sales.controller` | À valider local |
 

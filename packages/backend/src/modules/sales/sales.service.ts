@@ -622,6 +622,25 @@ export class SalesService {
         );
       }
 
+      // --- POS-073 (TD-073-USAGE-INCREMENT): decrement promo usage caps ---
+      // One usage per promo per SALE (distinct promo ids across lines), atomic in
+      // the sale transaction. `usage_count + 1` is a constant increment (no
+      // parameter on the RHS → not affected by the pg-mem operand-swap quirk).
+      // getActivePromos() excludes promos at cap, so the cap now really counts down.
+      {
+        const usedPromoIds = [
+          ...new Set(lineItems.map((li) => li.promoId).filter((id): id is string => !!id)),
+        ];
+        if (usedPromoIds.length > 0) {
+          const placeholders = usedPromoIds.map((_, i) => `$${i + 2}`).join(', ');
+          await queryRunner.query(
+            `UPDATE promo_rules SET usage_count = usage_count + 1
+             WHERE store_id = $1 AND id IN (${placeholders})`,
+            [storeId, ...usedPromoIds],
+          );
+        }
+      }
+
       // --- Add loyalty points ---
       if (customerId) {
         const pointsEarned = loyaltyPointsEarned(totalAfterDiscount);
