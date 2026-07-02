@@ -129,6 +129,50 @@ describe('ProductsService (pg-mem)', () => {
     );
   });
 
+  // ── Cycle R — import catalogue (dry-run par défaut, SQL réel) ─────────────
+
+  describe('Cycle R — importCatalog', () => {
+    it('dry-run PAR DÉFAUT : rapporte sans rien écrire', async () => {
+      const before = await productRepo.count({ where: { storeId } as any });
+      const res = await service.importCatalog(storeId, [
+        { name: 'Import Un', ean: 'IMP-1', priceMinorUnits: 150 },
+        { name: 'Import Un', ean: 'IMP-2', priceMinorUnits: 150 }, // nom équivalent in-file
+      ] as any, 'emp-1');
+      expect(res.dryRun).toBe(true);
+      expect(res.importable).toBe(1);
+      expect(res.created).toBe(0);
+      expect(res.errors).toHaveLength(1);
+      expect(await productRepo.count({ where: { storeId } as any })).toBe(before); // rien écrit
+    });
+
+    it('exécution réelle : crée les lignes valides, rapporte les rejets (EAN existant, fournisseur inconnu), 1 audit synthétique', async () => {
+      const supplierRepo = dataSource.getRepository(SupplierEntity);
+      const sup = await supplierRepo.save(supplierRepo.create({ storeId, name: 'ImportFournisseur', isActive: true }));
+      await service.create({ storeId, ean: 'IMP-EXIST', name: 'Déjà là', priceMinorUnits: 100 } as any, 'emp-1');
+      auditLog.mockClear();
+
+      const res = await service.importCatalog(storeId, [
+        { name: 'Import OK', ean: 'IMP-10', priceMinorUnits: 250, stockQuantity: 5, supplierName: 'importfournisseur', brand: 'Wesley' },
+        { name: 'Refusé EAN', ean: 'IMP-EXIST', priceMinorUnits: 100 },
+        { name: 'Refusé Fourni', ean: 'IMP-11', priceMinorUnits: 100, supplierName: 'Fantôme SARL' },
+      ] as any, 'emp-7', { dryRun: false });
+
+      expect(res.dryRun).toBe(false);
+      expect(res.created).toBe(1);
+      expect(res.errors.map((e) => e.ean).sort()).toEqual(['IMP-11', 'IMP-EXIST']);
+
+      const saved = await productRepo.findOneBy({ storeId, ean: 'IMP-10' } as any);
+      expect(saved).toBeTruthy();
+      expect(saved!.supplierId).toBe(sup.id); // résolution par nom, insensible à la casse
+      expect(saved!.stockQuantity).toBe(5);
+
+      // 1 seule entrée d'audit synthétique pour tout l'import
+      const importAudits = auditLog.mock.calls.filter((c) => c[0].action === 'catalog_import');
+      expect(importAudits).toHaveLength(1);
+      expect(importAudits[0][0].details).toEqual({ total: 3, created: 1, errors: 2 });
+    });
+  });
+
   // ── Cycle P — intégrité des références catalogue (tenant + métier) ────────
 
   describe('Cycle P — supplierId / parentProductId validés (SQL réel)', () => {

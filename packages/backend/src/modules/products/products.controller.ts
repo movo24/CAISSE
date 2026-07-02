@@ -34,6 +34,21 @@ export class ProductsController {
     );
   }
 
+  @Post('import')
+  @Roles('admin', 'manager')
+  @ApiOperation({
+    summary:
+      'Cycle R — bulk catalog import. DRY-RUN by default (dryRun:false to write). Rejects file/store EAN & name duplicates and unknown suppliers.',
+  })
+  importCatalog(@Body() body: { rows: unknown[]; dryRun?: boolean }, @Request() req: any) {
+    return this.productsService.importCatalog(
+      req.user.storeId,
+      (body?.rows ?? []) as any[],
+      req.user.employeeId,
+      { dryRun: body?.dryRun !== false },
+    );
+  }
+
   @Get()
   @ApiOperation({ summary: 'List products for store (paginated, admin can filter by storeId)' })
   findAll(

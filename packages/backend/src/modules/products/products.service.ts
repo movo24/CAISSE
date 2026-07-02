@@ -24,6 +24,7 @@ import {
   deltaPct,
 } from './product-analytics';
 import { normalizePage, normalizeLimit, totalPages } from '../../common/pagination';
+import { validateImportRows, ImportRow, ImportRowError } from './import-catalog';
 
 @Injectable()
 export class ProductsService {
@@ -122,6 +123,84 @@ export class ProductsService {
     });
 
     return saved;
+  }
+
+  /**
+   * Cycle R — import catalogue par lot, dry-run PAR DÉFAUT.
+   * La validation (champs, doublons in-file, EAN/nom existants, fournisseur
+   * inconnu) est pure (`validateImportRows`) ; ici on ne fait que résoudre le
+   * contexte DB puis, hors dry-run, créer les lignes valides. Un import ne
+   * crée JAMAIS de fournisseur implicitement. Une seule entrée d'audit
+   * synthétique par import (pas une par ligne).
+   */
+  async importCatalog(
+    storeId: string,
+    rows: ImportRow[],
+    employeeId: string,
+    opts: { dryRun?: boolean } = {},
+  ): Promise<{
+    dryRun: boolean;
+    total: number;
+    importable: number;
+    created: number;
+    errors: ImportRowError[];
+  }> {
+    const dryRun = opts.dryRun !== false; // défaut : dry-run (jamais destructif par accident)
+    if (!Array.isArray(rows)) throw new BadRequestException('rows doit être un tableau.');
+    const MAX_ROWS = 2000;
+    if (rows.length > MAX_ROWS) {
+      throw new BadRequestException(`Import limité à ${MAX_ROWS} lignes par appel (${rows.length} reçues).`);
+    }
+
+    const existing = await this.productRepo.find({
+      where: { storeId },
+      select: ['ean', 'normalizedName'],
+    });
+    const suppliers = await this.supplierRepo.find({ where: { storeId, isActive: true } });
+    const { valid, errors } = validateImportRows(rows, {
+      existingEans: new Set(existing.map((p) => p.ean)),
+      existingNormalizedNames: new Set(
+        existing.map((p) => p.normalizedName).filter((n): n is string => !!n),
+      ),
+      suppliersByName: new Map(suppliers.map((s) => [s.name.trim().toLowerCase(), s.id])),
+    });
+
+    let created = 0;
+    if (!dryRun) {
+      for (const v of valid) {
+        try {
+          await this.productRepo.save(
+            this.productRepo.create({
+              storeId,
+              name: v.name,
+              normalizedName: normalizeName(v.name),
+              ean: v.ean,
+              priceMinorUnits: v.priceMinorUnits,
+              stockQuantity: v.stockQuantity,
+              category: v.category ?? undefined,
+              brand: v.brand,
+              variantLabel: v.variantLabel,
+              supplierId: v.supplierId,
+              isActive: true,
+            } as Partial<ProductEntity>),
+          );
+          created++;
+        } catch (e: any) {
+          // Course concurrente : l'index unique (ean, store_id) reste le dernier rempart.
+          errors.push({ line: v.line, ean: v.ean, reason: `refusé en base : ${e?.message ?? 'erreur inconnue'}` });
+        }
+      }
+      await this.auditService.log({
+        storeId,
+        employeeId,
+        action: 'catalog_import',
+        entityType: 'product',
+        entityId: 'batch',
+        details: { total: rows.length, created, errors: errors.length },
+      });
+    }
+
+    return { dryRun, total: rows.length, importable: valid.length, created, errors };
   }
 
   async findAll(

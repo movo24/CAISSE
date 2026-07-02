@@ -2299,3 +2299,9 @@ Ces paquets ont été journalisés dans `PROJECT_STATUS.md` (v10→v18) et non i
 - Audit non-bloquant côté fournisseurs (échec audit ≠ échec mutation — prouvé par test). Prix/stock déjà audités (vérifié : price_change + 3 sites stock.service) — rien à changer.
 - `products.updateStock` = code mort (0 appelant) → noté TECHNICAL_DEBT, non supprimé (changement minimal).
 - Preuves : suppliers pg-mem 5/5 + products pg-mem/spec 51/51 (module complet) ; tsc RC 0.
+
+## PAQUET 340 — Cycle R (2026-07-02) : import catalogue (dry-run par défaut)
+- Validation PURE `import-catalog.ts` (nom/EAN/prix centimes requis, doublons EAN + nom normalisé IN-FILE et vs magasin, fournisseur résolu PAR NOM insensible à la casse, inconnu = rejet — jamais de création implicite de fournisseur) — **5/5**.
+- `products.importCatalog` : dry-run PAR DÉFAUT (jamais destructif par accident), cap 2000 lignes, création des lignes valides seulement, index unique (ean,store) en dernier rempart (course concurrente rapportée par ligne), **1 audit synthétique** `catalog_import` (total/created/errors).
+- Endpoint `POST /api/products/import` (admin/manager, tenant JWT). Export CSV existant (front) inchangé — POS-065 : lecture+écriture couverts.
+- Preuves pg-mem : dry-run n'écrit rien ; run réel crée 1/3, rejette EAN existant + fournisseur fantôme, audit unique — module products **8 suites/58 tests PASS** ; tsc RC 0 ; api-map régénérée **43/237**.
