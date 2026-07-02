@@ -2,6 +2,7 @@ import { ConflictException, Injectable, NotFoundException } from '@nestjs/common
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { SupplierEntity } from '../../database/entities/supplier.entity';
+import { AuditService } from '../audit/audit.service';
 
 /**
  * P327 (cycle K — variantes option A) — référentiel fournisseur minimal,
@@ -14,17 +15,47 @@ export class SuppliersService {
   constructor(
     @InjectRepository(SupplierEntity)
     private readonly repo: Repository<SupplierEntity>,
+    private readonly auditService: AuditService,
   ) {}
 
-  async create(storeId: string, data: { name: string; contact?: string; notes?: string }): Promise<SupplierEntity> {
+  /** Cycle Q — mutation référentiel = tracée (append-only), jamais bloquante. */
+  private async audit(
+    storeId: string,
+    employeeId: string | undefined,
+    action: 'supplier_created' | 'supplier_updated' | 'supplier_deactivated',
+    entityId: string,
+    details: Record<string, unknown>,
+  ): Promise<void> {
+    try {
+      await this.auditService.log({
+        storeId,
+        employeeId: employeeId ?? 'unknown',
+        action,
+        entityType: 'supplier',
+        entityId,
+        details,
+      });
+    } catch (e: any) {
+      // L'audit ne doit jamais faire échouer la mutation métier déjà validée.
+      console.warn(`[SuppliersService] audit ${action} failed (non-blocking): ${e?.message}`);
+    }
+  }
+
+  async create(
+    storeId: string,
+    data: { name: string; contact?: string; notes?: string },
+    employeeId?: string,
+  ): Promise<SupplierEntity> {
     const name = data.name.trim();
     const existing = await this.repo.findOne({ where: { storeId, name } });
     if (existing) {
       throw new ConflictException(`Un fournisseur « ${name} » existe déjà dans ce magasin.`);
     }
-    return this.repo.save(
+    const saved = await this.repo.save(
       this.repo.create({ storeId, name, contact: data.contact ?? null, notes: data.notes ?? null }),
     );
+    await this.audit(storeId, employeeId, 'supplier_created', saved.id, { name });
+    return saved;
   }
 
   async list(storeId: string, includeInactive = false): Promise<SupplierEntity[]> {
@@ -44,8 +75,10 @@ export class SuppliersService {
     id: string,
     storeId: string,
     data: { name?: string; contact?: string | null; notes?: string | null; isActive?: boolean },
+    employeeId?: string,
   ): Promise<SupplierEntity> {
     const s = await this.findOne(id, storeId);
+    const before = { name: s.name, contact: s.contact, notes: s.notes, isActive: s.isActive };
     if (data.name && data.name.trim() !== s.name) {
       const clash = await this.repo.findOne({ where: { storeId, name: data.name.trim() } });
       if (clash) throw new ConflictException(`Un fournisseur « ${data.name.trim()} » existe déjà.`);
@@ -54,14 +87,20 @@ export class SuppliersService {
     if (data.contact !== undefined) s.contact = data.contact;
     if (data.notes !== undefined) s.notes = data.notes;
     if (data.isActive !== undefined) s.isActive = data.isActive;
-    return this.repo.save(s);
+    const saved = await this.repo.save(s);
+    await this.audit(storeId, employeeId, 'supplier_updated', id, {
+      before,
+      after: { name: saved.name, contact: saved.contact, notes: saved.notes, isActive: saved.isActive },
+    });
+    return saved;
   }
 
   /** Soft-delete : les produits référencent toujours l'id (historique intact). */
-  async deactivate(id: string, storeId: string): Promise<{ message: string }> {
+  async deactivate(id: string, storeId: string, employeeId?: string): Promise<{ message: string }> {
     const s = await this.findOne(id, storeId);
     s.isActive = false;
     await this.repo.save(s);
+    await this.audit(storeId, employeeId, 'supplier_deactivated', id, { name: s.name });
     return { message: `Fournisseur « ${s.name} » désactivé.` };
   }
 }

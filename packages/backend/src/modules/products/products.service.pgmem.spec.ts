@@ -117,6 +117,18 @@ describe('ProductsService (pg-mem)', () => {
     expect(search.meta.total).toBe(1);
   });
 
+  it('Cycle Q : la désactivation d’un produit écrit une entrée d’audit', async () => {
+    const p = await service.create({ storeId, ean: 'E-Q1', name: 'Produit à retirer', priceMinorUnits: 100 } as any, 'emp-1');
+    auditLog.mockClear();
+    await service.deactivate(p.id, storeId, 'emp-9');
+    expect(auditLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        storeId, employeeId: 'emp-9', action: 'product_deactivated',
+        entityType: 'product', entityId: p.id,
+      }),
+    );
+  });
+
   // ── Cycle P — intégrité des références catalogue (tenant + métier) ────────
 
   describe('Cycle P — supplierId / parentProductId validés (SQL réel)', () => {

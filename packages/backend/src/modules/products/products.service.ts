@@ -192,9 +192,20 @@ export class ProductsService {
     return product;
   }
 
-  async deactivate(id: string, storeId: string): Promise<{ message: string }> {
+  async deactivate(id: string, storeId: string, employeeId?: string): Promise<{ message: string }> {
     const product = await this.findOneForStore(id, storeId);
     await this.productRepo.update(id, { isActive: false });
+
+    // Cycle Q — retrait catalogue = action sensible, tracée (append-only).
+    await this.auditService.log({
+      storeId,
+      employeeId: employeeId ?? 'unknown',
+      action: 'product_deactivated',
+      entityType: 'product',
+      entityId: id,
+      details: { name: product.name, ean: product.ean },
+    });
+
     return { message: `${product.name} supprimé du catalogue.` };
   }
 

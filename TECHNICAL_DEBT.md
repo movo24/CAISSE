@@ -69,3 +69,6 @@
 
 Chaque nouvelle dette détectée pendant un paquet est ajoutée ici avec ID, preuve, sévérité, statut.
 | TD-PRODUCT-VARIANTS | Variantes produit (déclinaisons SKU : taille/parfum/format) — la règle produit dit « variantes OUI » mais AUCUN modèle de variante n'existe (seul `unit_type` unit/weight). Vérifié P290 : zéro entité/colonne/écran variante. | 🟠 | `product.entity.ts` | ✅ RÉSOLU P327 (GO option A) — migration 1727 (4 colonnes nullables + table suppliers, dry-run pg-mem), module suppliers (CRUD tenant, nom unique/magasin, soft-delete), DTOs produits étendus, champs marque/variante au back-office, doublons couverts par l unique (ean,store) PAR variante ; reste UI : sélecteur fournisseur + regroupement visuel parent (client API prêt) |
+
+## TD-DEAD-UPDATESTOCK (P339)
+`products.service.updateStock` n'a aucun appelant (grep src, hors définition). Ni audité ni exposé. À supprimer lors d'un prochain nettoyage volontaire (pas de suppression opportuniste en cycle audit).

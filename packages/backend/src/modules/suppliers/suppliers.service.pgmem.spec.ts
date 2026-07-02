@@ -16,6 +16,7 @@ describe('SuppliersService + variant fields (pg-mem)', () => {
   let service: SuppliersService;
   let storeId: string;
   let otherStoreId: string;
+  const auditLog = jest.fn().mockResolvedValue(undefined);
 
   beforeAll(async () => {
     const built = createPgMemDataSource();
@@ -23,7 +24,7 @@ describe('SuppliersService + variant fields (pg-mem)', () => {
     await dataSource.initialize();
     repo = dataSource.getRepository(SupplierEntity);
     productRepo = dataSource.getRepository(ProductEntity);
-    service = new SuppliersService(repo);
+    service = new SuppliersService(repo, { log: auditLog } as any);
     const stores = dataSource.getRepository(StoreEntity);
     storeId = (await stores.save(stores.create({ name: 'Wesley' }))).id;
     otherStoreId = (await stores.save(stores.create({ name: 'Other' }))).id;
@@ -88,5 +89,38 @@ describe('SuppliersService + variant fields (pg-mem)', () => {
       ),
     ).rejects.toThrow();
     expect(v100.parentProductId).toBe(parent.id);
+  });
+
+  // ── Cycle Q — audit trail des mutations fournisseur ───────────────────────
+
+  it('Cycle Q : create/update/deactivate écrivent une entrée d’audit (append-only), avec before/after sur update', async () => {
+    auditLog.mockClear();
+    const s = await service.create(storeId, { name: 'Audité SARL' }, 'emp-42');
+    expect(auditLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        storeId, employeeId: 'emp-42', action: 'supplier_created',
+        entityType: 'supplier', entityId: s.id,
+      }),
+    );
+
+    auditLog.mockClear();
+    await service.update(s.id, storeId, { contact: 'contact@audite.fr' }, 'emp-42');
+    const updCall = auditLog.mock.calls[0][0];
+    expect(updCall.action).toBe('supplier_updated');
+    expect(updCall.details.before.contact).toBeNull();
+    expect(updCall.details.after.contact).toBe('contact@audite.fr');
+
+    auditLog.mockClear();
+    await service.deactivate(s.id, storeId, 'emp-42');
+    expect(auditLog).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'supplier_deactivated', entityId: s.id }),
+    );
+  });
+
+  it('Cycle Q : un échec d’audit ne fait PAS échouer la mutation métier', async () => {
+    auditLog.mockRejectedValueOnce(new Error('audit down'));
+    const s = await service.create(storeId, { name: 'Résilient & Fils' }, 'emp-42');
+    expect(s.id).toBeTruthy(); // la création a survécu
+    auditLog.mockResolvedValue(undefined);
   });
 });

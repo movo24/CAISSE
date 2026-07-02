@@ -135,6 +135,6 @@ export class ProductsController {
   @Roles('admin')
   @ApiOperation({ summary: 'Soft-delete a product (deactivate)' })
   async remove(@Param('id') id: string, @Request() req: any) {
-    return this.productsService.deactivate(id, req.user.storeId);
+    return this.productsService.deactivate(id, req.user.storeId, req.user.employeeId);
   }
 }

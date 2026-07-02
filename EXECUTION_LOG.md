@@ -2293,3 +2293,9 @@ Ces paquets ont été journalisés dans `PROJECT_STATUS.md` (v10→v18) et non i
 - Garde `assertCatalogRefs` (nouvelle assignation uniquement — références existantes vers fournisseur désactivé préservées ; clear=null toujours autorisé) : fournisseur même magasin + actif ; parent même magasin, ≠ soi-même, non-variante (1 niveau).
 - Preuves SQL réel (pg-mem) : +4 tests (cross-tenant fournisseur, inexistant, désactivé-nouvelle-assignation vs référence existante, parent inexistant/cross-tenant/auto/variante-de-variante) — `products.service.pgmem+spec` **17/17** ; tsc RC 0.
 - RBAC/tenant fournisseurs déjà corrects (lecture JWT, écriture manager+, scope storeId JWT) — vérifiés, rien à changer.
+
+## PAQUET 339 — Cycle Q (2026-07-02) : audit trail back-office produit/fournisseur
+- Trous d'audit fermés : `products.deactivate` (retrait catalogue) et TOUT le CRUD fournisseur (create/update/deactivate) n'écrivaient AUCUNE entrée d'audit → désormais tracés (append-only, chaîne existante) avec employeeId, before/after sur update fournisseur.
+- Audit non-bloquant côté fournisseurs (échec audit ≠ échec mutation — prouvé par test). Prix/stock déjà audités (vérifié : price_change + 3 sites stock.service) — rien à changer.
+- `products.updateStock` = code mort (0 appelant) → noté TECHNICAL_DEBT, non supprimé (changement minimal).
+- Preuves : suppliers pg-mem 5/5 + products pg-mem/spec 51/51 (module complet) ; tsc RC 0.

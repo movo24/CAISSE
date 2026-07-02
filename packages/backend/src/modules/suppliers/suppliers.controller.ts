@@ -24,7 +24,7 @@ export class SuppliersController {
   @UseGuards(RolesGuard)
   @ApiOperation({ summary: 'Create a supplier (name unique per store)' })
   create(@Body() dto: CreateSupplierDto, @Request() req: any) {
-    return this.service.create(req.user.storeId, dto);
+    return this.service.create(req.user.storeId, dto, req.user.employeeId);
   }
 
   @Put(':id')
@@ -32,7 +32,7 @@ export class SuppliersController {
   @UseGuards(RolesGuard)
   @ApiOperation({ summary: 'Update a supplier' })
   update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateSupplierDto, @Request() req: any) {
-    return this.service.update(id, req.user.storeId, dto);
+    return this.service.update(id, req.user.storeId, dto, req.user.employeeId);
   }
 
   @Delete(':id')
@@ -40,6 +40,6 @@ export class SuppliersController {
   @UseGuards(RolesGuard)
   @ApiOperation({ summary: 'Deactivate a supplier (soft — products keep the reference)' })
   deactivate(@Param('id', ParseUUIDPipe) id: string, @Request() req: any) {
-    return this.service.deactivate(id, req.user.storeId);
+    return this.service.deactivate(id, req.user.storeId, req.user.employeeId);
   }
 }
