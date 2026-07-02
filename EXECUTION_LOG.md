@@ -2282,3 +2282,8 @@ Ces paquets ont été journalisés dans `PROJECT_STATUS.md` (v10→v18) et non i
 - POS-131 🔴 CONFIRMÉ : scan historique git complet — 2 vraies clés (PRIM + Google Maps) dans `f2ad1b5`, encore utilisées en `.env` local ; rien d'autre. **Rotation = action utilisateur** (POS_SECURITY.md S2 mis à jour). Réécriture historique = gated.
 - POS-133 ✅ : LabelsPage settait `loadError` sans le rendre → bandeau ajouté ; verrou source vitest 3/3 (`errors-not-swallowed.test.ts`).
 - Preuves : backend guard 7/7 + fiscal-verify 6/6 + void suites 14/14 ; backoffice tsc RC 0 + vitest 10 fichiers/38 tests PASS.
+
+## PAQUET 337 — Cycle O (2026-07-02) : filtres catalogue + tri stable
+- Helper pur `catalog-filter.ts` (fournisseur exact/'none', marque exacte/'none', type simple/parent/variant déterminé sur la liste COMPLÈTE, tri stable départage nom+id) — **9/9 tests**.
+- ProductsPage : 3 selects (fournisseur/marque/type) branchés, filtre+tri inline remplacés par le helper testé ; regroupement variantes préservé (appliqué après filtre).
+- Backoffice : tsc RC 0 · vitest **11 fichiers/47 tests PASS** · build vert. Zéro impact caisse (read-only back-office).

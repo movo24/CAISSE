@@ -19,6 +19,11 @@ import { productsApi, suppliersApi } from '../services/api';
 import { safeErrorMessage } from '../utils/safeErrorMessage';
 import { buildProductPayload } from '../lib/product-payload';
 import { groupProductsForDisplay } from '../lib/product-grouping';
+import {
+  CATALOG_FILTERS_ALL,
+  distinctBrands,
+  filterAndSortProducts,
+} from '../lib/catalog-filter';
 import { useAuthStore } from '../stores/authStore';
 import { useCurrentStoreId } from '../hooks/useCurrentStoreId';
 import { PriceAnalyticsPanel } from '../components/PriceAnalyticsPanel';
@@ -72,6 +77,9 @@ export function ProductsPage() {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [filterCat, setFilterCat] = useState<string>('all');
+  const [filterSupplier, setFilterSupplier] = useState<string>('all');
+  const [filterBrand, setFilterBrand] = useState<string>('all');
+  const [filterType, setFilterType] = useState<'all' | 'simple' | 'parent' | 'variant'>('all');
   const [sortKey, setSortKey] = useState<SortKey>('name');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
 
@@ -130,21 +138,21 @@ export function ProductsPage() {
     else { setSortKey(key); setSortDir('asc'); }
   };
 
-  const filtered = products
-    .filter((p) => {
-      const matchSearch =
-        p.name.toLowerCase().includes(search.toLowerCase()) || p.ean.includes(search);
-      const matchCat = filterCat === 'all' || p.category === filterCat;
-      return matchSearch && matchCat;
-    })
-    .sort((a, b) => {
-      const dir = sortDir === 'asc' ? 1 : -1;
-      if (sortKey === 'name') return a.name.localeCompare(b.name) * dir;
-      if (sortKey === 'price') return (a.price - b.price) * dir;
-      if (sortKey === 'stock') return (a.stock - b.stock) * dir;
-      if (sortKey === 'category') return a.category.localeCompare(b.category) * dir;
-      return 0;
-    });
+  // Cycle O — filtres fournisseur/marque/type + tri stable (helper pur testé).
+  const filtered = filterAndSortProducts(
+    products,
+    {
+      ...CATALOG_FILTERS_ALL,
+      search,
+      category: filterCat,
+      supplierId: filterSupplier,
+      brand: filterBrand,
+      type: filterType,
+    },
+    sortKey,
+    sortDir,
+  );
+  const brands = distinctBrands(products);
 
   const totalStock = products.reduce((s, p) => s + p.stock, 0);
   const lowStock = products.filter((p) => p.stock <= 15).length;
@@ -334,6 +342,47 @@ export function ProductsPage() {
             {categories.map((c) => (
               <option key={c} value={c}>{c}</option>
             ))}
+          </select>
+        </div>
+        <div className="relative">
+          <select
+            data-testid="filter-supplier"
+            className="px-3 pr-8 py-2.5 rounded-xl border border-gray-200 bg-white text-sm appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-bo-accent/30"
+            value={filterSupplier}
+            onChange={(e) => setFilterSupplier(e.target.value)}
+          >
+            <option value="all">Tous fournisseurs</option>
+            <option value="none">Sans fournisseur</option>
+            {suppliers.map((s) => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </select>
+        </div>
+        <div className="relative">
+          <select
+            data-testid="filter-brand"
+            className="px-3 pr-8 py-2.5 rounded-xl border border-gray-200 bg-white text-sm appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-bo-accent/30"
+            value={filterBrand}
+            onChange={(e) => setFilterBrand(e.target.value)}
+          >
+            <option value="all">Toutes marques</option>
+            <option value="none">Sans marque</option>
+            {brands.map((b) => (
+              <option key={b} value={b}>{b}</option>
+            ))}
+          </select>
+        </div>
+        <div className="relative">
+          <select
+            data-testid="filter-type"
+            className="px-3 pr-8 py-2.5 rounded-xl border border-gray-200 bg-white text-sm appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-bo-accent/30"
+            value={filterType}
+            onChange={(e) => setFilterType(e.target.value as typeof filterType)}
+          >
+            <option value="all">Tous types</option>
+            <option value="simple">Produits simples</option>
+            <option value="parent">Parents</option>
+            <option value="variant">Variantes</option>
           </select>
         </div>
       </div>
