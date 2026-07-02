@@ -18,6 +18,7 @@ import {
 import { productsApi, suppliersApi } from '../services/api';
 import { safeErrorMessage } from '../utils/safeErrorMessage';
 import { buildProductPayload } from '../lib/product-payload';
+import { groupProductsForDisplay } from '../lib/product-grouping';
 import { useAuthStore } from '../stores/authStore';
 import { useCurrentStoreId } from '../hooks/useCurrentStoreId';
 import { PriceAnalyticsPanel } from '../components/PriceAnalyticsPanel';
@@ -384,9 +385,11 @@ export function ProductsPage() {
             </tr>
           </thead>
           <tbody>
-            {filtered.map((product, idx) => {
+            {groupProductsForDisplay(filtered).map((row, idx) => {
+              const product = row.product;
               const badge = stockBadge(product.stock);
               const BadgeIcon = badge.icon;
+              const isVariant = row.kind === 'variant';
               return (
                 <React.Fragment key={product.id}>
                 <tr
@@ -394,13 +397,24 @@ export function ProductsPage() {
                 >
                   <td className="py-3 px-4 text-xs text-gray-300 font-mono">{idx + 1}</td>
                   <td className="py-3 px-4">
-                    <div className="flex items-center gap-3">
-                      <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${avatarColor(product.name)} flex items-center justify-center font-bold text-sm flex-shrink-0`}>
+                    <div className={`flex items-center gap-3 ${isVariant ? 'pl-8 border-l-2 border-indigo-100 ml-4' : ''}`}>
+                      <div className={`${isVariant ? 'w-7 h-7 text-xs' : 'w-10 h-10 text-sm'} rounded-xl bg-gradient-to-br ${avatarColor(product.name)} flex items-center justify-center font-bold flex-shrink-0`}>
                         {product.name.charAt(0)}
                       </div>
                       <div>
-                        <p className="font-semibold text-sm text-bo-text">{product.name}</p>
-                        <p className="text-[11px] text-gray-400">{product.category}</p>
+                        <p className={`font-semibold text-sm text-bo-text ${isVariant ? 'font-normal' : ''}`}>
+                          {product.name}
+                          {isVariant && product.variantLabel && (
+                            <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600">{product.variantLabel}</span>
+                          )}
+                          {row.kind === 'parent' && (
+                            <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">{row.variantCount} variante{row.variantCount > 1 ? 's' : ''}</span>
+                          )}
+                          {row.kind === 'orphan-variant' && (
+                            <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-600" title="Parent hors du filtre courant">variante{product.variantLabel ? ` · ${product.variantLabel}` : ''}</span>
+                          )}
+                        </p>
+                        <p className="text-[11px] text-gray-400">{product.brand ? `${product.brand} · ` : ''}{product.category}</p>
                       </div>
                     </div>
                   </td>
