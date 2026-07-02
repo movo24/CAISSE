@@ -2305,3 +2305,8 @@ Ces paquets ont été journalisés dans `PROJECT_STATUS.md` (v10→v18) et non i
 - `products.importCatalog` : dry-run PAR DÉFAUT (jamais destructif par accident), cap 2000 lignes, création des lignes valides seulement, index unique (ean,store) en dernier rempart (course concurrente rapportée par ligne), **1 audit synthétique** `catalog_import` (total/created/errors).
 - Endpoint `POST /api/products/import` (admin/manager, tenant JWT). Export CSV existant (front) inchangé — POS-065 : lecture+écriture couverts.
 - Preuves pg-mem : dry-run n'écrit rien ; run réel crée 1/3, rejette EAN existant + fournisseur fantôme, audit unique — module products **8 suites/58 tests PASS** ; tsc RC 0 ; api-map régénérée **43/237**.
+
+## PAQUET 341 — Cycle S (2026-07-02) : non-régression caisse critique (après O/P/Q/R)
+- Suites P0 re-exécutées après les changements catalogue : sale-transaction + e2e-money-flow + money-precision (29), stock + promo + audit + tenant-isolation + fiscal-verify + hash-fingerprint (46), void×2 + avoirs×2 + ticket-sequence + immutabilité (22) → **15 suites / 97 tests PASS, 0 échec**.
+- POS desktop : vitest **8 fichiers / 37 tests PASS** (scan/panier/clôture intacts).
+- Verdict : les cycles O→R (catalogue back-office) n'ont touché AUCUN invariant caisse — prouvé, pas déclaré.
