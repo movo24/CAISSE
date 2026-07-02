@@ -148,6 +148,38 @@ describe('GATE 1 rehearsal — relay → HTTP → receiver → DB statuses (loop
     expect(after.processed).toBe(0);
   });
 
+  it('ANTI-REJEU e2e: a receiver enforcing the freshness window rejects a stale delivery (401-class), row stays retryable', async () => {
+    // Rewind the receiver's clock tolerance: verify with nowMs far in the future
+    // → any fresh delivery looks stale. This proves the receiver-side replay
+    // guard END-TO-END (not just the unit-tested verify function).
+    const evt = await mkEvent({ type: 'cash_session.closed' });
+    const staleServer = http.createServer((req, res) => {
+      let raw = '';
+      req.on('data', (c) => (raw += c));
+      req.on('end', () => {
+        const sig = String(req.headers['x-pos-signature'] ?? '');
+        const ts = Number(req.headers['x-pos-timestamp']);
+        const verdict = verifyPublishSignature(raw, sig, SECRET, ts, {
+          nowMs: Date.now() + 10 * 60 * 1000, // receiver clock 10 min ahead → delivery outside the 5-min window
+        });
+        res.writeHead(verdict === 'ok' ? 200 : 401).end();
+      });
+    });
+    await new Promise<void>((r) => staleServer.listen(0, '127.0.0.1', r));
+    const staleUrl = `http://127.0.0.1:${(staleServer.address() as { port: number }).port}/webhook/pos`;
+    try {
+      const relay = new OutboxRelayService(repo, new HttpOutboxPublisher(staleUrl, SECRET));
+      const report = await relay.relayBatch(50);
+      expect(report.published).toBe(0); // stale → refused
+      const row = (await repo.findOneBy({ id: evt.id }))!;
+      expect(row.status).toBe('pending'); // retryable, never lost
+      expect(row.attempts).toBeGreaterThanOrEqual(1);
+    } finally {
+      await new Promise<void>((r) => staleServer.close(() => r()));
+      await new OutboxRelayService(repo, new HttpOutboxPublisher(url, SECRET)).relayBatch(50); // clean up
+    }
+  });
+
   it('a retried delivery reaching the receiver twice is deduped by event id (idempotent ack)', async () => {
     const evt = await mkEvent({ type: 'payment.captured' });
     const relay = new OutboxRelayService(repo, new HttpOutboxPublisher(url, SECRET));
