@@ -119,4 +119,84 @@ describe('Fiscal — chain verifier', () => {
     expect(jC.linkageOk).toBe(false);
     expect(jC.issues.some((i: any) => i.kind === 'orphan' || i.kind === 'no_genesis' || i.kind === 'unreachable')).toBe(true);
   });
+
+  // ── POS-124 — cas adversariaux complémentaires. Chaque test utilise un
+  // magasin NEUF (les chaînes sont par magasin) pour être indépendant des
+  // corruptions volontairement laissées par les tests précédents. ──
+
+  async function mkStoreWithProduct(): Promise<{ storeId: string; ean: string }> {
+    const storeId = uuidv4();
+    const ean = `52${String(Math.floor(Math.random() * 1e10)).padStart(11, '0')}`;
+    await ds.getRepository(StoreEntity).save({
+      id: storeId, name: 'S-adv', storeCode: `A${storeId.slice(0, 6)}`, currencyCode: 'EUR', isActive: true,
+    } as any);
+    await ds.getRepository(ProductEntity).save({
+      id: uuidv4(), storeId, ean, name: 'Article 5€',
+      priceMinorUnits: 500, taxRate: 20, stockQuantity: 1000, stockAlertThreshold: 5, stockCriticalThreshold: 2, isActive: true,
+    } as any);
+    return { storeId, ean };
+  }
+  const sellIn = async (storeId: string, ean: string) => {
+    // Même pattern que sell() : reset du stock avant chaque vente (pg-mem).
+    await ds.getRepository(ProductEntity).update({ storeId }, { stockQuantity: 1000 });
+    return sales.createSale(storeId, EMP_ID, {
+      items: [{ ean, quantity: 1 }],
+      payments: [{ method: 'card', amountMinorUnits: 500 }],
+    } as any, SNAP);
+  };
+
+  it('détecte la SUPPRESSION d’un maillon au milieu de la chaîne des ventes', async () => {
+    const { storeId, ean } = await mkStoreWithProduct();
+    await sellIn(storeId, ean);
+    const s2 = await sellIn(storeId, ean);
+    await sellIn(storeId, ean);
+
+    // Suppression frauduleuse du maillon du milieu (cascade lignes/paiements d'abord).
+    await ds.query(`DELETE FROM sale_line_items WHERE sale_id = $1`, [s2.id]);
+    await ds.query(`DELETE FROM sale_payments WHERE sale_id = $1`, [s2.id]);
+    await ds.query(`DELETE FROM sales WHERE id = $1`, [s2.id]);
+
+    const report = await verifier.verify(storeId);
+    const salesC = get(report.chains, 'sales');
+    expect(salesC.rows).toBe(2);
+    expect(salesC.linkageOk).toBe(false); // le pointeur de s3 vise un hash disparu
+    expect(report.ok).toBe(false);
+  });
+
+  it('détecte un tamper de montant sur un AVOIR (chaîne credit_notes)', async () => {
+    const { storeId } = await mkStoreWithProduct();
+    await returns.issueGiftCard(storeId, EMP_ID, { amountMinorUnits: 2000 }, 'Alice');
+
+    await ds.query(
+      `UPDATE credit_notes SET total_minor_units = total_minor_units + 500 WHERE store_id = $1`,
+      [storeId],
+    );
+    const report = await verifier.verify(storeId);
+    const cnC = get(report.chains, 'credit_notes');
+    expect(cnC.recomputeOk).toBe(false);
+    expect(cnC.issues.some((i: any) => i.kind === 'hash_mismatch')).toBe(true);
+    expect(report.ok).toBe(false);
+  });
+
+  it('détecte un tamper du PAYLOAD du journal fiscal (recompute authoritaire)', async () => {
+    const { storeId, ean } = await mkStoreWithProduct();
+    const s = await sellIn(storeId, ean);
+    await sales.voidSale(s.id, EMP_ID, storeId, 'admin'); // → 1 maillon journal
+
+    // Falsifie le motif dans le payload stocké, sans recalculer le hash.
+    // (REPLACE() SQL non supporté par pg-mem → tamper calculé côté JS.)
+    const [row] = await ds.query(
+      `SELECT id, payload FROM fiscal_journal WHERE store_id = $1 LIMIT 1`,
+      [storeId],
+    );
+    const tampered = String(row.payload).replace('"type":"void"', '"type":"edit"');
+    expect(tampered).not.toBe(row.payload); // le tamper a bien eu lieu
+    await ds.query(`UPDATE fiscal_journal SET payload = $1 WHERE id = $2`, [tampered, row.id]);
+    const report = await verifier.verify(storeId);
+    const jC = get(report.chains, 'fiscal_journal');
+    expect(jC.recomputeAuthoritative).toBe(true);
+    expect(jC.recomputeOk).toBe(false);
+    expect(jC.issues.some((i: any) => i.kind === 'hash_mismatch')).toBe(true);
+    expect(report.ok).toBe(false);
+  });
 });

@@ -301,6 +301,9 @@ export function LabelsPage() {
                 placeholder="Rechercher par nom ou EAN..." className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-bo-border text-sm focus:outline-none focus:ring-2 focus:ring-bo-accent/30" />
             </div>
 
+            {loadError && (
+              <p data-testid="labels-load-error" className="text-sm text-red-600 bg-red-50 rounded-xl px-3 py-2 mb-3">{loadError}</p>
+            )}
             {loading ? (
               <p className="text-center text-bo-muted py-8">Chargement...</p>
             ) : (

@@ -2274,3 +2274,11 @@ Ces paquets ont été journalisés dans `PROJECT_STATUS.md` (v10→v18) et non i
 - L : sélecteur fournisseur (modal produit, clear=null explicite). M : regroupement variantes (helper pur 3 tests, orphelines jamais masquées, chips, marque affichée) — zéro impact caisse.
 - N : backend **209 suites/1378 tests PASS** ; fronts **20 fichiers/85 tests** ; api-map 43/236 régénérée ; docs alignées (45 modules) ; file GATE 2 (1725-1727) vérifiée intacte et réversible ; preflight PASS.
 - Commits 9ada16e / db1ed79 / jalon v33 ; bundle régénéré.
+
+## PAQUET 332→336 — Cycle O' (2026-07-02) : intégrité fiscale P0 prouvée + sécurité
+- POS-121 ✅ : verrou surface immutabilité vente (`sale-immutability-guard.spec` 7/7 — pas de PATCH/PUT/DELETE, pas de UPDATE/DELETE sales runtime, save(SaleEntity limité aux 3 sites sanctionnés, filtre sync verrouillé).
+- POS-123 ✅ : journal fiscal append-only verrouillé (zéro update/delete/save sur fiscal_journal, insert-only non-vacu).
+- POS-124 ✅ : 3 cas adversariaux ajoutés au vérificateur (`fiscal-verify.spec` 6/6) — suppression de maillon au milieu détectée (linkage), tamper montant avoir détecté, tamper payload journal détecté (recompute authoritaire).
+- POS-131 🔴 CONFIRMÉ : scan historique git complet — 2 vraies clés (PRIM + Google Maps) dans `f2ad1b5`, encore utilisées en `.env` local ; rien d'autre. **Rotation = action utilisateur** (POS_SECURITY.md S2 mis à jour). Réécriture historique = gated.
+- POS-133 ✅ : LabelsPage settait `loadError` sans le rendre → bandeau ajouté ; verrou source vitest 3/3 (`errors-not-swallowed.test.ts`).
+- Preuves : backend guard 7/7 + fiscal-verify 6/6 + void suites 14/14 ; backoffice tsc RC 0 + vitest 10 fichiers/38 tests PASS.

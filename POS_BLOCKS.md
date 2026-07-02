@@ -141,19 +141,19 @@
 | # | Titre | Statut | Prio | Localisation |
 |---|---|---|---|---|
 | POS-120 | Hash-chain ventes (fingerprint v2) | ✅(code) ⚠️(test local) | P0 | `fiscal/fiscal-verify.service.ts` vérifie 3 chaînes (sales/credit_notes/fiscal_journal) par pointeurs `hashChainPrev→hashChainCurrent` ; script `npm run fiscal:verify` |
-| POS-121 | Immutabilité vente validée (no UPDATE) | ⚠️ | P0 | `sales`, `audit` |
+| POS-121 | Immutabilité vente validée (no UPDATE) | ✅ prouvé (P332) | P0 | Comportemental : `void-m4-journal-chain.spec` (hash/montants d'origine intacts après void). Surface : `sale-immutability-guard.spec` **7/7** — aucun PATCH/PUT/DELETE sur `sales.controller`, aucun `UPDATE/DELETE sales` runtime, `save(SaleEntity` limité aux 3 sites sanctionnés (create/void/sync-insert), filtre anti-écrasement sync verrouillé. |
 | POS-122 | Z-report figé | ✅ agrégation testée+branchée | P0 | `reports/z-report-aggregate.ts` (totaux, cash/card, top produits, peak hours, panier moyen) **6/6** + `reports.service.spec` régression OK + branché dans `generateZReport`. Z-report immuable après génération. |
-| POS-123 | Journal fiscal append-only annulations | ⚠️ | P0 | `fiscal-journal`, commit M4 `6b48e9b` |
-| POS-124 | Vérificateur de chaîne fiscale | ⚠️ | P0 | `npm run fiscal:verify` (commit `f5eb4d7`) |
+| POS-123 | Journal fiscal append-only annulations | ✅ prouvé (P332) | P0 | Chaînage : `void-m4-journal-chain.spec` (genesis→maillon→maillon, pas de fork). Append-only verrouillé : `sale-immutability-guard.spec` — zéro `UPDATE/DELETE/TRUNCATE fiscal_journal`, zéro `update/delete/remove/save(FiscalJournalEntity` (insert-only, non-vacuité vérifiée). |
+| POS-124 | Vérificateur de chaîne fiscale | ✅ prouvé adversarial (P332) | P0 | `fiscal-verify.spec` **6/6** : sain PASS + 5 tampers détectés — champ fiscal modifié, pointeur falsifié, **suppression d'un maillon au milieu** (linkage), **tamper montant avoir** (credit_notes), **tamper payload journal** (recompute authoritaire). |
 
 ## Sécurité (transverse — voir POS_SECURITY.md)
 
 | # | Titre | Statut | Prio |
 |---|---|---|---|
 | POS-130 | PIN login prod 500 | ⚠️ | P0 |
-| POS-131 | Secrets dans historique git | ⚠️ | P0 |
+| POS-131 | Secrets dans historique git | 🔴 CONFIRMÉ (P332) → ⛔ rotation utilisateur | P0 | Scan historique complet : 2 vraies clés (PRIM + Google Maps) dans `f2ad1b5` (toujours dans l'historique) et encore utilisées dans `.env` local. Rien d'autre (Stripe/AWS/DB/JWT propres). **Action : révoquer+régénérer les 2 clés** — détail POS_SECURITY.md S2. |
 | POS-132 | Receipts auth + anti-XSS | ✅ XSS testé ; auth publique by-design | P0 | `escapeHtml` extrait+testé **5/5** (payloads neutralisés) + appliqué à tous les champs du reçu HTML. Endpoint reçu public = design QR client (note, pas un écart). |
-| POS-133 | Erreurs front non avalées | ⚠️ | P1 |
+| POS-133 | Erreurs front non avalées | ✅ corrigé+verrouillé (P332) | P1 | StockAlertsPage affichait déjà son erreur ; LabelsPage settait `loadError` **sans jamais le rendre** → bandeau d'erreur ajouté (`data-testid="labels-load-error"`). Verrou source vitest `errors-not-swallowed.test.ts` **3/3** (catch→état→rendu JSX pour les 2 pages). |
 
 ---
 
