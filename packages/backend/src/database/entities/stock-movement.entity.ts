@@ -14,7 +14,9 @@ import { StockLocationEntity } from './stock-location.entity';
  * Movement types:
  * - supplier_receipt  → stock received from supplier
  * - transfer          → moved between locations (central → store, store → store)
- * - sale              → sold at POS (auto-created by SalesService)
+ * - sale              → sold at POS. ⚠️ NOT auto-created today: SalesService decrements
+ *                       products.stock_quantity directly and does NOT write a movement
+ *                       (TD-STOCK-TWO-SYSTEMS — see STOCK_UNIFICATION_DECISION.md).
  * - return_customer   → customer return
  * - return_supplier   → returned to supplier
  * - inventory_adjust  → correction after physical count
