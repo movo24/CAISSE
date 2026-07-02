@@ -75,6 +75,19 @@ Ces points datent d'avril 2026 ; plusieurs commits fiscaux/correctifs ont suivi.
 Voir `POS_BLOCKS.md` → premier paquet (PAQUET 1). Détail d'exécution dans `EXECUTION_LOG.md`.
 
 ---
+## État consolidé — 2026-07-02 (jalon PAQUET 324, v30 — cycle I : les gates transformées en livrables prêts-à-brancher)
+
+- **I1/P318 — GATE 1 close côté préparation** : anti-rejeu prouvé e2e (receveur à horloge décalée refuse hors fenêtre 5 min, ligne retryable) — la chaîne loopback couvre désormais TOUT le contrat (HMAC, rejeu, retry, dead-letter, batch_id, dédup event_id — 6 tests). Ne manque que URL+secret réels (kit §7).
+- **I2/P319 — GATE 2 prête** : `MIGRATION_RUNBOOK.md` (backup obligatoire, états avant/après, contrôles post, rollback avec garde-fou « ne pas revert 1725 si outbox non vide », gardes anti-accident, avertissement boot auto-migrant prod) + dry-run pg-mem 1726 (up idempotent, legacy NULL, down propre). Il ne manque que DATABASE_URL + ta commande.
+- **I3/P320 — GATE 3 prête** : `SOCIAL_CHART_TEMPLATE.md` (formulaire comptable, 4 slots SANS codes pré-remplis, 4 questions à trancher, jour J + rollback fail-closed) + `npm run social:check` (validateur de structure réutilisant le vrai garde runtime — 5 tests). Zéro vérité métier inventée.
+- **I4/P321 — Variantes cadrées** : `PRODUCT_VARIANTS_DECISION.md` — option A recommandée (variante=produit + parent_id/label/brand/supplier, ZÉRO impact caisse), B/C rejetées argumentées, impacts par couche, périmètre 1 cycle. Attend « GO variantes option A ».
+- **I5/P322 — Front livré** : **écran Réconciliation Stock** back-office complet (page+route+nav, dérives triées en premier, badges, lecture seule, helpers testés) ; côté POS : `posSessionsApi` + `lib/cash-count` (écart signé exact/excédent/manquant, parsing strict) **prêts à brancher** — l'UI session POS n'existe pas encore (décision UX honnêtement documentée, mon « simple bascule » était sur-vendu pour cette moitié).
+- **I6/P323 — Revue H** : H1/H2 aucun trou réel ; H3 : **trou UX corrigé** — pendant le verrou anti-bruteforce, message distinct « verrouillé, réessayez dans X min » (un PIN correct était refusé comme un invalide → re-essais aggravants).
+- **P324 consolidation** : backend COMPLET en 5 tranches — **207 suites PASS / 3 skip (.pg) · 1373 tests PASS / 5 skip · 0 échec** (Δ v29 : +2 suites, +8 tests). Front : back-office 8 fichiers/30 tests · pos-desktop 7 fichiers/34 tests · builds verts.
+
+Commits : `1517357` I1 · `59d0c08` I2 · `13a10a1` I3 · `94b0505` I4 · `fedd5d2` I5 · `af39ede` I6. Interdits respectés : zéro push, zéro prod, zéro secret, zéro migration runtime, zéro invention.
+
+---
 ## État consolidé — 2026-07-02 (jalon PAQUET 317, v29 — cycle H : 3 derniers items sans-décision fermés)
 
 - **H1/P314 — TD-AUDIT-HASH-DUP risque neutralisé** : `audit-hash-drift-guard.spec.ts` (8 cas adversariaux : clés désordonnées, imbrication, accents/emoji, null/bool/gros nombres, chaînage depuis genesis) échoue à la PREMIÈRE dérive entre `audit-hash.ts` (backend) et `shared/hash.ts`. L'unification physique reste une décision build (inchangé) — mais la dérive silencieuse est désormais impossible.

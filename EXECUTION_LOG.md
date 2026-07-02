@@ -2249,3 +2249,11 @@ Ces paquets ont été journalisés dans `PROJECT_STATUS.md` (v10→v18) et non i
 - H3 TD-RESP-PIN ✅ : PinAttemptLimiter par magasin (5→verrou 15 min, fail-closed, reset sur succès, 4 tests).
 - P317 : **205 suites PASS/3 skip · 1365 tests PASS/5 skip · 0 échec** ; nest build RC 0.
 - Commits fedda4b/8c7c2e4/fdcd387 ; bundle régénéré. **Backlog sans-décision : ÉPUISÉ** — tout le reste attend une entrée utilisateur (gates/décisions).
+
+## PAQUET 318→324 — Cycle I (2026-07-02) : gates transformées en livrables prêts-à-brancher
+- I1 anti-rejeu e2e (6 tests loopback = contrat complet). I2 MIGRATION_RUNBOOK + dry-run 1726 pg-mem.
+- I3 SOCIAL_CHART_TEMPLATE + npm run social:check (5 tests, structure via le vrai garde). I4 PRODUCT_VARIANTS_DECISION (option A recommandée).
+- I5 écran Réconciliation Stock back-office LIVRÉ + posSessionsApi/cash-count POS prêts à brancher (UI session = décision UX, documenté).
+- I6 revue H : H1/H2 sans trou ; H3 message de verrou distinct (UX corrigée).
+- P324 : **207 suites PASS/3 skip · 1373 tests PASS/5 skip · 0 échec** ; fronts 30+34 tests, builds verts.
+- Commits 1517357/59d0c08/13a10a1/94b0505/fedd5d2/af39ede ; bundle régénéré.
