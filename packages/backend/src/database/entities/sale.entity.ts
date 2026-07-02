@@ -95,6 +95,14 @@ export class SaleEntity {
   @Column({ name: 'hash_version', type: 'smallint', default: 1 })
   hashVersion: number;
 
+  /**
+   * P312 — TD-017-SESSION-LINK: the POS session this sale was made in
+   * (migration 1726, nullable — NULL for pre-link sales or terminals without
+   * an open session). NOT part of the fiscal fingerprint (metadata link only).
+   */
+  @Column({ name: 'pos_session_id', type: 'uuid', nullable: true })
+  posSessionId: string | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

@@ -6,7 +6,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, DataSource } from 'typeorm';
 
 import { PosSessionEntity } from '../../database/entities/pos-session.entity';
 import { IntegrationEventEntity } from '../../database/entities/integration-event.entity';
@@ -51,6 +51,7 @@ export class PosSessionService {
     @InjectRepository(IntegrationEventEntity)
     private readonly outbox: Repository<IntegrationEventEntity>,
     private readonly storeOrgResolver: StoreOrgResolver,
+    private readonly dataSource: DataSource,
   ) {}
 
   /**
@@ -241,6 +242,45 @@ export class PosSessionService {
     this.logger.log(`POS session closed: ${saved.id}`);
     await this.recordSessionActivity('closed', saved);
     return saved;
+  }
+
+  /**
+   * P312 — TD-017-SESSION-LINK consumer: cash summary of a session for the
+   * till count (POS-017b). Read-only aggregate over sales stamped with
+   * pos_session_id (migration 1726): completed sales only, cash payments only.
+   * Honest limitation: sales made BEFORE the link (pos_session_id NULL) are
+   * not attributable and are excluded by construction.
+   */
+  async getSessionCashSummary(
+    sessionId: string,
+    storeId: string,
+  ): Promise<{
+    sessionId: string;
+    salesCount: number;
+    cashCapturedMinorUnits: number;
+    totalCapturedMinorUnits: number;
+  }> {
+    const session = await this.repo.findOne({ where: { id: sessionId } });
+    if (!session || session.storeId !== storeId) {
+      throw new NotFoundException(`POS session ${sessionId} not found`);
+    }
+    const rows: Array<{ sales_count: string; cash: string; total: string }> =
+      await this.dataSource.query(
+        `SELECT COUNT(DISTINCT s.id)::int AS sales_count,
+                COALESCE(SUM(CASE WHEN p.method = 'cash' THEN p.amount_minor_units ELSE 0 END),0) AS cash,
+                COALESCE(SUM(p.amount_minor_units),0) AS total
+           FROM sales s
+           LEFT JOIN sale_payments p ON p.sale_id = s.id
+          WHERE s.store_id = $1 AND s.pos_session_id = $2 AND s.status = 'completed'`,
+        [storeId, sessionId],
+      );
+    const r = rows[0];
+    return {
+      sessionId,
+      salesCount: parseInt(r?.sales_count as any, 10) || 0,
+      cashCapturedMinorUnits: parseInt(r?.cash as any, 10) || 0,
+      totalCapturedMinorUnits: parseInt(r?.total as any, 10) || 0,
+    };
   }
 
   /**

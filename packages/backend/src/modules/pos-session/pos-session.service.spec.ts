@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
+import { DataSource } from 'typeorm';
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 
 import { PosSessionService } from './pos-session.service';
@@ -30,6 +31,8 @@ describe('PosSessionService', () => {
         { provide: getRepositoryToken(PosSessionEntity), useValue: repo },
         { provide: getRepositoryToken(IntegrationEventEntity), useValue: outbox },
         { provide: StoreOrgResolver, useValue: { resolve: jest.fn().mockResolvedValue('org-1') } },
+        // P312 — getSessionCashSummary aggregates via DataSource.query (mocked here).
+        { provide: DataSource, useValue: { query: jest.fn().mockResolvedValue([]) } },
       ],
     }).compile();
 

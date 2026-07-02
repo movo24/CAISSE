@@ -64,6 +64,15 @@ export class PosSessionController {
     );
   }
 
+  @Get(':id/cash-summary')
+  @ApiOperation({
+    summary:
+      'P312 — cash summary of a session for the till count (completed sales stamped pos_session_id; cash + total captured). Read-only.',
+  })
+  cashSummary(@Param('id', ParseUUIDPipe) id: string, @Request() req: any) {
+    return this.service.getSessionCashSummary(id, req.user.storeId);
+  }
+
   @Get('active')
   @ApiHeader({
     name: 'X-Terminal-Id',

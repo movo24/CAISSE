@@ -466,6 +466,21 @@ export class SalesService {
       throw e;
     }
 
+    // P312 — resolve the active POS session for this (store, terminal) once,
+    // pre-transaction (read-only). Nullable by design; errors are swallowed.
+    let activeSessionId: string | null = null;
+    if (employeeSnapshot?.terminalId) {
+      try {
+        const rows = await this.dataSource.query(
+          `SELECT id FROM pos_sessions WHERE store_id = $1 AND terminal_id = $2 AND is_active = true LIMIT 1`,
+          [storeId, employeeSnapshot.terminalId],
+        );
+        activeSessionId = rows?.[0]?.id ?? null;
+      } catch {
+        activeSessionId = null;
+      }
+    }
+
     // =====================================================================
     // TRANSACTION BOUNDARY — everything below is atomic
     // Retry up to 3 times on serialization/unique constraint failures
@@ -564,6 +579,10 @@ export class SalesService {
       sale.employeeRoleSnapshot = employeeSnapshot?.employeeRole || '';
       sale.employeeMaxDiscountSnapshot = employeeSnapshot?.maxDiscount ?? 0;
       sale.customerId = customerId ?? (null as any);
+      // P312 — TD-017-SESSION-LINK: stamp the active POS session of this
+      // (store, terminal) if any. Best-effort metadata link: a lookup failure
+      // or a terminal without an open session NEVER blocks the sale (NULL).
+      sale.posSessionId = activeSessionId;
       sale.status = 'completed';
       sale.subtotalMinorUnits = subtotal;
       sale.discountTotalMinorUnits = totalDiscount;

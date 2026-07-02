@@ -20,6 +20,8 @@ import { SalesModule } from '../src/modules/sales/sales.module';
 import { ReturnsModule } from '../src/modules/returns/returns.module';
 import { ReportsModule } from '../src/modules/reports/reports.module';
 import { SyncModule } from '../src/modules/sync/sync.module';
+import { PosSessionModule } from '../src/modules/pos-session/pos-session.module';
+import { PosSessionService } from '../src/modules/pos-session/pos-session.service';
 import { CacheModule } from '../src/common/cache/cache.module';
 import { MessagingModule } from '../src/common/messaging/messaging.module';
 import { RealtimeModule } from '../src/common/realtime/realtime.module';
@@ -44,6 +46,7 @@ describe('E2E — money flow (login → sale → return → avoir → pay → Z)
   let returns: ReturnsService;
   let reports: ReportsService;
   let sync: SyncService;
+  let posSessions: PosSessionService;
 
   const STORE_ID = uuidv4();
   const EMP_ID = uuidv4();
@@ -67,6 +70,7 @@ describe('E2E — money flow (login → sale → return → avoir → pay → Z)
         ReturnsModule,
         ReportsModule,
         SyncModule,
+        PosSessionModule,
       ],
     }).compile();
 
@@ -76,6 +80,7 @@ describe('E2E — money flow (login → sale → return → avoir → pay → Z)
     returns = moduleRef.get(ReturnsService);
     reports = moduleRef.get(ReportsService);
     sync = moduleRef.get(SyncService);
+    posSessions = moduleRef.get(PosSessionService);
 
     // ── Seed: store, employee (PIN 1234), product ──
     await ds.getRepository(StoreEntity).save({
@@ -183,6 +188,34 @@ describe('E2E — money flow (login → sale → return → avoir → pay → Z)
 
     const count = await ds.getRepository('sales').count({ where: { ticketNumber: 'OFF-SYNC-1' } as any });
     expect(count).toBe(1);
+  });
+
+  it('P312 wiring (TD-017-SESSION-LINK): a sale made on a terminal with an open session is stamped, and the cash summary adds up', async () => {
+    // pg-mem quirk (documented): earlier decrements clamp the fixture stock to 0 → restore it.
+    await ds.query(`UPDATE products SET stock_quantity = 50 WHERE ean = '3000000000001'`);
+    const TERMINAL = 'term-e2e-1';
+    const session = await posSessions.openSession(
+      STORE_ID, EMP_ID, { employeeName: 'Alice Caisse', employeeRole: 'admin' }, { terminalId: TERMINAL },
+    );
+
+    const dto = { items: [{ ean: '3000000000001', quantity: 1 }], payments: [{ method: 'cash', amountMinorUnits: 500 }] };
+    const snap = { employeeName: 'Alice Caisse', employeeRole: 'admin', maxDiscount: 100, terminalId: TERMINAL };
+    const sale: any = await sales.createSale(STORE_ID, EMP_ID, dto as any, snap, 'idem-session-1');
+    expect(sale.posSessionId ?? sale.pos_session_id).toBe(session.id); // stamped
+
+    // a sale WITHOUT terminal keeps NULL (never blocks)
+    await ds.query(`UPDATE products SET stock_quantity = 50 WHERE ean = '3000000000001'`); // pg-mem clamp quirk
+    const noTerm: any = await sales.createSale(
+      STORE_ID, EMP_ID, dto as any, { employeeName: 'Alice Caisse', employeeRole: 'admin', maxDiscount: 100 }, 'idem-session-2',
+    );
+    expect(noTerm.posSessionId ?? noTerm.pos_session_id ?? null).toBeNull();
+
+    const summary = await posSessions.getSessionCashSummary(session.id, STORE_ID);
+    expect(summary.salesCount).toBe(1); // only the stamped sale
+    expect(summary.cashCapturedMinorUnits).toBe(500);
+    expect(summary.totalCapturedMinorUnits).toBe(500);
+
+    await posSessions.closeSession(session.id, STORE_ID, EMP_ID);
   });
 
   it('POS-081/082 wiring (option 1): a REAL sale and a REAL return write append-only stock movements', async () => {

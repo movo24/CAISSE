@@ -184,6 +184,7 @@ Current migrations (run in order):
 1723000000000-AddProductPriceOverride   # POS-061 — store price override (priority over global)
 1724000000000-AddPromoUsageLimit        # POS-073 — promo usage cap (limit/count)
 1725000000000-AddIntegrationOutbox      # outbox integration events — NOT yet run on target DB (GATE2)
+1726000000000-AddSalePosSessionId       # TD-017 — sale↔POS-session link (nullable) — NOT yet run on target DB (GATE2)
 ```
 
 ---
