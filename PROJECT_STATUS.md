@@ -75,6 +75,20 @@ Ces points datent d'avril 2026 ; plusieurs commits fiscaux/correctifs ont suivi.
 Voir `POS_BLOCKS.md` → premier paquet (PAQUET 1). Détail d'exécution dans `EXECUTION_LOG.md`.
 
 ---
+## État consolidé — 2026-07-02 (jalon PAQUET 328, v32 — cycle K : variantes option A EXÉCUTÉE)
+
+- **GO variantes option A reçu → livré (P327)**, conformément à `PRODUCT_VARIANTS_DECISION.md` :
+  - **Migration 1727** (additive/réversible, dry-run pg-mem 2 tests, rejoint la file GATE 2 avec 1725/1726) : `products` + `parent_product_id`/`variant_label`/`brand`/`supplier_id` (tous nullables — lignes existantes = produits simples) + table `suppliers` (tenant, nom unique par magasin) + index regroupement.
+  - **Module `suppliers`** (45e module) : CRUD tenant-scoped, écriture manager+, **soft-delete** (les produits gardent leur référence — historique intact). 3 tests pg-mem : dédup par magasin, soft-delete, cross-tenant 404.
+  - **Variantes prouvées sur SQL réel** : deux déclinaisons d'un même parent coexistent avec EAN/prix/stock propres ; regroupement par `parentProductId` ; **doublons interdits PAR variante** (l'unique `(ean, store)` existant fait le travail). ZÉRO invariant caisse touché (scan/vente/stock/hash inchangés).
+  - **DTOs produits** étendus (4 champs nullables, clear par null explicite) ; **back-office** : champs Marque + Variante dans le modal produits, builder de payload étendu (+2 tests vitest), `suppliersApi` prêt.
+  - Reste UI (itération suivante, non bloquant) : sélecteur de fournisseur dans le modal + regroupement visuel des variantes sous leur parent.
+- MIGRATION_RUNBOOK + CLAUDE.md mis à jour (file GATE 2 = 1725→1726→1727, rollback 3 crans, garde-fou suppliers non-vide).
+- **P328 consolidation** : backend COMPLET en 5 tranches — **209 suites PASS / 3 skip (.pg) · 1378 tests PASS / 5 skip · 0 échec** (Δ v31 : +2 suites, +5 tests). Back-office 8 fichiers/32 tests, builds verts, `nest build` RC 0. TD-PRODUCT-VARIANTS ✅ RÉSOLU.
+
+Commit : `14fd263`. Interdits respectés : zéro push, zéro prod, zéro secret, zéro migration runtime.
+
+---
 ## État consolidé — 2026-07-02 (jalon PAQUET 326, v31 — cycle J : écran clôture de caisse POS livré)
 
 - **P325 — l'UI session POS existe désormais** (choix UX documentés, réversibles) :

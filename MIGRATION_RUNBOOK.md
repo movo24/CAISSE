@@ -1,4 +1,4 @@
-# MIGRATION_RUNBOOK.md — Jouer 1725 + 1726 sur la base cible (GATE 2)
+# MIGRATION_RUNBOOK.md — Jouer 1725 + 1726 + 1727 sur la base cible (GATE 2)
 
 > P319 (cycle I2) — 2026-07-02. Procédure humaine, pas à pas. **Rien ici ne s'exécute tout seul** : il te faut le `DATABASE_URL` cible et ta décision. Durée ≈ 10 min, fenêtre calme recommandée (les deux migrations sont additives → pas de coupure nécessaire, mais prudence d'abord).
 
@@ -8,6 +8,7 @@
 |---|---|---|---|
 | **1725-AddIntegrationOutbox** | table `integration_events` (17 colonnes) + index | NON (nouvelle table) | ✅ `down()` = DROP de la table (vide tant que le relais n'a pas tourné) |
 | **1726-AddSalePosSessionId** | colonne `sales.pos_session_id` (uuid **nullable**) + index composite | NON (lignes existantes = NULL) | ✅ `down()` = DROP colonne + index |
+| **1727-AddProductVariantsAndSuppliers** | 4 colonnes **nullables** sur `products` (parent/label/marque/fournisseur) + table `suppliers` + index | NON (lignes existantes = NULL, produits simples) | ✅ `down()` = DROP colonnes + table (⚠️ seulement si `suppliers` encore vide, sinon corriger en avant) |
 
 Preuves déjà jouées en local : `migration-1725-dryrun.spec` + parité entité 17 colonnes (P176/177) ; `migration-1726-dryrun.pgmem.spec` (P319 : up idempotent, lignes legacy intactes, down propre). Aucune des deux ne touche `sales` existantes, à la hash-chain, ni aux montants.
 
@@ -33,7 +34,7 @@ psql "$DATABASE_URL" -c "SELECT column_name FROM information_schema.columns WHER
 # ── C. JOUER (les deux se jouent ensemble, dans l'ordre des timestamps) ──
 cd packages/backend
 DATABASE_URL="<CIBLE>" npm run migration:run
-# attendu : 2 migrations exécutées : 1725 puis 1726
+# attendu : 3 migrations exécutées : 1725 puis 1726 puis 1727 (variantes+suppliers, additive, dry-run pg-mem P327)
 
 # ── D. CONTRÔLES POST-MIGRATION ──
 psql "$DATABASE_URL" -c "SELECT COUNT(*) FROM integration_events;"                  # 0 (table neuve)
@@ -47,6 +48,7 @@ psql "$DATABASE_URL" -c "SELECT COUNT(*) FROM sales;"                           
 
 ```bash
 cd packages/backend
+DATABASE_URL="<CIBLE>" npm run migration:revert   # annule 1727
 DATABASE_URL="<CIBLE>" npm run migration:revert   # annule 1726
 DATABASE_URL="<CIBLE>" npm run migration:revert   # annule 1725
 # Vérifier : la table integration_events et la colonne pos_session_id ont disparu ;

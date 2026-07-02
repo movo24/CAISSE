@@ -185,6 +185,7 @@ Current migrations (run in order):
 1724000000000-AddPromoUsageLimit        # POS-073 — promo usage cap (limit/count)
 1725000000000-AddIntegrationOutbox      # outbox integration events — NOT yet run on target DB (GATE2)
 1726000000000-AddSalePosSessionId       # TD-017 — sale↔POS-session link (nullable) — NOT yet run on target DB (GATE2)
+1727000000000-AddProductVariantsAndSuppliers  # P327 — variantes option A + suppliers — NOT yet run on target DB (GATE2)
 ```
 
 ---

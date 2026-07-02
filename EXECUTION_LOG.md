@@ -2263,3 +2263,9 @@ Ces paquets ont été journalisés dans `PROJECT_STATUS.md` (v10→v18) et non i
 - **Fix trou réel** : X-Terminal-Id désormais sur toutes les requêtes POS (le stamp P312/POS-INT-83 était inerte sans lui).
 - P326 : backend inchangé **207 suites/1373 tests PASS** ; pos-desktop 8 fichiers/37 tests, build vert.
 - Commit b7eb168 ; bundle régénéré.
+
+## PAQUET 327→328 — Cycle K (2026-07-02) : GO variantes option A exécuté
+- Migration 1727 (4 colonnes nullables products + table suppliers, dry-run pg-mem, file GATE 2) ; module suppliers (CRUD tenant, soft-delete) ; variantes prouvées SQL réel (sœurs, regroupement, EAN unique par variante) ; DTOs + back-office (marque/variante, builder, suppliersApi).
+- MIGRATION_RUNBOOK/CLAUDE.md à jour (file 1725→1726→1727). TD-PRODUCT-VARIANTS ✅.
+- P328 : **209 suites PASS/3 skip · 1378 tests PASS/5 skip · 0 échec** ; back-office 32 tests ; nest build RC 0.
+- Commit 14fd263 ; bundle régénéré.
