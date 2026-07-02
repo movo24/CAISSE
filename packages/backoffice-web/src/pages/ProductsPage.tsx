@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { productsApi } from '../services/api';
 import { safeErrorMessage } from '../utils/safeErrorMessage';
+import { buildProductPayload } from '../lib/product-payload';
 import { useAuthStore } from '../stores/authStore';
 import { useCurrentStoreId } from '../hooks/useCurrentStoreId';
 import { PriceAnalyticsPanel } from '../components/PriceAnalyticsPanel';
@@ -31,6 +32,7 @@ interface Product {
   price: number;
   stock: number;
   category: string;
+  priceOverride?: number | null;
   image: string | null;
 }
 
@@ -72,7 +74,7 @@ export function ProductsPage() {
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ name: '', ean: '', price: '', stock: '', category: '' });
+  const [form, setForm] = useState({ name: '', ean: '', price: '', stock: '', category: '', priceOverride: '' });
 
   // Price analytics panel
   const [analyticsProductId, setAnalyticsProductId] = useState<string | null>(null);
@@ -91,6 +93,7 @@ export function ProductsPage() {
           stock: p.stockQuantity ?? 0,
           category: typeof p.categoryId === 'string' ? p.categoryId : (typeof p.category === 'string' ? p.category : 'Non classe'),
           image: p.imageUrl || null,
+          priceOverride: p.priceOverrideMinorUnits != null ? p.priceOverrideMinorUnits / 100 : null,
         })),
       );
       setError(null);
@@ -151,7 +154,7 @@ export function ProductsPage() {
   };
 
   const resetForm = () => {
-    setForm({ name: '', ean: '', price: '', stock: '', category: '' });
+    setForm({ name: '', ean: '', price: '', stock: '', category: '', priceOverride: '' });
     setEditingId(null);
   };
 
@@ -167,6 +170,7 @@ export function ProductsPage() {
       price: String(p.price),
       stock: String(p.stock),
       category: p.category,
+      priceOverride: p.priceOverride != null ? String(p.priceOverride) : '',
     });
     setOriginalPrice(p.price);
     setEditingId(p.id);
@@ -189,14 +193,8 @@ export function ProductsPage() {
 
     try {
       setSaving(true);
-      const payload = {
-        name: form.name,
-        ean: form.ean,
-        price: newPrice,
-        stock: parseInt(form.stock || '0', 10),
-        category: form.category,
-        storeId,
-      };
+      // P310 — DTO-valid keys ONLY (backend forbidNonWhitelisted rejects price/stock/category/storeId).
+      const payload = buildProductPayload(form, { editing: !!editingId });
       if (editingId) {
         await productsApi.update(editingId, payload);
       } else {
@@ -525,6 +523,20 @@ export function ProductsPage() {
                     onChange={(e) => setForm({ ...form, price: e.target.value })}
                   />
                 </div>
+                {editingId && (
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1.5">Prix magasin (override, EUR) — vide = prix global</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      className="w-full px-3 py-2.5 rounded-xl border border-amber-200 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300/40"
+                      placeholder="ex. 7.50"
+                      value={form.priceOverride}
+                      onChange={(e) => setForm({ ...form, priceOverride: e.target.value })}
+                    />
+                  </div>
+                )}
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1.5">Stock</label>
                   <input

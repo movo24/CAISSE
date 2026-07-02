@@ -115,6 +115,16 @@ export class UpdateProductDto {
   @Min(0)
   priceMinorUnits?: number;
 
+  @ApiPropertyOptional({
+    description:
+      'POS-061 — store price override in minor units (takes priority over the global price at the till). Send null to clear the override.',
+  })
+  @IsOptional()
+  @ValidateIf((_o, v) => v !== null)
+  @IsInt()
+  @Min(0)
+  priceOverrideMinorUnits?: number | null;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()

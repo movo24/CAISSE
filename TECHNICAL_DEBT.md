@@ -49,7 +49,7 @@
 | TD-066-NAME-WIRING | ~~Helper non branché~~. **Résolu** : dédup nom normalisé branchée dans `products.service.create` (+ colonne `normalized_name` migration 1722, sync update). Tests `products.service.spec` 7/7. | ✅ | `products.service.ts`, migration 1722 | Résolu |
 | TD-066-LEGACY-BACKFILL | Backfill accent-insensible des lignes héritées 1722 | 🟡 | `scripts/backfill-normalized-names.ts` | ✅ RÉSOLU P309 (script livré, prouvé pg-mem 2 tests : plan+apply idempotent, collisions même-magasin QUARANTAINÉES pour arbitrage humain, jamais fusion silencieuse ; dry-run par défaut, `BACKFILL_APPLY=true` pour appliquer) — exécution base cible = gated DATABASE_URL+GO |
 
-| TD-061-OVERRIDE | ~~Pas de mécanisme override~~. **Résolu** : colonne `price_override_minor_units` (migration 1723) + `resolveEffectivePrice` (override>global) branché dans `createSale`. Tests 4/4. Reste : UI back-office pour saisir l'override (`TD-061-UI`). | ✅ | `product.entity.ts`, migration 1723, `price-resolve.ts` | Résolu (UI à faire) |
+| TD-061-OVERRIDE | ~~Pas de mécanisme override~~. **Résolu** : colonne `price_override_minor_units` (migration 1723) + `resolveEffectivePrice` (override>global) branché dans `createSale`. Tests 4/4. UI back-office livrée P310 (champ override en édition, vide = prix global, null explicite pour effacer). | ✅ | `product.entity.ts`, migration 1723, `price-resolve.ts` | Résolu (UI à faire) |
 
 | TD-055-QUIET-HOURS-WIRING | Helper quiet-hours/fériés branché dans le sweep | 🟡 | `shift-reminders/` | ✅ RÉSOLU P292 — câblé en pure config env (fenêtre vide par défaut = zéro changement sans config), 4 tests de wiring (suppression fenêtre/férié, défaut jamais supprimé, sweep supprimé n appelle même pas TW24) |
 
