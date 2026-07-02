@@ -2310,3 +2310,8 @@ Ces paquets ont été journalisés dans `PROJECT_STATUS.md` (v10→v18) et non i
 - Suites P0 re-exécutées après les changements catalogue : sale-transaction + e2e-money-flow + money-precision (29), stock + promo + audit + tenant-isolation + fiscal-verify + hash-fingerprint (46), void×2 + avoirs×2 + ticket-sequence + immutabilité (22) → **15 suites / 97 tests PASS, 0 échec**.
 - POS desktop : vitest **8 fichiers / 37 tests PASS** (scan/panier/clôture intacts).
 - Verdict : les cycles O→R (catalogue back-office) n'ont touché AUCUN invariant caisse — prouvé, pas déclaré.
+
+## PAQUET 342 — Cycle T (2026-07-02) : cockpit catalogue lecture seule
+- Helper pur `catalog-summary.ts` (totaux parents/variantes/simples/marques/fournisseurs + 5 anomalies : variante orpheline, variante-de-variante, fournisseur désactivé référencé par produit ACTIF, fournisseur inconnu (données pré-Cycle P), prix 0 centime actif) — **4/4** ; constat pur, zéro correction automatique.
+- `GET /api/products/catalog-summary` (admin/manager, tenant JWT, placé avant `:id`) ; preuve pg-mem read-only + tenant-scoped.
+- Module products **9 suites/63 tests PASS** ; tsc RC 0 ; api-map régénérée (43/238).

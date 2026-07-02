@@ -91,6 +91,13 @@ export class ProductsController {
     return this.productsService.createCategory(req.user.storeId, body.name);
   }
 
+  @Get('catalog-summary')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'Cycle T — read-only catalog cockpit: totals + anomalies (no mutation)' })
+  getCatalogSummary(@Request() req: any) {
+    return this.productsService.getCatalogSummary(req.user.storeId);
+  }
+
   @Get('stock-alerts')
   @ApiOperation({ summary: 'Get stock alerts (low + critical, paginated)' })
   stockAlerts(@Request() req: any, @Query() query: PaginationQueryDto) {

@@ -129,6 +129,17 @@ describe('ProductsService (pg-mem)', () => {
     );
   });
 
+  it('Cycle T : getCatalogSummary est tenant-scoped et strictement read-only', async () => {
+    const before = await productRepo.count();
+    const summary = await service.getCatalogSummary(storeId);
+    expect(summary.totals.products).toBeGreaterThan(0);
+    // tenant : aucun produit de l'autre magasin compté
+    const other = await service.getCatalogSummary(otherStoreId);
+    expect(other.totals.products).toBeLessThan(summary.totals.products + other.totals.products);
+    // read-only : aucun produit créé/supprimé par le cockpit
+    expect(await productRepo.count()).toBe(before);
+  });
+
   // ── Cycle R — import catalogue (dry-run par défaut, SQL réel) ─────────────
 
   describe('Cycle R — importCatalog', () => {

@@ -1,7 +1,7 @@
 # POS_API_MAP_DETAILED.md — Cartographie API générée depuis le code
 
 > Générée par `npm run api:map` — NE PAS éditer à la main, régénérer (la CI échoue si ce fichier ne correspond plus aux controllers).
-> **43 controllers · 237 routes.** Auth : `JwtAuthGuard` (JWT employé) · `MobileAuthGuard` (JWT Wesley Club, audience mobile-app) · `RolesGuard` (hiérarchie admin>manager>cashier) · TenantInterceptor global (storeId du JWT) sauf `@SkipTenantCheck`.
+> **43 controllers · 238 routes.** Auth : `JwtAuthGuard` (JWT employé) · `MobileAuthGuard` (JWT Wesley Club, audience mobile-app) · `RolesGuard` (hiérarchie admin>manager>cashier) · TenantInterceptor global (storeId du JWT) sauf `@SkipTenantCheck`.
 > Colonne Rôles vide = tout JWT valide du guard indiqué ; Guards vide = route publique (vérifier le contexte du controller).
 
 ## `modules/airtable-ops/airtable-ops.controller.ts` — base `/airtable-ops`
@@ -236,6 +236,7 @@
 | GET | `/products/scan/:ean` | findByEan | JwtAuthGuard, RolesGuard | — | ✓ | — |
 | GET | `/products/categories` | getCategories | JwtAuthGuard, RolesGuard | — | ✓ | — |
 | POST | `/products/categories` | createCategory | JwtAuthGuard, RolesGuard | admin,manager | ✓ | — |
+| GET | `/products/catalog-summary` | getCatalogSummary | JwtAuthGuard, RolesGuard | admin,manager,admin,manager | ✓ | — |
 | GET | `/products/stock-alerts` | stockAlerts | JwtAuthGuard, RolesGuard | admin,manager | ✓ | — |
 | GET | `/products/:id` | findOne | JwtAuthGuard, RolesGuard | — | ✓ | — |
 | GET | `/products/:id/price-history` | priceHistory | JwtAuthGuard, RolesGuard | — | ✓ | — |

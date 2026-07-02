@@ -25,6 +25,7 @@ import {
 } from './product-analytics';
 import { normalizePage, normalizeLimit, totalPages } from '../../common/pagination';
 import { validateImportRows, ImportRow, ImportRowError } from './import-catalog';
+import { buildCatalogSummary, CatalogSummary } from './catalog-summary';
 
 @Injectable()
 export class ProductsService {
@@ -201,6 +202,19 @@ export class ProductsService {
     }
 
     return { dryRun, total: rows.length, importable: valid.length, created, errors };
+  }
+
+  /** Cycle T — cockpit catalogue LECTURE SEULE : totaux + anomalies (constat). */
+  async getCatalogSummary(storeId: string): Promise<CatalogSummary> {
+    const products = await this.productRepo.find({
+      where: { storeId },
+      select: ['id', 'ean', 'name', 'priceMinorUnits', 'isActive', 'brand', 'supplierId', 'parentProductId'],
+    });
+    const suppliers = await this.supplierRepo.find({
+      where: { storeId },
+      select: ['id', 'name', 'isActive'],
+    });
+    return buildCatalogSummary(products, suppliers);
   }
 
   async findAll(
