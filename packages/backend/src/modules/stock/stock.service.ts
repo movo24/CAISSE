@@ -9,6 +9,7 @@ import { ProductEntity } from '../../database/entities/product.entity';
 import { IntegrationEventEntity } from '../../database/entities/integration-event.entity';
 import { AuditService } from '../audit/audit.service';
 import { crossedDownward, effectiveAlertThreshold, applyStockAdjustment } from './stock-level';
+import { recordAdjustMovement } from './stock-movement-journal';
 import { toOutboxRow } from '../../common/integration/integration-event';
 import { buildStockEvents } from './stock-events';
 import { computeStockVariance } from './stock-variance';
@@ -178,6 +179,16 @@ export class StockService {
       product.stockQuantity = applyStockAdjustment(oldQty, quantity, mode);
 
       const saved = await manager.save(product);
+
+      // POS-081 (option 1, STOCK_UNIFICATION_DECISION.md): journal append-only de
+      // l'ajustement (delta signé réel = après − avant), même transaction.
+      await recordAdjustMovement(manager, {
+        storeId,
+        actor: { employeeId },
+        productId,
+        deltaQuantity: saved.stockQuantity - oldQty,
+        reason,
+      });
 
       this.logger.log(
         `Stock adjusted: ${product.name} (${product.ean}) ${oldQty} → ${saved.stockQuantity} (mode=${mode}, value=${quantity}, reason=${reason})`,

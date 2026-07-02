@@ -6,6 +6,7 @@ import { ProductEntity } from '../../database/entities/product.entity';
 import { CustomerEntity } from '../../database/entities/customer.entity';
 import { AuditService } from '../audit/audit.service';
 import { resolveCustomerSync, partitionPushSales } from './conflict';
+import { recordAdjustMovement } from '../stock/stock-movement-journal';
 
 // ---------------------------------------------------------------------------
 // Sync payload interfaces
@@ -185,7 +186,7 @@ export class SyncService {
 
       // 3. Stock adjustments — parameterized query (no SQL injection)
       for (const adj of payload.stockAdjustments) {
-        await queryRunner.manager
+        const res = await queryRunner.manager
           .createQueryBuilder()
           .update(ProductEntity)
           .set({
@@ -197,6 +198,17 @@ export class SyncService {
             delta: adj.delta,
           })
           .execute();
+        // P306 (option 1): journal append-only du delta offline, même transaction —
+        // uniquement si la ligne du BON magasin a réellement été touchée.
+        if ((res.affected ?? 0) > 0) {
+          await recordAdjustMovement(queryRunner.manager, {
+            storeId: payload.storeId,
+            actor: { employeeId: payload.deviceId, employeeName: `device:${payload.deviceId}` },
+            productId: adj.productId,
+            deltaQuantity: adj.delta,
+            reason: `Sync offline: ${adj.reason}`.slice(0, 500),
+          });
+        }
         accepted++;
       }
 

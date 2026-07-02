@@ -185,6 +185,22 @@ describe('E2E — money flow (login → sale → return → avoir → pay → Z)
     expect(count).toBe(1);
   });
 
+  it('POS-081/082 wiring (option 1): a REAL sale and a REAL return write append-only stock movements', async () => {
+    // The earlier tests of this suite already created sales + one return.
+    const movements = await ds.query(
+      `SELECT movement_type, COUNT(*)::int AS n FROM stock_movements GROUP BY movement_type`,
+    );
+    const byType = Object.fromEntries(movements.map((m: any) => [m.movement_type, m.n]));
+    expect(byType['sale']).toBeGreaterThanOrEqual(1); // written by createSale, same transaction
+    expect(byType['return_customer']).toBeGreaterThanOrEqual(1); // written by createReturn
+    // lazy location: exactly ONE store location was auto-created for this store
+    const locs = await ds.query(
+      `SELECT COUNT(*)::int AS n FROM stock_locations WHERE store_id = $1 AND type = 'store'`,
+      [STORE_ID],
+    );
+    expect(locs[0].n).toBe(1);
+  });
+
   it('POS-073 wiring (TD-073-USAGE-INCREMENT): a promo usage cap really counts down across REAL sales', async () => {
     // product + a 50% percentage promo capped at usage_limit=1
     await ds.getRepository(ProductEntity).save({

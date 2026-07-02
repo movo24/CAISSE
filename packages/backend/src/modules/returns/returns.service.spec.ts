@@ -38,8 +38,11 @@ describe('ReturnsService', () => {
       query: jest.fn().mockResolvedValue([]), // hash SELECT → [] ; UPDATEs ignored
       manager: {
         findOne: jest.fn().mockResolvedValue(null),
-        save: jest.fn().mockImplementation((_e: any, x: any) => Promise.resolve(x)),
+        save: jest.fn().mockImplementation((e: any, x: any) => Promise.resolve(x ?? e)), // 1-arg (journal) et 2-args
         insert: jest.fn(),
+        // P306 — journal des mouvements (option 1): ensureStoreLocation crée la
+        // location paresseusement via manager.create + save.
+        create: jest.fn().mockImplementation((_e: any, o: any) => ({ id: 'loc-1', ...o })),
       },
     };
     dataSource = { createQueryRunner: () => qr, query: jest.fn().mockResolvedValue([]) };

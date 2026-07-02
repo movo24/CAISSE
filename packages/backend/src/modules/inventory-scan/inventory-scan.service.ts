@@ -8,6 +8,7 @@ import { BusinessError } from '../../common/errors/business-error';
 import { StockService } from '../stock/stock.service';
 import { CreateInventoryScanDto } from '../../common/dto';
 import { applyStockAdjustment } from './inventory-adjust';
+import { recordAdjustMovement } from '../stock/stock-movement-journal';
 
 @Injectable()
 export class InventoryScanService {
@@ -159,6 +160,16 @@ export class InventoryScanService {
         );
 
         await queryRunner.manager.save(ProductEntity, product);
+
+        // P306 (option 1): journal append-only de l'ajustement d'inventaire,
+        // même transaction (delta réel = après − avant ; 0 → aucun mouvement).
+        await recordAdjustMovement(queryRunner.manager, {
+          storeId,
+          actor: { employeeId },
+          productId: scan.productId,
+          deltaQuantity: product.stockQuantity - oldQty,
+          reason: config.reason,
+        });
 
         // Mark scan as applied
         scan.status = 'applied';

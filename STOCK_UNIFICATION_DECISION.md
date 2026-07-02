@@ -47,3 +47,11 @@ Interdire l'usage de B pour les magasins (le réserver à l'entrepôt central), 
 2. Si option 1 : confirmer la sémantique voulue pour `stock_balance` magasin (projection reconstruite vs balance incrémentale) et si un backfill historique est souhaité (non nécessaire).
 
 Sans GO : rien n'est modifié ; la frontière actuelle est documentée ici et dans `stock-movement.entity.ts`.
+
+---
+## 6. EXÉCUTÉ — GO reçu 2026-07-02, option 1 livrée (P306)
+
+- `stock-movement-journal.ts` : `ensureStoreLocation` (paresseux, idempotent), `recordSaleMovements`, `recordReturnMovements`, `recordAdjustMovement`, `journalNetQuantities` (projection reconstruite — sous-choix retenu ; aucune écriture `stock_balance` depuis la caisse).
+- **5 chemins câblés, même transaction que le fait métier** : `createSale` (POS-081), `createReturn` (POS-082), `stock.adjustStock`, `inventory-scan.applyScansToStock`, `sync.push` (deltas offline, émis seulement si la ligne du bon magasin est touchée).
+- Preuves : `stock-movement-journal.pgmem.spec.ts` (4 tests : lazy/idempotent, directions from/to par type, projection nette, items invalides ignorés) + assertion e2e (vente et retour réels écrivent leurs mouvements, une seule location auto-créée).
+- `products.stock_quantity` inchangé (compteur opérationnel) — zéro impact caisse, réversible en cessant d'émettre.

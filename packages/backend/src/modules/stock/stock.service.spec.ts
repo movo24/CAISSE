@@ -20,6 +20,10 @@ describe('StockService — adjustStock', () => {
     manager = {
       findOne: jest.fn().mockResolvedValue(product()),
       save: jest.fn().mockImplementation((p: any) => Promise.resolve(p)),
+      // P306 — stock-movement journal (option 1): the transaction manager now
+      // also creates/inserts StockMovement rows.
+      create: jest.fn().mockImplementation((_e: any, o: any) => o),
+      insert: jest.fn().mockResolvedValue(undefined),
     };
     const dataSource = { transaction: (fn: any) => fn(manager) } as unknown as DataSource;
     audit = { log: jest.fn().mockResolvedValue(undefined) };

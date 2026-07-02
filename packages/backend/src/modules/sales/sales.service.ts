@@ -21,6 +21,7 @@ import { sumLineTax } from './tax';
 import { computeMaxAllowedDiscount, discountPercentOfSubtotal } from './discount-totals';
 import { applyStockAdjustment } from '../stock/stock-level';
 import { resolveEffectivePrice } from '../products/price-resolve';
+import { recordSaleMovements } from '../stock/stock-movement-journal';
 import { formatTicketNumber } from './ticket-number';
 import { loyaltyPointsEarned } from './loyalty-points';
 import { EmployeeEntity } from '../../database/entities/employee.entity';
@@ -609,6 +610,19 @@ export class SalesService {
           [item.quantity, product.id, storeId],
         );
       }
+
+      // --- POS-081 (option 1, STOCK_UNIFICATION_DECISION.md): append-only
+      // stock-movement journal, SAME transaction as the sale. products.stock_quantity
+      // stays the operational counter; the journal is the audit trail.
+      await recordSaleMovements(queryRunner.manager, {
+        storeId,
+        actor: { employeeId, employeeName: employeeSnapshot?.employeeName },
+        ticketNumber,
+        items: dto.items.map((i) => ({
+          productId: resolvedProducts.get(i.ean)!.id,
+          quantity: i.quantity,
+        })),
+      });
 
       // --- Mark first purchase used ---
       if (

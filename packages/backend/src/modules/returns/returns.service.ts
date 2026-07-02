@@ -27,6 +27,7 @@ import { toOutboxRow } from '../../common/integration/integration-event';
 import { buildRefundOutboxEvent, buildGiftCardOutboxEvent } from './refund-events';
 import { StoreOrgResolver } from '../integration/store-org-resolver';
 import { taxBreakdownByRate } from '../sales/tax';
+import { recordReturnMovements } from '../stock/stock-movement-journal';
 
 const GENESIS = '0'.repeat(64);
 function sha256(s: string): string {
@@ -225,6 +226,15 @@ export class ReturnsService {
             [l.quantity, l.productId, storeId],
           );
         }
+
+        // POS-082 (option 1, STOCK_UNIFICATION_DECISION.md): journal append-only
+        // du retour client, même transaction que l'avoir.
+        await recordReturnMovements(qr.manager, {
+          storeId,
+          actor: { employeeId, employeeName },
+          creditNoteCode: saved.code,
+          items: returnLines.map((l) => ({ productId: l.productId ?? null, quantity: l.quantity ?? 0 })),
+        });
 
         if (idemKey) {
           const expiresAt = new Date();
