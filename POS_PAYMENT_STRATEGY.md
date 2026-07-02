@@ -27,6 +27,10 @@ espèces · carte · Stripe Terminal WisePad 3 · paiement différé/offline car
 ## À prouver / à créer
 
 - Paiements mixtes : flux UI complet à vérifier (modèle OK, UX à prouver).
-- Paiement carte hors-ligne (différé) : stratégie à définir (cloud-centré + secours SIM).
+- Paiement carte hors-ligne (différé) : **STRATÉGIE DÉCIDÉE (P352)** —
+  ① voie nominale offline = TPE autonome SIM/4G (capture réelle, vente finalisée normalement, sync existante) ;
+  ② « différé » = FILE DE CAPTURE, jamais une vente finalisée sans encaissement (règle 3) : vente EN ATTENTE hors chaîne fiscale + ordre de capture idempotent (clé déterministe `defcap:<saleClientId>:<montant>`) dans la file offline ; au retour réseau : captured→finalisation idempotente · declined→vente abandonnée (n'a jamais existé fiscalement), re-encaissement · error→retry ;
+  ③ garde-fous : 150 €/ticket différé, 500 € d'encours (défauts ajustables).
+  Moteur pur livré+testé : `pos-desktop/src/renderer/lib/deferred-card-policy.ts` (**12/12**). Restant : exécuteur de capture au retour réseau (stripe-terminal) + UI usePayment → `TD-042-EXECUTOR` (nécessite TPE réel).
 - Tests paiement simulé (mock TPE) : à étendre. Dette `TD-PAYMENT-TESTS`.
 - Réconciliation paiements ↔ compta (Comptamax24) : ⛔ non branché.

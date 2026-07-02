@@ -2346,3 +2346,9 @@ Ces paquets ont été journalisés dans `PROJECT_STATUS.md` (v10→v18) et non i
 - Backend : `openSession(openingFloatMinorUnits)` (DTO class-validator entier ≥ 0) ; `closeSession(countedCashMinorUnits)` → **écart signé calculé CÔTÉ SERVEUR** (compté − fond − espèces des ventes stampées via cash-summary) et **FIGÉ** sur la session. Sans comptage : NULL, comportement historique intact.
 - Front POS : `posSessionsApi.open(float?)/close(counted?)` ; `CloseSessionModal` envoie désormais le comptage saisi (persistance serveur). Saisie du fond à l'ouverture disponible côté API ; l'UI d'ouverture reste le `ensure` silencieux (décision UX I5 inchangée).
 - Preuves : **7 suites/65 tests** (primitive +4 cas : float persisté/NULL/validations, écart −50 exact, invalide refusé, fond absent = 0) + e2e money-flow re-vert ; nest build RC 0 ; pos-desktop tsc RC 0 + 52 tests.
+
+## PAQUET 352 — Cycle Y (2026-07-02) : POS-042 — stratégie du paiement carte différé DÉCIDÉE + moteur prouvé
+- Stratégie (comble le « à définir » de POS_PAYMENT_STRATEGY) : ① offline nominal = TPE autonome SIM/4G (capture réelle, pas un différé) ; ② différé = FILE DE CAPTURE — la vente reste EN ATTENTE hors chaîne fiscale, ordre idempotent (clé déterministe `defcap:<sale>:<montant>`), captured→finalisation idempotente / declined→vente abandonnée (jamais existé fiscalement) / error→retry ; ③ plafonds 150 €/ticket + 500 € d'encours.
+- Moteur pur `deferred-card-policy.ts` **12/12** : fenêtre exacte du différé (refusé online et refusé si TPE autonome), plafonds, encours calculé sur la file offline, issues de capture, **preuve NF525 : aucun chemin ne finalise une vente sans capture réussie**.
+- Restant honnête : exécuteur de capture au retour réseau (stripe-terminal) + UI usePayment = `TD-042-EXECUTOR` (preuve de bout en bout impossible sans TPE réel).
+- pos-desktop : **11 fichiers/64 tests PASS**, tsc RC 0.

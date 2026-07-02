@@ -78,3 +78,6 @@ Voir EXECUTION_LOG PAQUET 349.
 
 ## TD-055-QUIET-HOURS-WIRING — CLOS (P349)
 Voir EXECUTION_LOG PAQUET 349.
+
+## TD-042-EXECUTOR (P352)
+Exécuteur de capture différée au retour réseau (consomme les ordres `card_deferred_capture` de la file offline → stripe-terminal avec la clé déterministe → `settleDeferredCapture`) + câblage UI usePayment. Nécessite un TPE réel pour la preuve de bout en bout — le moteur de décision/issue est déjà prouvé (12/12).

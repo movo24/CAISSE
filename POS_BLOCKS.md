@@ -50,7 +50,7 @@
 |---|---|---|---|---|
 | POS-040 | Espèces (+ monnaie rendue) | ✅ testé | P0 | `sale-payment` + `payment-policy.validatePayments` (`changeMinorUnits`) — 7/7 |
 | POS-041 | Carte / Stripe Terminal | 🟡 idempotence PI testée | P0 | `stripe-terminal` ; clé idempotence PaymentIntent testée (anti double-charge) ; tenant ownership check. Paiement réel non testé. |
-| POS-042 | Paiement différé/offline carte | ⬜ | P1 | `POS_PAYMENT_STRATEGY.md` |
+| POS-042 | Paiement différé/offline carte | 🟡 stratégie décidée + moteur prouvé (P352) ; exécuteur+UI = TPE réel | P1 | `deferred-card-policy.ts` **12/12** : fenêtre exacte (offline + TPE internet_dependent), plafonds 150 €/500 €, clé de capture déterministe (anti double-charge au rejeu), declined→vente jamais finalisée (NF525 règle 3 prouvée). Restant : `TD-042-EXECUTOR`. |
 | POS-043 | Store credit / avoir | ✅ cap résiduel + DTO corrigé | P1 | `payment-policy` (avoir ≤ reste dû) testé. **Bug corrigé** : `SalePaymentDto` acceptait pas `store_credit` (rejet ValidationPipe) → `PAYMENT_METHODS` (incl. `store_credit`) + champ `creditNoteCode`. Specs 7/7. |
 | POS-044 | Paiements mixtes | ✅ testé | P1 | `sale-payment` (multi) + `validatePayments` (cash+card+avoir) — testé |
 | POS-045 | Annulation paiement | ✅ garde void cash (cf POS-052) | P0 | void interdit sur leg cash réalisé → passe par retour ; testé (voidSale guard) |
