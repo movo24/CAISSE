@@ -129,11 +129,15 @@ export class SalesService {
   ): Promise<{ id: string; name: string; role: string } | null> {
     if (!pin || !/^\d{4,8}$/.test(pin)) return null;
     // TD-RESP-PIN (P316): fail-closed while locked — no bcrypt compare at all.
+    // P323 (I6): DISTINCT error during lockout — a correct PIN is also refused
+    // here (by design), so the operator must be told to WAIT, not to retype
+    // (retyping "PIN invalide" messages would just deepen the confusion).
     if (this.respPinLimiter.isLocked(storeId)) {
-      this.logger.warn(
-        `[RESP_PIN_LOCKED] store=${storeId} — responsable PIN verification locked (${Math.ceil(this.respPinLimiter.remainingMs(storeId) / 60000)} min left)`,
+      const minLeft = Math.max(1, Math.ceil(this.respPinLimiter.remainingMs(storeId) / 60000));
+      this.logger.warn(`[RESP_PIN_LOCKED] store=${storeId} — verification locked (${minLeft} min left)`);
+      throw new BadRequestException(
+        `Vérification du code responsable temporairement verrouillée après plusieurs échecs — réessayez dans ${minLeft} min.`,
       );
-      return null;
     }
     const candidates = await this.employeeRepo.find({
       where: { storeId, isActive: true },
