@@ -2269,3 +2269,8 @@ Ces paquets ont été journalisés dans `PROJECT_STATUS.md` (v10→v18) et non i
 - MIGRATION_RUNBOOK/CLAUDE.md à jour (file 1725→1726→1727). TD-PRODUCT-VARIANTS ✅.
 - P328 : **209 suites PASS/3 skip · 1378 tests PASS/5 skip · 0 échec** ; back-office 32 tests ; nest build RC 0.
 - Commit 14fd263 ; bundle régénéré.
+
+## PAQUET 329→331 — Cycles L/M/N (2026-07-02) : UI variantes complète + consolidation
+- L : sélecteur fournisseur (modal produit, clear=null explicite). M : regroupement variantes (helper pur 3 tests, orphelines jamais masquées, chips, marque affichée) — zéro impact caisse.
+- N : backend **209 suites/1378 tests PASS** ; fronts **20 fichiers/85 tests** ; api-map 43/236 régénérée ; docs alignées (45 modules) ; file GATE 2 (1725-1727) vérifiée intacte et réversible ; preflight PASS.
+- Commits 9ada16e / db1ed79 / jalon v33 ; bundle régénéré.

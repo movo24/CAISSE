@@ -75,6 +75,19 @@ Ces points datent d'avril 2026 ; plusieurs commits fiscaux/correctifs ont suivi.
 Voir `POS_BLOCKS.md` → premier paquet (PAQUET 1). Détail d'exécution dans `EXECUTION_LOG.md`.
 
 ---
+## État consolidé — 2026-07-02 (jalon PAQUET 331, v33 — cycles L/M/N : UI variantes complète + consolidation qualité)
+
+- **L/P329 — sélecteur fournisseur livré** : liste chargée via `suppliersApi`, option « — Aucun — » = clear par null explicite (builder déjà testé), `supplierId`/`parentProductId` exposés dans le mapping produits. La chaîne fournisseur est complète de la table au modal.
+- **M/P330 — regroupement visuel des variantes** : helper pur `groupProductsForDisplay` (3 tests : variantes imbriquées sous leur parent triées par libellé, **orphelines jamais masquées** — on ne cache pas de stock à l'opérateur, ordre amont préservé) + UI (indentation, chips variante/compteur/orpheline, marque affichée). Read-only back-office — scan EAN/décrément/hash-chain/promos **intouchés**.
+- **N/P331 — consolidation qualité** :
+  - Backend COMPLET en 5 tranches : **209 suites PASS / 3 skip (.pg) · 1378 tests PASS / 5 skip · 0 échec** · `nest build` RC 0.
+  - Fronts COMPLETS : back-office **9 fichiers/35 tests** · pos-desktop **8/37** · mobile **3/13** = **20 fichiers / 85 tests PASS** · builds verts.
+  - Api-map régénérée (43 controllers / 236 routes) ; docs alignées (CLAUDE.md 45 modules/48 entités/24 migrations + module suppliers listé ; STATE_INDEX re-compté P331).
+  - **File GATE 2 vérifiée intacte** : 1725/1726/1727 présentes, non jouées, CI ne lance jamais `migration:run` (0 occurrence), tout réversible (down() prouvés pg-mem). Preflight OVERALL PASS · anti-secret 34 PASS.
+
+Commits : `9ada16e` L · `db1ed79` M · (v33 ci-dessous) N. Interdits respectés : zéro push, zéro prod, zéro secret, zéro migration runtime.
+
+---
 ## État consolidé — 2026-07-02 (jalon PAQUET 328, v32 — cycle K : variantes option A EXÉCUTÉE)
 
 - **GO variantes option A reçu → livré (P327)**, conformément à `PRODUCT_VARIANTS_DECISION.md` :

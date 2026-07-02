@@ -1,7 +1,7 @@
 # STATE_INDEX — État réel du logiciel CAISSE (audit vérifié 2026-07-01)
 
 > Règle : rien d'inventé. « absent aujourd'hui » = pas de code. « mock/simulation » = code présent mais pas d'envoi réel. « gated » = dépend d'un secret/clé/DB/runtime. Preuves par fichier/route/test/commande.
-> Chiffres backend vérifiés (re-comptés P282, 2026-07-02) : **44 modules · 42 controllers · 230 routes · 47 entités · 21 migrations · 197 fichiers de specs (194 suites PASS/3 .pg skip · 1306 tests PASS/5 skip)**. Front : **26 pages back-office · 26 objets API · 29 routes** (comptage P246). Note : le module `fiscal` est volontairement hors `app.module` (outillage CLI `npm run fiscal:verify`) ; `documents` est câblé via `receipts.module`.
+> Chiffres backend vérifiés (re-comptés P331, 2026-07-02) : **45 modules · 43 controllers · 236 routes · 48 entités · 24 migrations · 212 fichiers de specs (209 suites PASS/3 .pg skip · 1378 tests PASS/5 skip)** (re-compté P331). Front : **26 pages back-office · 26 objets API · 29 routes** (comptage P246). Note : le module `fiscal` est volontairement hors `app.module` (outillage CLI `npm run fiscal:verify`) ; `documents` est câblé via `receipts.module`.
 
 ---
 
@@ -39,7 +39,7 @@
 
 ---
 
-## 2. Index des modules backend (44)
+## 2. Index des modules backend (45)
 
 Légende : ✅ prêt+testé · 🟡 partiel/gated · ⚠️ à vérifier runtime · 🔴 absent
 

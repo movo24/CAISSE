@@ -1,6 +1,6 @@
 # CLAUDE.md — Development Guide
 
-> Last updated: 2026-07-02 (P272 — counts re-verified against code after full suite re-run)
+> Last updated: 2026-07-02 (P331 — counts re-verified: 45 modules, 209 suites/1378 tests, migrations queue 1725-1727 gated)
 > Rule: **Audit → Plan → Execute**. Each change must be minimal, targeted, testable and reversible.
 > Governance files at repo root: `PROJECT_STATUS.md`, `STATE_INDEX.md`, `MASTER_ROADMAP.md`, `POS_BLOCKS.md`, `POS_*` maps, `TECHNICAL_DEBT.md`, `EXECUTION_LOG.md`, `GATES_READINESS.md`.
 > Modules added since the 06-28 audit (documented in STATE_INDEX): `documents`, `fiscal`, `pos-session`, `comptamax`, `integration`.
@@ -24,8 +24,8 @@ npm run docker:down      # Stop local PostgreSQL
 
 # Testing (always run before committing)
 npm run test             # All workspaces
-npm run test:backend     # Backend only (1274 tests / 188 suites PASS; +2 .pg suites skip without TEST_DATABASE_URL)
-npm run test:front       # Front vitest (backoffice + pos-desktop + mobile): 59 tests / 14 files
+npm run test:backend     # Backend only (1378 tests / 209 suites PASS; +3 .pg suites skip without TEST_DATABASE_URL)
+npm run test:front       # Front vitest (backoffice + pos-desktop + mobile): 85 tests / 20 files
 
 # Code quality
 npm run lint             # ESLint (all workspaces)
@@ -73,7 +73,7 @@ or the dashboard. See `packages/backend/RUNBOOK.md` for exact curl commands.
 
 ---
 
-## Backend Modules (44)
+## Backend Modules (45)
 
 > POS-054 (2026-06-28): manual cashier discounts are policed by `sales/discount-policy.ts`
 > — POS terminal hard cap **30%** (responsable PIN + justification 21-30%); back-office
@@ -121,10 +121,11 @@ or the dashboard. See `packages/backend/RUNBOOK.md` for exact curl commands.
 | `shift-reminders` | Cron pre-shift reminders via SMS/email providers |
 | `backoffice-discounts` | POS-054e — admin-only back-office discount authorization (≤100%, motif+audit), separate from caisse |
 | `mobile-cockpit` | POS-110/112 — read-only supervision alerts `GET /api/mobile/v1/alerts` (stock + sale anomalies; manager/admin, tenant-scoped) |
+| `suppliers` | P327 — variantes option A : référentiel fournisseur tenant-scoped (nom unique/magasin, soft-delete) |
 
 ---
 
-## TypeORM Entities (47)
+## TypeORM Entities (48)
 
 Located in `packages/backend/src/database/entities/`. Key ones:
 
@@ -313,7 +314,7 @@ Validated at boot in `main.ts`. Missing required vars crash the server with a cl
 
 ## Tests
 
-1274 tests PASS across 188 spec suites (190 files; 2 `.pg.spec` skip without `TEST_DATABASE_URL`) in `packages/backend/test/` + colocated `*.spec.ts`. Full-suite re-run proven 2026-07-02 (P272). Key suites:
+1378 tests PASS across 209 spec suites (212 files; 3 `.pg.spec` skip without `TEST_DATABASE_URL`) in `packages/backend/test/` + colocated `*.spec.ts`. Full-suite re-run proven 2026-07-02 (P272). Key suites:
 
 | File | Coverage |
 |------|----------|
@@ -352,8 +353,8 @@ packages/backend/
   src/main.ts                                   Bootstrap, env validation, Swagger, global pipes
   src/app.module.ts                             Module registry, TypeORM, rate-limit tiers
   src/database/typeorm.config.ts                Migration CLI config
-  src/database/entities/                        48 TypeORM entities
-  src/database/migrations/                      21 versioned migrations (1725 not yet run on target — GATE2)
+  src/database/entities/                        48 TypeORM entities (incl. suppliers P327)
+  src/database/migrations/                      24 versioned migrations (1725/1726/1727 not yet run on target — GATE2)
   src/common/guards/roles.guard.ts              Role hierarchy (admin > manager > cashier)
   src/common/guards/jwt-auth.guard.ts           JWT authentication guard
   src/common/interceptors/tenant.interceptor.ts Multi-tenant storeId enforcement
