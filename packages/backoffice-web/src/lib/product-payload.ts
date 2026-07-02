@@ -15,6 +15,10 @@ export interface ProductFormValues {
   category: string; // categoryId (uuid) or '' / display fallback
   /** POS-061 — store override in euros; '' = no override (edit sends null to clear). */
   priceOverride?: string;
+  /** P327 — variantes option A. Empty string = clear (null on edit, omitted on create). */
+  brand?: string;
+  variantLabel?: string;
+  supplierId?: string; // uuid or ''
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -43,5 +47,20 @@ export function buildProductPayload(
     const raw = (form.priceOverride ?? '').trim();
     payload.priceOverrideMinorUnits = raw === '' ? null : eurosToCents(raw);
   }
+
+  // P327 — variantes option A : brand / variantLabel / supplierId.
+  // Create: only send non-empty values. Edit: empty string = explicit null (clear).
+  const opt = (v: string | undefined) => (v ?? '').trim();
+  for (const [key, raw] of [
+    ['brand', opt(form.brand)],
+    ['variantLabel', opt(form.variantLabel)],
+  ] as const) {
+    if (raw !== '') payload[key] = raw;
+    else if (opts.editing) payload[key] = null;
+  }
+  const sup = opt(form.supplierId);
+  if (sup !== '' && UUID_RE.test(sup)) payload.supplierId = sup;
+  else if (opts.editing) payload.supplierId = null;
+
   return payload;
 }

@@ -307,6 +307,14 @@ export const promosApi = {
 // ---------------------------------------------------------------------------
 // Stock
 // ---------------------------------------------------------------------------
+// P327 — variantes option A : référentiel fournisseur.
+export const suppliersApi = {
+  list: (includeInactive = false) => api.get('/suppliers', { params: includeInactive ? { includeInactive: 'true' } : {} }),
+  create: (data: { name: string; contact?: string; notes?: string }) => api.post('/suppliers', data),
+  update: (id: string, data: any) => api.put(`/suppliers/${id}`, data),
+  deactivate: (id: string) => api.delete(`/suppliers/${id}`),
+};
+
 export const stockApi = {
   alerts: (storeId: string) =>
     api.get('/stock/alerts', { params: { storeId } }),

@@ -1,4 +1,5 @@
 import {
+  IsUUID,
   IsString,
   IsInt,
   IsNumber,
@@ -84,6 +85,32 @@ export class CreateProductDto {
   @IsInt()
   @Min(0)
   stockCriticalThreshold?: number;
+
+  @ApiPropertyOptional({ description: 'P327 — variante : produit parent (uuid) ; null = produit simple/racine' })
+  @IsOptional()
+  @ValidateIf((_o, v) => v !== null)
+  @IsUUID()
+  parentProductId?: string | null;
+
+  @ApiPropertyOptional({ description: 'P327 — libellé de déclinaison (« 100 g », « Citron »)' })
+  @IsOptional()
+  @ValidateIf((_o, v) => v !== null)
+  @IsString()
+  @MaxLength(100)
+  variantLabel?: string | null;
+
+  @ApiPropertyOptional({ description: 'P327 — marque (déclarative)' })
+  @IsOptional()
+  @ValidateIf((_o, v) => v !== null)
+  @IsString()
+  @MaxLength(150)
+  brand?: string | null;
+
+  @ApiPropertyOptional({ description: 'P327 — fournisseur (uuid, table suppliers du magasin)' })
+  @IsOptional()
+  @ValidateIf((_o, v) => v !== null)
+  @IsUUID()
+  supplierId?: string | null;
 }
 
 export class UpdateProductDto {
@@ -165,6 +192,33 @@ export class UpdateProductDto {
   @IsInt()
   @Min(0)
   stockCriticalThreshold?: number;
+
+
+  @ApiPropertyOptional({ description: 'P327 — variante : produit parent (uuid) ; null = produit simple/racine' })
+  @IsOptional()
+  @ValidateIf((_o, v) => v !== null)
+  @IsUUID()
+  parentProductId?: string | null;
+
+  @ApiPropertyOptional({ description: 'P327 — libellé de déclinaison (« 100 g », « Citron »)' })
+  @IsOptional()
+  @ValidateIf((_o, v) => v !== null)
+  @IsString()
+  @MaxLength(100)
+  variantLabel?: string | null;
+
+  @ApiPropertyOptional({ description: 'P327 — marque (déclarative)' })
+  @IsOptional()
+  @ValidateIf((_o, v) => v !== null)
+  @IsString()
+  @MaxLength(150)
+  brand?: string | null;
+
+  @ApiPropertyOptional({ description: 'P327 — fournisseur (uuid, table suppliers du magasin)' })
+  @IsOptional()
+  @ValidateIf((_o, v) => v !== null)
+  @IsUUID()
+  supplierId?: string | null;
 
   @ApiPropertyOptional({ description: 'Reason for change (used for price history)' })
   @IsOptional()

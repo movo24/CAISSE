@@ -33,3 +33,21 @@ describe('buildProductPayload', () => {
     expect(eurosToCents('-3')).toBe(0);
   });
 });
+
+describe('P327 — variantes option A (brand / variantLabel / supplierId)', () => {
+  const SUP = '9e107d9d-372b-4a6e-b3a5-d5f6f7a8b9c0';
+
+  it('create: sends only non-empty values (never null, never junk supplier)', () => {
+    const p = buildProductPayload({ ...FORM, brand: ' Haribo ', variantLabel: '', supplierId: 'nope' }, { editing: false });
+    expect(p.brand).toBe('Haribo');
+    expect(p).not.toHaveProperty('variantLabel');
+    expect(p).not.toHaveProperty('supplierId');
+  });
+
+  it('edit: empty string clears with explicit null; valid uuid passes through', () => {
+    const p = buildProductPayload({ ...FORM, brand: '', variantLabel: '100 g', supplierId: SUP }, { editing: true });
+    expect(p.brand).toBeNull();
+    expect(p.variantLabel).toBe('100 g');
+    expect(p.supplierId).toBe(SUP);
+  });
+});

@@ -87,6 +87,28 @@ export class ProductEntity {
   @Column({ name: 'stock_baseline_quantity', type: 'integer', nullable: true })
   stockBaselineQuantity: number | null;
 
+  /**
+   * P327 — variantes option A (PRODUCT_VARIANTS_DECISION.md) : une variante EST
+   * un produit (son EAN, son prix, son stock) qui pointe son parent. Le parent
+   * peut être vendable ou un simple regroupement. Nullable = produit simple.
+   * Colonne SANS contrainte FK (auto-référence légère, migration 1727) — la
+   * cohérence est applicative, l'invariant caisse product.id/ean est intouché.
+   */
+  @Column({ name: 'parent_product_id', type: 'uuid', nullable: true })
+  parentProductId: string | null;
+
+  /** P327 — libellé de déclinaison (« 100 g », « Citron »). Libre, nullable. */
+  @Column({ name: 'variant_label', type: 'varchar', length: 100, nullable: true })
+  variantLabel: string | null;
+
+  /** P327 — marque déclarative (décision produit : marque OUI). */
+  @Column({ type: 'varchar', length: 150, nullable: true })
+  brand: string | null;
+
+  /** P327 — fournisseur référencé (table suppliers, tenant-scoped). */
+  @Column({ name: 'supplier_id', type: 'uuid', nullable: true })
+  supplierId: string | null;
+
   @Column({ name: 'is_active', default: true })
   isActive: boolean;
 

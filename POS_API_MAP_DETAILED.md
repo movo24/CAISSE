@@ -1,7 +1,7 @@
 # POS_API_MAP_DETAILED.md — Cartographie API générée depuis le code
 
 > Générée par `npm run api:map` — NE PAS éditer à la main, régénérer (la CI échoue si ce fichier ne correspond plus aux controllers).
-> **42 controllers · 232 routes.** Auth : `JwtAuthGuard` (JWT employé) · `MobileAuthGuard` (JWT Wesley Club, audience mobile-app) · `RolesGuard` (hiérarchie admin>manager>cashier) · TenantInterceptor global (storeId du JWT) sauf `@SkipTenantCheck`.
+> **43 controllers · 236 routes.** Auth : `JwtAuthGuard` (JWT employé) · `MobileAuthGuard` (JWT Wesley Club, audience mobile-app) · `RolesGuard` (hiérarchie admin>manager>cashier) · TenantInterceptor global (storeId du JWT) sauf `@SkipTenantCheck`.
 > Colonne Rôles vide = tout JWT valide du guard indiqué ; Guards vide = route publique (vérifier le contexte du controller).
 
 ## `modules/airtable-ops/airtable-ops.controller.ts` — base `/airtable-ops`
@@ -395,6 +395,15 @@
 | POST | `/subscriptions/:storeId/checkout` | createCheckout | JwtAuthGuard, RolesGuard | admin | ✓ | — |
 | POST | `/subscriptions/:storeId/portal` | createPortal | JwtAuthGuard, RolesGuard | admin | ✓ | — |
 | POST | `/subscriptions/webhook` | handleWebhook | — | — | ⚠️ skip | — |
+
+## `modules/suppliers/suppliers.controller.ts` — base `/suppliers`
+
+| Méthode | Route | Handler | Guards | Rôles | Tenant | Body DTO |
+|---|---|---|---|---|---|---|
+| GET | `/suppliers` | list | JwtAuthGuard | — | ✓ | — |
+| POST | `/suppliers` | create | JwtAuthGuard + RolesGuard | admin,manager | ✓ | — |
+| PUT | `/suppliers/:id` | update | JwtAuthGuard + RolesGuard | admin,manager | ✓ | — |
+| DELETE | `/suppliers/:id` | deactivate | JwtAuthGuard + RolesGuard | admin,manager | ✓ | — |
 
 ## `modules/sync/sync.controller.ts` — base `/sync`
 

@@ -51,6 +51,7 @@ import { LoyaltyAdminModule } from './modules/loyalty-admin/loyalty-admin.module
 import { AirtableOpsModule } from './modules/airtable-ops/airtable-ops.module';
 import { SalesGuardsModule } from './modules/sales-guards/sales-guards.module';
 import { BackofficeDiscountModule } from './modules/backoffice-discounts/backoffice-discount.module';
+import { SuppliersModule } from './modules/suppliers/suppliers.module';
 import { MobileCockpitModule } from './modules/mobile-cockpit/mobile-cockpit.module';
 // ── RH MODULES (employees re-activated for local fallback) ──
 // PointageModule, PayrollModule, PlanningModule, StaffingModule → still in TimeWin24
@@ -140,6 +141,7 @@ const isProd = process.env.NODE_ENV === 'production';
     // Sales Guards (anti-error engine — read-only, separate audit table)
     SalesGuardsModule,
     BackofficeDiscountModule,
+    SuppliersModule,
     MobileCockpitModule,
     ReturnsModule,
   ],

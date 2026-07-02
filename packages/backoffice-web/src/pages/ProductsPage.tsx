@@ -33,6 +33,8 @@ interface Product {
   stock: number;
   category: string;
   priceOverride?: number | null;
+  brand?: string;
+  variantLabel?: string;
   image: string | null;
 }
 
@@ -74,7 +76,7 @@ export function ProductsPage() {
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ name: '', ean: '', price: '', stock: '', category: '', priceOverride: '' });
+  const [form, setForm] = useState({ name: '', ean: '', price: '', stock: '', category: '', priceOverride: '', brand: '', variantLabel: '' });
 
   // Price analytics panel
   const [analyticsProductId, setAnalyticsProductId] = useState<string | null>(null);
@@ -94,6 +96,8 @@ export function ProductsPage() {
           category: typeof p.categoryId === 'string' ? p.categoryId : (typeof p.category === 'string' ? p.category : 'Non classe'),
           image: p.imageUrl || null,
           priceOverride: p.priceOverrideMinorUnits != null ? p.priceOverrideMinorUnits / 100 : null,
+          brand: p.brand ?? '',
+          variantLabel: p.variantLabel ?? '',
         })),
       );
       setError(null);
@@ -154,7 +158,7 @@ export function ProductsPage() {
   };
 
   const resetForm = () => {
-    setForm({ name: '', ean: '', price: '', stock: '', category: '', priceOverride: '' });
+    setForm({ name: '', ean: '', price: '', stock: '', category: '', priceOverride: '', brand: '', variantLabel: '' });
     setEditingId(null);
   };
 
@@ -171,6 +175,8 @@ export function ProductsPage() {
       stock: String(p.stock),
       category: p.category,
       priceOverride: p.priceOverride != null ? String(p.priceOverride) : '',
+      brand: p.brand ?? '',
+      variantLabel: p.variantLabel ?? '',
     });
     setOriginalPrice(p.price);
     setEditingId(p.id);
@@ -537,6 +543,26 @@ export function ProductsPage() {
                     />
                   </div>
                 )}
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1.5">Marque</label>
+                  <input
+                    type="text"
+                    className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-bo-accent/30 focus:border-bo-accent"
+                    placeholder="ex. Haribo"
+                    value={form.brand}
+                    onChange={(e) => setForm({ ...form, brand: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1.5">Variante (libellé)</label>
+                  <input
+                    type="text"
+                    className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-bo-accent/30 focus:border-bo-accent"
+                    placeholder="ex. 100 g, Citron"
+                    value={form.variantLabel}
+                    onChange={(e) => setForm({ ...form, variantLabel: e.target.value })}
+                  />
+                </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1.5">Stock</label>
                   <input
