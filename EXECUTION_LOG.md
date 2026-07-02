@@ -2322,3 +2322,9 @@ Ces paquets ont été journalisés dans `PROJECT_STATUS.md` (v10→v18) et non i
 - Docs alignées : CLAUDE.md (compteurs 212/1407, front 97/22, 238 routes), POS_BLOCKS (POS-065 ✅), api-map 43/238.
 - File GATE 2 (1725-1727) inchangée et réversible. Bundle régénéré (jalon v34).
 - Delta depuis v33 : +3 suites (immutability-guard, import-catalog, catalog-summary), +29 tests backend, +12 tests front, +2 routes (import, catalog-summary), 2 trous réels corrigés (références catalogue non validées ; erreur LabelsPage invisible), 1 confirmation sécurité (POS-131 clés à révoquer).
+
+## PAQUET 344→348 — Cycle V (2026-07-02) : réconciliation registre + offline/matériel prouvés
+- **Réconciliation POS_BLOCKS ↔ code** (le registre était en retard de ~15 blocs sur le log) : POS-002/003/004/005 ✅ ; POS-047/050/051/052 ✅ (preuves re-exécutées AUJOURD'HUI : pos-session db-invariant + primitive + idempotency + journal mouvements + promotions = 7 suites/61 tests verts) ; POS-081/081b/082 ✅ (GO option 1 P306, descriptions mensongères corrigées) ; POS-073 ✅ (plafond+incrément e2e) ; POS-053 ✅ (couvert chaîne 054) ; POS-060/064 ✅, POS-062 🟡 (images restantes) ; POS-016/017/017b notes réalignées (reste : fond de caisse + persistance comptage).
+- **POS-020 ✅** : `offlineStore.test.ts` **9/9** — bascule journalisée, paiements dégradés (cash/carte-TPE-autonome/QR-wallet), file persistante (redémarrage), garde-fous anti-fraude offline (voids consécutifs/quotidiens, plafonds espèces et ticket, anomalies resync).
+- **POS-037 🟡→imprimante prouvée** : builders ESC/POS exportés (pur, zéro comportement changé) + `escpos-builders.test.ts` **6/6** (reset/coupe, mentions fiscales, rendu/remise conditionnels, impulsion tiroir exacte). Scanner = follow-up.
+- pos-desktop : **10 fichiers/52 tests PASS**, tsc RC 0.

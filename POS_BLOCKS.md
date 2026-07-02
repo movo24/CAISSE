@@ -9,10 +9,10 @@
 | # | Titre | Statut | Prio | Fichiers/preuve | Dépend. |
 |---|---|---|---|---|---|
 | POS-001 | Audit global read-only | ✅ | P0 | `PROJECT_STATUS.md` (faits vérifiés) | — |
-| POS-002 | 12 fichiers de pilotage | 🔄 | P0 | les 12 `.md` racine | 001 |
-| POS-003 | Registre des blocs numéroté | 🔄 | P0 | ce fichier | 001 |
-| POS-004 | Aligner CLAUDE.md sur le réel (drift) | ⬜ | P1 | `CLAUDE.md` vs audit | 001 |
-| POS-005 | EXECUTION_LOG + cadence paquets | 🔄 | P0 | `EXECUTION_LOG.md` | 002 |
+| POS-002 | 12 fichiers de pilotage | ✅ (tenus, P343) | P0 | les 12 `.md` racine | 001 |
+| POS-003 | Registre des blocs numéroté | ✅ (réconcilié P344) | P0 | ce fichier | 001 |
+| POS-004 | Aligner CLAUDE.md sur le réel (drift) | ✅ (jalon v34) | P1 | `CLAUDE.md` vs audit | 001 |
+| POS-005 | EXECUTION_LOG + cadence paquets | ✅ (343 paquets tracés) | P0 | `EXECUTION_LOG.md` | 002 |
 
 ## Socle POS desktop
 
@@ -24,25 +24,25 @@
 | POS-013 | Écran paiement | ⚠️ | P0 | `usePayment.ts` | Choix moyen + validation |
 | POS-014 | Écran/édition ticket | ⚠️ | P0 | `receipts`, `useBluetoothPrinter` | Ticket émis après paiement |
 | POS-015 | Écran retour / annulation | ⚠️ | P0 | `ReturnModal.tsx`, `returns` | Avoir généré, NF525 OK |
-| POS-016 | Ouverture / fermeture caisse | 🟡 (session OK, fond de caisse absent) | P0 | `pos-session` open/close terminal-bound (vérifié) ; **pas de fond de caisse/float** ni lien session↔ventes. Voir POS-017b. |
-| POS-017 | Comptage espèces (midi + fermeture) | 🟡 cœur testé, wiring à faire | P1 | `pos-session/cash-count.ts` (`countCash`, `reconcileCash`) tests **8/8**. Persistance/endpoints = POS-017b. |
-| POS-017b | Câblage comptage : champs session (float/counted/variance) + migration + endpoints + lien session↔ventes cash | ⬜ | P1 | `pos-session.entity`, migration, `pos-session.service` — nécessite lien vente↔session (absent aujourd'hui) → `TD-017-SESSION-LINK` |
+| POS-016 | Ouverture / fermeture caisse | 🟡 session+clôture comptage livrées ; fond de caisse (float d'ouverture) absent | P0 | open/close terminal-bound prouvé ; lien session↔ventes ✅ (P312) ; écran clôture avec comptage/écart signé livré (P326, CloseSessionModal). Reste : saisie/persistance du fond de caisse à l'ouverture. |
+| POS-017 | Comptage espèces (midi + fermeture) | 🟡 cœur 8/8 + UI clôture livrée (P326) ; comptage non persisté serveur | P1 | `cash-count.ts` testé ; `CloseSessionModal` (comptage, écart signé, confirmation) + `cash-summary` serveur (P313). Persistance du montant compté côté session = follow-up (cf POS-017b). |
+| POS-017b | Câblage comptage : lien session↔ventes + résumé cash | 🟡 lien+résumé livrés (P312-313, e2e 10/10) ; persistance float/counted/variance côté session restante | P1 | Migration 1726 `pos_session_id` (file GATE 2) + stamp best-effort `createSale` + `GET /pos-sessions/:id/cash-summary`. TD-017-SESSION-LINK ✅. Champs float/counted/variance sur `pos_session` = follow-up. |
 | POS-018 | Historique ventes | ✅ filtres + DTO validé | P1 | `GET /api/sales` : page/limit/date + employeeId/from/to/status (`findByStore`). **POS-018b** : `ListSalesQueryDto` validé (types/bornes, limit≤100, UUID) câblé — spec 4/4. Admin cross-store. Runtime DB local. |
 | POS-019 | Paramètres terminal | ⚠️ | P2 | `terminals`, `useDeviceProfile` | Config persistée |
-| POS-020 | État connexion / mode dégradé | ⚠️ | P0 | `useOfflineMode`, `offlineStore` | Bascule offline visible |
+| POS-020 | État connexion / mode dégradé | ✅ prouvé (P346) | P0 | `offlineStore.test.ts` **9/9** : bascule online/offline journalisée (antifraude_log), paiements dégradés (cash toujours, carte si TPE autonome, QR/wallet jamais offline), file locale persistante (survit au redémarrage), garde-fous (2 voids consécutifs, 5/jour, 50€ remboursement, 500€/ticket, anomalies resync). | Bascule offline visible |
 
 ## Matériel caisse
 
 | # | Titre | Statut | Prio | Localisation |
 |---|---|---|---|---|
 | POS-030 | Scanner code-barres | ⚠️ | P1 | `useScannerZXing`, `useBluetoothScanner` |
-| POS-031 | Imprimante ESC/POS | ⚠️ | P1 | `useBluetoothPrinter` |
+| POS-031 | Imprimante ESC/POS | 🟡 trames prouvées (cf POS-037) ; matériel réel non testé | P1 | Builders ESC/POS exportés+testés 6/6 ; connexion BLE réelle = test physique. |
 | POS-032 | Lecteur QR | ⚠️ | P2 | ZXing |
 | POS-033 | TPE Stripe Terminal WisePad 3 | 🟡 idempotence PI testée ; paiement réel non testé | P0 | `stripe-terminal.service` + `payment-intent-key.ts` (clé idempotence déterministe, anti double-charge) **5/5** + régression service 4/4. POS hook `useStripeTerminal`. Paiement live interdit/non testé. |
 | POS-034 | Passerelle mobile paiement iOS/Android | ⬜ | P2 | à définir |
 | POS-035 | Gestion erreurs périphériques + reconnexion | ⚠️ | P1 | hooks HW |
 | POS-036 | Réimpression ticket | ⚠️ | P2 | `receipts` |
-| POS-037 | Tests matériel simulé (mocks) | ⬜ | P1 | à créer |
+| POS-037 | Tests matériel simulé (mocks) | 🟡 imprimante+tiroir prouvés (P347) ; scanner restant | P1 | `escpos-builders.test.ts` **6/6** : trame ticket ESC/POS (reset→mentions fiscales→coupe GS V 0), ticket de test, impulsion tiroir EXACTE (1B 70 00 19 FA). Scanner ZXing = follow-up (API caméra non simulable en node). |
 
 ## Paiements
 
@@ -55,7 +55,7 @@
 | POS-044 | Paiements mixtes | ✅ testé | P1 | `sale-payment` (multi) + `validatePayments` (cash+card+avoir) — testé |
 | POS-045 | Annulation paiement | ✅ garde void cash (cf POS-052) | P0 | void interdit sur leg cash réalisé → passe par retour ; testé (voidSale guard) |
 | POS-046 | Remboursement | ✅ math extrait+testé, régression OK | P1 | `returns.service` + `returns-policy.ts` (`returnableQuantity`, `computeLineRefund` proportionnel) — `returns-policy` 7/7 + `returns.service.spec` **17/17 sans régression** |
-| POS-047 | Idempotence stricte (double paiement interdit) | ✅(code) ⚠️(test local) | P0 | `sales.service.ts` L176-184 replay + L350-355 in-tx + L509-519 persist même tx + expiry 7j + ConflictException |
+| POS-047 | Idempotence stricte (double paiement interdit) | ✅ prouvé (idempotency.spec + e2e replay, P343) | P0 | `sales.service.ts` L176-184 replay + L350-355 in-tx + L509-519 persist même tx + expiry 7j + ConflictException |
 | POS-048 | Cohérence paiement ≥ total avant finalisation | ✅ branché+testé | P0 | extrait en `payment-policy.validatePayments` (pur, **7/7**), appelé dans `createSale` (messages identiques → comportement préservé ; mapping BadRequestException). |
 | POS-049 | Synchro paiement cloud | ⚠️ | P1 | `sync` |
 
@@ -63,10 +63,10 @@
 
 | # | Titre | Statut | Prio | Localisation |
 |---|---|---|---|---|
-| POS-050 | Sessions liées `(store_id, terminal_id)` | ⚠️ | P0 | `pos-session`, migration `1719...TerminalId` |
-| POS-051 | Interdiction doublons sessions/ventes | ⚠️ | P0 | `idempotency-key` |
-| POS-052 | Garde annulation espèces | ✅(code) ⚠️(test local) | P0 | `sales.service.ts` voidSale L948-965 (`cashRealized` → ConflictException) + limite void manager 500€ L916-927 |
-| POS-053 | Remises internes interdites sauf code responsable | ⬜ | P1 | `sales-guards` |
+| POS-050 | Sessions liées `(store_id, terminal_id)` | ✅ prouvé (db-invariant 2/2 + primitive ~15 tests) | P0 | `pos-session`, migration `1719...TerminalId` |
+| POS-051 | Interdiction doublons sessions/ventes | ✅ prouvé (index partiel sessions + idempotence ventes + dedup sync e2e) | P0 | `idempotency-key` |
+| POS-052 | Garde annulation espèces | ✅ prouvé (void-cash-realized-guard vert sandbox, P341) | P0 | `sales.service.ts` voidSale L948-965 (`cashRealized` → ConflictException) + limite void manager 500€ L916-927 |
+| POS-053 | Remises internes interdites sauf code responsable | ✅ couvert par la chaîne POS-054 | P1 | Caisse : >20% exige PIN responsable réel (bcrypt) + verrou 5 essais/15 min (H3), cap 30% strict, audit append-only ; back-office admin-only séparé. Preuves : discount-policy 14/14 + 054b/c/d/e. |
 | POS-054 | Politique remise (caisse 30% strict / justif 21-30% / back-office 100% admin) — **moteur pur** | ✅ code+test (14/14 vérifié) | P0 | `sales/discount-policy.ts` + `discount-policy.spec.ts` (matrice produit complète, exécutée verte dans le sandbox) |
 | POS-054b | Câblage caisse : champs DTO (`manualDiscountMinorUnits`, `responsablePin`, `discountJustification`) + appel politique + distribution sur lignes (TVA cohérente) dans `createSale` | ✅ codé+branché, **tsc clean** ; ⚠️ test runtime vente à exécuter localement | P0 | `common/dto/sales.dto.ts`, `sales.service.ts` (bloc avant calcul totaux). N'altère PAS les promotions. |
 | POS-054c | Vérification réelle du code responsable | ✅ branché (réel) | P0 | `sales.service.verifyResponsablePin` : PIN employé `manager`/`admin` (bcrypt `pin_hash`) du magasin. Pas de nouveau secret. Dette : rate-limit/lockout (`TD-RESP-PIN`). |
@@ -79,11 +79,11 @@
 
 | # | Titre | Statut | Prio | Localisation |
 |---|---|---|---|---|
-| POS-060 | Produit parent + variantes/SKU | ⚠️ | P1 | `product`, `product-*` |
+| POS-060 | Produit parent + variantes/SKU | ✅ option A livrée (P327→P338) | P1 | `parent_product_id`/`variant_label` (migration 1727, file GATE 2), variantes sœurs + EAN unique PAR variante prouvés pg-mem, garde 1 seul niveau + tenant (Cycle P), regroupement UI (M). SKU dédié = TD-066-SKU (inchangé). |
 | POS-061 | Prix par magasin + override | ✅ override branché+testé | P1 | Prix par magasin (lignes scopées `storeId`) + **override prioritaire** : colonne `price_override_minor_units` (migration `1723`, nullable) + `resolveEffectivePrice` (override>global) **testé 4/4** + branché dans `createSale` (prix ligne effectif). Override NULL → prix global (aucun changement). |
-| POS-062 | Marque / fournisseur / catégories / images | ⚠️ | P2 | `product-category`, `product` |
+| POS-062 | Marque / fournisseur / catégories / images | 🟡 marque+fournisseur+catégories ✅ ; images non traitées | P2 | `brand` (1727) + référentiel `suppliers` (CRUD tenant, soft-delete, audité P339, références validées P338) + catégories existantes. Images produit : rien de nouveau. |
 | POS-063 | TVA / prix TTC | ✅ extraction testée+branchée | P0 | `sales/tax.ts` (`extractLineTax`/`sumLineTax`) — **6/6** dont test-propriété = formule fiscale inline (hash-safe). Branché dans `createSale`. Doublon `shared.extractTax` (arrondi net-first) → `TD-TAX-DUP`. |
-| POS-064 | Statut actif/inactif | ⚠️ | P2 | `product` |
+| POS-064 | Statut actif/inactif | ✅ prouvé | P2 | `findAll` actif-only + tenant (pg-mem), `deactivate` soft + audité `product_deactivated` (P339), fournisseur inactif refusé en nouvelle assignation (P338). |
 | POS-065 | Import/export catalogue | ✅ (P340) | P2 | Export CSV back-office existant + **import** `POST /api/products/import` (dry-run par défaut, doublons EAN/nom in-file+magasin refusés, fournisseur par nom sans création implicite, cap 2000, audit synthétique) — validation pure 5/5 + preuves pg-mem. |
 | POS-066 | Anti-doublons SKU/EAN/nom normalisé | ✅ branché+testé | P1 | EAN : index unique `(ean,storeId)`. Nom : **dédup branchée** dans `products.service.create` (même nom normalisé/même magasin → ConflictException) + colonne `normalized_name` (migration `1722`) + sync sur update. `name-normalize` 6/6 + `products.service.spec` dédup **7/7**. Legacy backfill accents = `TD-066-LEGACY-BACKFILL`. Pas de SKU → `TD-066-SKU`. |
 
@@ -94,16 +94,16 @@
 | POS-070 | Codes promo + fenêtre validité | ✅ validité+coupons testés | P1 | promos : `getActivePromos`+`isPromoActive`. Coupons : `coupon-policy.ts` (idempotency-key, dispo, expiry, cooldown) **7/7** + `coupon.service` redeem refactor (régression **6/6**), idempotence en transaction. |
 | POS-071 | Scope magasin/produit/cat + limite d'usage | ✅ scope + plafond (exclusion) | P1 | Scope produit/catégorie + hors-portée ✅ ; **plafond d'usage** : colonnes `usage_limit`/`usage_count` (migration `1724`) + `isUsageLimitReached` testé + `getActivePromos` exclut les promos au plafond (`promotions.service.spec` **14/14**). Increment à l'application = `TD-073-USAGE-INCREMENT`. |
 | POS-072 | Traçabilité usage | 🟡 coupons OK | P1 | Coupons : redemption + idempotency tracés. `promo_rule` : pas de compteur d'usage (lié `TD-073-USAGE-LIMIT`). |
-| POS-073 | Refus auto (expirée / plafond / doublon) | 🟡 expiry+anti-cumul OK ; plafond manquant | P0 | **Expirée** ✅ `getActivePromos`+`isPromoActive`. **Doublon/cumul** ✅ **branché+testé** : `applyPromos` retourne `dedupeBestPerProduct` (service spec **11/11**, dont test anti-stacking). **Plafond usage** ❌ pas de champ `promo_rule` → `TD-073-USAGE-LIMIT`. Coupons idempotents (séparé). |
+| POS-073 | Refus auto (expirée / plafond / doublon) | ✅ complet (P341 e2e) | P0 | **Expirée** ✅ (`getActivePromos`+`isPromoActive`). **Doublon/cumul** ✅ (`dedupeBestPerProduct`, spec 14/14 anti-stacking). **Plafond usage** ✅ : colonnes `usage_limit`/`usage_count` (migration 1724) + exclusion au plafond + **incrément réel à l'application** prouvé e2e (« promo usage cap really counts down across REAL sales », P341). Coupons idempotents (séparé). |
 
 ## Stock
 
 | # | Titre | Statut | Prio | Localisation |
 |---|---|---|---|---|
 | POS-080 | Stock par magasin | ✅ (vérifié) | P0 | `product.stockQuantity` + index unique `(ean, storeId)` ; helper testé `stock/stock-level.ts` (7/7) |
-| POS-081 | Mouvement stock à chaque vente | ⚠️ ÉCART | P0 | `createSale` décrémente en SQL brut (L596) **sans** écrire de `stock_movement` ni déclencher d'alerte (il n'appelle PAS `stockService`). → `TD-081-MOVEMENT` |
-| POS-082 | Retour stock si annulation/remboursement | 🟡 partiel | P0 | `returns.service` restock OK (L189 `+qty`) mais **sans** ligne `stock_movement`. → `TD-082-MOVEMENT` |
-| POS-081b | Unifier les 2 systèmes de stock (store `stockQuantity` ↔ journal `stock_movements` location-keyed) | ⛔ DÉCISION ARCHI | P1 | **GATE** : brancher le journal mouvement à la vente exige de décider du mapping magasin→location. Voir `TD-STOCK-TWO-SYSTEMS` + dossier `EXECUTION_LOG` PAQUET 7. Non exécuté. |
+| POS-081 | Mouvement stock à chaque vente | ✅ (option 1, P306) | P0 | `recordSaleMovements` appelé DANS la transaction de vente (`sales.service` L656) — journal append-only + décrément atomiques. Preuves : `stock-movement-journal.pgmem.spec` + e2e « a REAL sale writes append-only stock movements ». |
+| POS-082 | Retour stock si annulation/remboursement | ✅ (recordReturnMovements, P306) | P0 | `recordReturnMovements` branché dans `returns.service` — restock + ligne journal atomiques. Preuve e2e (retour réel → mouvement append-only). |
+| POS-081b | Unifier les 2 systèmes de stock (store `stockQuantity` ↔ journal `stock_movements`) | ✅ GO option 1 exécuté (P306 — TD-STOCK-TWO-SYSTEMS résolu) | P1 | GO utilisateur option 1 (P306) : location paresseuse idempotente par magasin, journal = source d'audit, compteur = lecture rapide, réconciliation read-only (`stock-reconcile`, F1). `STOCK_UNIFICATION_DECISION.md`. |
 | POS-083 | Alerte stock bas (20% d'une baseline par/max) | ✅ branché + migration réversible ; ⚠️ test runtime/migration en local ; alertes pas sur voie vente (cf POS-081) | P1 | Décision produit : 20% d'un par/max. `product.stockBaselineQuantity` + migration `1721000000000-AddStockBaseline` (additive/nullable, `down` DROP). `effectiveAlertThreshold` (tests 9/9) branché dans `getAlerts` (SQL COALESCE) + `decrementStock`. Fallback seuil absolu si baseline NULL (aucun changement existant). |
 | POS-084 | Vérif physique obligatoire avant correction + trace | ⚠️ | P1 | `inventory-scan` |
 | POS-085 | Inventaire / écart stock | ✅ ajustement+variance testés | P1 | `inventory-scan/inventory-adjust.ts` (`applyStockAdjustment` delta/absolute, `inventoryVariance`) **7/7** + branché dans `applyScansToStock`. UI `InventoryVariancePage` (non commité). |

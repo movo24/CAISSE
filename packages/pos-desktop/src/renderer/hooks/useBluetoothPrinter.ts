@@ -79,7 +79,8 @@ function textToBytes(text: string): Uint8Array {
   return encoder.encode(text);
 }
 
-function buildESCPOSBytes(data: TicketData): Uint8Array {
+/** Exporté pour test (POS-037 — matériel simulé). Pur : aucune I/O. */
+export function buildESCPOSBytes(data: TicketData): Uint8Array {
   const parts: Uint8Array[] = [];
 
   const cmd = (...bytes: number[]) => parts.push(new Uint8Array(bytes));
@@ -181,7 +182,8 @@ function buildESCPOSBytes(data: TicketData): Uint8Array {
   return result;
 }
 
-function buildTestTicketBytes(): Uint8Array {
+/** Exporté pour test (POS-037). */
+export function buildTestTicketBytes(): Uint8Array {
   const parts: Uint8Array[] = [];
   const cmd = (...bytes: number[]) => parts.push(new Uint8Array(bytes));
   const text = (s: string) => parts.push(textToBytes(s));
@@ -213,7 +215,8 @@ function buildTestTicketBytes(): Uint8Array {
   return result;
 }
 
-function buildCashDrawerKickBytes(): Uint8Array {
+/** Exporté pour test (POS-037). */
+export function buildCashDrawerKickBytes(): Uint8Array {
   // ESC p 0 25 250 — Standard cash drawer kick pulse
   // Pin 2 (most common), on-time 25*2ms=50ms, off-time 250*2ms=500ms
   return new Uint8Array([ESC, 0x70, 0x00, 0x19, 0xFA]);
