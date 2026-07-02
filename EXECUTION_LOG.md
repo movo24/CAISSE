@@ -2227,3 +2227,11 @@ Ces paquets ont été journalisés dans `PROJECT_STATUS.md` (v10→v18) et non i
 - Preuves : 4 tests pg-mem journal + assertion e2e (vente/retour réels écrivent leurs mouvements, 1 seule location auto-créée) ; mocks unitaires adaptés.
 - P307 : **200 suites PASS/3 skip · 1343 tests PASS/5 skip · 0 échec** ; tsc EXIT 0 ; nest build RC 0.
 - Commit 342547f ; bundle régénéré. Reste optionnel documenté : backfill historique, bascule écrans stock-locations sur la projection.
+
+## PAQUET 308→311 — Cycle F (2026-07-02) : réconciliation stock + TD-066/TD-061 fermées + bug contrat produits
+- F1 GET /api/stock/reconcile (read-only) : compteur vs journal vs balance legacy, driftCount ; 3 tests pg-mem.
+- F2 TD-066-LEGACY-BACKFILL ✅ : npm run backfill:names (dry-run défaut, collisions quarantainées) ; 2 tests pg-mem ; run cible gated.
+- F3 TD-061-UI ✅ + **bug corrigé** : payload produits back-office rejeté 400 (forbidNonWhitelisted) → buildProductPayload (clés DTO) + champ override prix + DTO nullable ; 4 tests vitest.
+- Garde env-completeness a attrapé BACKFILL_APPLY → .env.example complété (garde validée en conditions réelles).
+- P311 : **202 suites PASS/3 skip · 1348 tests PASS/5 skip · 0 échec** ; back-office 27 tests ; nest build RC 0.
+- Commits 0808f29 / e9d6688 / 8866337 ; bundle régénéré.

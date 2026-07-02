@@ -75,6 +75,18 @@ Ces points datent d'avril 2026 ; plusieurs commits fiscaux/correctifs ont suivi.
 Voir `POS_BLOCKS.md` → premier paquet (PAQUET 1). Détail d'exécution dans `EXECUTION_LOG.md`.
 
 ---
+## État consolidé — 2026-07-02 (jalon PAQUET 311, v27 — cycle F : réconciliation stock + 2 dettes fermées + bug contrat produits corrigé)
+
+- **F1/P308 — `GET /api/stock/reconcile`** (admin/manager, read-only) : réconciliation par produit compteur A vs net journal (P306+, honnête : variation, pas stock absolu sans backfill) vs balance legacy B, avec `balanceDrift` + `driftCount`. 3 tests pg-mem (drift détecté, magasin sans location, tenant). Api-map régénérée (231 routes).
+- **F2/P309 — TD-066-LEGACY-BACKFILL ✅ RÉSOLU** : script one-off `npm run backfill:names` (dry-run par défaut, `BACKFILL_APPLY=true` pour appliquer, chunked, idempotent) ; **collisions même-magasin quarantainées** pour arbitrage humain (jamais de fusion silencieuse). 2 tests pg-mem (plan accent-folded + apply idempotent). Exécution cible = gated DATABASE_URL+GO.
+- **F3/P310 — TD-061-UI livré + BUG CONTRAT CORRIGÉ** : le payload produits du back-office envoyait `price/stock/category/storeId` — tous **rejetés en 400** par `forbidNonWhitelisted` (l'édition produit était cassée contre ce backend). → builder pur `buildProductPayload` (clés DTO uniquement, euros→centimes, `categoryId` seulement si uuid) + **champ override prix magasin** en édition (vide = prix global, null explicite pour effacer) + DTO `priceOverrideMinorUnits` nullable (Update uniquement). 4 tests vitest ; tsc+vite builds verts.
+- Bonus P311 : la garde env-completeness a attrapé `BACKFILL_APPLY` non documentée → ajoutée à `.env.example` (la garde fonctionne).
+- **P311 consolidation** : backend COMPLET en 5 tranches —
+  **202 suites PASS / 3 skip (.pg) · 1348 tests PASS / 5 skip · 0 échec** (Δ v26 : +2 suites, +5 tests). Back-office vitest **7 fichiers / 27 tests** ; `nest build` RC 0 ; tsc EXIT 0 partout.
+
+Commits : `0808f29` F1 · `e9d6688` F2 · `8866337` F3. Interdits respectés : zéro push, zéro prod, zéro secret, zéro migration runtime.
+
+---
 ## État consolidé — 2026-07-02 (jalon PAQUET 307, v26 — cycle E : GO option 1 exécuté, TD-STOCK-TWO-SYSTEMS RÉSOLU)
 
 - **GO utilisateur reçu** sur l'option 1 du dossier `STOCK_UNIFICATION_DECISION.md` → exécutée intégralement (P306) :
