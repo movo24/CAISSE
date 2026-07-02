@@ -31,6 +31,9 @@ import { TicketHistoryModal } from '../components/pos/TicketHistoryModal';
 import { ReturnModal } from '../components/pos/ReturnModal';
 import { AvoirTenderModal } from '../components/pos/AvoirTenderModal';
 import { DiscountModal } from '../components/pos/DiscountModal';
+import { CloseSessionModal } from '../components/pos/CloseSessionModal';
+import { posSessionsApi } from '../services/api';
+import { getTerminalId } from '../lib/terminal-id';
 import { manualDiscountGuard } from '../lib/manual-discount-guard';
 import { peripheralBridge } from '../services/peripheralBridge';
 import { useCloudSyncStore } from '../services/cloudSyncIdentity';
@@ -152,12 +155,26 @@ export function POSPage() {
   const [avoirOpen, setAvoirOpen] = useState(false);
   // POS-054 — manual discount modal
   const [discountModalOpen, setDiscountModalOpen] = useState(false);
+  // P325 — γ session of THIS terminal (best-effort: null offline / server down).
+  const [posSessionId, setPosSessionId] = useState<string | null>(null);
+  const [closeSessionOpen, setCloseSessionOpen] = useState(false);
   const [ticketCountdown, setTicketCountdown] = useState(TICKET_TIMEOUT_MS / 1000);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Transaction speed tracking
   const [transactionStart, setTransactionStart] = useState<number | null>(null);
+
+  // P325 — find-or-open the terminal session (never blocks the till: offline or
+  // failure ⇒ sessionless mode, sales keep working exactly as before).
+  useEffect(() => {
+    if (offlineMode.isOffline) return;
+    let cancelled = false;
+    void posSessionsApi.ensure(getTerminalId()).then((session) => {
+      if (!cancelled) setPosSessionId(session?.id ?? null);
+    });
+    return () => { cancelled = true; };
+  }, [offlineMode.isOffline]);
   const [lastTransactionTime, setLastTransactionTime] = useState<number | null>(null);
 
   // Split payment state
@@ -1198,6 +1215,18 @@ export function POSPage() {
                 </button>
               );
             })()}
+            {(() => {
+              return (
+                <button
+                  onClick={() => setCloseSessionOpen(true)}
+                  disabled={!posSessionId || offlineMode.isOffline}
+                  title={!posSessionId ? 'Aucune session terminal active (hors-ligne ou serveur indisponible)' : undefined}
+                  className="w-full text-xs rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 py-1.5 disabled:opacity-40 mt-1"
+                >
+                  {posSessionId ? 'Clôture de caisse (comptage)' : 'Clôture de caisse (session indisponible)'}
+                </button>
+              );
+            })()}
             <div className="h-px bg-pos-border/40" />
             <div className="flex justify-between items-end">
               <span className="text-pos-muted text-sm font-medium">Total</span>
@@ -1883,6 +1912,18 @@ export function POSPage() {
           amountDueMinor={remaining}
           onApply={(code, amt) => { commitPartialPayment('store_credit', amt, code); setAvoirOpen(false); }}
           onClose={() => setAvoirOpen(false)}
+        />
+      )}
+
+      {posSessionId && (
+        <CloseSessionModal
+          open={closeSessionOpen}
+          sessionId={posSessionId}
+          onClose={() => setCloseSessionOpen(false)}
+          onClosed={() => {
+            setCloseSessionOpen(false);
+            setPosSessionId(null); // session gone; a new one opens on next mount/online
+          }}
         />
       )}
 

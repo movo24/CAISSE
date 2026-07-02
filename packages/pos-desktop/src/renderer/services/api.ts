@@ -59,6 +59,15 @@ async function tryRefreshToken(): Promise<string | null> {
 
 // Attach JWT token to requests (with expiry pre-check)
 api.interceptors.request.use(async (config) => {
+  // P325 — every POS request carries the physical terminal identity, so the
+  // backend can bind sales/voids to the terminal's γ session (POS-INT-83/P312).
+  // Without this header the session stamp is inert. Best-effort (never throws).
+  try {
+    if (!config.headers['X-Terminal-Id']) {
+      const { getTerminalId } = await import('../lib/terminal-id');
+      config.headers['X-Terminal-Id'] = getTerminalId();
+    }
+  } catch { /* sessionless mode — sales still work */ }
   // Skip auth header for login/refresh endpoints
   const url = config.url || '';
   if (url.includes('/auth/login') || url.includes('/auth/refresh')) {
@@ -213,8 +222,23 @@ export const customersApi = {
 export const posSessionsApi = {
   active: (terminalId: string) =>
     api.get('/pos-sessions/active', { headers: { 'X-Terminal-Id': terminalId } }),
+  open: (terminalId: string) =>
+    api.post('/pos-sessions/open', {}, { headers: { 'X-Terminal-Id': terminalId } }),
   cashSummary: (sessionId: string) => api.get(`/pos-sessions/${sessionId}/cash-summary`),
   close: (sessionId: string) => api.post(`/pos-sessions/${sessionId}/close`),
+  /** P325 — find-or-open the terminal's session. Best-effort: any failure → null (offline-tolerant, never blocks the till). */
+  async ensure(terminalId: string): Promise<{ id: string } | null> {
+    try {
+      const active = await this.active(terminalId);
+      if (active.data?.id) return active.data;
+    } catch { /* fall through to open */ }
+    try {
+      const opened = await this.open(terminalId);
+      return opened.data?.id ? opened.data : null;
+    } catch {
+      return null; // offline / 409 race / server down — the till keeps working sessionless
+    }
+  },
 };
 
 export const reportsApi = {
