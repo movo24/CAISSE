@@ -27,6 +27,17 @@ export class StockController {
     return this.stockService.getAlerts(req.user.storeId);
   }
 
+  @Get('reconcile')
+  @Roles('admin', 'manager')
+  @UseGuards(RolesGuard)
+  @ApiOperation({
+    summary:
+      'P308 — read-only reconciliation: products counter vs movement-journal net vs legacy stock_balances (supervision; no write)',
+  })
+  reconcile(@Request() req: any) {
+    return this.stockService.reconcile(req.user.storeId);
+  }
+
   @Put('default-thresholds')
   @Roles('admin', 'manager')
   @UseGuards(RolesGuard)

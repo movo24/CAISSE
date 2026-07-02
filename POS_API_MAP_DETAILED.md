@@ -1,7 +1,7 @@
 # POS_API_MAP_DETAILED.md — Cartographie API générée depuis le code
 
 > Générée par `npm run api:map` — NE PAS éditer à la main, régénérer (la CI échoue si ce fichier ne correspond plus aux controllers).
-> **42 controllers · 230 routes.** Auth : `JwtAuthGuard` (JWT employé) · `MobileAuthGuard` (JWT Wesley Club, audience mobile-app) · `RolesGuard` (hiérarchie admin>manager>cashier) · TenantInterceptor global (storeId du JWT) sauf `@SkipTenantCheck`.
+> **42 controllers · 231 routes.** Auth : `JwtAuthGuard` (JWT employé) · `MobileAuthGuard` (JWT Wesley Club, audience mobile-app) · `RolesGuard` (hiérarchie admin>manager>cashier) · TenantInterceptor global (storeId du JWT) sauf `@SkipTenantCheck`.
 > Colonne Rôles vide = tout JWT valide du guard indiqué ; Guards vide = route publique (vérifier le contexte du controller).
 
 ## `modules/airtable-ops/airtable-ops.controller.ts` — base `/airtable-ops`
@@ -343,6 +343,7 @@
 | Méthode | Route | Handler | Guards | Rôles | Tenant | Body DTO |
 |---|---|---|---|---|---|---|
 | GET | `/stock/alerts` | getAlerts | JwtAuthGuard | — | ✓ | — |
+| GET | `/stock/reconcile` | reconcile | JwtAuthGuard + RolesGuard | admin,manager | ✓ | — |
 | PUT | `/stock/default-thresholds` | updateDefaultThresholds | JwtAuthGuard + RolesGuard | admin,manager | ✓ | — |
 | POST | `/stock/variance` | variance | JwtAuthGuard + RolesGuard | admin,manager | ✓ | — |
 | POST | `/stock/:productId/adjust` | adjust | JwtAuthGuard + RolesGuard | admin,manager | ✓ | — |

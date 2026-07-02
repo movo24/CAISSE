@@ -10,6 +10,7 @@ import { IntegrationEventEntity } from '../../database/entities/integration-even
 import { AuditService } from '../audit/audit.service';
 import { crossedDownward, effectiveAlertThreshold, applyStockAdjustment } from './stock-level';
 import { recordAdjustMovement } from './stock-movement-journal';
+import { reconcileStoreStock, StockReconReport } from './stock-reconcile';
 import { toOutboxRow } from '../../common/integration/integration-event';
 import { buildStockEvents } from './stock-events';
 import { computeStockVariance } from './stock-variance';
@@ -281,6 +282,11 @@ export class StockService {
       .getMany();
 
     return { alert, critical };
+  }
+
+  /** P308 — read-only reconciliation counter vs journal vs legacy balance. */
+  async reconcile(storeId: string): Promise<StockReconReport> {
+    return reconcileStoreStock(this.dataSource.manager, storeId);
   }
 
   /**
