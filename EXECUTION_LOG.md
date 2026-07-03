@@ -2401,3 +2401,10 @@ Ces paquets ont été journalisés dans `PROJECT_STATUS.md` (v10→v18) et non i
 - `e2e/pos-scenarios.spec.ts` : S2 panier (2× même EAN → 59,80 → retrait → 0 article), S3 vente→retour→avoir, S4 remise 25 % → PIN responsable EXIGÉ puis total 22,43, S5 clôture avec comptage 25,00 → écart −4,90 → persistance (P351). Conventions du smoke prouvé (env surchargables, helpers login/scan/payCash).
 - Preuve sandbox maximale possible : `playwright test --list` → **5 tests / 2 fichiers collectés** (compilation+collecte OK). Exécution réelle = machine d'Omar (§2 du DOSSIER). Sélecteurs = meilleure hypothèse sur composants réels ; toute divergence sera corrigée sur copie de l'erreur.
 - DOSSIER_EXECUTION_OMAR §2 mis à jour (scénarios livrés, plus « à écrire »).
+
+## PAQUET 365 (2026-07-03) : tentative d'exécution locale P364 — murs environnement DOCUMENTÉS, correctifs appliqués
+- Ordre demandé exécuté, sortie réelle à l'appui :
+  ① `bash scripts/run-gate2.sh` → fail-closed IMMÉDIAT « ❌ DATABASE_URL manquant » (comportement voulu — pas de secret ici, et je n'en demande pas). Verdict Gate 2 : NON EXÉCUTABLE depuis le sandbox, inchangé (P350 : hôte Neon non résolu même avec URL).
+  ② e2e S2→S5 : sondage complet — docker ABSENT, postgres/psql ABSENTS, navigateurs Playwright ABSENTS, `npx playwright install chromium` → « Host system is missing dependencies to run browsers » et PAS de root (sudo cassé) pour les installer. Verdict : exécution e2e IMPOSSIBLE dans ce sandbox, définitivement (pas un problème de code).
+- Correctifs corrigeables appliqués : bit exécutable de `run-gate2.sh` restauré + DOSSIER §1 passe à `bash scripts/run-gate2.sh` (insensible à la perte de chmod FUSE) + table d'erreurs enrichie (cas Permission denied).
+- Les 5 tests restent collectés (`playwright test --list` : 5/2 fichiers). Statut S2→S5 : « écrits, à prouver sur TA machine » — la commande exacte restante : `cd ~/CAISSE && npm run docker:up && npm run dev:backend` puis `cd packages/pos-desktop && npm run test:e2e`.

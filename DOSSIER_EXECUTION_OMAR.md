@@ -10,7 +10,7 @@
 ### Commande (la seule chose à taper)
 ```bash
 cd ~/CAISSE
-DATABASE_URL="postgresql://...neon.tech/...?sslmode=require" ./scripts/run-gate2.sh
+DATABASE_URL="postgresql://...neon.tech/...?sslmode=require" bash scripts/run-gate2.sh
 ```
 L'URL : console Neon → ton projet → **Connection string** (pooler) — elle finit par `?sslmode=require`.
 
@@ -31,6 +31,7 @@ avec au-dessus 6 lignes ✅ (tables neuves vides, COUNT(sales) inchangé, tête 
 | Message | Cause | Action |
 |---|---|---|
 | `❌ DATABASE_URL manquant` | URL pas passée | reprendre la commande avec l'URL |
+| `Permission denied` sur le script | bit exécutable perdu (sync/FUSE) | utiliser `bash scripts/run-gate2.sh` (la commande ci-dessus le fait déjà) |
 | `could not translate host name` / timeout | mauvaise URL ou réseau | re-copier l'URL depuis Neon (pooler) |
 | `password authentication failed` | mauvais credentials | régénérer le password Neon, re-copier l'URL |
 | `❌ Tête inattendue (...)` | ce n'est PAS la bonne base | STOP — vérifier le projet Neon ; ne rien forcer |
