@@ -82,5 +82,8 @@ Voir EXECUTION_LOG PAQUET 349.
 ## TD-042-EXECUTOR (P352, réduit P353)
 L'ORCHESTRATION est livrée+prouvée (`deferred-capture-executor.ts` 6/6, deps injectées — incl. le cas critique capture-OK/finalisation-KO rejouable sans double charge). Restant irréductible : ① adaptateur physique `capture()` → stripe-terminal/TPE réel ; ② branchement UI usePayment (proposer le différé quand `canDeferCard` l'autorise) ; ③ déclenchement de `processDeferredCaptures` sur `goOnline`. Preuve de bout en bout = TPE réel.
 
-## TD-PRIM-ENV-CLONE (P358)
+## TD-PRIM-ENV-CLONE (P358) — élargi en TD-TWO-CLONES (P360)
 La NOUVELLE clé PRIM (rotation faite par Omar) vit dans l'env Claude Code, PAS dans `packages/backend/.env` de ce clone — la ligne y est commentée avec instructions (P354). Conséquence : un backend lancé depuis CE clone tourne en mode no-key (fail-safe prouvé 4/4, non bloquant). À poser par Omar seul s'il lance le backend d'ici. Google Maps : no-key VOLONTAIRE (CB Google) — même ligne commentée, même mode prouvé.
+
+## TD-TWO-CLONES (P360)
+**Constat prouvé (2026-07-03)** : les DEUX vraies clés (PRIM régénérée + Google Maps nouvelle) ont été installées par Omar via Claude Code, mais un scan complet de `~/CAISSE` montre que les seules lignes `PRIM_API_KEY=`/`GOOGLE_MAPS_API_KEY=` actives sont les placeholders de `.env.example` → **Claude Code travaille sur une AUTRE copie du projet** (3 installations successives, toujours ailleurs). Risques : divergence de code entre les 2 copies (l'agent Claude Code a mentionné une branche `fix/pos-tpe-card-success-2026-06` et un trunk `8cbf5d8` inconnus de ce clone) et confusion sur la copie de référence. **Action Omar** : ① côté Claude Code, `git rev-parse --show-toplevel` pour identifier son clone ; ② décider LA copie de référence ; ③ synchroniser (le `pos-recovery.bundle` de ce clone porte tout l'historique P332→P358). Jusque-là : ce clone = référence des preuves/jalons ; l'autre = là où vivent les secrets.
