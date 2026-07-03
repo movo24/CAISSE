@@ -41,7 +41,7 @@
 | POS-033 | TPE Stripe Terminal WisePad 3 | 🟡 idempotence PI testée ; paiement réel non testé | P0 | `stripe-terminal.service` + `payment-intent-key.ts` (clé idempotence déterministe, anti double-charge) **5/5** + régression service 4/4. POS hook `useStripeTerminal`. Paiement live interdit/non testé. |
 | POS-034 | Passerelle mobile paiement iOS/Android | ⬜ | P2 | à définir |
 | POS-035 | Gestion erreurs périphériques + reconnexion | ⚠️ | P1 | hooks HW |
-| POS-036 | Réimpression ticket | ⚠️ | P2 | `receipts` |
+| POS-036 | Réimpression ticket | 🟡 logiciel prouvé (P361) ; impression BLE réelle = physique | P2 | `lib/reprint.ts` **6/6** : duplicata marqué EN TÊTE + pied (« NE VAUT PAS ORIGINAL »), montants copiés jamais recalculés, date de la vente originale, compteur n°X, journal `recordReprint` immuable, **trame ESC/POS bout-en-bout validée** via les builders POS-037. Droit `canReprintTicket` déjà gardé (useTicketHistory). |
 | POS-037 | Tests matériel simulé (mocks) | ✅ complet côté logiciel (P347+P355) | P1 | Imprimante+tiroir : `escpos-builders` 6/6. Scanner : cœur extrait PUR (`scan-gate.ts`, zéro changement de comportement) — `scan-gate.test` **7/7** (nettoyage trames douchette CR/LF/GS, borne longueur, matrice anti-rebond caisse vs inventaire). Restent physiques par nature : caméra ZXing + BLE réels. |
 
 ## Paiements
@@ -131,7 +131,7 @@
 
 | # | Titre | Statut | Prio | Localisation |
 |---|---|---|---|---|
-| POS-110 | Cockpit mobile lecture seule | 🟡 backend livré, UI à faire | P1 | endpoint backend `mobile-cockpit` créé ; UI `packages/mobile` à brancher |
+| POS-110 | Cockpit mobile lecture seule | 🟡 backend + view-model prouvés (P361) ; écran à brancher | P1 | Endpoint (shaper 6/6) + view-model PUR `mobile/src/utils/alerts-view.ts` **8/8** : normalisation défensive (payload offline/malformé → défauts sûrs, overall recalculé même règle backend), badge FR, tri gravité+récence déterministe, sections ordonnées vides-omises. Reste : composant écran + fetch (aucune logique). |
 | POS-111 | `GET /api/mobile/v1/alerts` | ✅ créé (tsc clean) ; ⚠️ runtime local | P1 | `mobile-cockpit.controller` (`GET /api/mobile/v1/alerts`) + service + shaper testé (cockpit 6/6). Garde **employé JWT + manager** (pas customer token). |
 | POS-112 | Alertes (caisse/stock/paiement/fermeture/anomalies) | 🟡 stock+anomalies OK | P1 | agrège `stockService.getAlerts` + `sale_anomaly_logs` (status detected). Paiement/fermeture : pas de source dédiée → `TD-112-MORE-ALERTS`. |
 | POS-113 | Aucune action dangereuse depuis mobile | ✅ | P0 | endpoint **lecture seule** (aucune mutation) + `@Roles('manager')` ; customer token exclu. |
