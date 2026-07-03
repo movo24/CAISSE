@@ -10,6 +10,7 @@ import { ScanPage } from './pages/ScanPage';
 import { InventoryPage } from './pages/InventoryPage';
 import { ReceivingPage } from './pages/ReceivingPage';
 import { SearchPage } from './pages/SearchPage';
+import { AlertsPage } from './pages/AlertsPage';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import './styles/globals.css';
 
@@ -35,6 +36,7 @@ function App() {
             <Route path="/inventory" element={<InventoryPage />} />
             <Route path="/receiving" element={<ReceivingPage />} />
             <Route path="/search" element={<SearchPage />} />
+            <Route path="/alerts" element={<AlertsPage />} />
           </Route>
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />

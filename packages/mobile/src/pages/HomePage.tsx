@@ -6,7 +6,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ScanBarcode, ClipboardList, PackageCheck, Search,
-  LogOut, AlertTriangle, TrendingDown, Store,
+  LogOut, AlertTriangle, TrendingDown, Store, ShieldAlert,
 } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 import { stockApi } from '../services/api';
@@ -69,6 +69,14 @@ export function HomePage() {
       path: '/search',
       color: 'from-amber-500 to-amber-600',
       show: true,
+    },
+    {
+      label: 'Supervision',
+      desc: 'Alertes stock & anomalies',
+      icon: ShieldAlert,
+      path: '/alerts',
+      color: 'from-red-500 to-red-600',
+      show: canModifyStock(), // manager/admin — même garde que l'endpoint backend
     },
   ];
 

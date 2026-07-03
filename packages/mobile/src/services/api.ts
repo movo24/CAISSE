@@ -199,6 +199,11 @@ export const productsApi = {
     api.put(`/products/${id}`, data),
 };
 
+/** P362 — POS-110 : cockpit supervision lecture seule (manager/admin, JWT employé). */
+export const cockpitApi = {
+  alerts: () => api.get('/mobile/v1/alerts'),
+};
+
 export const stockApi = {
   alerts: () => api.get('/stock/alerts'),
   /** Adjust stock — mode: 'absolute' sets to exact value, 'delta' adds/subtracts */

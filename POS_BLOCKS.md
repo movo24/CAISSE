@@ -131,7 +131,7 @@
 
 | # | Titre | Statut | Prio | Localisation |
 |---|---|---|---|---|
-| POS-110 | Cockpit mobile lecture seule | 🟡 backend + view-model prouvés (P361) ; écran à brancher | P1 | Endpoint (shaper 6/6) + view-model PUR `mobile/src/utils/alerts-view.ts` **8/8** : normalisation défensive (payload offline/malformé → défauts sûrs, overall recalculé même règle backend), badge FR, tri gravité+récence déterministe, sections ordonnées vides-omises. Reste : composant écran + fetch (aucune logique). |
+| POS-110 | Cockpit mobile lecture seule | ✅ complet côté logiciel (P362) | P1 | Endpoint (shaper 6/6) + view-model **8/8** + **écran `AlertsPage` livré** : route `/alerts`, tuile Home visible manager/admin uniquement (même garde que le backend), badge global, sections par gravité, erreurs jamais avalées (bandeau+réessayer), zéro action possible (lecture seule par construction). Build vite RC 0. Test smartphone réel = runtime. |
 | POS-111 | `GET /api/mobile/v1/alerts` | ✅ créé (tsc clean) ; ⚠️ runtime local | P1 | `mobile-cockpit.controller` (`GET /api/mobile/v1/alerts`) + service + shaper testé (cockpit 6/6). Garde **employé JWT + manager** (pas customer token). |
 | POS-112 | Alertes (caisse/stock/paiement/fermeture/anomalies) | 🟡 stock+anomalies OK | P1 | agrège `stockService.getAlerts` + `sale_anomaly_logs` (status detected). Paiement/fermeture : pas de source dédiée → `TD-112-MORE-ALERTS`. |
 | POS-113 | Aucune action dangereuse depuis mobile | ✅ | P0 | endpoint **lecture seule** (aucune mutation) + `@Roles('manager')` ; customer token exclu. |
