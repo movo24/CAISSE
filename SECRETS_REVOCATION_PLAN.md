@@ -48,11 +48,12 @@ pip install git-filter-repo
 # 1. Filet de sécurité : bundle complet AVANT (rollback = re-clone depuis ce bundle)
 git bundle create pre-purge-$(date +%Y%m%d).bundle --all
 
-# 2. Fichier des valeurs à expurger (NE PAS committer ce fichier)
-cat > /tmp/secrets-to-purge.txt << 'EOT'
-8WTonfBUg0FpBWvv7zyxceeLKmZ62PvF
-AIzaSyAdqDEwgspME7yCR0ch9kSMoRBucjUjWk0
-EOT
+# 2. Fichier des valeurs à expurger (NE PAS committer ce fichier).
+#    ⚠️ Les valeurs complètes ne sont PAS écrites ici (P359 : elles avaient été
+#    collées en clair dans ce doc tracké — erreur corrigée). Récupère-les depuis
+#    l'historique : `git show f2ad1b5:docker/.env.production.example`
+#    (clé PRIM = 8WTo…2PvF ; clé Google = AIzaSyAdq…jUjWk0)
+git show f2ad1b5:docker/.env.production.example | grep -oE '(8WTo[A-Za-z0-9]+|AIzaSy[A-Za-z0-9_-]+)' > /tmp/secrets-to-purge.txt
 
 # 3. Purge (réécrit TOUTES les branches et tags)
 git filter-repo --replace-text /tmp/secrets-to-purge.txt --force
