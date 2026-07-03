@@ -105,7 +105,8 @@ function detectIsPWA(): boolean {
     (window.navigator as any).standalone === true;
 }
 
-function getScreenClass(width: number): ScreenClass {
+/** Exporté pour test (POS-019) — pur. */
+export function getScreenClass(width: number): ScreenClass {
   if (width <= BREAKPOINT_COMPACT) return 'compact';
   if (width >= BREAKPOINT_WIDE) return 'wide';
   return 'standard';
