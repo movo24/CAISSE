@@ -81,3 +81,6 @@ Voir EXECUTION_LOG PAQUET 349.
 
 ## TD-042-EXECUTOR (P352, réduit P353)
 L'ORCHESTRATION est livrée+prouvée (`deferred-capture-executor.ts` 6/6, deps injectées — incl. le cas critique capture-OK/finalisation-KO rejouable sans double charge). Restant irréductible : ① adaptateur physique `capture()` → stripe-terminal/TPE réel ; ② branchement UI usePayment (proposer le différé quand `canDeferCard` l'autorise) ; ③ déclenchement de `processDeferredCaptures` sur `goOnline`. Preuve de bout en bout = TPE réel.
+
+## TD-PRIM-ENV-CLONE (P358)
+La NOUVELLE clé PRIM (rotation faite par Omar) vit dans l'env Claude Code, PAS dans `packages/backend/.env` de ce clone — la ligne y est commentée avec instructions (P354). Conséquence : un backend lancé depuis CE clone tourne en mode no-key (fail-safe prouvé 4/4, non bloquant). À poser par Omar seul s'il lance le backend d'ici. Google Maps : no-key VOLONTAIRE (CB Google) — même ligne commentée, même mode prouvé.

@@ -2369,3 +2369,9 @@ Ces paquets ont été journalisés dans `PROJECT_STATUS.md` (v10→v18) et non i
 - Suite backend COMPLÈTE (5 shards) : **213 suites PASS / 3 skip · 1413 tests PASS / 5 skip · 0 échec** (shard 4 : même worker flaky que P343, re-run vert). Fronts : backoffice 47 + pos-desktop 77 + mobile 13 = **26 fichiers/137 tests PASS**.
 - État secrets (P354 inchangé) : anciennes valeurs = 0 dans l'arbre ; PRIM = clé annoncée posée côté env Claude Code (PAS dans ce .env — mode no-key ici, testé, non bloquant) ; Google Maps volontairement désactivé (CB Google) — non bloquant, fallback prouvé.
 - Docs alignées (CLAUDE.md v35, POS_BLOCKS 030/037) ; bundle régénéré.
+
+## PAQUETS 356→358 (2026-07-03) : clôture de jalon — preuves fournies + dossiers points humains
+- Preuves v35 re-déroulées à la demande (sortie réelle) : commit ea9072d --stat ; suite backend 5 shards RC=0 (213/1413, shard 4 vert 2× consécutifs — flake non reproduit) ; fronts 47+77+13 RC=0 ×3 ; tsc RC 0 ×3 + nest/vite builds RC 0 ; scan-gate 7/7 + diff du hook (équivalence stricte) ; gardes anti-secret 4 suites/7 tests RC=0 + grep anciennes valeurs = 0 fichier (ARBRE DE TRAVAIL uniquement — l'historique git les contient toujours).
+- P356 : `SECRETS_REVOCATION_PLAN.md` — révocation console pas-à-pas (PRIM sans risque, GMaps impact nul), ordre vs rotation, plan purge git-filter-repo GATED (commande exacte, rollback bundle, coût SHA).
+- P357 : `PRE_GATE2_CHECKLIST.md` — prérequis, vérif read-only (impossible du sandbox, commandes fournies), rollback PAR migration (1728→1725, conditions), critères de succès, post-GO.
+- P358 : TD-PRIM-ENV-CLONE + PROJECT_STATUS §6 — liste GELÉE des 6 blocages externes avec propriétaire et support préparé.

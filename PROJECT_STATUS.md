@@ -398,3 +398,16 @@ Dette ouverte (documentée, non franchie) : TD-INT-SOCIAL-ENTRIES, publisher HTT
 Axe interfaces front/back-office : 16 paquets (140→155) — écrans Comptabilité, Supervision intégration, Santé système, Dettes ouvertes, remise responsable caisse (POS-054), **écart d'inventaire reconstruit** (helper pur `computeStockVariance` → endpoint read-only `POST /stock/variance` → écran branché → parseCounts util). Dette TD-FRONT-INVENTORY-VARIANCE **RÉSOLUE** (P153). Non-régression globale re-prouvée P156 : 151 suites PASS/2 skip, 1059 tests PASS/3 skip.
 
 Arbitrage caisse hors-ligne : **TD-FE-OFFLINE-DISCOUNT RÉSOLUE** (P159) — remise responsable bloquée hors-ligne (PIN serveur invérifiable, cohérent NF525 + paiements QR/wallet Internet-only). Helper pur `manual-discount-guard.ts` câblé POSPage (bouton désactivé + garde défensive à la validation).
+
+## 6. Gel des blocages externes (P358 — 2026-07-02, jalon v35)
+
+Tout le prouvable-en-sandbox est épuisé (P332→P355 : 16 commits, backend 213 suites/1413 tests, fronts 26 fichiers/137 tests, 0 échec). Liste GELÉE des blocages restants, avec propriétaire :
+
+| # | Blocage | Propriétaire | Support préparé |
+|---|---|---|---|
+| 1 | Révocation des 2 anciennes clés (PRIM + Google Cloud) | Omar (consoles) | `SECRETS_REVOCATION_PLAN.md` (P356) — pas-à-pas, impact nul démontré, plan purge historique GATED |
+| 2 | Migrations 1725→1728 sur Neon | Omar (sa machine) | `scripts/run-gate2.sh` + `PRE_GATE2_CHECKLIST.md` (P357) |
+| 3 | Clé PRIM dans le `.env` de CE clone (si backend lancé d'ici) + Google Maps différé (CB) | Omar | Lignes commentées prêtes dans `.env` ; mode no-key prouvé — non bloquant (TD-PRIM-ENV-CLONE) |
+| 4 | TW24 live + PIN login prod 500 (S1) | Omar (secrets Railway / accès prod) | TIMEWIN24_CONTRACT.md, MONITORING-PLAYBOOK.md |
+| 5 | Paywin24 + Comptamax24 | Externe (specs+accès API) | Outbox prête (1725, événements sale.completed/voided) ; OUTBOX_RELAY_KIT.md |
+| 6 | Matériel physique : WisePad (capture différée + paiement réel), imprimante BLE, caméra scanner | Omar (session matériel) | Moteurs/exécuteurs/trames tous prouvés sous simulation (POS-033/037/042) — seuls les adaptateurs physiques restent |
