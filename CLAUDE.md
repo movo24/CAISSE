@@ -24,8 +24,8 @@ npm run docker:down      # Stop local PostgreSQL
 
 # Testing (always run before committing)
 npm run test             # All workspaces
-npm run test:backend     # Backend only (1407 tests / 212 suites PASS; +3 .pg suites skip without TEST_DATABASE_URL)
-npm run test:front       # Front vitest (backoffice + pos-desktop + mobile): 97 tests / 22 files
+npm run test:backend     # Backend only (1413 tests / 213 suites PASS; +3 .pg suites skip without TEST_DATABASE_URL)
+npm run test:front       # Front vitest (backoffice + pos-desktop + mobile): 137 tests / 26 files
 
 # Code quality
 npm run lint             # ESLint (all workspaces)

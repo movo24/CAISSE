@@ -14,6 +14,7 @@
 // ─────────────────────────────────────────────────────────────────
 
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { cleanScanCode, shouldAcceptScan } from '../lib/scan-gate';
 
 export interface ScanResult {
   code: string;
@@ -134,12 +135,15 @@ export function useScanner({
   // ── Core detection handler ──
 
   const handleDetection = useCallback((code: string, format: string) => {
-    const cleanCode = code.trim().replace(/[^\x20-\x7E]/g, '');
-    if (!cleanCode || cleanCode.length < 3) return;
+    // P355 — cœur extrait en pur (lib/scan-gate.ts, testé) ; comportement identique.
+    const cleanCode = cleanScanCode(code);
+    if (!cleanCode) return;
 
-    if (cooldownRef.current) {
-      if (!continuousRef.current || cleanCode === lastCodeRef.current) return;
-    }
+    if (!shouldAcceptScan(cleanCode, {
+      cooldownActive: cooldownRef.current,
+      continuous: continuousRef.current,
+      lastCode: lastCodeRef.current,
+    })) return;
 
     cooldownRef.current = true;
     lastCodeRef.current = cleanCode;

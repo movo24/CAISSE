@@ -2363,3 +2363,9 @@ Ces paquets ont été journalisés dans `PROJECT_STATUS.md` (v10→v18) et non i
 - Google Maps : désactivé VOLONTAIREMENT (décision utilisateur — CB Google requise) ; le service `external-context` a un mode fail-safe no-key prouvé (4 tests) → aucun blocage du reste du travail.
 - Preuves post-retrait : anciennes valeurs = **0 occurrence** dans tout l'arbre de travail ; gardes anti-secret + external-context : **5 suites/11 tests PASS**.
 - Restant S2 (utilisateur) : révocation console des 2 anciennes clés (l'historique git les expose toujours) ; pose de la NOUVELLE clé PRIM dans `.env` (par lui seul) ; Railway éventuel.
+
+## PAQUET 355 — jalon v35 (2026-07-02) : scanner simulé + consolidation finale
+- POS-037 complété côté logiciel : cœur du scanner extrait PUR (`scan-gate.ts` — nettoyage trames douchette + garde anti-rebond caisse/inventaire), branché dans `useScannerZXing` à comportement identique, **7/7**.
+- Suite backend COMPLÈTE (5 shards) : **213 suites PASS / 3 skip · 1413 tests PASS / 5 skip · 0 échec** (shard 4 : même worker flaky que P343, re-run vert). Fronts : backoffice 47 + pos-desktop 77 + mobile 13 = **26 fichiers/137 tests PASS**.
+- État secrets (P354 inchangé) : anciennes valeurs = 0 dans l'arbre ; PRIM = clé annoncée posée côté env Claude Code (PAS dans ce .env — mode no-key ici, testé, non bloquant) ; Google Maps volontairement désactivé (CB Google) — non bloquant, fallback prouvé.
+- Docs alignées (CLAUDE.md v35, POS_BLOCKS 030/037) ; bundle régénéré.

@@ -35,14 +35,14 @@
 
 | # | Titre | Statut | Prio | Localisation |
 |---|---|---|---|---|
-| POS-030 | Scanner code-barres | ⚠️ | P1 | `useScannerZXing`, `useBluetoothScanner` |
+| POS-030 | Scanner code-barres | 🟡 logique prouvée (P355) ; caméra/douchette réelles = test physique | P1 | Nettoyage + anti-rebond extraits et testés 7/7 (cf POS-037) ; branchés dans `useScannerZXing` sans changement de comportement. |
 | POS-031 | Imprimante ESC/POS | 🟡 trames prouvées (cf POS-037) ; matériel réel non testé | P1 | Builders ESC/POS exportés+testés 6/6 ; connexion BLE réelle = test physique. |
 | POS-032 | Lecteur QR | ⚠️ | P2 | ZXing |
 | POS-033 | TPE Stripe Terminal WisePad 3 | 🟡 idempotence PI testée ; paiement réel non testé | P0 | `stripe-terminal.service` + `payment-intent-key.ts` (clé idempotence déterministe, anti double-charge) **5/5** + régression service 4/4. POS hook `useStripeTerminal`. Paiement live interdit/non testé. |
 | POS-034 | Passerelle mobile paiement iOS/Android | ⬜ | P2 | à définir |
 | POS-035 | Gestion erreurs périphériques + reconnexion | ⚠️ | P1 | hooks HW |
 | POS-036 | Réimpression ticket | ⚠️ | P2 | `receipts` |
-| POS-037 | Tests matériel simulé (mocks) | 🟡 imprimante+tiroir prouvés (P347) ; scanner restant | P1 | `escpos-builders.test.ts` **6/6** : trame ticket ESC/POS (reset→mentions fiscales→coupe GS V 0), ticket de test, impulsion tiroir EXACTE (1B 70 00 19 FA). Scanner ZXing = follow-up (API caméra non simulable en node). |
+| POS-037 | Tests matériel simulé (mocks) | ✅ complet côté logiciel (P347+P355) | P1 | Imprimante+tiroir : `escpos-builders` 6/6. Scanner : cœur extrait PUR (`scan-gate.ts`, zéro changement de comportement) — `scan-gate.test` **7/7** (nettoyage trames douchette CR/LF/GS, borne longueur, matrice anti-rebond caisse vs inventaire). Restent physiques par nature : caméra ZXing + BLE réels. |
 
 ## Paiements
 
