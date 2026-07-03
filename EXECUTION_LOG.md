@@ -2396,3 +2396,8 @@ Ces paquets ont été journalisés dans `PROJECT_STATUS.md` (v10→v18) et non i
 - **POS-019 ✅** : `getScreenClass` exporté (pur) + `device-profile.test` **3/3** (bornes 1024/1440 exactes sur les largeurs réelles du parc iPad/FullHD, contrat platformClasses) ; persistance terminal-id déjà prouvée P325.
 - pos-desktop : **15 fichiers/86 tests PASS**, tsc RC 0.
 - **Constat de fin : le backlog logiciel sûr est ÉPUISÉ** — tout nouveau bloc naîtra des retours d'exécution d'Omar (verdict G1, KO des §2-§3, specs G7).
+
+## PAQUET 364 (2026-07-03) : scénarios e2e S2→S5 ÉCRITS (statut honnête : à prouver localement)
+- `e2e/pos-scenarios.spec.ts` : S2 panier (2× même EAN → 59,80 → retrait → 0 article), S3 vente→retour→avoir, S4 remise 25 % → PIN responsable EXIGÉ puis total 22,43, S5 clôture avec comptage 25,00 → écart −4,90 → persistance (P351). Conventions du smoke prouvé (env surchargables, helpers login/scan/payCash).
+- Preuve sandbox maximale possible : `playwright test --list` → **5 tests / 2 fichiers collectés** (compilation+collecte OK). Exécution réelle = machine d'Omar (§2 du DOSSIER). Sélecteurs = meilleure hypothèse sur composants réels ; toute divergence sera corrigée sur copie de l'erreur.
+- DOSSIER_EXECUTION_OMAR §2 mis à jour (scénarios livrés, plus « à écrire »).

@@ -79,8 +79,10 @@ npm run test:e2e:ui         # interactif — pour VOIR le parcours
 | POS-015 retour | ReturnModal sur vente du jour | avoir généré, stock restauré | à écrire (scénario 2) |
 | POS-010 dual-window | `npm run dev:pos` (Electron) | fenêtre caisse + écran client s'ouvrent | manuel (Electron hors Playwright web) |
 
-### Scénarios à ajouter (je les écris dès que tu confirmes que le smoke passe chez toi)
-S2 retour/avoir · S3 remise 21-30% avec PIN responsable · S4 clôture session avec comptage (écart serveur) · S5 bascule offline (cash seul) → reconnexion → sync.
+### Scénarios S2→S5 : DÉJÀ ÉCRITS (P364 — `e2e/pos-scenarios.spec.ts`)
+`npx playwright test --list` collecte **5 tests / 2 fichiers** (syntaxe validée sandbox). Jamais exécutés ici (pas de navigateur+backend) — statut « écrits, à prouver localement » :
+S2 panier ±qté/retrait (totaux exacts) · S3 vente→retour→avoir · S4 remise 25 % ⇒ PIN responsable exigé (22,43 vérifié) · S5 clôture avec comptage ⇒ écart −4,90 affiché puis persisté.
+Si un sélecteur diverge chez toi : copie l'erreur Playwright, je corrige dans le paquet suivant.
 
 ### À me copier/coller
 La sortie de `npm run test:e2e` (la ligne `x passed` ou l'erreur complète).
