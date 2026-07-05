@@ -91,11 +91,13 @@ jobs:
           Write-Host "dist/main clean"
 
       # Package the Windows NSIS installer + portable, x64 only.
+      # --publish never: this app has no auto-update/publish target; without it
+      # electron-builder auto-detects CI + a token and tries to resolve a GitHub
+      # publish config, failing with "Cannot detect repository by .git/config".
+      # No GH_TOKEN here on purpose (the tag Release step below handles uploads).
       - name: Package Windows (.exe, x64)
         working-directory: packages/pos-desktop
-        run: npx electron-builder --config electron-builder.yml --win --x64
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-builder --config electron-builder.yml --win --x64 --publish never
 
       # Print the exact artifact names + sizes into the log for verification.
       - name: List artifacts
