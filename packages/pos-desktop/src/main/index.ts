@@ -9,12 +9,13 @@
  * Dev mode loads the Vite dev server. Production loads the bundled renderer.
  */
 
-import { app, BrowserWindow, screen, protocol, net, shell } from 'electron';
+import { app, BrowserWindow, protocol, net, shell } from 'electron';
 import * as path from 'path';
 import { pathToFileURL } from 'url';
+import { CustomerDisplayController } from './customerDisplay';
 
 let posWindow: BrowserWindow | null = null;
-let clientWindow: BrowserWindow | null = null;
+let customerDisplay: CustomerDisplayController | null = null;
 
 const isDev = !app.isPackaged && process.env.NODE_ENV !== 'production';
 const DEV_URL = process.env.POS_DEV_URL || 'http://localhost:5175';
@@ -97,41 +98,8 @@ function createPOSWindow(): void {
 
   posWindow.on('closed', () => {
     posWindow = null;
-    clientWindow?.close();
-  });
-}
-
-function createClientWindow(): void {
-  const displays = screen.getAllDisplays();
-  const primary = screen.getPrimaryDisplay();
-  const secondDisplay = displays.find((d) => d.id !== primary.id);
-
-  const bounds = secondDisplay?.bounds || {
-    x: primary.bounds.width,
-    y: 0,
-    width: 1024,
-    height: 768,
-  };
-
-  clientWindow = new BrowserWindow({
-    x: bounds.x,
-    y: bounds.y,
-    width: bounds.width || 1024,
-    height: bounds.height || 768,
-    title: 'POS Caisse — Écran Client',
-    backgroundColor: '#0f0f19',
-    fullscreen: !!secondDisplay,
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-      sandbox: true,
-      preload: path.join(__dirname, 'preload.js'),
-    },
-  });
-
-  loadRoute(clientWindow, 'client-display');
-  clientWindow.on('closed', () => {
-    clientWindow = null;
+    customerDisplay?.dispose();
+    customerDisplay = null;
   });
 }
 
@@ -181,7 +149,16 @@ if (!gotLock) {
   app.whenReady().then(() => {
     if (!isDev) registerAppProtocol();
     createPOSWindow();
-    createClientWindow();
+
+    // Managed customer display (screen 2): screen selection, on/off, reload,
+    // fullscreen/kiosk, crash watchdog, persistence, IPC control.
+    customerDisplay = new CustomerDisplayController({
+      loadRoute,
+      preloadPath: path.join(__dirname, 'preload.js'),
+      backgroundColor: '#000000',
+    });
+    customerDisplay.registerIpc();
+    customerDisplay.open();
 
     app.on('activate', () => {
       if (!posWindow) createPOSWindow();

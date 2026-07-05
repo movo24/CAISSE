@@ -39,6 +39,7 @@ import { IPadPOSLayout } from '../components/ipad/IPadPOSLayout';
 import { StockAlertToast } from '../components/StockAlertToast';
 import { SaleGuardsGate } from '../components/SaleGuardsGate';
 import { SalesCockpit } from '../components/SalesCockpit';
+import { CustomerDisplayPublisher } from '../components/CustomerDisplayPublisher';
 
 /* ── Helpers ── */
 
@@ -823,6 +824,8 @@ export function POSPage() {
 
   return (
     <div className={`h-screen flex flex-col bg-pos-bg safe-area-top safe-area-bottom overflow-x-hidden ${platformClasses(device)}`}>
+      {/* Inert bridge: mirrors cart/payment to the customer display (screen 2). */}
+      <CustomerDisplayPublisher />
       {/* ═══════ OFFLINE BANNER ═══════ */}
       {offlineMode.isOffline && (
         <div className="bg-gradient-to-r from-red-600 via-red-500 to-rose-500 px-4 py-2 flex items-center justify-between relative z-50 shadow-lg animate-slide-down">
@@ -990,6 +993,15 @@ export function POSPage() {
                   <p className="text-sm font-semibold">{store.employee?.firstName} {store.employee?.lastName}</p>
                   <p className="text-xs text-pos-muted capitalize">{store.employee?.role}</p>
                 </div>
+                <button
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-pos-text rounded-xl hover:bg-pos-subtle transition-colors mb-1"
+                  onClick={() => {
+                    setProfileOpen(false);
+                    navigate('/display-settings');
+                  }}
+                >
+                  <Monitor size={14} /> Écran client
+                </button>
                 <button
                   className="w-full flex items-center gap-2 px-3 py-2 text-sm text-pos-danger rounded-xl hover:bg-pos-danger/5 transition-colors"
                   onClick={() => {
