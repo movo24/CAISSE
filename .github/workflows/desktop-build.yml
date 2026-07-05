@@ -3,11 +3,15 @@ name: Build POS Caisse Desktop (.exe)
 # Builds the Windows installer + portable .exe on GitHub's Windows runners,
 # so you get a real POS-Caisse-Setup.exe without owning a Windows machine.
 #
+# Pipeline: full quality gate (lint, unit tests, typecheck renderer + main),
+# then the desktop packaging build, then upload of the downloadable artifacts.
+#
 # Trigger:
 #   - manually (Actions tab -> "Run workflow"), or
 #   - on a version tag like  desktop-v0.1.0
 #
-# Output: downloadable artifacts (and a Release when triggered by a tag).
+# Output: downloadable artifacts POS-Caisse-Windows (Setup + portable .exe),
+#         and a GitHub Release when triggered by a desktop-v* tag.
 
 on:
   workflow_dispatch:
@@ -26,32 +30,82 @@ permissions:
 jobs:
   build-windows:
     runs-on: windows-latest
-    defaults:
-      run:
-        working-directory: packages/pos-desktop
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+          cache: "npm"
 
-      - name: Install dependencies
-        run: npm install
+      # Clean, reproducible install of the whole monorepo (lockfile-exact).
+      - name: Install (npm ci)
+        run: npm ci
 
+      # ── Quality gate ──────────────────────────────────────────────
+      - name: Lint (all workspaces)
+        run: npm run lint --workspaces
+
+      - name: Unit tests (pos-desktop)
+        run: npm run test --workspace=@caisse/pos-desktop
+
+      - name: Typecheck renderer
+        working-directory: packages/pos-desktop
+        run: npx tsc --noEmit
+
+      - name: Typecheck main
+        working-directory: packages/pos-desktop
+        run: npx tsc -p tsconfig.main.json --noEmit
+
+      # ── Packaging build ───────────────────────────────────────────
       # Bake the API URL (optional). Empty -> apiConfig falls back to prod default.
       # The untrusted input is passed via env (never interpolated into the shell).
       - name: Write .env
+        working-directory: packages/pos-desktop
         shell: bash
         env:
           API_URL: ${{ github.event.inputs.api_url }}
         run: echo "VITE_API_URL=${API_URL}" > .env
 
-      # Build renderer (relative base) + main process + NSIS installer + portable.
-      - name: Build Windows desktop
-        run: npm run desktop:build:win
+      # Renderer MUST build with POS_TARGET=desktop so assets use a relative
+      # base (./) for the app:// packaging — plain `build:pos` would bake `/`.
+      # POS_TARGET is set via the runner env, so it works under cmd/pwsh alike
+      # (the package script's inline `POS_TARGET=... vite build` is bash-only).
+      - name: Build renderer (desktop, relative base)
+        working-directory: packages/pos-desktop
+        run: npx vite build
+        env:
+          POS_TARGET: desktop
+
+      - name: Build Electron main
+        working-directory: packages/pos-desktop
+        run: npx tsc -p tsconfig.main.json
+
+      # Guard: the emitted main bundle must not contain any test files.
+      - name: Verify dist/main is clean (no test files)
+        working-directory: packages/pos-desktop
+        shell: pwsh
+        run: |
+          $leaked = Get-ChildItem -Path dist/main -Recurse -Include *.test.js,*.test.js.map -ErrorAction SilentlyContinue
+          if ($leaked) { $leaked | ForEach-Object { Write-Host "LEAKED: $($_.FullName)" }; exit 1 }
+          Write-Host "dist/main clean"
+
+      # Package the Windows NSIS installer + portable, x64 only.
+      - name: Package Windows (.exe, x64)
+        working-directory: packages/pos-desktop
+        run: npx electron-builder --config electron-builder.yml --win --x64
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Print the exact artifact names + sizes into the log for verification.
+      - name: List artifacts
+        working-directory: packages/pos-desktop
+        shell: pwsh
+        run: |
+          Write-Host "== release/ contents =="
+          Get-ChildItem -Path release -Filter *.exe | ForEach-Object {
+            "{0,-45} {1,12:N0} bytes  ({2:N1} MB)" -f $_.Name, $_.Length, ($_.Length / 1MB)
+          }
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
