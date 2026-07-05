@@ -66,13 +66,16 @@ async function seed() {
     console.log(`Store created: ${store.name} (${store.id})`);
   }
 
-  // 2. Create admin employee (PIN: 1234)
+  // 2. Create the DEV-ONLY demo admin. This is a fixture account for local
+  // development only — NEVER seed it in production. The PIN can be overridden
+  // with SEED_ADMIN_PIN; the fallback is a well-known dev value, not a secret.
+  // For real admins use `npm run admin:create` (see ADMIN_ACCESS.md).
   const empRepo = ds.getRepository(EmployeeEntity);
   let admin = await empRepo.findOne({
     where: { email: 'admin@caisse.dev' },
   });
   if (!admin) {
-    const pinHash = await bcrypt.hash('1234', 12);
+    const pinHash = await bcrypt.hash(process.env.SEED_ADMIN_PIN || '1234', 12);
     admin = await empRepo.save({
       firstName: 'Admin',
       lastName: 'Manager',
@@ -86,23 +89,27 @@ async function seed() {
     console.log(`Admin employee created: ${admin.firstName} ${admin.lastName} (QR: ${admin.qrCode})`);
   }
 
-  // 2b. Create Wesley Candy Shop admin
-  let wesley = await empRepo.findOne({
-    where: { email: 'contact@wesleycandyshop.com' },
-  });
-  if (!wesley) {
-    const pinHash = await bcrypt.hash('250781', 12);
-    wesley = await empRepo.save({
-      firstName: 'Wesley',
-      lastName: 'Candy Shop',
-      email: 'contact@wesleycandyshop.com',
-      pinHash,
-      qrCode: `EMP-${uuidv4().slice(0, 8).toUpperCase()}`,
-      role: 'admin',
-      storeId: store.id,
-      maxDiscountPercent: 100,
-    });
-    console.log(`Admin created: ${wesley.firstName} ${wesley.lastName} (QR: ${wesley.qrCode})`);
+  // 2b. Optional owner admin — created ONLY when BOTH SEED_OWNER_EMAIL and
+  // SEED_OWNER_PIN are provided via env. No real credential is ever committed
+  // to the repo. Prefer `npm run admin:create` for the real owner account.
+  const ownerEmail = process.env.SEED_OWNER_EMAIL;
+  const ownerPin = process.env.SEED_OWNER_PIN;
+  if (ownerEmail && ownerPin) {
+    const existingOwner = await empRepo.findOne({ where: { email: ownerEmail } });
+    if (!existingOwner) {
+      const pinHash = await bcrypt.hash(ownerPin, 12);
+      const owner = await empRepo.save({
+        firstName: process.env.SEED_OWNER_FIRST_NAME || 'Owner',
+        lastName: process.env.SEED_OWNER_LAST_NAME || 'Admin',
+        email: ownerEmail,
+        pinHash,
+        qrCode: `EMP-${uuidv4().slice(0, 8).toUpperCase()}`,
+        role: 'admin',
+        storeId: store.id,
+        maxDiscountPercent: 100,
+      });
+      console.log(`Owner admin created from env: ${owner.email} (QR: ${owner.qrCode})`);
+    }
   }
 
   // 3. Create cashier employee
@@ -110,7 +117,8 @@ async function seed() {
     where: { email: 'cashier@caisse.dev' },
   });
   if (!cashier) {
-    const pinHash = await bcrypt.hash('5678', 12);
+    // DEV-ONLY demo cashier (override with SEED_CASHIER_PIN).
+    const pinHash = await bcrypt.hash(process.env.SEED_CASHIER_PIN || '5678', 12);
     cashier = await empRepo.save({
       firstName: 'Marie',
       lastName: 'Dupont',
