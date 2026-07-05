@@ -23,6 +23,10 @@ export interface NativeDisplayStatus {
   kiosk: boolean;
   displayCount: number;
   displays: NativeDisplayInfo[];
+  selectionReason: 'selected-id' | 'signature-match' | 'fallback-nonprimary' | 'fallback-primary' | 'none';
+  screenStatus: 'connected' | 'absent' | 'wrong-screen' | 'fallback';
+  requestedScreenMissing: boolean;
+  userDataPath: string;
 }
 
 export interface CustomerDisplayNativeBridge {

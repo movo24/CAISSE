@@ -4,6 +4,7 @@ import { posEventBus } from '../services/posEventBus';
 import { getCustomerDisplayBus } from '../services/customerDisplay/bus';
 import { buildSnapshot, type SnapshotBranding } from '../services/customerDisplay/snapshot';
 import { loadSettings, terminalLabel } from '../services/customerDisplay/settings';
+import { recordPublishedSnapshot } from '../services/customerDisplay/diagnostics';
 
 /**
  * CustomerDisplayPublisher — inert bridge mounted once in the operator window.
@@ -62,6 +63,7 @@ export function CustomerDisplayPublisher() {
       if (key === lastSnapshotKey.current) return;
       lastSnapshotKey.current = key;
       bus.post({ type: 'snapshot', snapshot });
+      recordPublishedSnapshot(snapshot);
     };
 
     // Initial push so a display that is already open reflects current state.

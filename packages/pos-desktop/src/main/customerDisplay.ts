@@ -15,6 +15,29 @@
 import { app, BrowserWindow, screen, ipcMain } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
+import {
+  selectClientDisplay,
+  displaySignature,
+  selectionStatus,
+  type DisplayLike,
+  type DisplaySignature,
+  type SelectionReason,
+} from './displaySelection';
+
+/** Prefix for all controller logs so field diagnostics are greppable. */
+const LOG = '[customer-display]';
+
+/** Map an Electron display to the plain shape the pure selector understands. */
+function toDisplayLike(d: Electron.Display): DisplayLike {
+  return {
+    id: d.id,
+    bounds: d.bounds,
+    size: d.size,
+    scaleFactor: d.scaleFactor,
+    rotation: d.rotation,
+    internal: d.internal,
+  };
+}
 
 export interface DisplayInfo {
   id: number;
@@ -35,11 +58,21 @@ export interface NativeStatus {
   kiosk: boolean;
   displayCount: number;
   displays: DisplayInfo[];
+  /** Why the current screen was chosen (id / signature / fallback). */
+  selectionReason: SelectionReason;
+  /** Dashboard status: connected / absent / wrong-screen / fallback. */
+  screenStatus: 'connected' | 'absent' | 'wrong-screen' | 'fallback';
+  /** True when the operator's chosen screen is no longer present. */
+  requestedScreenMissing: boolean;
+  /** userData directory (shown in the field diagnostic). */
+  userDataPath: string;
 }
 
 interface PersistedState {
   enabled: boolean;
   screenId: number | null;
+  /** Backup identity of the chosen screen — recovers it if Windows changes the id. */
+  signature: DisplaySignature | null;
   fullscreen: boolean;
   kiosk: boolean;
 }
@@ -47,6 +80,7 @@ interface PersistedState {
 const DEFAULT_STATE: PersistedState = {
   enabled: true,
   screenId: null,
+  signature: null,
   fullscreen: true,
   kiosk: false,
 };
@@ -82,6 +116,10 @@ export class CustomerDisplayController {
       return {
         enabled: typeof parsed.enabled === 'boolean' ? parsed.enabled : DEFAULT_STATE.enabled,
         screenId: typeof parsed.screenId === 'number' ? parsed.screenId : null,
+        signature:
+          parsed.signature && typeof parsed.signature === 'object'
+            ? (parsed.signature as DisplaySignature)
+            : null,
         fullscreen: typeof parsed.fullscreen === 'boolean' ? parsed.fullscreen : DEFAULT_STATE.fullscreen,
         kiosk: typeof parsed.kiosk === 'boolean' ? parsed.kiosk : DEFAULT_STATE.kiosk,
       };
@@ -100,6 +138,10 @@ export class CustomerDisplayController {
 
   // ── Displays ─────────────────────────────────────────────────
 
+  /** Last selection result, kept for status/diagnostics. */
+  private lastReason: SelectionReason = 'none';
+  private lastRequestedMissing = false;
+
   listDisplays(): DisplayInfo[] {
     const primary = screen.getPrimaryDisplay();
     return screen.getAllDisplays().map((d, idx) => ({
@@ -112,16 +154,44 @@ export class CustomerDisplayController {
     }));
   }
 
-  /** The display the client window should target: explicit choice → else the
-   *  first non-primary → else primary. */
-  private targetDisplay(): Electron.Display {
-    const all = screen.getAllDisplays();
+  /** Log every display's geometry — the single most useful field-diagnostic line. */
+  private logDisplays(context: string): void {
     const primary = screen.getPrimaryDisplay();
-    if (this.state.screenId != null) {
-      const chosen = all.find((d) => d.id === this.state.screenId);
-      if (chosen) return chosen;
-    }
-    return all.find((d) => d.id !== primary.id) || primary;
+    const all = screen.getAllDisplays();
+    // eslint-disable-next-line no-console
+    console.log(
+      `${LOG} ${context}: ${all.length} display(s), primary=${primary.id}`,
+      all.map((d) => ({
+        id: d.id,
+        primary: d.id === primary.id,
+        bounds: d.bounds,
+        workArea: d.workArea,
+        size: d.size,
+        scaleFactor: d.scaleFactor,
+        rotation: d.rotation,
+        internal: d.internal,
+      })),
+    );
+  }
+
+  /** Resolve which physical screen the client window targets (id → signature → fallback). */
+  private resolveTarget() {
+    const all = screen.getAllDisplays().map(toDisplayLike);
+    const primaryId = screen.getPrimaryDisplay().id;
+    const result = selectClientDisplay(all, primaryId, {
+      screenId: this.state.screenId,
+      signature: this.state.signature,
+    });
+    this.lastReason = result.reason;
+    this.lastRequestedMissing = result.requestedScreenMissing;
+    return result;
+  }
+
+  /** The Electron display the client window should target (null if none). */
+  private targetDisplay(): Electron.Display | null {
+    const chosenId = this.resolveTarget().display?.id;
+    if (chosenId == null) return null;
+    return screen.getAllDisplays().find((d) => d.id === chosenId) || null;
   }
 
   // ── Window lifecycle ─────────────────────────────────────────
@@ -129,15 +199,31 @@ export class CustomerDisplayController {
   /** Create the client window on the target display, if enabled. */
   open(): void {
     if (this.disposed) return;
-    if (!this.state.enabled) return;
+    if (!this.state.enabled) {
+      // eslint-disable-next-line no-console
+      console.log(`${LOG} open() skipped: disabled`);
+      return;
+    }
     if (this.window && !this.window.isDestroyed()) {
       this.moveToTargetDisplay();
       this.window.show();
       return;
     }
 
+    this.logDisplays('open');
     const target = this.targetDisplay();
+    if (!target) {
+      // No display available at all — do NOT block; the register runs headless-of-client.
+      // eslint-disable-next-line no-console
+      console.warn(`${LOG} open() aborted: no display available`);
+      this.broadcastStatus();
+      return;
+    }
     const onSecondary = target.id !== screen.getPrimaryDisplay().id;
+    // eslint-disable-next-line no-console
+    console.log(
+      `${LOG} opening on display ${target.id} (${target.size.width}x${target.size.height}) reason=${this.lastReason} onPrimary=${!onSecondary}`,
+    );
 
     this.intentionalClose = false;
     const win = new BrowserWindow({
@@ -218,8 +304,12 @@ export class CustomerDisplayController {
   private moveToTargetDisplay(): void {
     if (!this.window || this.window.isDestroyed()) return;
     const target = this.targetDisplay();
+    if (!target) return;
     const onSecondary = target.id !== screen.getPrimaryDisplay().id;
+    // Fullscreen/kiosk are applied ONLY on a dedicated secondary screen — never
+    // on the operator (primary) screen, so the cashier UI is never taken over.
     this.window.setFullScreen(false);
+    this.window.setKiosk(false);
     this.window.setBounds(target.bounds);
     if (this.state.fullscreen && onSecondary) this.window.setFullScreen(true);
     this.window.setKiosk(this.state.kiosk && onSecondary);
@@ -237,7 +327,17 @@ export class CustomerDisplayController {
 
   setScreen(screenId: number | null): void {
     this.state.screenId = screenId;
+    // Capture a backup signature of the chosen screen so we can recover it if
+    // Windows renumbers display ids after a reboot / re-plug.
+    if (screenId != null) {
+      const chosen = screen.getAllDisplays().find((d) => d.id === screenId);
+      this.state.signature = chosen ? displaySignature(toDisplayLike(chosen)) : null;
+    } else {
+      this.state.signature = null;
+    }
     this.writeState();
+    // eslint-disable-next-line no-console
+    console.log(`${LOG} setScreen(${screenId}) signature=`, this.state.signature);
     if (this.window && !this.window.isDestroyed()) this.moveToTargetDisplay();
     else this.open();
     this.broadcastStatus();
@@ -261,17 +361,23 @@ export class CustomerDisplayController {
 
   getStatus(): NativeStatus {
     const open = !!this.window && !this.window.isDestroyed();
-    const target = this.targetDisplay();
+    const selection = this.resolveTarget();
+    const target = selection.display;
+    const screenStatus = selectionStatus(selection);
     return {
       available: true,
       enabled: this.state.enabled,
       windowOpen: open,
       screenId: this.state.screenId,
-      resolution: open ? `${target.size.width}x${target.size.height}` : null,
+      resolution: target ? `${target.size.width}x${target.size.height}` : null,
       fullscreen: this.state.fullscreen,
       kiosk: this.state.kiosk,
       displayCount: screen.getAllDisplays().length,
       displays: this.listDisplays(),
+      selectionReason: selection.reason,
+      screenStatus,
+      requestedScreenMissing: selection.requestedScreenMissing,
+      userDataPath: app.getPath('userData'),
     };
   }
 
@@ -328,15 +434,31 @@ export class CustomerDisplayController {
       return this.getStatus();
     });
 
-    // Re-evaluate placement when the physical display layout changes.
-    screen.on('display-added', () => this.broadcastStatus());
-    screen.on('display-removed', () => {
-      // If the chosen screen vanished, fall back gracefully.
-      if (this.state.screenId != null) {
-        const stillThere = screen.getAllDisplays().some((d) => d.id === this.state.screenId);
-        if (!stillThere && this.window && !this.window.isDestroyed()) this.moveToTargetDisplay();
+    // Re-evaluate placement when the physical display layout changes (hot-plug).
+    screen.on('display-added', () => this.onDisplayLayoutChanged('display-added'));
+    screen.on('display-removed', () => this.onDisplayLayoutChanged('display-removed'));
+    screen.on('display-metrics-changed', () => this.onDisplayLayoutChanged('display-metrics-changed'));
+  }
+
+  /**
+   * A monitor was plugged, unplugged, or reconfigured. Re-resolve the target
+   * and relocate the window if it is open. Never throws, never blocks the POS.
+   */
+  private onDisplayLayoutChanged(event: string): void {
+    try {
+      this.logDisplays(event);
+      if (this.window && !this.window.isDestroyed()) {
+        // Window still alive → move it onto the (possibly re-numbered) target.
+        this.moveToTargetDisplay();
+      } else if (this.state.enabled && !this.disposed) {
+        // The client screen may have (re)appeared → (re)open on it.
+        this.open();
       }
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn(`${LOG} onDisplayLayoutChanged(${event}) error:`, err);
+    } finally {
       this.broadcastStatus();
-    });
+    }
   }
 }

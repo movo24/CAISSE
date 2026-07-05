@@ -36,7 +36,11 @@ function qrLabel(settings: CustomerDisplaySettings): string {
 /** ── IDLE ── video / branding loop with anti-burn-in drift. */
 function IdleScreen({ settings, videoUrl }: { settings: CustomerDisplaySettings; videoUrl: string | null }) {
   const [slide, setSlide] = useState(0);
-  const showVideo = settings.mode !== 'branding' && !!videoUrl;
+  // A corrupt/undecodable video fires onError; we then fall back to branding and
+  // do NOT re-mount the <video>, so a broken source can't loop errors forever.
+  const [videoFailed, setVideoFailed] = useState(false);
+  useEffect(() => setVideoFailed(false), [videoUrl]);
+  const showVideo = settings.mode !== 'branding' && !!videoUrl && !videoFailed;
   const slogans = settings.slogans.length ? settings.slogans : ["The Wesley's"];
 
   useEffect(() => {
@@ -58,6 +62,11 @@ function IdleScreen({ settings, videoUrl }: { settings: CustomerDisplaySettings;
           loop
           muted
           playsInline
+          onError={() => {
+            // eslint-disable-next-line no-console
+            console.warn('[customer-display] idle video failed to load — falling back to branding');
+            setVideoFailed(true);
+          }}
         />
       ) : (
         // Fallback gradient when no video / branding mode — with slow drift.

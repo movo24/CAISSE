@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Monitor, Power, RefreshCw, Eye, ScanSearch, Grid3x3, ShoppingCart,
   MoonStar, Upload, Trash2, CheckCircle2, AlertTriangle, ArrowLeft, Video, Wifi, WifiOff,
+  Activity, ClipboardCopy,
 } from 'lucide-react';
 import {
   loadSettings, saveSettings, terminalLabel,
@@ -15,6 +16,7 @@ import {
   DEFAULT_MAX_VIDEO_BYTES,
 } from '../services/customerDisplay/media';
 import { putMedia, deleteMedia, getMedia } from '../services/customerDisplay/mediaStore';
+import { buildDiagnosticReport, getPublishState } from '../services/customerDisplay/diagnostics';
 import type { NativeDisplayStatus } from '../types/customer-display-native';
 
 /**
@@ -26,6 +28,13 @@ import type { NativeDisplayStatus } from '../types/customer-display-native';
  * diagnostics. Physical-window actions use the Electron bridge when present and
  * degrade gracefully on the web build.
  */
+const SCREEN_STATUS_LABEL: Record<string, string> = {
+  connected: 'Connecté',
+  absent: 'Absent',
+  'wrong-screen': 'Mauvais écran',
+  fallback: 'Écran de secours',
+};
+
 export function CustomerDisplaySettingsPage() {
   const navigate = useNavigate();
   const native = typeof window !== 'undefined' ? window.customerDisplayNative : undefined;
@@ -40,6 +49,7 @@ export function CustomerDisplaySettingsPage() {
   const [mediaError, setMediaError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [report, setReport] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const connectionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -144,6 +154,65 @@ export function CustomerDisplaySettingsPage() {
     );
   };
 
+  // ── Field diagnostic report ──
+  const gatherReport = (): string => {
+    const desktop = window.posDesktop;
+    const primary = nativeStatus?.displays?.find((d) => d.isPrimary) || null;
+    const selected =
+      nativeStatus?.displays?.find((d) => d.id === (nativeStatus.screenId ?? -1)) ||
+      nativeStatus?.displays?.find((d) => !d.isPrimary) ||
+      null;
+    let localOk = false;
+    try {
+      localStorage.setItem('__cd_probe', '1');
+      localStorage.removeItem('__cd_probe');
+      localOk = true;
+    } catch { localOk = false; }
+    return buildDiagnosticReport({
+      appVersion: desktop?.version || 'web',
+      platform: desktop?.platform || (typeof navigator !== 'undefined' ? navigator.platform : 'unknown'),
+      mode: import.meta.env.DEV ? 'development' : 'production',
+      isDesktop: !!desktop?.isDesktop,
+      userDataPath: nativeStatus?.userDataPath ?? null,
+      storage: { indexedDb: typeof indexedDB !== 'undefined', localSettings: localOk },
+      display: {
+        count: nativeStatus?.displayCount ?? 0,
+        primaryResolution: primary?.resolution ?? null,
+        selectedResolution: nativeStatus?.resolution ?? selected?.resolution ?? null,
+        scaleFactor: selected?.scaleFactor ?? null,
+        screenStatus: nativeStatus?.screenStatus ?? null,
+        selectionReason: nativeStatus?.selectionReason ?? null,
+        windowOpen: native ? (nativeStatus?.windowOpen ?? false) : null,
+      },
+      sync: {
+        channelActive: bus.isActive,
+        invalidPayloadCount: bus.invalidPayloadCount,
+        lastDisplayHelloAt: lastSeen,
+        lastDisplayResolution: displayRes,
+      },
+      publish: getPublishState(),
+      settings: {
+        enabled: settings.enabled,
+        blackout: settings.blackout,
+        mode: settings.mode,
+        terminalId: settings.terminalId,
+        hasVideo: !!settings.mediaId,
+      },
+      generatedAt: new Date().toISOString(),
+    });
+  };
+
+  const handleGenerateReport = async () => {
+    const text = gatherReport();
+    setReport(text);
+    try {
+      await navigator.clipboard.writeText(text);
+      flash('Rapport copié dans le presse-papier');
+    } catch {
+      flash('Rapport généré (copie manuelle ci-dessous)');
+    }
+  };
+
   // ── Video upload ──
   const handleVideoFile = async (file: File | undefined) => {
     if (!file) return;
@@ -217,6 +286,13 @@ export function CustomerDisplaySettingsPage() {
               icon={connected ? <Wifi size={16} /> : <WifiOff size={16} />} />
             <StatusRow label="Activation" value={settings.enabled ? 'Activé' : 'Désactivé'} good={settings.enabled} />
             <StatusRow label="Fenêtre" value={native ? (nativeStatus?.windowOpen ? 'Ouverte' : 'Fermée') : 'Web'} good={!native || !!nativeStatus?.windowOpen} />
+            {native && (
+              <StatusRow
+                label="Écran physique"
+                value={SCREEN_STATUS_LABEL[nativeStatus?.screenStatus || 'absent']}
+                good={nativeStatus?.screenStatus === 'connected'}
+              />
+            )}
             <StatusRow label="Écran noir" value={settings.blackout ? 'Oui' : 'Non'} good={!settings.blackout} />
             <StatusRow label="Résolution" value={displayRes || nativeStatus?.resolution || '—'} good />
             <StatusRow label="Terminal lié" value={terminalLabel(settings.terminalId)} good />
@@ -359,7 +435,7 @@ export function CustomerDisplaySettingsPage() {
           </div>
         </div>
 
-        {/* Diagnostics */}
+        {/* Diagnostics — actions terrain */}
         <div className="card mb-4">
           <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-pos-muted">Diagnostic terrain</h2>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -368,6 +444,37 @@ export function CustomerDisplaySettingsPage() {
             <ActionBtn icon={<ShoppingCart size={18} />} label="Test panier" onClick={() => command('test_cart')} />
             <ActionBtn icon={<Eye size={18} />} label="Forcer idle" onClick={() => command('force_idle')} />
           </div>
+        </div>
+
+        {/* Diagnostic terminal — état + export */}
+        <div className="card mb-4">
+          <h2 className="mb-3 flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-pos-muted">
+            <Activity size={16} /> Diagnostic terminal
+          </h2>
+          <div className="grid grid-cols-2 gap-2 text-sm">
+            <StatusRow label="Plateforme" value={window.posDesktop?.platform || 'web'} good />
+            <StatusRow label="Version" value={window.posDesktop?.version || '—'} good />
+            <StatusRow label="Mode" value={import.meta.env.DEV ? 'dev' : 'prod'} good={!import.meta.env.DEV} />
+            <StatusRow label="IndexedDB" value={typeof indexedDB !== 'undefined' ? 'OK' : 'absent'} good={typeof indexedDB !== 'undefined'} />
+            <StatusRow label="BroadcastChannel" value={bus.isActive ? 'actif' : 'inactif'} good={bus.isActive} />
+            <StatusRow label="Payloads rejetés" value={String(bus.invalidPayloadCount)} good={bus.invalidPayloadCount === 0} />
+            <StatusRow label="Écran (statut)" value={nativeStatus?.screenStatus || (native ? '—' : 'web')} good={!nativeStatus || nativeStatus.screenStatus === 'connected'} />
+            <StatusRow label="Sélection" value={nativeStatus?.selectionReason || '—'} good />
+          </div>
+          {nativeStatus?.userDataPath && (
+            <p className="mt-3 break-all text-xs text-pos-muted">userData : {nativeStatus.userDataPath}</p>
+          )}
+          <button className="btn-primary mt-3 flex items-center gap-2" onClick={handleGenerateReport}>
+            <ClipboardCopy size={18} /> Générer &amp; copier le rapport
+          </button>
+          {report && (
+            <textarea
+              readOnly
+              className="mt-3 h-64 w-full rounded-2xl border border-pos-border/60 bg-pos-subtle p-3 font-mono text-xs text-pos-text"
+              value={report}
+              onFocus={(e) => e.currentTarget.select()}
+            />
+          )}
         </div>
       </div>
 
