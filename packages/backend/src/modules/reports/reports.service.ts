@@ -4,6 +4,14 @@ import { Repository } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
 import { SaleEntity } from '../../database/entities/sale.entity';
 import { ZReportEntity } from '../../database/entities/z-report.entity';
+import { StoreEntity } from '../../database/entities/store.entity';
+import {
+  aggregatePeriod,
+  enumerateDates,
+  zonedRangeToUtc,
+  DEFAULT_TIMEZONE,
+  type PeriodSummary,
+} from './period-summary.util';
 
 @Injectable()
 export class ReportsService {
@@ -12,6 +20,8 @@ export class ReportsService {
     private saleRepo: Repository<SaleEntity>,
     @InjectRepository(ZReportEntity)
     private zReportRepo: Repository<ZReportEntity>,
+    @InjectRepository(StoreEntity)
+    private storeRepo: Repository<StoreEntity>,
   ) {}
 
   /**
@@ -213,6 +223,70 @@ export class ReportsService {
       .andWhere('z.date <= :endDate', { endDate })
       .orderBy('z.date', 'ASC')
       .getMany();
+  }
+
+  /**
+   * PERIOD SUMMARY — read-only analytical report over an inclusive date range,
+   * computed live from the sales table (NOT from sealed Z-reports). Does not
+   * touch or replace the daily Z-report. Buckets sales by their local date in
+   * the store timezone (fallback Europe/Paris). Safe for a single day too.
+   */
+  async getPeriodSummary(
+    storeId: string,
+    startDate: string,
+    endDate: string,
+  ): Promise<PeriodSummary & { storeId: string; storeName: string | null; generatedAt: string }> {
+    // Validate the range up front (throws BadRequest on bad input / end < start).
+    try {
+      enumerateDates(startDate, endDate);
+    } catch (err: any) {
+      throw new BadRequestException(err?.message || 'Période invalide.');
+    }
+
+    const store = await this.storeRepo.findOne({ where: { id: storeId } }).catch(() => null);
+    const timeZone = store?.timezone || DEFAULT_TIMEZONE;
+
+    // Fetch by a UTC window derived from the local range; per-sale bucketing
+    // (in the pure aggregator) resolves exact local days incl. DST edges.
+    const { gte, lt } = zonedRangeToUtc(startDate, endDate, timeZone);
+
+    const completed = await this.saleRepo
+      .createQueryBuilder('s')
+      .leftJoinAndSelect('s.payments', 'p')
+      .where('s.store_id = :storeId', { storeId })
+      .andWhere('s.status = :status', { status: 'completed' })
+      .andWhere('s.created_at >= :gte', { gte })
+      .andWhere('s.created_at < :lt', { lt })
+      .getMany();
+
+    const voided = await this.saleRepo
+      .createQueryBuilder('s')
+      .where('s.store_id = :storeId', { storeId })
+      .andWhere('s.status = :status', { status: 'voided' })
+      .andWhere('s.created_at >= :gte', { gte })
+      .andWhere('s.created_at < :lt', { lt })
+      .getMany();
+
+    const summary = aggregatePeriod({
+      completed: completed.map((s) => ({
+        createdAt: s.createdAt,
+        totalMinorUnits: s.totalMinorUnits,
+        taxTotalMinorUnits: s.taxTotalMinorUnits,
+        discountTotalMinorUnits: s.discountTotalMinorUnits,
+        payments: (s.payments || []).map((p) => ({ method: p.method, amountMinorUnits: p.amountMinorUnits })),
+      })),
+      voided: voided.map((s) => ({ createdAt: s.createdAt, totalMinorUnits: s.totalMinorUnits })),
+      startDate,
+      endDate,
+      timeZone,
+    });
+
+    return {
+      ...summary,
+      storeId,
+      storeName: store?.name ?? null,
+      generatedAt: new Date().toISOString(),
+    };
   }
 
   /**

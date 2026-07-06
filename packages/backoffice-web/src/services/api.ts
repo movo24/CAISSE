@@ -322,6 +322,9 @@ export const reportsApi = {
     api.get('/reports/z-report', { params: { storeId, date } }),
   dailySummary: (storeId: string, date: string) =>
     api.get('/reports/daily-summary', { params: { storeId, date } }),
+  /** Period analytics over an inclusive date range (read-only, sales-derived). */
+  periodSummary: (storeId: string, startDate: string, endDate: string) =>
+    api.get('/reports/summary', { params: { storeId, startDate, endDate } }),
   storeKpi: (storeId: string, date: string) =>
     api.get('/reports/store-kpi', { params: { storeId, date } }),
   /** Top / flop / dormant + rupture & réassort (lecture seule, dérivé des ventes). */
