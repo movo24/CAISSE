@@ -1,11 +1,12 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { StoreEntity } from '../../database/entities/store.entity';
 import { OrganizationEntity } from '../../database/entities/organization.entity';
 import { UnitEntity } from '../../database/entities/unit.entity';
 import { BusinessError } from '../../common/errors/business-error';
-import { CreateStoreDto } from '../../common/dto';
+import { CreateStoreDto, MODES_REQUIRING_COMPANY } from '../../common/dto';
+import { reconcileLegalIds } from '../../common/legal/legal-id.util';
 import { mapStoreEntityToStoreInfo } from './store-info.mapper';
 import { generateUniqueStoreCode } from '../../common/utils/store-code-generator';
 import { TimewinService } from '../timewin/timewin.service';
@@ -81,6 +82,9 @@ export class StoresService {
       }
     }
 
+    // ── 5. Validate legal identity + operating-mode rules (may mutate dto: auto-fill SIREN) ──
+    this.validateStoreIdentity(dto);
+
     const store = this.storeRepo.create(dto);
     const saved = await this.storeRepo.save(store);
     this.logger.log(
@@ -93,6 +97,49 @@ export class StoresService {
     );
 
     return saved;
+  }
+
+  /**
+   * Validate the store's legal identity + operating-mode rules. Mutates the dto
+   * in place to auto-fill the SIREN from the SIRET when appropriate. Throws
+   * BadRequestException with a clear, aggregated message on any hard error.
+   * Applies to both create and update payloads.
+   */
+  private validateStoreIdentity(dto: {
+    siren?: string | null;
+    siret?: string | null;
+    tvaIntracom?: string | null;
+    country?: string | null;
+    operatingMode?: string | null;
+    operatingCompanyName?: string | null;
+  }): void {
+    // Operating mode → operating company requirement (franchise/affilié/licence/partenaire).
+    if (
+      dto.operatingMode &&
+      (MODES_REQUIRING_COMPANY as readonly string[]).includes(dto.operatingMode) &&
+      !(dto.operatingCompanyName && dto.operatingCompanyName.trim())
+    ) {
+      throw new BadRequestException(
+        `Le mode d'exploitation « ${dto.operatingMode} » exige une société exploitante (nom de la société).`,
+      );
+    }
+
+    // SIREN / SIRET coherence (only when at least one is provided).
+    if (dto.siren || dto.siret) {
+      const isFrench = !dto.country || dto.country.trim().toLowerCase() === 'france';
+      const res = reconcileLegalIds({
+        siren: dto.siren,
+        siret: dto.siret,
+        vatNumber: dto.tvaIntracom,
+        isFrench,
+      });
+      if (res.errors.length > 0) {
+        throw new BadRequestException(res.errors.join(' '));
+      }
+      // Persist normalised / auto-filled values.
+      if (res.siren) dto.siren = res.siren;
+      if (res.siret) dto.siret = res.siret;
+    }
   }
 
   /**
@@ -168,6 +215,8 @@ export class StoresService {
       );
     }
     await this.findOne(id);
+    // Legal-identity + operating-mode validation on the patch (auto-fills SIREN).
+    this.validateStoreIdentity(data);
     await this.storeRepo.update(id, data);
     const updated = await this.findOne(id);
     this.syncStoreToTimewin(updated, 'store.updated').catch((err) =>

@@ -159,6 +159,56 @@ describe('StoresService', () => {
     });
   });
 
+  // ── LEGAL IDENTITY & OPERATING MODE ─────────────────────────────
+
+  describe('legal identity & operating mode', () => {
+    beforeEach(() => {
+      storeRepo.findOne.mockResolvedValue(null); // no duplicate code
+    });
+
+    it('creates a succursale without an operating company', async () => {
+      const dto = { name: 'Succursale Cergy', operatingMode: 'succursale' };
+      await expect(service.create(dto as any)).resolves.toBeDefined();
+    });
+
+    it('creates a franchise WITH an operating company', async () => {
+      const dto = {
+        name: 'Franchise Lyon', operatingMode: 'franchise',
+        operatingCompanyName: 'Rail Food SAS', siren: '732829320',
+      };
+      const res = await service.create(dto as any);
+      expect(res).toBeDefined();
+      expect(storeRepo.create).toHaveBeenCalledWith(expect.objectContaining({ operatingMode: 'franchise', siren: '732829320' }));
+    });
+
+    it('rejects a franchise WITHOUT an operating company', async () => {
+      const dto = { name: 'Franchise Sans Société', operatingMode: 'franchise' };
+      await expect(service.create(dto as any)).rejects.toThrow(/société exploitante/i);
+    });
+
+    it('rejects affilié / licence / partenaire without a company', async () => {
+      for (const mode of ['affilie', 'licence', 'partenaire']) {
+        await expect(service.create({ name: `X ${mode}`, operatingMode: mode } as any)).rejects.toThrow(/société exploitante/i);
+      }
+    });
+
+    it('auto-fills the SIREN from the SIRET on create', async () => {
+      const dto = { name: 'Auto SIREN', siret: '73282932000017' };
+      await service.create(dto as any);
+      expect(storeRepo.create).toHaveBeenCalledWith(expect.objectContaining({ siren: '732829320', siret: '73282932000017' }));
+    });
+
+    it('rejects a SIRET that does not start with the SIREN', async () => {
+      const dto = { name: 'Incohérent', siren: '732829320', siret: '99999999900017' };
+      await expect(service.create(dto as any)).rejects.toThrow(/SIRET doit commencer par le SIREN/i);
+    });
+
+    it('rejects an invalid SIREN checksum', async () => {
+      const dto = { name: 'Mauvais SIREN', siren: '732829321' };
+      await expect(service.create(dto as any)).rejects.toThrow(/SIREN/i);
+    });
+  });
+
   // ── FIND ────────────────────────────────────────────────────────
 
   describe('findOne', () => {

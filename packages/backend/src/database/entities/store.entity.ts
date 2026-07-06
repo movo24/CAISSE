@@ -82,6 +82,64 @@ export class StoreEntity {
   @Column({ name: 'forme_juridique', nullable: true })
   formeJuridique: string;
 
+  // ── Point-of-sale identity (commercial) ──
+
+  @Column({ name: 'store_type', type: 'varchar', nullable: true })
+  storeType: string | null; // permanent | kiosk | corner | popup | warehouse | office
+
+  @Column({ name: 'address_extra', type: 'varchar', nullable: true })
+  addressExtra: string | null;
+
+  @Column({ name: 'country', default: 'France' })
+  country: string;
+
+  // ── Operating mode (network) ──
+
+  @Column({ name: 'operating_mode', default: 'succursale' })
+  operatingMode: string; // succursale | franchise | affilie | licence | partenaire | autre
+
+  @Column({ name: 'status', default: 'ouvert' })
+  status: string; // projet | preparation | ouvert | ferme_temporaire | ferme_definitif
+
+  @Column({ name: 'expected_opening_date', type: 'date', nullable: true })
+  expectedOpeningDate: string | null;
+
+  @Column({ name: 'actual_opening_date', type: 'date', nullable: true })
+  actualOpeningDate: string | null;
+
+  // ── Operating company (exploitant / legal identity) ──
+  // The company's legal registration numbers reuse the existing siren/siret/
+  // tvaIntracom/formeJuridique/rcs/capitalSocial columns below.
+
+  @Column({ name: 'operating_company_name', type: 'varchar', nullable: true })
+  operatingCompanyName: string | null; // raison sociale de l'exploitant
+
+  @Column({ name: 'operating_company_trade_name', type: 'varchar', nullable: true })
+  operatingCompanyTradeName: string | null; // enseigne si différente
+
+  // ── Operational cash-register parameters ──
+
+  @Column({ name: 'allow_pos', default: true })
+  allowPos: boolean;
+
+  @Column({ name: 'allow_stock', default: true })
+  allowStock: boolean;
+
+  @Column({ name: 'allow_reporting', default: true })
+  allowReporting: boolean;
+
+  @Column({ name: 'is_pilot_store', default: false })
+  isPilotStore: boolean;
+
+  @Column({ name: 'manager_name', type: 'varchar', nullable: true })
+  managerName: string | null;
+
+  @Column({ name: 'manager_email', type: 'varchar', nullable: true })
+  managerEmail: string | null;
+
+  @Column({ name: 'manager_phone', type: 'varchar', nullable: true })
+  managerPhone: string | null;
+
   // ── POS software identification ──
 
   @Column({ name: 'software_name', default: 'CAISSE POS' })
