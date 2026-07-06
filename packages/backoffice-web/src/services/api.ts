@@ -172,6 +172,27 @@ export const productsApi = {
   importCsv: (csv: string) => api.post('/products/import', { csv }),
 };
 
+// Intégration produit — scan code-barres inconnu (création sécurisée
+// depuis Dashboard / Inventaire uniquement, jamais depuis la caisse)
+export const productIntegrationApi = {
+  scan: (barcode: string, source: 'dashboard' | 'inventory') =>
+    api.get(`/product-integration/scan/${encodeURIComponent(barcode)}`, { params: { source } }),
+  createRequest: (data: { barcode: string; source: 'dashboard' | 'inventory'; comment?: string; proposal?: any }) =>
+    api.post('/product-integration/requests', data),
+  listRequests: (status?: 'pending' | 'converted' | 'rejected') =>
+    api.get('/product-integration/requests', { params: { status } }),
+  authorize: (pin: string) => api.post('/product-integration/authorize', { pin }),
+  createProduct: (data: any) => api.post('/product-integration/products', data),
+  approveRequest: (id: string, data?: { overrides?: any; activate?: boolean }) =>
+    api.post(`/product-integration/requests/${id}/approve`, data ?? {}),
+  rejectRequest: (id: string, reason?: string) =>
+    api.post(`/product-integration/requests/${id}/reject`, { reason }),
+  listPendingProducts: () => api.get('/product-integration/products/pending'),
+  activateProduct: (id: string) => api.post(`/product-integration/products/${id}/activate`, {}),
+  rejectProduct: (id: string, reason?: string) =>
+    api.post(`/product-integration/products/${id}/reject`, { reason }),
+};
+
 // Promo codes (decision 6)
 export const promoCodesApi = {
   list: () => api.get('/promo-codes'),

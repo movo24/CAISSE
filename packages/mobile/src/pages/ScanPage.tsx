@@ -14,7 +14,7 @@ import { useState, useCallback, useRef } from 'react';
 import { ScannerOverlay } from '../components/ScannerOverlay';
 import { ProductCard } from '../components/ProductCard';
 import { CreateProductForm } from '../components/CreateProductForm';
-import { productsApi } from '../services/api';
+import { productsApi, productIntegrationApi } from '../services/api';
 import { ScanResult } from '../hooks/useScanner';
 import { useAuthStore } from '../stores/authStore';
 import { Loader2, CheckCircle2, XCircle, AlertTriangle, PackagePlus } from 'lucide-react';
@@ -48,6 +48,8 @@ export function ScanPage() {
   const [product, setProduct] = useState<Product | null>(null);
   const [unknownEan, setUnknownEan] = useState<string | null>(null);
   const [status, setStatus] = useState<PipelineStatus>({ step: 'idle' });
+  // Demande d'intégration (employés sans droit de création)
+  const [requestState, setRequestState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
 
   // Anti-double scan: ignore same code within 1.5 seconds
   const lastScanRef = useRef<{ code: string; time: number }>({ code: '', time: 0 });
@@ -61,6 +63,7 @@ export function ScanPage() {
     setStatus({ step: 'searching', code });
     setProduct(null);
     setUnknownEan(null);
+    setRequestState('idle');
 
     try {
       console.log('[ScanPage] 2. Recherche produit... GET /products/scan/' + code);
@@ -101,6 +104,18 @@ export function ScanPage() {
     }
   }, []);
 
+  /** Sans droit de création : envoie une demande d'intégration (source mobile). */
+  const handleRequestIntegration = useCallback(async () => {
+    if (status.step !== 'not-found' || requestState === 'sending') return;
+    setRequestState('sending');
+    try {
+      await productIntegrationApi.createRequest({ barcode: status.code, source: 'mobile' });
+      setRequestState('sent');
+    } catch {
+      setRequestState('error');
+    }
+  }, [status, requestState]);
+
   const handleProductCreated = (newProduct: any) => {
     console.log('[ScanPage] Produit créé:', newProduct.name);
     setUnknownEan(null);
@@ -133,6 +148,8 @@ export function ScanPage() {
                 setUnknownEan(status.code);
               }
             }}
+            requestState={requestState}
+            onRequestClick={handleRequestIntegration}
           />
         }
       />
@@ -172,10 +189,14 @@ function StatusBar({
   status,
   canCreate,
   onCreateClick,
+  requestState,
+  onRequestClick,
 }: {
   status: PipelineStatus;
   canCreate: boolean;
   onCreateClick: () => void;
+  requestState: 'idle' | 'sending' | 'sent' | 'error';
+  onRequestClick: () => void;
 }) {
   if (status.step === 'idle') return null;
 
@@ -216,13 +237,28 @@ function StatusBar({
               <p className="text-white/60 text-[10px] font-mono">{status.code}</p>
             </div>
           </div>
-          {canCreate && (
+          {canCreate ? (
             <button
               onClick={onCreateClick}
               className="w-full mt-2 py-2.5 rounded-xl bg-violet-600/80 text-white text-xs font-bold flex items-center justify-center gap-1.5 active:scale-[0.97] transition-transform"
             >
               <PackagePlus size={14} />
               Créer ce produit
+            </button>
+          ) : requestState === 'sent' ? (
+            <p className="w-full mt-2 py-2.5 rounded-xl bg-emerald-600/60 text-white text-xs font-bold text-center">
+              Demande d&rsquo;intégration envoyée
+            </p>
+          ) : (
+            <button
+              onClick={onRequestClick}
+              disabled={requestState === 'sending'}
+              className="w-full mt-2 py-2.5 rounded-xl bg-blue-600/80 text-white text-xs font-bold flex items-center justify-center gap-1.5 active:scale-[0.97] transition-transform disabled:opacity-50"
+            >
+              {requestState === 'sending'
+                ? <Loader2 size={14} className="animate-spin" />
+                : <PackagePlus size={14} />}
+              {requestState === 'error' ? 'Réessayer la demande' : 'Envoyer une demande d’intégration'}
             </button>
           )}
         </div>

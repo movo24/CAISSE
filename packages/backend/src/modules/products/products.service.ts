@@ -3,6 +3,7 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
+  HttpStatus,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -16,6 +17,7 @@ import { AuditService } from '../audit/audit.service';
 import { PaginatedResult } from '../../common/dto/pagination.dto';
 import { computePriceVerdict, PriceVerdict } from './price-verdict';
 import { toCsv, parseCsvWithHeader, stripFormulaGuard } from '../../common/csv/csv.util';
+import { BusinessError } from '../../common/errors/business-error';
 
 /** Canonical CSV columns — export emits these; import reads these (round-trip). */
 const CSV_COLUMNS = [
@@ -213,6 +215,30 @@ export class ProductsService {
     data: Partial<ProductEntity>,
     employeeId: string,
   ): Promise<ProductEntity> {
+    // Anti-doublon strict : un code-barres = une seule fiche par magasin,
+    // quel que soit son statut (active, en attente, archivée…).
+    if (data.ean && data.storeId) {
+      const duplicate = await this.productRepo.findOne({
+        where: { ean: data.ean.trim(), storeId: data.storeId },
+      });
+      if (duplicate) {
+        throw new BusinessError(
+          'PRODUCT_BARCODE_ALREADY_EXISTS',
+          `Un produit existe déjà avec ce code-barres (${data.ean}) : ${duplicate.name}.`,
+          HttpStatus.CONFLICT,
+          {
+            existingProduct: {
+              id: duplicate.id,
+              name: duplicate.name,
+              ean: duplicate.ean,
+              status: duplicate.status,
+              isActive: duplicate.isActive,
+            },
+          },
+        );
+      }
+    }
+
     const product = this.productRepo.create(data);
     const saved = await this.productRepo.save(product);
 
@@ -301,7 +327,7 @@ export class ProductsService {
 
   async deactivate(id: string, storeId: string): Promise<{ message: string }> {
     const product = await this.findOneForStore(id, storeId);
-    await this.productRepo.update(id, { isActive: false });
+    await this.productRepo.update(id, { isActive: false, status: 'archived' });
     return { message: `${product.name} supprimé du catalogue.` };
   }
 

@@ -160,6 +160,17 @@ export const productsApi = {
   categories: () => api.get('/products/categories'),
 };
 
+// Intégration produit — la caisse ne crée JAMAIS de produit : uniquement
+// une demande d'intégration (traitée ensuite depuis Dashboard/Inventaire).
+export const productIntegrationApi = {
+  createRequest: (data: {
+    barcode: string;
+    source: 'pos';
+    terminalId?: string;
+    comment?: string;
+  }) => api.post('/product-integration/requests', data),
+};
+
 // Sales
 export const salesApi = {
   // idempotencyKey: stable per offline-queue entry, so a sync replay is deduped server-side

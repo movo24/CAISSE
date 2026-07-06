@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { usePOSStore } from '../stores/posStore';
-import { productsApi, customersApi } from '../services/api';
+import { productsApi, productIntegrationApi, customersApi } from '../services/api';
 import { posEventBus } from '../services/posEventBus';
 
 /* ── Product type (mirrors backend API) ── */
@@ -153,6 +153,17 @@ export function useCart() {
       handleSelectProduct(searchResults[idx]);
       return;
     }
+    // Produit inconnu : la caisse ne crée JAMAIS de produit — elle envoie
+    // une demande d'intégration (idempotente côté serveur) et informe le caissier.
+    const reportUnknownProduct = async (barcode: string) => {
+      setError(
+        `Produit inconnu (${barcode}). La création produit doit être faite depuis le Dashboard ou le module Inventaire — demande envoyée.`,
+      );
+      try {
+        await productIntegrationApi.createRequest({ barcode, source: 'pos' });
+      } catch { /* offline / droit manquant : le message reste affiché */ }
+    };
+
     try {
       if (store.scanMode === 'customer') {
         const res = await customersApi.findByQr(value);
@@ -161,11 +172,14 @@ export function useCart() {
         const res = await productsApi.scan(value);
         if (res.data) {
           store.addToCart({ productId: res.data.id, ean: res.data.ean, name: res.data.name, unitPriceMinorUnits: res.data.priceMinorUnits });
-        } else { setError(`Produit non trouve : ${value}`); }
+        } else { await reportUnknownProduct(value.trim()); }
       }
-    } catch {
+    } catch (e: any) {
       const fuzzy = catalogue.find((p) => p.name.toLowerCase().includes(value.toLowerCase()));
-      if (fuzzy) { handleSelectProduct(fuzzy); } else { setError(`Produit non trouve : ${value}`); }
+      if (fuzzy) { handleSelectProduct(fuzzy); }
+      else if (store.scanMode !== 'customer' && e?.response?.status === 404) {
+        await reportUnknownProduct(value.trim());
+      } else { setError(`Produit non trouve : ${value}`); }
     }
     setScanValue('');
     setSearchOpen(false);

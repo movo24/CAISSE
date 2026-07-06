@@ -50,3 +50,6 @@ export { AirtableOperationEntity } from './airtable-operation.entity';
 
 // ── Sales Guards (anti-error cockpit) ──────────────────────────────
 export { SaleAnomalyLogEntity } from './sale-anomaly-log.entity';
+
+// ── Intégration produit (scan code-barres inconnu) ─────────────────
+export { ProductIntegrationRequestEntity } from './product-integration-request.entity';

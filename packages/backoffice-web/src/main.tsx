@@ -32,6 +32,7 @@ import { BrandsSuppliersPage } from './pages/BrandsSuppliersPage';
 import { PromoCodesPage } from './pages/PromoCodesPage';
 import { PendingPaymentsPage } from './pages/PendingPaymentsPage';
 import { InventoryVariancePage } from './pages/InventoryVariancePage';
+import ProductIntegrationPage from './pages/ProductIntegrationPage';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import './styles/globals.css';
 
@@ -83,6 +84,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             <Route path="/promo-codes" element={<PromoCodesPage />} />
             <Route path="/pending-payments" element={<PendingPaymentsPage />} />
             <Route path="/inventory-variance" element={<InventoryVariancePage />} />
+            <Route path="/product-integration" element={<ProductIntegrationPage />} />
             <Route path="/stock-alerts" element={<StockAlertsPage />} />
             <Route path="/labels" element={<LabelsPage />} />
             <Route path="/performance" element={<ProductPerformancePage />} />

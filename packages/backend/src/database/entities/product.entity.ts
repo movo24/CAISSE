@@ -81,6 +81,14 @@ export class ProductEntity {
   @Column({ name: 'is_active', default: true })
   isActive: boolean;
 
+  /**
+   * Cycle de vie de la fiche produit. Un produit ne se vend que lorsqu'il est
+   * `active` (isActive reste la colonne filtrée par la vente ; elle est tenue
+   * en cohérence : isActive === (status === 'active')).
+   */
+  @Column({ type: 'varchar', default: 'active' })
+  status: 'draft' | 'pending_validation' | 'active' | 'rejected' | 'archived';
+
   @Column({ name: 'store_id' })
   storeId: string;
 
