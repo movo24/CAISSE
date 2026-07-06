@@ -90,6 +90,7 @@ or the dashboard. See `packages/backend/RUNBOOK.md` for exact curl commands.
 | `stock` | Decrement, adjust, threshold alerts |
 | `stock-locations` | Warehouse location management |
 | `inventory-scan` | Barcode scan for inventory counting |
+| `product-integration` | Unknown-barcode workflow: scan lookup, integration requests, PIN-gated product creation, statuses (POS = request only) |
 | `audit` | SHA-256 hash chain, append-only log |
 | `currency` | FX rates, multi-currency conversion |
 | `sync` | Offline push/pull, conflict resolution |
@@ -182,6 +183,8 @@ Current migrations (run in order):
 1741000000000-CreatePromoCodes
 1742000000000-AddSaleDiscountApprover
 1743000000000-AddPaymentCapture
+1745000000000-AddStoreLegalIdentity
+1746000000000-AddProductStatusAndIntegrationRequests
 ```
 > Saut de numérotation 1719→1735 volontaire (réservation d'une plage pour les blocs POS).
 

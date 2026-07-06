@@ -16,3 +16,4 @@ export * from './jackpot.dto';
 export * from './pagination.dto';
 export * from './inventory-scan.dto';
 export * from './stripe-terminal.dto';
+export * from './product-integration.dto';

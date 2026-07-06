@@ -210,6 +210,15 @@ export const stockApi = {
     }),
 };
 
+/**
+ * Intégration produit — demande de création pour un code-barres inconnu
+ * (workflow sécurisé : la fiche est validée depuis Dashboard / Inventaire).
+ */
+export const productIntegrationApi = {
+  createRequest: (data: { barcode: string; source: 'mobile'; comment?: string }) =>
+    api.post('/product-integration/requests', data),
+};
+
 /** Inventaire — enregistrement d'un scan/comptage (POST /api/inventory-scans). */
 export const inventoryScanApi = {
   record: (data: {

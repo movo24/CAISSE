@@ -4,6 +4,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { ReportsService } from './reports.service';
 import { SaleEntity } from '../../database/entities/sale.entity';
 import { ZReportEntity } from '../../database/entities/z-report.entity';
+import { StoreEntity } from '../../database/entities/store.entity';
 
 describe('ReportsService — getStoreKpi', () => {
   let service: ReportsService;
@@ -23,6 +24,7 @@ describe('ReportsService — getStoreKpi', () => {
         ReportsService,
         { provide: getRepositoryToken(SaleEntity), useValue: saleRepo },
         { provide: getRepositoryToken(ZReportEntity), useValue: {} },
+        { provide: getRepositoryToken(StoreEntity), useValue: {} },
       ],
     }).compile();
     service = module.get(ReportsService);

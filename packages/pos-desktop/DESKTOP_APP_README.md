@@ -10,6 +10,26 @@ Elle est construite avec **Electron** par-dessus le front-end web existant
 
 ---
 
+## 0. Prérequis matériels & système
+
+Cible officielle du poste de caisse **double écran** (caisse tactile + écran client vertical 9:16).
+
+| Élément | Recommandation |
+|---|---|
+| **Système d'exploitation** | **Windows 11 x64** recommandé (Windows 10 x64 accepté). L'artefact est compilé pour **win x64**. |
+| **RAM** | **8 Go** recommandés (4 Go minimum). |
+| **Stockage** | **SSD, 128 Go minimum** (le SSD est requis pour un démarrage et une lecture vidéo fluides). |
+| **Sorties vidéo** | **Deux sorties vidéo requises** pour le double écran (ex. HDMI + HDMI/DisplayPort, ou USB-C + HDMI). L'écran client se place sur la 2ᵉ sortie. |
+| **Écran opérateur** | **Écran tactile compatible Windows HID/USB** (le tactile est géré nativement par Windows ; aucun pilote spécifique côté app). |
+| **Écran client** | Écran **non tactile**, orienté **portrait 9:16** (rendu natif 1080×1920, responsive 720×1280 / 1440×2560). |
+| **Imprimante ticket / scanner** | **À tester séparément** selon le modèle (USB/série/Bluetooth). L'intégration périphérique n'est pas couverte par cette validation double-écran — voir §10. |
+
+> L'écran client ne pilote **jamais** l'encaissement : il affiche uniquement. Une
+> seule sortie vidéo suffit à faire tourner la caisse ; la 2ᵉ sortie n'active que
+> l'écran client.
+
+---
+
 ## 1. Pourquoi Electron (et pas Tauri / PWA)
 
 Décision pragmatique, pas théorique : Electron était **déjà** une dépendance du
@@ -133,7 +153,14 @@ Oui, c'est possible et c'est généré automatiquement :
 
 - Ouverture directe dans une fenêtre **POS Caisse** (titre propre, icône propre).
 - Pas d'onglet navigateur, pas de console, pas de commande.
-- Détection d'un 2ᵉ écran → fenêtre **Écran Client** en plein écran dessus.
+- Détection automatique d'un 2ᵉ écran → fenêtre **Écran Client** verticale 9:16
+  en plein écran dessus, pilotée par un contrôleur dédié (sélection d'écran,
+  allumage/écran noir, relance, kiosque, **watchdog anti-crash avec respawn**).
+- L'écran client se **configure et se supervise** depuis la caisse : menu profil
+  → **« Écran client »** (activation, sélection de l'écran physique, mode, vidéo
+  idle, QR, bouton *Identifier l'écran*, diagnostics). Les réglages sont
+  **persistés sur le poste** (fichier `customer-display.json` dans le dossier
+  `userData`, + `localStorage`), donc conservés au redémarrage.
 - Une seule instance : relancer l'app refocalise la fenêtre existante.
 - Si le serveur/API est injoignable ou le rendu échoue, un écran clair
   **« Connexion au serveur impossible »** s'affiche avec un bouton *Réessayer*.
@@ -178,3 +205,46 @@ Oui, c'est possible et c'est généré automatiquement :
 - **Le `.exe` Windows n'a pas été produit sur cette machine** (macOS). La chaîne
   complète a été **prouvée en générant le pack macOS** (`POS Caisse.app`) ; le
   build Windows s'exécute à l'identique sur la CI GitHub / un PC Windows.
+
+---
+
+## 11. Recette de validation après installation (Windows 11 x64)
+
+> ⚠️ Cette recette **doit être exécutée sur la machine Windows 11 cible** avec le
+> `.exe` produit par la CI (§2, Option A). Elle n'est **pas** exécutable depuis un
+> environnement Linux/CI headless : la compatibilité des API a été vérifiée par
+> revue de code + rendu des écrans sous Chromium, mais le comportement fenêtres +
+> multi-écran Electron se valide sur un vrai poste Windows à deux sorties vidéo.
+
+Compatibilité API (confirmée par audit du code, toutes **supportées sur Windows 11**) :
+
+| Fonction écran client | API | Statut |
+|---|---|---|
+| Fenêtre client dédiée | `Electron BrowserWindow` | ✅ multiplateforme |
+| Détection des écrans | `screen.getAllDisplays()` / `getPrimaryDisplay()` | ✅ |
+| Contrôle caisse ↔ écran | IPC `ipcMain.handle` / `ipcRenderer.invoke` / `contextBridge` | ✅ |
+| Sync panier temps réel | `BroadcastChannel` | ✅ (Chromium) |
+| Stockage vidéo idle | `IndexedDB` | ✅ (Chromium) |
+| Plein écran / kiosque | `win.setFullScreen()` / `setKiosk()` | ✅ |
+| Anti-crash | `render-process-gone` / `unresponsive` → respawn | ✅ |
+
+> Aucune dépendance runtime ne verrouille Linux/macOS/Android : le process
+> principal packagé n'importe que `electron` + `fs`/`path`/`url` (builtins Node).
+> Les binaires OS-spécifiques présents en `node_modules` (`@esbuild/*`,
+> `@rollup/rollup-*`) sont des **outils de build** et ne sont **jamais** embarqués
+> dans l'`.exe` ; sur un hôte Windows npm installe les variantes `win32-x64`.
+
+Checklist à cocher sur le poste (après installation du `Setup.exe`) :
+
+1. [ ] **Lancement app** — double-clic sur le raccourci *POS Caisse* → la fenêtre caisse s'ouvre (pas de navigateur, pas de console).
+2. [ ] **Fenêtre caisse** — l'interface POS s'affiche et répond au tactile.
+3. [ ] **Fenêtre client** — avec 2 écrans branchés, la fenêtre client verticale 9:16 s'ouvre en plein écran sur le 2ᵉ écran (idle : vidéo/branding + QR).
+4. [ ] **Sélection écran client** — menu profil → *Écran client* → *Écran physique* : choisir un écran ; la fenêtre client se déplace sur l'écran choisi.
+5. [ ] **Identifier l'écran** — bouton *Identifier* → l'écran client affiche en grand « ÉCRAN CLIENT — TERMINAL 0X » pendant 10 s.
+6. [ ] **Panier live** — ajouter des articles en caisse → ils apparaissent en temps réel sur l'écran client ; lancer un paiement → « Présentez votre carte » ; encaisser → « Merci » + QR.
+7. [ ] **Écran noir / relance** — boutons *Écran noir* puis *Relancer* → l'écran client s'éteint puis se recharge proprement.
+8. [ ] **Persistance des réglages** — modifier l'écran choisi, le mode et le n° de terminal.
+9. [ ] **Redémarrage complet** — fermer l'app, la relancer → les réglages (écran, mode, terminal, vidéo) sont conservés ; l'écran client rouvre sur le bon écran.
+10. [ ] **Robustesse** — débrancher/rebrancher le 2ᵉ écran → la caisse continue de fonctionner sans interruption ; fermer manuellement la fenêtre client → le watchdog la relance.
+
+En cas d'échec d'un point, joindre : version de l'`.exe`, modèle des 2 écrans + leur résolution, et le contenu de `%APPDATA%\POS Caisse\customer-display.json`.

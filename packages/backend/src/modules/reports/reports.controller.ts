@@ -63,6 +63,24 @@ export class ReportsController {
     );
   }
 
+  @Get('summary')
+  @Roles('admin', 'manager')
+  @ApiOperation({
+    summary:
+      'Period analytics summary over an inclusive date range (read-only, sales-derived). ' +
+      'Does not replace the daily Z-report. Single day works too.',
+  })
+  async getPeriodSummary(
+    @Request() req: any,
+    @Query('startDate') startDate: string,
+    @Query('endDate') endDate: string,
+    @Query('storeId') queryStoreId?: string,
+  ) {
+    const effectiveStoreId =
+      req.user.role === 'admin' && queryStoreId ? queryStoreId : req.user.storeId;
+    return this.reportsService.getPeriodSummary(effectiveStoreId, startDate, endDate);
+  }
+
   @Get('store-kpi')
   @Roles('admin', 'manager')
   @ApiOperation({ summary: 'Get store KPIs for a specific date (admin can query any store)' })

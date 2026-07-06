@@ -11,6 +11,7 @@ import { SaleEntity } from '../src/database/entities/sale.entity';
 import { SaleLineItemEntity } from '../src/database/entities/sale-line-item.entity';
 import { SalePaymentEntity } from '../src/database/entities/sale-payment.entity';
 import { ZReportEntity } from '../src/database/entities/z-report.entity';
+import { StoreEntity } from '../src/database/entities/store.entity';
 import { ReportsService } from '../src/modules/reports/reports.service';
 
 const DAY = '2026-06-15';
@@ -45,7 +46,11 @@ describe('Bloc 9d — X-report (intra-day snapshot, read-only, non-sealing)', ()
   beforeAll(async () => {
     const { dataSource } = createPgMemDataSource();
     ds = dataSource.isInitialized ? dataSource : await dataSource.initialize();
-    svc = new ReportsService(ds.getRepository(SaleEntity), ds.getRepository(ZReportEntity));
+    svc = new ReportsService(
+      ds.getRepository(SaleEntity),
+      ds.getRepository(ZReportEntity),
+      ds.getRepository(StoreEntity),
+    );
     await seedSale({ totalMinorUnits: 1000, taxTotalMinorUnits: 167, discountTotalMinorUnits: 50 }, [{ qty: 2, total: 1000 }], [{ method: 'cash', amt: 1000 }]);
     await seedSale({ totalMinorUnits: 500, taxTotalMinorUnits: 83, discountTotalMinorUnits: 0 }, [{ qty: 1, total: 500 }], [{ method: 'card', amt: 500 }]);
     await seedSale({ status: 'voided', totalMinorUnits: 300 }, [{ qty: 1, total: 300 }], [{ method: 'card', amt: 300 }]);

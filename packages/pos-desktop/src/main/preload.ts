@@ -9,11 +9,35 @@
  * Runs with sandbox: true — only contextBridge + a limited `process`
  * (platform/versions) are available; process.env may be absent, hence the guard.
  */
-import { contextBridge } from 'electron';
+import { contextBridge, ipcRenderer } from 'electron';
 
 contextBridge.exposeInMainWorld('posDesktop', {
   isDesktop: true,
   platform: process.platform,
   // App version is injected at build time via env; falls back to 'dev'.
   version: process.env?.POS_APP_VERSION || 'dev',
+});
+
+/**
+ * Native control bridge for the customer display (screen 2). Only the operator
+ * window uses these; they manage the physical window (screen selection, on/off,
+ * reload, fullscreen/kiosk) via IPC to the main process. Content sync stays on
+ * BroadcastChannel. When absent (web build), the renderer degrades gracefully.
+ */
+contextBridge.exposeInMainWorld('customerDisplayNative', {
+  isAvailable: true,
+  getStatus: () => ipcRenderer.invoke('customer-display:getStatus'),
+  listDisplays: () => ipcRenderer.invoke('customer-display:listDisplays'),
+  open: () => ipcRenderer.invoke('customer-display:open'),
+  close: () => ipcRenderer.invoke('customer-display:close'),
+  reload: () => ipcRenderer.invoke('customer-display:reload'),
+  setEnabled: (enabled: boolean) => ipcRenderer.invoke('customer-display:setEnabled', enabled),
+  setScreen: (screenId: number | null) => ipcRenderer.invoke('customer-display:setScreen', screenId),
+  setFullscreen: (fullscreen: boolean) => ipcRenderer.invoke('customer-display:setFullscreen', fullscreen),
+  setKiosk: (kiosk: boolean) => ipcRenderer.invoke('customer-display:setKiosk', kiosk),
+  onStatus: (cb: (status: unknown) => void) => {
+    const listener = (_e: unknown, status: unknown) => cb(status);
+    ipcRenderer.on('customer-display:status', listener);
+    return () => ipcRenderer.removeListener('customer-display:status', listener);
+  },
 });

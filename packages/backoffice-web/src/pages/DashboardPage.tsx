@@ -16,6 +16,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { useDashboardData } from '../hooks/useDashboardData';
+import { ProductScanPanel } from '../components/ProductScanPanel';
 
 const WEEK_DAYS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
 const MONTHS_SHORT = ['Jan', 'Fev', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aou', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -317,6 +318,9 @@ export function DashboardPage() {
           </button>
         </div>
       </div>
+
+      {/* ══════════ SCAN PRODUIT (code-barres) ══════════ */}
+      <ProductScanPanel source="dashboard" />
 
       {/* ╔═══════════════════════════════════════════════════════════╗
          ║  A. PERFORMANCE COMMERCIALE                               ║

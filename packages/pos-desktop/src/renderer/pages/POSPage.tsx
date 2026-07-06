@@ -9,7 +9,8 @@ import {
   Camera, Monitor, Tablet, Mail, Loader2, Ticket, Gift,
 } from 'lucide-react';
 import { usePOSStore } from '../stores/posStore';
-import { productsApi, salesApi, customersApi, occupancyApi, receiptsApi } from '../services/api';
+import { productsApi, productIntegrationApi, salesApi, customersApi, occupancyApi, receiptsApi } from '../services/api';
+import { loadSettings as loadCustomerDisplaySettings, terminalLabel } from '../services/customerDisplay/settings';
 import { computePaymentState, type PaymentMethod } from '../services/paymentMachine';
 import { FluxWidget } from '../components/FluxWidget';
 import { ManualDiscountControl } from '../components/ManualDiscountControl';
@@ -39,6 +40,7 @@ import { IPadPOSLayout } from '../components/ipad/IPadPOSLayout';
 import { StockAlertToast } from '../components/StockAlertToast';
 import { SaleGuardsGate } from '../components/SaleGuardsGate';
 import { SalesCockpit } from '../components/SalesCockpit';
+import { CustomerDisplayPublisher } from '../components/CustomerDisplayPublisher';
 
 /* ── Helpers ── */
 
@@ -136,6 +138,14 @@ export function POSPage() {
   const [weightModal, setWeightModal] = useState<CatalogueProduct | null>(null);
   const [weightValue, setWeightValue] = useState('');
   const weightRef = useRef<HTMLInputElement>(null);
+
+  // Produit inconnu — la caisse ne crée JAMAIS de produit, elle ne peut
+  // qu'envoyer une demande d'intégration vers le Dashboard / Inventaire.
+  const [unknownProduct, setUnknownProduct] = useState<{
+    barcode: string;
+    comment: string;
+    status: 'idle' | 'sending' | 'sent' | 'already' | 'error';
+  } | null>(null);
 
   // Fullscreen confirmation overlay
   const [confirmation, setConfirmation] = useState<ConfirmationData | null>(null);
@@ -525,14 +535,48 @@ export function POSPage() {
         const res = await productsApi.scan(value);
         if (res.data) {
           store.addToCart({ productId: res.data.id, ean: res.data.ean, name: res.data.name, unitPriceMinorUnits: res.data.priceMinorUnits });
-        } else { setError(`Produit non trouve : ${value}`); }
+        } else { openUnknownProduct(value.trim()); }
       }
-    } catch {
+    } catch (e: any) {
       const fuzzy = catalogue.find((p) => p.name.toLowerCase().includes(value.toLowerCase()));
-      if (fuzzy) { handleSelectProduct(fuzzy); } else { setError(`Produit non trouve : ${value}`); }
+      if (fuzzy) { handleSelectProduct(fuzzy); }
+      else if (store.scanMode !== 'customer' && e?.response?.status === 404) {
+        // Le backend confirme : ce code-barres n'existe pas → produit inconnu.
+        openUnknownProduct(value.trim());
+      } else { setError(`Produit non trouve : ${value}`); }
     }
     setScanValue('');
     setSearchOpen(false);
+    scanRef.current?.focus();
+  };
+
+  /* ── Produit inconnu (aucune création depuis la caisse) ── */
+
+  const openUnknownProduct = (barcode: string) => {
+    setUnknownProduct({ barcode, comment: '', status: 'idle' });
+  };
+
+  const sendIntegrationRequest = async () => {
+    if (!unknownProduct || unknownProduct.status === 'sending') return;
+    setUnknownProduct({ ...unknownProduct, status: 'sending' });
+    try {
+      const res = await productIntegrationApi.createRequest({
+        barcode: unknownProduct.barcode,
+        source: 'pos',
+        terminalId: terminalLabel(loadCustomerDisplaySettings().terminalId),
+        comment: unknownProduct.comment.trim() || undefined,
+      });
+      setUnknownProduct({
+        ...unknownProduct,
+        status: res.data?.alreadyPending ? 'already' : 'sent',
+      });
+    } catch {
+      setUnknownProduct({ ...unknownProduct, status: 'error' });
+    }
+  };
+
+  const closeUnknownProduct = () => {
+    setUnknownProduct(null);
     scanRef.current?.focus();
   };
 
@@ -823,6 +867,8 @@ export function POSPage() {
 
   return (
     <div className={`h-screen flex flex-col bg-pos-bg safe-area-top safe-area-bottom overflow-x-hidden ${platformClasses(device)}`}>
+      {/* Inert bridge: mirrors cart/payment to the customer display (screen 2). */}
+      <CustomerDisplayPublisher />
       {/* ═══════ OFFLINE BANNER ═══════ */}
       {offlineMode.isOffline && (
         <div className="bg-gradient-to-r from-red-600 via-red-500 to-rose-500 px-4 py-2 flex items-center justify-between relative z-50 shadow-lg animate-slide-down">
@@ -990,6 +1036,15 @@ export function POSPage() {
                   <p className="text-sm font-semibold">{store.employee?.firstName} {store.employee?.lastName}</p>
                   <p className="text-xs text-pos-muted capitalize">{store.employee?.role}</p>
                 </div>
+                <button
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-pos-text rounded-xl hover:bg-pos-subtle transition-colors mb-1"
+                  onClick={() => {
+                    setProfileOpen(false);
+                    navigate('/display-settings');
+                  }}
+                >
+                  <Monitor size={14} /> Écran client
+                </button>
                 <button
                   className="w-full flex items-center gap-2 px-3 py-2 text-sm text-pos-danger rounded-xl hover:bg-pos-danger/5 transition-colors"
                   onClick={() => {
@@ -1182,6 +1237,76 @@ export function POSPage() {
           </div>
         </div>
       </div>
+
+      {/* ── Produit inconnu — la caisse ne crée jamais de produit ── */}
+      {unknownProduct && (
+        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in">
+          <div className="bg-white rounded-3xl shadow-elevated w-[460px] p-7 space-y-5 animate-scale-in">
+            <div className="flex items-center gap-4">
+              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-orange-100 to-orange-200 text-orange-600 flex items-center justify-center">
+                <ScanBarcode size={26} />
+              </div>
+              <div>
+                <h3 className="font-bold text-lg text-pos-text">Produit inconnu</h3>
+                <p className="text-sm text-pos-muted font-mono">{unknownProduct.barcode}</p>
+              </div>
+            </div>
+
+            {unknownProduct.status === 'sent' || unknownProduct.status === 'already' ? (
+              <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-sm text-emerald-800 flex items-start gap-2">
+                <CheckCircle2 size={18} className="shrink-0 mt-0.5" />
+                <span>
+                  {unknownProduct.status === 'already'
+                    ? 'Une demande d’intégration est déjà en attente pour ce code-barres.'
+                    : 'Demande envoyée au Dashboard / Inventaire. Un responsable pourra créer la fiche produit.'}
+                </span>
+              </div>
+            ) : (
+              <>
+                <p className="text-sm text-pos-muted">
+                  Ce produit n&rsquo;existe pas encore dans la base.{' '}
+                  <span className="font-semibold text-pos-text">
+                    La cr&eacute;ation produit doit &ecirc;tre faite depuis le Dashboard ou le module Inventaire.
+                  </span>
+                </p>
+                <textarea
+                  className="w-full rounded-2xl border-2 border-gray-200 p-3 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300 resize-none"
+                  rows={2}
+                  placeholder="Commentaire (optionnel) : marque, rayon, prix affiché…"
+                  value={unknownProduct.comment}
+                  onChange={(e) => setUnknownProduct({ ...unknownProduct, comment: e.target.value })}
+                />
+                {unknownProduct.status === 'error' && (
+                  <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-sm text-red-700">
+                    Envoi impossible. R&eacute;essayez ou signalez le code-barres &agrave; un responsable.
+                  </div>
+                )}
+              </>
+            )}
+
+            <div className="flex gap-2">
+              <button
+                onClick={closeUnknownProduct}
+                className="flex-1 py-3 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors"
+              >
+                {unknownProduct.status === 'sent' || unknownProduct.status === 'already' ? 'Fermer' : 'Annuler'}
+              </button>
+              {unknownProduct.status !== 'sent' && unknownProduct.status !== 'already' && (
+                <button
+                  onClick={sendIntegrationRequest}
+                  disabled={unknownProduct.status === 'sending'}
+                  className="flex-[2] py-3 rounded-xl text-sm font-medium bg-orange-500 text-white hover:bg-orange-600 transition-colors shadow-lg shadow-orange-500/25 disabled:opacity-40 flex items-center justify-center gap-2"
+                >
+                  {unknownProduct.status === 'sending'
+                    ? <Loader2 size={16} className="animate-spin" />
+                    : <ArrowRight size={16} />}
+                  Envoyer au Dashboard / Inventaire
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Weight Modal ── */}
       {weightModal && (
