@@ -11,6 +11,8 @@ import { Repository } from 'typeorm';
 
 import { PosSessionEntity } from '../../database/entities/pos-session.entity';
 import { SalePaymentEntity } from '../../database/entities/sale-payment.entity';
+import { CreditNoteEntity } from '../../database/entities/credit-note.entity';
+import { normalizeShiftRecords, findEndedShiftFor } from '../shift-reminders/shift-normalize.util';
 import { TimewinService } from '../timewin/timewin.service';
 import { AuditService } from '../audit/audit.service';
 import { EmployeeScoreService } from '../employee-score/employee-score.service';
@@ -63,6 +65,11 @@ export class PosSessionService {
     @Optional()
     @InjectRepository(SalePaymentEntity)
     private readonly paymentRepo?: Repository<SalePaymentEntity>,
+    // OPTIONAL: cash refunds bound to the session (credit_notes.session_id) are
+    // deducted from the expected cash. Absent in the bare unit specs.
+    @Optional()
+    @InjectRepository(CreditNoteEntity)
+    private readonly creditNoteRepo?: Repository<CreditNoteEntity>,
   ) {}
 
   /**
@@ -80,6 +87,26 @@ export class PosSessionService {
       .andWhere("s.status <> 'voided'")
       .andWhere("p.method = 'cash'")
       .andWhere('p.captured = true')
+      .getRawOne<{ sum: string }>();
+    return row ? parseInt(row.sum, 10) || 0 : 0;
+  }
+
+  /**
+   * Somme des remboursements ESPÈCES rattachés à cette session — dérivée des
+   * avoirs serveur (credit_notes.session_id, refund_method='cash', non
+   * annulés), jamais d'une déclaration client. Seul un remboursement PROUVÉ
+   * sur cette session diminue l'attendu ; un remboursement espèces non
+   * rattaché (replay offline après fermeture) apparaîtra dans l'écart — un
+   * fait, pas une approximation.
+   */
+  private async computeSessionCashRefunds(sessionId: string): Promise<number> {
+    if (!this.creditNoteRepo) return 0;
+    const row = await this.creditNoteRepo
+      .createQueryBuilder('c')
+      .select('COALESCE(SUM(c.total_minor_units), 0)', 'sum')
+      .where('c.session_id = :sessionId', { sessionId })
+      .andWhere("c.refund_method = 'cash'")
+      .andWhere("c.status <> 'cancelled'")
       .getRawOne<{ sum: string }>();
     return row ? parseInt(row.sum, 10) || 0 : 0;
   }
@@ -246,7 +273,46 @@ export class PosSessionService {
         `at store ${storeId} on terminal ${options.terminalId}`,
     );
     await this.observeSession(saved, 'session.opened');
+    // Fire-and-forget : la conformité planning n'a JAMAIS le droit de bloquer
+    // ou ralentir l'ouverture d'une session (TW24 peut être down).
+    void this.observeShiftCompliance(saved).catch((e: any) =>
+      this.logger.warn(`[shift compliance] ${e?.message}`),
+    );
     return saved;
+  }
+
+  /**
+   * Conformité planning TW24 (best-effort, probant uniquement) : si le feed
+   * today-shifts fournit une fin de shift (`endsAt`) ET l'identité employé
+   * (`employeeId`), et que TOUS les shifts du jour de cet employé sont
+   * terminés, la session vient d'être ouverte APRÈS la fin de service →
+   * EMPLOYEE_SESSION_OPEN_AFTER_SHIFT_END (rattaché session/terminal).
+   * Données absentes ou ambiguës (pas de endsAt, pas d'employeeId, shift en
+   * cours, coupure) → AUCUN événement. Jamais bloquant, jamais approximatif.
+   */
+  private async observeShiftCompliance(session: PosSessionEntity): Promise<void> {
+    if (!this.timewin || !this.scoreService) return;
+    let raw: unknown;
+    try {
+      raw = await this.timewin.getTodayShifts(session.storeId);
+    } catch {
+      return; // TW24 down/circuit open → inconnaissable, rien à signaler
+    }
+    const ended = findEndedShiftFor(normalizeShiftRecords(raw), session.employeeId, new Date());
+    if (!ended) return;
+    await this.scoreService
+      .logEvent({
+        employeeId: session.employeeId,
+        storeId: session.storeId,
+        eventType: 'EMPLOYEE_SESSION_OPEN_AFTER_SHIFT_END',
+        terminalId: session.terminalId,
+        sessionId: session.id,
+        reason: `Session ouverte après la fin de shift (${ended.endsAt!.toISOString()})`,
+        metadata: { shiftId: ended.id, shiftEndsAt: ended.endsAt!.toISOString() },
+        createdBy: session.employeeId,
+        source: 'pos',
+      })
+      .catch((e: any) => this.logger.warn(`[score shift_end] ${e?.message}`));
   }
 
   /**
@@ -290,9 +356,12 @@ export class PosSessionService {
     const skipReason = options.skipReason?.trim();
     if (typeof counted === 'number') {
       const cashSales = await this.computeSessionCashSales(session.id);
+      const cashRefunds = await this.computeSessionCashRefunds(session.id);
       const opening = session.openingCashMinorUnits ?? 0;
-      const expected = opening + cashSales;
+      // attendu = fond + ventes espèces − remboursements espèces (tous dérivés serveur)
+      const expected = opening + cashSales - cashRefunds;
       session.cashSalesMinorUnits = cashSales;
+      session.cashRefundsMinorUnits = cashRefunds;
       session.expectedCashMinorUnits = expected;
       session.countedCashMinorUnits = counted;
       session.cashDifferenceMinorUnits = counted - expected;
@@ -381,6 +450,7 @@ export class PosSessionService {
             terminalId: session.terminalId,
             openingCashMinorUnits: session.openingCashMinorUnits,
             cashSalesMinorUnits: session.cashSalesMinorUnits,
+            cashRefundsMinorUnits: session.cashRefundsMinorUnits,
             expectedCashMinorUnits: expected,
             countedCashMinorUnits: counted,
             cashDifferenceMinorUnits: difference,

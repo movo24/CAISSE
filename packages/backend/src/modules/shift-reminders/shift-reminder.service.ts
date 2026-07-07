@@ -3,15 +3,9 @@ import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { TimewinService } from '../timewin/timewin.service';
 import { NotificationService } from '../../common/messaging/notification.service';
+import { NormalizedShift, normalizeShiftRecords } from './shift-normalize.util';
 
-/** A shift normalized from whatever shape TimeWin24's today-shifts feed returns. */
-export interface NormalizedShift {
-  id: string;
-  employeeName: string;
-  startsAt: Date;
-  phone?: string;
-  email?: string;
-}
+export { NormalizedShift } from './shift-normalize.util';
 
 /**
  * ShiftReminderService — sends an automatic reminder before an employee's shift.
@@ -69,29 +63,10 @@ export class ShiftReminderService {
     });
   }
 
-  /** Defensively map TimeWin24's loosely-typed shift records into NormalizedShift. */
+  /** Defensively map TimeWin24's loosely-typed shift records into NormalizedShift.
+   *  Delegates to the shared pure util (also used by pos-session shift compliance). */
   normalizeShifts(raw: unknown): NormalizedShift[] {
-    const list: any[] = Array.isArray(raw)
-      ? raw
-      : Array.isArray((raw as any)?.shifts)
-        ? (raw as any).shifts
-        : [];
-    const out: NormalizedShift[] = [];
-    for (const r of list) {
-      const id = r?.id ?? r?.shiftId ?? r?.shift_id;
-      const startRaw = r?.startsAt ?? r?.startAt ?? r?.start ?? r?.startTime ?? r?.start_at;
-      if (!id || !startRaw) continue;
-      const startsAt = new Date(startRaw);
-      if (isNaN(startsAt.getTime())) continue;
-      out.push({
-        id: String(id),
-        employeeName: r?.employeeName ?? r?.employee_name ?? r?.fullName ?? 'Employé',
-        startsAt,
-        phone: r?.phone ?? r?.employeePhone ?? r?.employee_phone ?? undefined,
-        email: r?.email ?? r?.employeeEmail ?? r?.employee_email ?? undefined,
-      });
-    }
-    return out;
+    return normalizeShiftRecords(raw);
   }
 
   /** Orchestration: per store, fetch shifts, pick due ones, notify, dedupe. */
