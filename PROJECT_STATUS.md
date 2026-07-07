@@ -69,10 +69,14 @@
 - [x] **Modale POS de comptage** à la fermeture (`CashCountModal`) : le caissier saisit UNIQUEMENT le compté (€→centimes) ; l'attendu/écart restent calculés serveur, jamais affichés comme modifiables ni envoyés. Option « Fermer sans compter ». `posStore.logout(counted)` → `close(sessionId, counted)`. Specs pos-desktop (source-invariants + close forwards counted), suite **173** verte.
 - [x] **UI backoffice manager** (`/cash-sessions`, `CashSessionsPage`, manager/admin) : sessions récentes (caissier, terminal, ouverture/fermeture, attendu/compté/écart couleur), KPI (sessions comptées, écart cumulé, écarts matériels), file d'alertes score (72 h). Endpoint backend `GET /pos-sessions` (manager/admin, tenant-scoped) + `posSessionsApi`/`employeeScoreApi.alerts`. Suite backend **859** verte.
 
+**Livré (suite — fermeture sans comptage encadrée)**
+- [x] **« Fermer sans compter » encadré** (migration `1750` : `cash_count_skipped_reason` + `cash_count_skipped_at` sur `pos_sessions`) : la résilience technique est préservée (une fermeture silencieuse logout/abandon reste possible) mais un **skip explicite exige un motif** (min 3 car., DTO validé) → événement `CASH_COUNT_SKIPPED` (cash, pénalité mineure, alerte) rattaché session/terminal/employé + audit `pos_session_cash_count_skipped`. Jamais une échappatoire muette. Modale POS : le bouton révèle un champ motif obligatoire ; backoffice : badge « non compté » + motif. **2 specs** backend (skip motivé → événement/persistance ; fermeture silencieuse → aucun événement), invariants modale POS.
+
 **Reste à faire (étapes suivantes, non bloquantes)**
+- [ ] **Tableau scores équipe** (liste employés + score jour/semaine) : nécessite un endpoint d'agrégation par magasin (les alertes + score/employé existent déjà).
 - [ ] **Remboursements/retraits espèces** non déduits de l'attendu (retours pas encore rattachés à la session) — extension future.
 - [ ] **Fin de shift TW24** non parsée (`normalizeShifts` ne lit que `startsAt`) → nécessaire pour `*_AFTER_SHIFT_END`.
-- [ ] **Tableau scores équipe** (liste employés + score jour/semaine) : nécessite un endpoint d'agrégation par magasin (les alertes + score/employé existent déjà).
+- [ ] **Flake pré-existant** `employee-score.service.spec` : `periodRange`/`recomputeDaily` construisent les bornes de jour dans le fuseau du runner (pas Paris) → 4 tests échouent entre 22:00–24:00 UTC (minuit Paris). Bug réel mais **hors périmètre** de ce chantier — à corriger dans un PR dédié avec des `now` fixes déterministes.
 
 ## Bloqués réels (⛔) — préparés, attente owner/accès
 - **D6** Rotation token Railway (accès Railway = owner)

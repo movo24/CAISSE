@@ -96,6 +96,17 @@ export class PosSessionEntity {
   @Column({ name: 'cash_counted_at', type: 'timestamp', nullable: true })
   cashCountedAt: Date | null;
 
+  /**
+   * Motif d'une fermeture SANS comptage explicite (« Fermer sans compter »).
+   * Obligatoire pour ce chemin — un skip non motivé n'est pas accepté. Les
+   * fermetures silencieuses (logout/abandon) laissent ces champs nuls.
+   */
+  @Column({ name: 'cash_count_skipped_reason', type: 'varchar', nullable: true })
+  cashCountSkippedReason: string | null;
+
+  @Column({ name: 'cash_count_skipped_at', type: 'timestamp', nullable: true })
+  cashCountSkippedAt: Date | null;
+
   @CreateDateColumn({ name: 'opened_at' })
   openedAt: Date;
 

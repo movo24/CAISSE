@@ -20,6 +20,8 @@ interface Session {
   countedCashMinorUnits: number | null;
   cashDifferenceMinorUnits: number | null;
   cashCountedAt: string | null;
+  cashCountSkippedReason: string | null;
+  cashCountSkippedAt: string | null;
 }
 
 interface ScoreAlert {
@@ -188,7 +190,18 @@ export function CashSessionsPage() {
                       <td className="px-3 py-2 text-right text-gray-700">{euros(s.expectedCashMinorUnits)}</td>
                       <td className="px-3 py-2 text-right text-gray-700">{euros(s.countedCashMinorUnits)}</td>
                       <td className={`px-3 py-2 text-right ${diffClass(s.cashDifferenceMinorUnits)}`}>
-                        {s.cashCountedAt ? euros(s.cashDifferenceMinorUnits) : '—'}
+                        {s.cashCountedAt ? (
+                          euros(s.cashDifferenceMinorUnits)
+                        ) : s.cashCountSkippedAt ? (
+                          <span
+                            className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700"
+                            title={s.cashCountSkippedReason || 'Fermeture sans comptage'}
+                          >
+                            <AlertTriangle size={11} /> non compté
+                          </span>
+                        ) : (
+                          '—'
+                        )}
                       </td>
                     </tr>
                   ))

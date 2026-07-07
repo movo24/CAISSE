@@ -40,6 +40,7 @@ export const SCORE_EVENT_TYPES = [
   // B — Écart caisse / comptage espèces
   'CASH_COUNT_STARTED',
   'CASH_COUNT_COMPLETED',
+  'CASH_COUNT_SKIPPED',
   'CASH_DIFFERENCE_MINOR',
   'CASH_DIFFERENCE_MAJOR',
   'CASH_DIFFERENCE_CRITICAL',
@@ -170,6 +171,7 @@ export const DEFAULT_SCORE_RULES: Record<ScoreEventType, ScoreRule> = {
   // B — Écart caisse
   CASH_COUNT_STARTED: { category: 'cash', pointsDelta: 0, severity: 'info', maxDailyPenalty: 0, alert: false, label: 'Comptage caisse démarré' },
   CASH_COUNT_COMPLETED: { category: 'cash', pointsDelta: 0, severity: 'info', maxDailyPenalty: 0, alert: false, label: 'Comptage caisse terminé' },
+  CASH_COUNT_SKIPPED: { category: 'cash', pointsDelta: -4, severity: 'minor', maxDailyPenalty: 12, alert: true, label: 'Fermeture sans comptage (motivée)' },
   CASH_DIFFERENCE_MINOR: { category: 'cash', pointsDelta: -3, severity: 'minor', maxDailyPenalty: 9, alert: false, label: 'Écart caisse mineur' },
   CASH_DIFFERENCE_MAJOR: { category: 'cash', pointsDelta: -10, severity: 'major', maxDailyPenalty: 20, alert: true, label: 'Écart caisse majeur' },
   CASH_DIFFERENCE_CRITICAL: { category: 'cash', pointsDelta: -20, severity: 'critical', maxDailyPenalty: 0, alert: true, label: 'Écart caisse critique' },

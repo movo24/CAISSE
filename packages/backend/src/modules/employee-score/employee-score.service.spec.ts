@@ -10,6 +10,10 @@ import { DEFAULT_SCORE_RULES, scoreColor } from './employee-score.constants';
 
 const EMP = 'emp-1';
 const STORE = 'store-1';
+// Fixed anchor: midday UTC = midday Paris (same calendar date in both zones,
+// away from any DST edge). Deterministic regardless of wall-clock — the day
+// window [Paris-midnight .. now] always contains events stamped at this instant.
+const NOW = new Date('2026-03-16T12:00:00Z');
 
 /** In-memory event store driving both save and the range queries. */
 function makeEventRepo(seed: any[] = []) {
@@ -124,7 +128,7 @@ describe('EmployeeScoreService', () => {
   });
 
   it('a major cash difference drops the cash category and total', async () => {
-    const now = new Date();
+    const now = NOW;
     await build([
       { id: 'e1', employeeId: EMP, storeId: STORE, eventType: 'CASH_DIFFERENCE_MAJOR', category: 'cash', pointsDelta: -10, createdAt: now },
     ]);
@@ -135,7 +139,7 @@ describe('EmployeeScoreService', () => {
   });
 
   it('caps repeated penalties of the same type per day (maxDailyPenalty)', async () => {
-    const now = new Date();
+    const now = NOW;
     // VOID_WITHOUT_REASON = -4, maxDailyPenalty 12 → 5 of them would be -20 but capped to -12.
     const seed = Array.from({ length: 5 }, (_, i) => ({
       id: `v${i}`, employeeId: EMP, storeId: STORE, eventType: 'VOID_WITHOUT_REASON',
@@ -147,7 +151,7 @@ describe('EmployeeScoreService', () => {
   });
 
   it('a session abandoned event penalises the session category', async () => {
-    const now = new Date();
+    const now = NOW;
     await build([
       { id: 'a1', employeeId: EMP, storeId: STORE, eventType: 'SESSION_ABANDONED', category: 'session', pointsDelta: -8, createdAt: now },
     ]);
@@ -156,7 +160,7 @@ describe('EmployeeScoreService', () => {
   });
 
   it('computes day, week and year summaries', async () => {
-    const now = new Date();
+    const now = NOW;
     await build([
       { id: 'e1', employeeId: EMP, storeId: STORE, eventType: 'CASH_DIFFERENCE_MINOR', category: 'cash', pointsDelta: -3, createdAt: now },
     ]);
@@ -167,7 +171,7 @@ describe('EmployeeScoreService', () => {
   });
 
   it('recomputeDaily upserts an aggregate row', async () => {
-    const now = new Date();
+    const now = NOW;
     const day = now.toISOString().slice(0, 10);
     await build([
       { id: 'e1', employeeId: EMP, storeId: STORE, eventType: 'CASH_DIFFERENCE_MINOR', category: 'cash', pointsDelta: -3, createdAt: now },

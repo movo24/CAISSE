@@ -1,4 +1,4 @@
-import { IsOptional, IsInt, Min } from 'class-validator';
+import { IsOptional, IsInt, Min, IsString, MinLength, MaxLength } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 /**
@@ -16,4 +16,18 @@ export class CloseSessionDto {
   @IsInt()
   @Min(0)
   countedCashMinorUnits?: number;
+
+  /**
+   * Motif d'une fermeture explicite SANS comptage (« Fermer sans compter »).
+   * Encadre la résilience : un skip délibéré doit être justifié (min 3 car.) →
+   * il est audité + scoré (CASH_COUNT_SKIPPED), jamais une échappatoire muette.
+   * Ignoré si un comptage est fourni. Les fermetures silencieuses (logout,
+   * abandon) n'envoient rien et restent résilientes.
+   */
+  @ApiProperty({ required: false, description: 'Motif si fermeture sans comptage (obligatoire pour ce chemin)' })
+  @IsOptional()
+  @IsString()
+  @MinLength(3)
+  @MaxLength(300)
+  skipReason?: string;
 }

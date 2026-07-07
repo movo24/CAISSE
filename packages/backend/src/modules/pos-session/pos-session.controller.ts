@@ -71,7 +71,7 @@ export class PosSessionController {
       id,
       req.user.storeId,
       req.user.employeeId,
-      { countedCashMinorUnits: dto?.countedCashMinorUnits },
+      { countedCashMinorUnits: dto?.countedCashMinorUnits, skipReason: dto?.skipReason },
     );
   }
 
