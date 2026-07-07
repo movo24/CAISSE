@@ -1,4 +1,4 @@
-import { Injectable, Logger, HttpStatus } from '@nestjs/common';
+import { Injectable, Logger, HttpStatus, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
@@ -9,6 +9,7 @@ import { ProductIntegrationRequestEntity } from '../../database/entities/product
 import { BusinessError } from '../../common/errors/business-error';
 import { AuditService } from '../audit/audit.service';
 import { ProductsService } from '../products/products.service';
+import { EmployeeScoreService } from '../employee-score/employee-score.service';
 import { hasMinRole } from '../../common/guards/permissions';
 import {
   CreateIntegrationRequestDto,
@@ -55,7 +56,23 @@ export class ProductIntegrationService {
     private saleLineRepo: Repository<SaleLineItemEntity>,
     private auditService: AuditService,
     private productsService: ProductsService,
+    // Optionnel : le score ne doit jamais bloquer un flux d'intégration produit.
+    @Optional() private scoreService?: EmployeeScoreService,
   ) {}
+
+  /** Émet un fait de score signé (best-effort, jamais bloquant). */
+  private emitScore(input: {
+    employeeId: string;
+    storeId: string;
+    eventType: string;
+    terminalId?: string | null;
+    reason?: string;
+    source?: string;
+  }): void {
+    this.scoreService
+      ?.logEvent({ ...input, source: input.source ?? 'pos' })
+      .catch(() => undefined);
+  }
 
   // ── Scan lookup ────────────────────────────────────────────────
 
@@ -105,6 +122,16 @@ export class ProductIntegrationService {
         result: 'not_found',
         pendingRequestId: pendingRequest?.id ?? null,
       },
+    });
+
+    // Fait de score : code-barres inconnu scanné (neutre — trace d'activité).
+    this.emitScore({
+      employeeId,
+      storeId,
+      eventType: 'UNKNOWN_BARCODE_SCANNED',
+      terminalId: terminalId ?? null,
+      reason: `Code-barres inconnu ${normalized}`,
+      source,
     });
 
     return {
@@ -319,6 +346,15 @@ export class ProductIntegrationService {
 
     const existing = await this.productRepo.findOne({ where: { ean: barcode, storeId } });
     if (existing) {
+      // Tentative de doublon bloquée — fait de score signé.
+      this.emitScore({
+        employeeId,
+        storeId,
+        eventType: 'PRODUCT_DUPLICATE_BLOCKED',
+        terminalId: dto.terminalId ?? null,
+        reason: `Doublon code-barres ${barcode} (${existing.name})`,
+        source: dto.source,
+      });
       throw new BusinessError(
         'PRODUCT_BARCODE_ALREADY_EXISTS',
         `Un produit existe déjà avec ce code-barres (${barcode}) : ${existing.name}.`,
@@ -361,6 +397,18 @@ export class ProductIntegrationService {
         result: 'pending',
       },
     });
+
+    // Fait de score : demande d'intégration propre depuis la caisse (neutre).
+    if (dto.source === 'pos') {
+      this.emitScore({
+        employeeId,
+        storeId,
+        eventType: 'PRODUCT_CREATION_REQUESTED_FROM_POS',
+        terminalId: dto.terminalId ?? null,
+        reason: `Demande d'intégration ${barcode}`,
+        source: dto.source,
+      });
+    }
 
     return { request, alreadyPending: false };
   }

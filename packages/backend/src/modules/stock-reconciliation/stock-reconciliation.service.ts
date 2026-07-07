@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ProductEntity } from '../../database/entities/product.entity';
@@ -6,6 +6,7 @@ import { StockVarianceEntity } from '../../database/entities/stock-variance.enti
 import { StockService } from '../stock/stock.service';
 import { AuditService } from '../audit/audit.service';
 import { AlertService } from '../../common/alert/alert.service';
+import { EmployeeScoreService } from '../employee-score/employee-score.service';
 
 /** Allowed reasons for a validated correction (decision 7). */
 export const VARIANCE_REASONS = ['casse', 'vol', 'erreur_inventaire', 'perte', 'perime', 'autre'] as const;
@@ -30,6 +31,8 @@ export class StockReconciliationService {
     @InjectRepository(StockVarianceEntity) private readonly variances: Repository<StockVarianceEntity>,
     private readonly stock: StockService,
     private readonly audit: AuditService,
+    // Optionnel : le score ne bloque jamais une correction de stock.
+    @Optional() private readonly scoreService?: EmployeeScoreService,
   ) {}
 
   /**
@@ -138,6 +141,18 @@ export class StockReconciliationService {
       entityId: variance.productId,
       details: { varianceId, confirmedQty, reason, theoreticalQty: variance.theoreticalQty },
     });
+
+    // Fait de score : correction stock AVEC motif (le motif est ici obligatoire).
+    this.scoreService
+      ?.logEvent({
+        employeeId: managerId,
+        storeId,
+        eventType: 'STOCK_CORRECTION_WITH_REASON',
+        reason: `Correction ${variance.productId} → ${confirmedQty} (${reason})`,
+        source: 'inventory',
+      })
+      .catch(() => undefined);
+
     return saved;
   }
 

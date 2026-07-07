@@ -11,7 +11,8 @@ import {
   ParseUUIDPipe,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
-import { ReturnsService, CreateReturnDto } from './returns.service';
+import { ReturnsService } from './returns.service';
+import { CreateReturnRequestDto } from './dto/create-return-request.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard, Roles } from '../../common/guards/roles.guard';
 
@@ -26,7 +27,7 @@ export class ReturnsController {
   @Roles('admin', 'manager')
   @ApiOperation({ summary: 'Create a return / credit note (avoir). Send Idempotency-Key.' })
   create(
-    @Body() dto: CreateReturnDto,
+    @Body() dto: CreateReturnRequestDto,
     @Request() req: any,
     @Headers('idempotency-key') idempotencyKey?: string,
   ) {
