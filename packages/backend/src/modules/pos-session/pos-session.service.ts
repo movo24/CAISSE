@@ -12,6 +12,7 @@ import { Repository } from 'typeorm';
 import { PosSessionEntity } from '../../database/entities/pos-session.entity';
 import { TimewinService } from '../timewin/timewin.service';
 import { AuditService } from '../audit/audit.service';
+import { EmployeeScoreService } from '../employee-score/employee-score.service';
 
 /**
  * POS Session primitive — γ-model (D1 decision: terminal-bound sessions).
@@ -52,6 +53,9 @@ export class PosSessionService {
     // primitive's unit specs construct the service with the repo alone.
     @Optional() private readonly timewin?: TimewinService,
     @Optional() private readonly audit?: AuditService,
+    // Score is OPTIONAL too — a session must open/close even if scoring is down,
+    // and the primitive's unit specs construct the service with the repo alone.
+    @Optional() private readonly scoreService?: EmployeeScoreService,
   ) {}
 
   /**
@@ -93,6 +97,22 @@ export class PosSessionService {
       } catch (e: any) {
         this.logger.warn(`[audit ${event}] ${e?.message}`);
       }
+    }
+
+    // Feed the employee score (best-effort). A correctly closed session is
+    // neutral; the abandoned/force-closed cases are logged elsewhere.
+    if (this.scoreService) {
+      await this.scoreService
+        .logEvent({
+          employeeId: session.employeeId,
+          storeId: session.storeId,
+          eventType: event === 'session.opened' ? 'SESSION_OPENED' : 'SESSION_CLOSED',
+          terminalId: session.terminalId,
+          sessionId: session.id,
+          createdBy: session.employeeId,
+          source: 'pos',
+        })
+        .catch((e: any) => this.logger.warn(`[score ${event}] ${e?.message}`));
     }
   }
 

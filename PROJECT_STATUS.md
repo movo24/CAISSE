@@ -45,6 +45,20 @@
 - [ ] **M603** POS : inclure `creditNoteCode` dans l'enqueue offline + tests finalize
 - [~] **M607** POS : vérifié → couche HMAC sync **morte** (token jamais provisionné, header non posé, backend ne vérifie pas) ; commentaires trompeurs corrigés (6a05c0b, D19) ; sync authentifié par JWT. Câblage end-to-end = gated (chemin écriture sync).
 
+## Employee System Score — score employé 100 % factuel (2026-07-07, PR #14)
+> Objectif : chaque action POS rattachée à une session claire (employé + terminal + magasin + session + heure) ; score défendable basé uniquement sur des faits vérifiables. Jamais subjectif.
+
+**Livré (branche `claude/customer-display-vertical-eolixp`)**
+- [x] Backend `employee-score` (migration additive `1747`) : `employee_score_events` (ledger signé), `employee_score_rules` (poids surchargeables), `employee_score_daily` (agrégat recomputable). Règles V1 versionnées (50+ types, catégories 25/25/20/10/10/10, plafonds/jour, alertes). Calcul jour/semaine/année Europe/Paris. Cron nocturne (03:00) : SESSION_ABANDONED sur sessions jamais fermées + recompute. Endpoints me/detail/employee/alerts/recompute. Miroir audit immuable. **8 specs**, suite backend **834** verte.
+- [x] POS : **bloc caissier actif VISIBLE en permanence** (« CAISSE DE : NOM · Session depuis HH:MM · Terminal · Score jour [couleur] ») + état « AUCUN CAISSIER CONNECTÉ » ; header iPad + desktop + overlay plein écran. Session POS ouverte au login (X-Terminal-Id) / fermée au logout / récupérée sur 409. Modale détail score (wording factuel). **6 specs** session/bandeau, suite pos-desktop **162** verte.
+
+**Reste à faire (étapes suivantes, non bloquantes)**
+- [ ] Verrouillage inactivité réel (aujourd'hui `EmployeePinGate` ne verrouille que panier vide, `onVerified` no-op) → SESSION_LOCKED/UNLOCKED + « Changer de caissier » + « Fermer ma caisse » explicites.
+- [ ] Journaliser les faits sensibles depuis la caisse via `employeeScoreApi.logEvent` (void/refund/remise/tiroir/produit inconnu) — les hooks existent, à câbler.
+- [ ] **Comptage caisse** : aucune source aujourd'hui (pos_sessions sans champs cash) → ajouter comptage à la fermeture + dérivation de l'écart (dépend du binding vente→session, issue #4).
+- [ ] **Fin de shift TW24** non parsée (`normalizeShifts` ne lit que `startsAt`) → nécessaire pour `*_AFTER_SHIFT_END`.
+- [ ] UI backoffice : file d'alertes manager + tableau scores équipe.
+
 ## Bloqués réels (⛔) — préparés, attente owner/accès
 - **D6** Rotation token Railway (accès Railway = owner)
 - **D8** Rotation des clés fuitées dans l'historique git (AUDIT-FINAL S1) — accès secrets + réécriture historique = owner

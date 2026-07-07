@@ -245,6 +245,14 @@ async function bootstrap() {
     logger: getLogLevels(),
   });
 
+  // --- Trust proxy ---
+  // Behind Railway/Cloudflare, the client IP is in X-Forwarded-For. Trust a
+  // BOUNDED number of front proxies (default 1) so req.ip and the per-IP rate
+  // limiter / login lockout see the real client — NOT `true`, which would let a
+  // client spoof its IP via a forged XFF header. TRUST_PROXY_HOPS tunes the count.
+  const trustProxyHops = parseInt(process.env.TRUST_PROXY_HOPS || '1', 10);
+  app.getHttpAdapter().getInstance().set('trust proxy', trustProxyHops);
+
   // --- Security ---
   // Helmet security headers — CSP disabled for API (APIs don't serve HTML pages).
   // CSP should be set by the frontend nginx configs, not by the JSON API.

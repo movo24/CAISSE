@@ -27,12 +27,20 @@ export function ManualDiscountControl() {
       setError('Montant invalide');
       return;
     }
+    const pct = subtotal > 0 ? (minor / subtotal) * 100 : 0;
     const check = validateManualDiscount({ subtotalMinor: subtotal, manualDiscountMinor: minor, approverId: approver.trim() || null });
     if (!check.ok) {
+      // Fait objectif signé (tentative hors procédure) — même si bloquée client.
+      if (pct > MANUAL_DISCOUNT_MAX_PCT) {
+        store.logScoreEvent('DISCOUNT_ABOVE_LIMIT', `Tentative remise ${pct.toFixed(1)}% > ${MANUAL_DISCOUNT_MAX_PCT}%`);
+      } else if (!approver.trim()) {
+        store.logScoreEvent('DISCOUNT_WITHOUT_AUTHORIZATION', 'Remise sans code responsable');
+      }
       setError(check.reason || 'Remise refusée');
       return;
     }
     store.setManualDiscount(minor, approver.trim());
+    store.logScoreEvent('DISCOUNT_WITH_MANAGER_CODE', `Remise ${fmt(minor)} (${pct.toFixed(1)}%)`);
     setOpen(false);
     setEuro('');
     setApprover('');

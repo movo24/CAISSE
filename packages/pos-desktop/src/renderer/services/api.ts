@@ -171,6 +171,43 @@ export const productIntegrationApi = {
   }) => api.post('/product-integration/requests', data),
 };
 
+// Terminal courant (signature technique) — provient des réglages écran client.
+function currentTerminalId(): string {
+  try {
+    // Lazy require to avoid a static import cycle with the settings module.
+    const raw = localStorage.getItem('customer_display_settings');
+    const parsed = raw ? JSON.parse(raw) : null;
+    const t = (parsed?.terminalId ?? '01').toString().trim() || '01';
+    return `TERMINAL ${t.padStart(2, '0')}`;
+  } catch {
+    return 'TERMINAL 01';
+  }
+}
+export function posTerminalId(): string {
+  return currentTerminalId();
+}
+
+// Session POS — une caisse appartient à un caissier pendant une session.
+export const posSessionApi = {
+  open: () =>
+    api.post('/pos-sessions/open', {}, { headers: { 'X-Terminal-Id': currentTerminalId() } }),
+  close: (sessionId: string) => api.post(`/pos-sessions/${sessionId}/close`, {}),
+  active: () =>
+    api.get('/pos-sessions/active', { headers: { 'X-Terminal-Id': currentTerminalId() } }),
+};
+
+// Score employé (100 % factuel) — affichage caisse + journalisation signée.
+export const employeeScoreApi = {
+  me: () => api.get('/employee-score/me'),
+  myDetail: () => api.get('/employee-score/me/detail'),
+  logEvent: (data: {
+    eventType: string;
+    sessionId?: string;
+    reason?: string;
+    metadata?: Record<string, unknown>;
+  }) => api.post('/employee-score/events', data, { headers: { 'X-Terminal-Id': currentTerminalId() } }),
+};
+
 // Sales
 export const salesApi = {
   // idempotencyKey: stable per offline-queue entry, so a sync replay is deduped server-side

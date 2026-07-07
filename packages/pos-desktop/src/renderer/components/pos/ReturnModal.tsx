@@ -79,6 +79,8 @@ function OnlineReturn({ onClose }: { onClose: () => void }) {
       const idem = (crypto as any).randomUUID ? crypto.randomUUID() : `ret-${Date.now()}`;
       const res = await returnsApi.create({ originalSaleId: sale.id, items, refundMethod: method }, idem);
       setCreatedCode(res.data?.code || 'AV');
+      // Fait objectif signé : remboursement créé (session courante).
+      usePOSStore.getState().logScoreEvent('REFUND_CREATED', `Avoir ${res.data?.code || ''} · ${method}`);
     } catch (e: any) { setErr(e.response?.data?.message || 'Échec du retour.'); }
     finally { setSubmitting(false); }
   };

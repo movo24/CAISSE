@@ -66,8 +66,9 @@ export class AuthController {
   async loginPin(
     @Body() dto: LoginPinDto,
     @Res({ passthrough: true }) res: Response,
+    @Request() req: any,
   ) {
-    const result = await this.authService.loginByPin(dto.storeId, dto.pin);
+    const result = await this.authService.loginByPin(dto.storeId, dto.pin, req.ip);
     this.setRefreshCookie(res, result.refreshToken);
     return result;
   }
@@ -83,8 +84,9 @@ export class AuthController {
   async loginAdmin(
     @Body() dto: LoginAdminDto,
     @Res({ passthrough: true }) res: Response,
+    @Request() req: any,
   ) {
-    const result = await this.authService.loginByEmail(dto.email, dto.pin);
+    const result = await this.authService.loginByEmail(dto.email, dto.pin, req.ip);
     this.setRefreshCookie(res, result.refreshToken);
     return result;
   }
@@ -96,8 +98,9 @@ export class AuthController {
   async loginQr(
     @Body() dto: LoginQrDto,
     @Res({ passthrough: true }) res: Response,
+    @Request() req: any,
   ) {
-    const result = await this.authService.loginByQrCode(dto.qrCode, dto.pin);
+    const result = await this.authService.loginByQrCode(dto.qrCode, dto.pin, req.ip);
     this.setRefreshCookie(res, result.refreshToken);
     return result;
   }

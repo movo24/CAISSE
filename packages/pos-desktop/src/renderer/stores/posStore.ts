@@ -1,5 +1,12 @@
 import { create } from 'zustand';
-import { authApi } from '../services/api';
+import { authApi, posSessionApi, employeeScoreApi } from '../services/api';
+
+/** Session POS active (une caisse appartient à un caissier pendant une session). */
+export interface PosSession {
+  id: string;
+  openedAt: string; // ISO
+  terminalId: string | null;
+}
 import type { PaymentMethod } from '../services/paymentMachine';
 import { computePromoDiscount } from '../services/discount-policy';
 
@@ -140,6 +147,9 @@ interface POSState {
   // Auth
   employee: Employee | null;
   accessToken: string | null;
+  posSession: PosSession | null;
+  /** Demande de verrouillage explicite (bouton « Changer de caissier »). */
+  lockRequested: boolean;
 
   // Cart
   cartItems: CartItem[];
@@ -175,6 +185,15 @@ interface POSState {
 
   // Actions
   setEmployee: (employee: Employee, token: string) => void;
+  setPosSession: (session: PosSession | null) => void;
+  openPosSession: () => Promise<void>;
+  /** Changement de caissier explicite : ferme la session précédente, ouvre une
+   *  nouvelle et journalise EMPLOYEE_SWITCHED (jamais de switch silencieux). */
+  switchEmployee: (employee: Employee, token: string) => Promise<void>;
+  /** Journalise un fait de score signé (session courante). Best-effort. */
+  logScoreEvent: (eventType: string, reason?: string) => void;
+  /** Demande/annule un verrouillage explicite de la caisse. */
+  requestLock: (v: boolean) => void;
   logout: () => void;
   addToCart: (item: Omit<CartItem, 'quantity' | 'discountMinorUnits'>) => void;
   removeFromCart: (productId: string) => void;
@@ -211,6 +230,8 @@ interface POSState {
 export const usePOSStore = create<POSState>((set, get) => ({
   employee: null,
   accessToken: null,
+  posSession: null,
+  lockRequested: false,
   cartItems: [],
   customerQrCode: null,
   customer: null,
@@ -237,9 +258,71 @@ export const usePOSStore = create<POSState>((set, get) => ({
     localStorage.setItem('accessToken', token);
     localStorage.setItem('pos_employee', JSON.stringify(employee));
     set({ employee, accessToken: token });
+    // Ouvre une session POS liée au terminal (signature technique). Best-effort :
+    // une panne de session ne bloque pas la connexion.
+    void get().openPosSession();
+  },
+
+  setPosSession: (session) => set({ posSession: session }),
+
+  requestLock: (v) => set({ lockRequested: v }),
+
+  logScoreEvent: (eventType, reason) => {
+    const { posSession } = get();
+    employeeScoreApi
+      .logEvent({ eventType, sessionId: posSession?.id, reason })
+      .catch(() => { /* best-effort : ne bloque jamais la caisse */ });
+  },
+
+  switchEmployee: async (employee, token) => {
+    const { posSession, employee: previous } = get();
+    // 1. Journalise le changement AVANT de basculer (attribué à l'ancienne session).
+    if (previous && previous.id !== employee.id) {
+      employeeScoreApi
+        .logEvent({
+          eventType: 'EMPLOYEE_SWITCHED',
+          sessionId: posSession?.id,
+          reason: `${previous.firstName} ${previous.lastName} → ${employee.firstName} ${employee.lastName}`,
+        })
+        .catch(() => undefined);
+    }
+    // 2. Ferme la session précédente (fermeture explicite, pas d'abandon).
+    if (posSession?.id) {
+      await posSessionApi.close(posSession.id).catch(() => undefined);
+    }
+    // 3. Bascule l'identité + nouvelle session.
+    localStorage.setItem('accessToken', token);
+    localStorage.setItem('pos_employee', JSON.stringify(employee));
+    set({ employee, accessToken: token, posSession: null });
+    await get().openPosSession();
+  },
+
+  openPosSession: async () => {
+    try {
+      const res = await posSessionApi.open();
+      const s = res.data;
+      if (s?.id) {
+        set({ posSession: { id: s.id, openedAt: s.openedAt || new Date().toISOString(), terminalId: s.terminalId ?? null } });
+      }
+    } catch (e: any) {
+      // 409 = une session est déjà active sur ce terminal → on la récupère.
+      try {
+        const act = await posSessionApi.active();
+        const s = act.data;
+        if (s?.id) {
+          set({ posSession: { id: s.id, openedAt: s.openedAt || new Date().toISOString(), terminalId: s.terminalId ?? null } });
+        }
+      } catch {
+        set({ posSession: null });
+      }
+    }
   },
 
   logout: () => {
+    const { posSession } = get();
+    if (posSession?.id) {
+      posSessionApi.close(posSession.id).catch(() => console.warn('[POS] Session close failed'));
+    }
     authApi.logout().catch(() => console.warn('[POS] Server-side logout failed'));
     localStorage.removeItem('accessToken');
     localStorage.removeItem('refreshToken');
@@ -247,6 +330,7 @@ export const usePOSStore = create<POSState>((set, get) => ({
     set({
       employee: null,
       accessToken: null,
+      posSession: null,
       cartItems: [],
       customer: null,
       customerQrCode: null,

@@ -41,6 +41,8 @@ import { StockAlertToast } from '../components/StockAlertToast';
 import { SaleGuardsGate } from '../components/SaleGuardsGate';
 import { SalesCockpit } from '../components/SalesCockpit';
 import { CustomerDisplayPublisher } from '../components/CustomerDisplayPublisher';
+import { ActiveCashierBanner } from '../components/ActiveCashierBanner';
+import { ScoreDetailModal } from '../components/ScoreDetailModal';
 
 /* ── Helpers ── */
 
@@ -128,6 +130,7 @@ export function POSPage() {
   const [error, setError] = useState('');
   const [processing, setProcessing] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [scoreDetailOpen, setScoreDetailOpen] = useState(false);
 
   // Search dropdown
   const [searchOpen, setSearchOpen] = useState(false);
@@ -953,6 +956,8 @@ export function POSPage() {
           <div className={`flex items-center justify-center rounded-xl bg-pos-text flex-shrink-0 ${device.isCompact ? 'w-8 h-8' : 'w-9 h-9'}`}>
             <span className={`text-white font-black ${device.isCompact ? 'text-xs' : 'text-sm'}`}>C</span>
           </div>
+          {/* Caissier actif — bloc VISIBLE EN PERMANENCE */}
+          <ActiveCashierBanner onScoreClick={() => setScoreDetailOpen(true)} />
           <FluxWidget occupancy={store.occupancy} weather={store.weather} />
           {/* Network status indicator */}
           <button
@@ -1237,6 +1242,9 @@ export function POSPage() {
           </div>
         </div>
       </div>
+
+      {/* Détail du score (au clic sur le score du bandeau caissier) */}
+      {scoreDetailOpen && <ScoreDetailModal onClose={() => setScoreDetailOpen(false)} />}
 
       {/* ── Produit inconnu — la caisse ne crée jamais de produit ── */}
       {unknownProduct && (
