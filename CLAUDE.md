@@ -305,6 +305,11 @@ Validated at boot in `main.ts`. Missing required vars crash the server with a cl
 | `STRIPE_WEBHOOK_SECRET` | NO | `whsec_...` |
 | `SENTRY_DSN` | NO | Error tracking |
 | `CORS_ORIGIN` | NO | Comma-separated list of allowed origins |
+| `TRUST_PROXY_HOPS` | NO | Number of front proxies to trust for client IP (default 1). Behind Railway/Cloudflare so `req.ip` + rate-limit see the real client. Never `true`. |
+| `LOGIN_FAIL_MAX` | NO | Failed logins per IP before lockout (default 10) |
+| `LOGIN_FAIL_WINDOW_SEC` | NO | Rolling window for counting failures (default 900s) |
+| `LOGIN_LOCK_SEC` | NO | Lockout cooldown after threshold (default 900s) |
+| `ENABLE_SWAGGER` | NO | Set `true` to expose `/api/docs` in production (off by default) |
 
 ---
 

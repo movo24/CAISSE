@@ -1,6 +1,8 @@
 import {
   Injectable,
   UnauthorizedException,
+  HttpException,
+  HttpStatus,
   Logger,
   Inject,
 } from '@nestjs/common';
@@ -22,6 +24,16 @@ import { AuditService } from '../audit/audit.service';
 const ADMIN_AUDIT_STORE = '_admin';
 
 const TOKEN_REVOKE_TTL = 7 * 24 * 60 * 60; // 7 days in seconds
+
+// ── Login brute-force lockout (per client IP) ──────────────────────────
+// Complements the per-route @Throttle (5/min/IP): after too many FAILED login
+// attempts within a rolling window, the IP is locked out for a cooldown. Keyed
+// on the client IP — never on the account — so an attacker cannot lock a
+// legitimate user out of their own store. Values are read at call time so they
+// are env-tunable without a rebuild.
+const loginFailWindowSec = () => parseInt(process.env.LOGIN_FAIL_WINDOW_SEC || '900', 10); // 15 min
+const loginFailMax = () => parseInt(process.env.LOGIN_FAIL_MAX || '10', 10);
+const loginLockSec = () => parseInt(process.env.LOGIN_LOCK_SEC || '900', 10); // 15 min cooldown
 
 /**
  * Auth service — delegates employee authentication to TimeWin24.
@@ -108,7 +120,11 @@ export class AuthService {
    *
    * Set POS_AUTH_AUTHORITY=timewin to restore the legacy TimeWin24-first flow.
    */
-  async loginByPin(storeIdOrCode: string, pin: string) {
+  async loginByPin(storeIdOrCode: string, pin: string, clientIp?: string) {
+    return this.withLockout(clientIp, () => this.doLoginByPin(storeIdOrCode, pin));
+  }
+
+  private async doLoginByPin(storeIdOrCode: string, pin: string) {
     // Resolve storeCode to storeId if not a UUID
     let storeId = storeIdOrCode;
     const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(storeIdOrCode);
@@ -159,7 +175,11 @@ export class AuthService {
    * table is checked FIRST. TimeWin24 is only a secondary fallback for an
    * email not present locally (and only in legacy/transitional mode).
    */
-  async loginByEmail(email: string, pin: string) {
+  async loginByEmail(email: string, pin: string, clientIp?: string) {
+    return this.withLockout(clientIp, () => this.doLoginByEmail(email, pin));
+  }
+
+  private async doLoginByEmail(email: string, pin: string) {
     let resolved;
     try {
       resolved = await this.resolveAdminLogin(email, pin);
@@ -216,7 +236,11 @@ export class AuthService {
   /**
    * Login by QR code — via TimeWin24
    */
-  async loginByQrCode(qrCode: string, pin: string) {
+  async loginByQrCode(qrCode: string, pin: string, clientIp?: string) {
+    return this.withLockout(clientIp, () => this.doLoginByQrCode(qrCode, pin));
+  }
+
+  private async doLoginByQrCode(qrCode: string, pin: string) {
     try {
       const twResult = await this.timewin.loginEmployee({ qrCode, pin, storeId: '_any' });
       return await this.buildSessionFromTimewin(twResult, twResult.store_id);
@@ -300,6 +324,58 @@ export class AuthService {
     } catch (error) {
       if (error instanceof UnauthorizedException) throw error;
       throw new UnauthorizedException('Invalid or expired refresh token');
+    }
+  }
+
+  /* ── Login brute-force lockout (per client IP) ── */
+
+  /** Reject early when the caller's IP is in cooldown after too many failures. */
+  private async assertNotLockedOut(clientIp?: string): Promise<void> {
+    if (!clientIp) return; // no IP context (internal/test call) → skip
+    const locked = await this.cache.get(`login_lock:${clientIp}`);
+    if (locked) {
+      this.logger.warn(`[AUTH] Rejected login from locked-out IP ${clientIp}`);
+      throw new HttpException(
+        'Trop de tentatives de connexion. Réessayez dans quelques minutes.',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+  }
+
+  /** Count a failed login for this IP; lock the IP once the threshold is hit. */
+  private async recordLoginFailure(clientIp?: string): Promise<void> {
+    if (!clientIp) return;
+    const count = await this.cache.incr(`login_fail:${clientIp}`, loginFailWindowSec());
+    if (count >= loginFailMax()) {
+      const lockSec = loginLockSec();
+      await this.cache.set(`login_lock:${clientIp}`, '1', lockSec);
+      await this.cache.del(`login_fail:${clientIp}`);
+      this.logger.warn(
+        `[AUTH] IP ${clientIp} locked out for ${lockSec}s after ${count} failed login attempts`,
+      );
+    }
+  }
+
+  /** Clear the failure counter + any lock on a successful login. */
+  private async clearLoginFailures(clientIp?: string): Promise<void> {
+    if (!clientIp) return;
+    await this.cache.del(`login_fail:${clientIp}`);
+    await this.cache.del(`login_lock:${clientIp}`);
+  }
+
+  /**
+   * Wrap a login attempt with the per-IP lockout: reject when locked, count a
+   * failure on any thrown error, clear counters on success.
+   */
+  private async withLockout<T>(clientIp: string | undefined, attempt: () => Promise<T>): Promise<T> {
+    await this.assertNotLockedOut(clientIp);
+    try {
+      const result = await attempt();
+      await this.clearLoginFailures(clientIp);
+      return result;
+    } catch (err) {
+      await this.recordLoginFailure(clientIp);
+      throw err;
     }
   }
 
