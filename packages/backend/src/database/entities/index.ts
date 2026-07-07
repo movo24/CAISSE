@@ -53,3 +53,8 @@ export { SaleAnomalyLogEntity } from './sale-anomaly-log.entity';
 
 // ── Intégration produit (scan code-barres inconnu) ─────────────────
 export { ProductIntegrationRequestEntity } from './product-integration-request.entity';
+
+// ── Employee System Score (score employé 100 % factuel) ────────────
+export { EmployeeScoreEventEntity } from './employee-score-event.entity';
+export { EmployeeScoreRuleEntity } from './employee-score-rule.entity';
+export { EmployeeScoreDailyEntity } from './employee-score-daily.entity';
