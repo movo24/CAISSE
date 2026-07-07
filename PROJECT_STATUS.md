@@ -72,11 +72,13 @@
 **Livré (suite — fermeture sans comptage encadrée)**
 - [x] **« Fermer sans compter » encadré** (migration `1750` : `cash_count_skipped_reason` + `cash_count_skipped_at` sur `pos_sessions`) : la résilience technique est préservée (une fermeture silencieuse logout/abandon reste possible) mais un **skip explicite exige un motif** (min 3 car., DTO validé) → événement `CASH_COUNT_SKIPPED` (cash, pénalité mineure, alerte) rattaché session/terminal/employé + audit `pos_session_cash_count_skipped`. Jamais une échappatoire muette. Modale POS : le bouton révèle un champ motif obligatoire ; backoffice : badge « non compté » + motif. **2 specs** backend (skip motivé → événement/persistance ; fermeture silencieuse → aucun événement), invariants modale POS.
 
+**Livré (suite — scores équipe + fix fuseau)**
+- [x] **Tableau scores équipe** : endpoint `GET /employee-score/team` (manager/admin, tenant-scoped) → employés actifs du magasin (fenêtre) avec score jour + semaine (dérivés du ledger), volume d'événements, dernière activité, nom via dernière session ; trié du plus faible au plus fort (cas à regarder d'abord). Page backoffice `EmployeeScoresPage` (`/employee-scores`, manager) : badges couleur, KPI (actifs / à surveiller), fenêtre 7/30/90 j. **1 spec** d'intégration (agrégation, tri worst-first, tenant scoping).
+- [x] **Fix fuseau minuit Paris** (`periodRange`/`recomputeDaily`/`recomputeAllForDate`) : les bornes jour/semaine/année sont désormais des instants UTC = minuit **Paris** (DST-aware via `parisMidnightUtc`), pas le fuseau du runner. Corrige un **bug réel** (un score « du jour » lu entre 22:00–24:00 UTC ratait les faits du jour) qui rendait `getTeamScores`/`getScore` faux près de minuit. Suite backend **862** verte, déterministe.
+
 **Reste à faire (étapes suivantes, non bloquantes)**
-- [ ] **Tableau scores équipe** (liste employés + score jour/semaine) : nécessite un endpoint d'agrégation par magasin (les alertes + score/employé existent déjà).
 - [ ] **Remboursements/retraits espèces** non déduits de l'attendu (retours pas encore rattachés à la session) — extension future.
 - [ ] **Fin de shift TW24** non parsée (`normalizeShifts` ne lit que `startsAt`) → nécessaire pour `*_AFTER_SHIFT_END`.
-- [ ] **Flake pré-existant** `employee-score.service.spec` : `periodRange`/`recomputeDaily` construisent les bornes de jour dans le fuseau du runner (pas Paris) → 4 tests échouent entre 22:00–24:00 UTC (minuit Paris). Bug réel mais **hors périmètre** de ce chantier — à corriger dans un PR dédié avec des `now` fixes déterministes.
 
 ## Bloqués réels (⛔) — préparés, attente owner/accès
 - **D6** Rotation token Railway (accès Railway = owner)

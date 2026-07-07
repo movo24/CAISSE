@@ -68,6 +68,7 @@ const navItems: NavItem[] = [
 
   // Couche 5 — Analyse
   { path: '/cash-sessions', label: 'Sessions & Écarts caisse', icon: Banknote, minRole: 'manager', scope: 'store' },
+  { path: '/employee-scores', label: 'Scores équipe', icon: Users, minRole: 'manager', scope: 'store' },
   { path: '/reports', label: 'Rapports', icon: FileBarChart, minRole: 'manager', scope: 'store' },
   { path: '/sales-guards', label: 'Garde-fous', icon: ShieldAlert, minRole: 'manager', scope: 'store' },
   { path: '/returns', label: 'Retours & Avoirs', icon: Undo2, minRole: 'manager', scope: 'store' },
