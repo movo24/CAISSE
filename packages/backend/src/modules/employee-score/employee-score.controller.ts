@@ -95,6 +95,18 @@ export class EmployeeScoreController {
     return this.service.getAlerts(req.user.storeId, sinceHours ? parseInt(sinceHours, 10) : 72);
   }
 
+  /** Tableau des scores de l'équipe du magasin (manager/admin). */
+  @Get('team')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'Scores équipe du magasin (jour + semaine, dérivés du ledger)' })
+  team(@Request() req: any, @Query('sinceDays') sinceDays?: string) {
+    return this.service.getTeamScores(
+      req.user.storeId,
+      new Date(),
+      sinceDays ? parseInt(sinceDays, 10) : 7,
+    );
+  }
+
   /** Recompute manuel d'une date (admin) — le cron nocturne le fait automatiquement. */
   @Post('recompute')
   @Roles('admin')

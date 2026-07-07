@@ -33,6 +33,7 @@ import { PromoCodesPage } from './pages/PromoCodesPage';
 import { PendingPaymentsPage } from './pages/PendingPaymentsPage';
 import { InventoryVariancePage } from './pages/InventoryVariancePage';
 import { CashSessionsPage } from './pages/CashSessionsPage';
+import { EmployeeScoresPage } from './pages/EmployeeScoresPage';
 import ProductIntegrationPage from './pages/ProductIntegrationPage';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import './styles/globals.css';
@@ -92,6 +93,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
 
             {/* Couche 5: Analyse */}
             <Route path="/cash-sessions" element={<CashSessionsPage />} />
+            <Route path="/employee-scores" element={<EmployeeScoresPage />} />
             <Route path="/reports" element={<ReportsPage />} />
             <Route path="/sales-guards" element={<SalesGuardsPage />} />
             <Route path="/returns" element={<ReturnsPage />} />

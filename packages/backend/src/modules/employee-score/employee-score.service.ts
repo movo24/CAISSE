@@ -76,6 +76,39 @@ export function parisDateStr(d: Date): string {
   return `${p.y}-${String(p.m).padStart(2, '0')}-${String(p.day).padStart(2, '0')}`;
 }
 
+/** Offset (ms) of Europe/Paris relative to UTC at a given instant (DST-aware). */
+function parisOffsetMs(instant: Date): number {
+  const dtf = new Intl.DateTimeFormat('en-US', {
+    timeZone: PARIS_TZ, hour12: false,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  });
+  const m: Record<string, string> = {};
+  for (const p of dtf.formatToParts(instant)) m[p.type] = p.value;
+  const asUtc = Date.UTC(+m.year, +m.month - 1, +m.day, +m.hour % 24, +m.minute, +m.second);
+  return asUtc - instant.getTime();
+}
+
+/**
+ * UTC instant whose Europe/Paris wall-clock is 00:00 on the given Paris date.
+ * Correct across DST — the day boundary is anchored to Paris, not to the
+ * server's local timezone (which otherwise silently shifted the score window
+ * near midnight, e.g. every score read between 22:00–24:00 UTC).
+ */
+function parisMidnightUtc(y: number, m: number, day: number): Date {
+  const guessMs = Date.UTC(y, m - 1, day, 0, 0, 0);
+  // Two-step refine handles the DST-transition edge.
+  let start = new Date(guessMs - parisOffsetMs(new Date(guessMs)));
+  start = new Date(guessMs - parisOffsetMs(start));
+  return start;
+}
+
+/** Paris 00:00 of the calendar day AFTER the given Paris-midnight instant. */
+function parisNextDayMidnightUtc(parisMidnight: Date): Date {
+  const p = parisParts(new Date(parisMidnight.getTime() + 36 * 3600 * 1000)); // safely into next day
+  return parisMidnightUtc(p.y, p.m, p.day);
+}
+
 @Injectable()
 export class EmployeeScoreService {
   private readonly logger = new Logger(EmployeeScoreService.name);
@@ -308,22 +341,28 @@ export class EmployeeScoreService {
     return breakdown;
   }
 
-  /** Plage [start, end) pour la période demandée, ancrée sur maintenant (Paris). */
+  /**
+   * Plage [start, end] pour la période demandée, ancrée sur maintenant (Paris).
+   * Les bornes sont des instants UTC correspondant à minuit Paris — sinon le
+   * fuseau du serveur décalait la fenêtre de score autour de minuit (bug réel :
+   * un score « du jour » lu entre 22:00 et 24:00 UTC ratait les faits du jour).
+   */
   private periodRange(period: ScorePeriod, now: Date): { start: Date; end: Date } {
     const p = parisParts(now);
     const end = now;
     if (period === 'day') {
-      const start = new Date(`${p.y}-${String(p.m).padStart(2, '0')}-${String(p.day).padStart(2, '0')}T00:00:00`);
-      return { start, end };
+      return { start: parisMidnightUtc(p.y, p.m, p.day), end };
     }
     if (period === 'week') {
-      // Monday of the current Paris week.
-      const monday = new Date(`${p.y}-${String(p.m).padStart(2, '0')}-${String(p.day).padStart(2, '0')}T00:00:00`);
-      monday.setDate(monday.getDate() - (p.weekday - 1));
-      return { start: monday, end };
+      // Monday of the current Paris week: step back (weekday-1) days from today's
+      // Paris midnight, then re-anchor to that day's Paris midnight (DST-safe).
+      const todayStart = parisMidnightUtc(p.y, p.m, p.day);
+      const mondayApprox = new Date(todayStart.getTime() - (p.weekday - 1) * 24 * 3600 * 1000);
+      const mp = parisParts(mondayApprox);
+      return { start: parisMidnightUtc(mp.y, mp.m, mp.day), end };
     }
     // year → Jan 1 (Paris).
-    return { start: new Date(`${p.y}-01-01T00:00:00`), end };
+    return { start: parisMidnightUtc(p.y, 1, 1), end };
   }
 
   async getScore(employeeId: string, period: ScorePeriod, now: Date = new Date()): Promise<ScoreBreakdown> {
@@ -386,13 +425,64 @@ export class EmployeeScoreService {
     return rows;
   }
 
+  // ── Team scores (manager cockpit) ──────────────────────────────
+
+  /**
+   * Tableau des scores de l'équipe d'un magasin : les employés ayant produit des
+   * faits probants dans ce magasin sur la fenêtre, avec leur score jour + semaine
+   * (dérivé du ledger, jamais approximé), leur volume d'événements et leur
+   * dernière activité. Trié du plus faible score du jour au plus fort (les cas à
+   * regarder d'abord). Le nom est résolu en best-effort via la dernière session.
+   */
+  async getTeamScores(storeId: string, now: Date = new Date(), sinceDays = 7) {
+    const since = new Date(now.getTime() - sinceDays * 24 * 3600 * 1000);
+    const rows = await this.eventRepo
+      .createQueryBuilder('e')
+      .select('e.employee_id', 'employeeId')
+      .addSelect('MAX(e.created_at)', 'lastActivity')
+      .addSelect('COUNT(*)', 'eventCount')
+      .where('e.store_id = :storeId', { storeId })
+      .andWhere('e.created_at >= :since', { since })
+      .groupBy('e.employee_id')
+      .getRawMany<{ employeeId: string; lastActivity: Date; eventCount: string }>();
+
+    const team = [];
+    for (const r of rows) {
+      const [day, week] = await Promise.all([
+        this.getScore(r.employeeId, 'day', now),
+        this.getScore(r.employeeId, 'week', now),
+      ]);
+      let employeeName: string | null = null;
+      try {
+        const s = await this.sessionRepo.findOne({
+          where: { storeId, employeeId: r.employeeId },
+          order: { openedAt: 'DESC' },
+        });
+        employeeName = s?.employeeName ?? null;
+      } catch {
+        employeeName = null; // le nom est indicatif — jamais bloquant
+      }
+      team.push({
+        employeeId: r.employeeId,
+        employeeName,
+        day: { total: day.total, color: day.color },
+        week: { total: week.total, color: week.color },
+        eventCount: Number(r.eventCount),
+        lastActivity: r.lastActivity,
+      });
+    }
+    team.sort((a, b) => a.day.total - b.day.total);
+    return team;
+  }
+
   // ── Nightly recompute (cron target) ────────────────────────────
 
   /** Recalcule et upsert l'agrégat journalier d'un employé pour une date. */
   async recomputeDaily(employeeId: string, storeId: string, scoreDate: string, now: Date = new Date()) {
     const rules = await this.resolveRules();
-    const start = new Date(`${scoreDate}T00:00:00`);
-    const end = new Date(`${scoreDate}T23:59:59.999`);
+    const [yy, mm, dd] = scoreDate.split('-').map(Number);
+    const start = parisMidnightUtc(yy, mm, dd);
+    const end = new Date(parisNextDayMidnightUtc(start).getTime() - 1); // 23:59:59.999 Paris
     const b = await this.computeRange(employeeId, start, end, rules);
 
     const existing = await this.dailyRepo.findOne({ where: { employeeId, scoreDate } });
@@ -414,8 +504,9 @@ export class EmployeeScoreService {
 
   /** Balaye les employés ayant produit des événements sur `scoreDate` et recompute. */
   async recomputeAllForDate(scoreDate: string, now: Date = new Date()): Promise<number> {
-    const start = new Date(`${scoreDate}T00:00:00`);
-    const end = new Date(`${scoreDate}T23:59:59.999`);
+    const [yy, mm, dd] = scoreDate.split('-').map(Number);
+    const start = parisMidnightUtc(yy, mm, dd);
+    const end = new Date(parisNextDayMidnightUtc(start).getTime() - 1);
     const pairs = await this.eventRepo
       .createQueryBuilder('e')
       .select('e.employee_id', 'employeeId')

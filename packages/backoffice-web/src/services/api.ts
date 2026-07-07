@@ -589,6 +589,7 @@ export const posSessionsApi = {
 // ---------------------------------------------------------------------------
 export const employeeScoreApi = {
   alerts: (sinceHours?: number) => api.get('/employee-score/alerts', { params: { sinceHours } }),
+  team: (sinceDays?: number) => api.get('/employee-score/team', { params: { sinceDays } }),
   employee: (employeeId: string, period: 'day' | 'week' | 'year' = 'day') =>
     api.get(`/employee-score/employee/${employeeId}`, { params: { period } }),
   employeeDetail: (employeeId: string) => api.get(`/employee-score/employee/${employeeId}/detail`),

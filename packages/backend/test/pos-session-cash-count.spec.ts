@@ -25,6 +25,7 @@ import { RealtimeModule } from '../src/common/realtime/realtime.module';
 import { TimewinModule } from '../src/modules/timewin/timewin.module';
 import { SalesService } from '../src/modules/sales/sales.service';
 import { PosSessionService } from '../src/modules/pos-session/pos-session.service';
+import { EmployeeScoreService } from '../src/modules/employee-score/employee-score.service';
 import { StoreEntity } from '../src/database/entities/store.entity';
 import { ProductEntity } from '../src/database/entities/product.entity';
 import { EmployeeScoreEventEntity } from '../src/database/entities/employee-score-event.entity';
@@ -38,6 +39,7 @@ describe('POS session cash count (attendu serveur vs compté réel)', () => {
   let ds: DataSource;
   let sales: SalesService;
   let sessions: PosSessionService;
+  let score: EmployeeScoreService;
   let scoreEvents: Repository<EmployeeScoreEventEntity>;
 
   /** Fresh isolated store + one product per EAN (distinct product per sale to
@@ -72,6 +74,7 @@ describe('POS session cash count (attendu serveur vs compté réel)', () => {
     ds = moduleRef.get(DataSource);
     sales = moduleRef.get(SalesService);
     sessions = moduleRef.get(PosSessionService);
+    score = moduleRef.get(EmployeeScoreService);
     scoreEvents = moduleRef.get(getRepositoryToken(EmployeeScoreEventEntity));
   });
 
@@ -238,5 +241,39 @@ describe('POS session cash count (attendu serveur vs compté réel)', () => {
     const closed = await sessions.closeSession(session.id, storeId, empId, { countedCashMinorUnits: 500 });
     expect(closed.cashSalesMinorUnits).toBe(500); // card leg excluded
     expect(closed.cashDifferenceMinorUnits).toBe(0);
+  });
+
+  it('getTeamScores aggregates the store team (worst day-score first, tenant-scoped)', async () => {
+    const storeId = await seedStore();
+    const empA = uuidv4();
+    const empB = uuidv4();
+
+    // empA: a critical cash difference (bigger penalty). empB: a minor one.
+    const sA = await sessions.openSession(storeId, empA, { ...SNAP, employeeName: 'Alice A.' }, { terminalId: 'T-A', openingCashMinorUnits: 0 });
+    await sales.createSale(storeId, empA, cashSale(0) as any, SNAP, undefined, 'T-A'); // expected 500
+    await sessions.closeSession(sA.id, storeId, empA, { countedCashMinorUnits: 6000 }); // +5500 → critical
+
+    const sB = await sessions.openSession(storeId, empB, { ...SNAP, employeeName: 'Bob B.' }, { terminalId: 'T-B', openingCashMinorUnits: 0 });
+    await sales.createSale(storeId, empB, cashSale(1) as any, SNAP, undefined, 'T-B'); // expected 500
+    await sessions.closeSession(sB.id, storeId, empB, { countedCashMinorUnits: 1200 }); // +700 → minor
+
+    const team = await score.getTeamScores(storeId);
+    const ids = team.map((t) => t.employeeId);
+    expect(ids).toContain(empA);
+    expect(ids).toContain(empB);
+
+    const a = team.find((t) => t.employeeId === empA)!;
+    const b = team.find((t) => t.employeeId === empB)!;
+    expect(a.employeeName).toBe('Alice A.');
+    expect(a.day.total).toBeLessThan(100);
+    expect(b.day.total).toBeLessThan(100);
+    expect(a.day.total).toBeLessThan(b.day.total); // critical penalises more than minor
+    // Sorted worst-first → empA before empB.
+    expect(ids.indexOf(empA)).toBeLessThan(ids.indexOf(empB));
+
+    // Tenant scoping: a different store's team does not include these employees.
+    const otherStore = await seedStore();
+    const otherTeam = await score.getTeamScores(otherStore);
+    expect(otherTeam.some((t) => t.employeeId === empA || t.employeeId === empB)).toBe(false);
   });
 });
