@@ -10,9 +10,11 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
 import { PosSessionEntity } from '../../database/entities/pos-session.entity';
+import { SalePaymentEntity } from '../../database/entities/sale-payment.entity';
 import { TimewinService } from '../timewin/timewin.service';
 import { AuditService } from '../audit/audit.service';
 import { EmployeeScoreService } from '../employee-score/employee-score.service';
+import { classifyCashDifference } from '../employee-score/employee-score.constants';
 
 /**
  * POS Session primitive — γ-model (D1 decision: terminal-bound sessions).
@@ -56,7 +58,31 @@ export class PosSessionService {
     // Score is OPTIONAL too — a session must open/close even if scoring is down,
     // and the primitive's unit specs construct the service with the repo alone.
     @Optional() private readonly scoreService?: EmployeeScoreService,
+    // OPTIONAL: used only to DERIVE the expected cash (sum of the session's cash
+    // sale legs) at close. Absent in the primitive's bare unit specs.
+    @Optional()
+    @InjectRepository(SalePaymentEntity)
+    private readonly paymentRepo?: Repository<SalePaymentEntity>,
   ) {}
+
+  /**
+   * Sum of the ESPÈCES legs really captured on the completed (non-voided) sales
+   * bound to this session — derived SERVER-SIDE from persisted sales, never from
+   * a client-declared figure. Returns 0 when the repo is unavailable.
+   */
+  private async computeSessionCashSales(sessionId: string): Promise<number> {
+    if (!this.paymentRepo) return 0;
+    const row = await this.paymentRepo
+      .createQueryBuilder('p')
+      .innerJoin('p.sale', 's')
+      .select('COALESCE(SUM(p.amount_minor_units), 0)', 'sum')
+      .where('s.session_id = :sessionId', { sessionId })
+      .andWhere("s.status <> 'voided'")
+      .andWhere("p.method = 'cash'")
+      .andWhere('p.captured = true')
+      .getRawOne<{ sum: string }>();
+    return row ? parseInt(row.sum, 10) || 0 : 0;
+  }
 
   /**
    * Observe a session lifecycle event (Bloc 3.4/3.5 — TimeWin hardening):
@@ -145,6 +171,7 @@ export class PosSessionService {
     options: {
       terminalId?: string;
       offlineMode?: boolean;
+      openingCashMinorUnits?: number;
     } = {},
   ): Promise<PosSessionEntity> {
     if (!storeId) {
@@ -182,6 +209,8 @@ export class PosSessionService {
     session.permissions = {};
     session.isActive = true;
     session.offlineMode = options.offlineMode ?? false;
+    session.openingCashMinorUnits =
+      typeof options.openingCashMinorUnits === 'number' ? options.openingCashMinorUnits : null;
 
     let saved: PosSessionEntity;
     try {
@@ -231,6 +260,7 @@ export class PosSessionService {
     sessionId: string,
     storeId: string,
     employeeId: string,
+    options: { countedCashMinorUnits?: number } = {},
   ): Promise<PosSessionEntity> {
     const session = await this.repo.findOne({ where: { id: sessionId } });
     if (!session) {
@@ -252,10 +282,104 @@ export class PosSessionService {
 
     session.isActive = false;
     session.closedAt = new Date();
+
+    // ── Cash count (optionnel) : attendu SERVEUR vs compté RÉEL ─────────────
+    // Le compté est la seule valeur venant du client ; l'attendu et l'écart
+    // sont dérivés côté serveur des ventes rattachées à cette session.
+    const counted = options.countedCashMinorUnits;
+    if (typeof counted === 'number') {
+      const cashSales = await this.computeSessionCashSales(session.id);
+      const opening = session.openingCashMinorUnits ?? 0;
+      const expected = opening + cashSales;
+      session.cashSalesMinorUnits = cashSales;
+      session.expectedCashMinorUnits = expected;
+      session.countedCashMinorUnits = counted;
+      session.cashDifferenceMinorUnits = counted - expected;
+      session.cashCountedAt = new Date();
+    }
+
     const saved = await this.repo.save(session);
     this.logger.log(`POS session closed: ${saved.id}`);
     await this.observeSession(saved, 'session.closed');
+
+    // Score + audit du comptage (best-effort, jamais bloquant).
+    if (typeof counted === 'number') {
+      await this.observeCashCount(saved);
+    }
     return saved;
+  }
+
+  /**
+   * Journalise le comptage de caisse : événement de score (comptage terminé +
+   * classification de l'écart en CASH_DIFFERENCE_* rattaché à la session, au
+   * terminal et à l'employé) et entrée d'audit décomposant attendu/compté/écart.
+   * Entièrement best-effort — un échec ici ne remet pas en cause la fermeture.
+   */
+  private async observeCashCount(session: PosSessionEntity): Promise<void> {
+    const expected = session.expectedCashMinorUnits ?? 0;
+    const counted = session.countedCashMinorUnits ?? 0;
+    const difference = session.cashDifferenceMinorUnits ?? 0;
+
+    if (this.audit) {
+      try {
+        await this.audit.log({
+          storeId: session.storeId,
+          employeeId: session.employeeId,
+          action: 'pos_session_cash_counted',
+          entityType: 'pos_session',
+          entityId: session.id,
+          details: {
+            terminalId: session.terminalId,
+            openingCashMinorUnits: session.openingCashMinorUnits,
+            cashSalesMinorUnits: session.cashSalesMinorUnits,
+            expectedCashMinorUnits: expected,
+            countedCashMinorUnits: counted,
+            cashDifferenceMinorUnits: difference,
+            openingCashKnown: session.openingCashMinorUnits != null,
+            at: new Date().toISOString(),
+          },
+        });
+      } catch (e: any) {
+        this.logger.warn(`[audit cash_count] ${e?.message}`);
+      }
+    }
+
+    if (this.scoreService) {
+      // Comptage terminé (neutre) + écart classé (mineur/majeur/critique).
+      await this.scoreService
+        .logEvent({
+          employeeId: session.employeeId,
+          storeId: session.storeId,
+          eventType: 'CASH_COUNT_COMPLETED',
+          terminalId: session.terminalId,
+          sessionId: session.id,
+          createdBy: session.employeeId,
+          source: 'pos',
+          reason: `Attendu ${expected} / compté ${counted} / écart ${difference} (centimes)`,
+        })
+        .catch((e: any) => this.logger.warn(`[score cash_count] ${e?.message}`));
+
+      const diffEvent = classifyCashDifference(difference);
+      if (diffEvent) {
+        await this.scoreService
+          .logEvent({
+            employeeId: session.employeeId,
+            storeId: session.storeId,
+            eventType: diffEvent,
+            terminalId: session.terminalId,
+            sessionId: session.id,
+            createdBy: session.employeeId,
+            source: 'pos',
+            reason: `Écart caisse ${difference} centimes (attendu ${expected}, compté ${counted})`,
+            metadata: {
+              expectedCashMinorUnits: expected,
+              countedCashMinorUnits: counted,
+              cashDifferenceMinorUnits: difference,
+            },
+          })
+          .catch((e: any) => this.logger.warn(`[score cash_diff] ${e?.message}`));
+      }
+    }
   }
 
   /**

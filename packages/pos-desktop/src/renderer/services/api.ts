@@ -189,9 +189,22 @@ export function posTerminalId(): string {
 
 // Session POS — une caisse appartient à un caissier pendant une session.
 export const posSessionApi = {
-  open: () =>
-    api.post('/pos-sessions/open', {}, { headers: { 'X-Terminal-Id': currentTerminalId() } }),
-  close: (sessionId: string) => api.post(`/pos-sessions/${sessionId}/close`, {}),
+  // openingCashMinorUnits (optionnel) : fond de caisse à l'ouverture. S'il est
+  // omis, l'attendu à la fermeture ne reflète que les ventes espèces (fond inconnu).
+  open: (openingCashMinorUnits?: number) =>
+    api.post(
+      '/pos-sessions/open',
+      typeof openingCashMinorUnits === 'number' ? { openingCashMinorUnits } : {},
+      { headers: { 'X-Terminal-Id': currentTerminalId() } },
+    ),
+  // countedCashMinorUnits (optionnel) : montant espèces compté physiquement. Le
+  // backend dérive l'attendu (fond + ventes espèces de la session) et l'écart.
+  close: (sessionId: string, countedCashMinorUnits?: number) =>
+    api.post(
+      `/pos-sessions/${sessionId}/close`,
+      typeof countedCashMinorUnits === 'number' ? { countedCashMinorUnits } : {},
+      { headers: { 'X-Terminal-Id': currentTerminalId() } },
+    ),
   active: () =>
     api.get('/pos-sessions/active', { headers: { 'X-Terminal-Id': currentTerminalId() } }),
 };
