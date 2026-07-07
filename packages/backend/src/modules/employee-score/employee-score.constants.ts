@@ -90,6 +90,56 @@ export const SCORE_EVENT_TYPES = [
 
 export type ScoreEventType = (typeof SCORE_EVENT_TYPES)[number];
 
+/**
+ * Faits sensibles (argent / procédure) qui NE PEUVENT PAS légitimement se
+ * produire hors d'une session caisse valide. Quand la caisse envoie l'un de ces
+ * événements via `POST /employee-score/events`, le backend exige que le
+ * `sessionId` posté corresponde à une session ACTIVE du terminal pour l'employé.
+ * Sinon → l'événement est requalifié en `ACTION_WITHOUT_VALID_SESSION` (anomalie
+ * technique) : on n'invente pas un score, on constate qu'une action sensible a
+ * été jouée sans rattachement à une vraie session.
+ *
+ * Volontairement HORS de cette liste : les événements de cycle de vie de session
+ * eux-mêmes (SESSION_*, EMPLOYEE_SWITCHED), les agrégats analytiques calculés
+ * côté backend (*_RATE_ABNORMAL), les faits produit/stock (autoritatifs backend)
+ * et les faits de planning (émis au login, avant toute session).
+ */
+export const SESSION_BOUND_EVENT_TYPES: ReadonlySet<ScoreEventType> = new Set<ScoreEventType>([
+  // B — Comptage / écart caisse
+  'CASH_COUNT_STARTED',
+  'CASH_COUNT_COMPLETED',
+  'CASH_DIFFERENCE_MINOR',
+  'CASH_DIFFERENCE_MAJOR',
+  'CASH_DIFFERENCE_CRITICAL',
+  // C — Annulations ticket
+  'SALE_VOIDED',
+  'LINE_VOIDED',
+  'VOID_WITH_REASON',
+  'VOID_WITHOUT_REASON',
+  'VOID_WITH_MANAGER_CODE',
+  // D — Remboursements
+  'REFUND_CREATED',
+  'REFUND_WITH_REASON',
+  'REFUND_WITHOUT_REASON',
+  'REFUND_WITH_MANAGER_CODE',
+  // E — Tiroir-caisse
+  'CASH_DRAWER_OPENED_BY_SALE',
+  'CASH_DRAWER_OPENED_MANUALLY',
+  'CASH_DRAWER_OPENED_WITH_MANAGER_CODE',
+  // F — Remises / prix forcés
+  'DISCOUNT_APPLIED',
+  'DISCOUNT_WITH_MANAGER_CODE',
+  'DISCOUNT_WITHOUT_AUTHORIZATION',
+  'DISCOUNT_ABOVE_LIMIT',
+  'PRICE_OVERRIDE_APPLIED',
+  'PRICE_OVERRIDE_WITHOUT_REASON',
+]);
+
+/** Vrai si ce type de fait exige une session caisse valide côté serveur. */
+export function requiresValidSession(eventType: string): boolean {
+  return SESSION_BOUND_EVENT_TYPES.has(eventType as ScoreEventType);
+}
+
 export interface ScoreRule {
   category: ScoreCategory;
   /** Points appliqués au score (négatif = pénalité, 0 = neutre, positif = mérite). */

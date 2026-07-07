@@ -4,6 +4,7 @@ import { EmployeeScoreService } from './employee-score.service';
 import { EmployeeScoreEventEntity } from '../../database/entities/employee-score-event.entity';
 import { EmployeeScoreRuleEntity } from '../../database/entities/employee-score-rule.entity';
 import { EmployeeScoreDailyEntity } from '../../database/entities/employee-score-daily.entity';
+import { PosSessionEntity } from '../../database/entities/pos-session.entity';
 import { AuditService } from '../audit/audit.service';
 import { DEFAULT_SCORE_RULES, scoreColor } from './employee-score.constants';
 
@@ -69,13 +70,27 @@ describe('EmployeeScoreService', () => {
   let service: EmployeeScoreService;
   let eventRepo: any;
   let dailyRepo: any;
+  let sessionRepo: any;
 
-  const build = async (seed: any[] = []) => {
+  const build = async (seed: any[] = [], activeSession: any = null) => {
     eventRepo = makeEventRepo(seed);
     dailyRepo = {
       findOne: jest.fn().mockResolvedValue(null),
       create: jest.fn((d: any) => ({ ...d })),
       save: jest.fn(async (d: any) => ({ id: 'daily-1', ...d })),
+    };
+    // findActiveForTerminal-equivalent: returns the seeded active session when
+    // (storeId, terminalId, isActive) match, else null.
+    sessionRepo = {
+      _active: activeSession,
+      findOne: jest.fn(async (opts: any) => {
+        const w = opts?.where || {};
+        const s = sessionRepo._active;
+        if (!s) return null;
+        if (w.storeId && w.storeId !== s.storeId) return null;
+        if (w.terminalId && w.terminalId !== s.terminalId) return null;
+        return s;
+      }),
     };
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -83,6 +98,7 @@ describe('EmployeeScoreService', () => {
         { provide: getRepositoryToken(EmployeeScoreEventEntity), useValue: eventRepo },
         { provide: getRepositoryToken(EmployeeScoreRuleEntity), useValue: { find: jest.fn().mockResolvedValue([]) } },
         { provide: getRepositoryToken(EmployeeScoreDailyEntity), useValue: dailyRepo },
+        { provide: getRepositoryToken(PosSessionEntity), useValue: sessionRepo },
         { provide: AuditService, useValue: { log: jest.fn().mockResolvedValue({}) } },
       ],
     }).compile();
@@ -167,5 +183,79 @@ describe('EmployeeScoreService', () => {
     eventRepo.save.mockRejectedValueOnce(new Error('db down'));
     const ev = await service.logEvent({ employeeId: EMP, storeId: STORE, eventType: 'SALE_VOIDED' });
     expect(ev).toBeNull();
+  });
+
+  // ── Server-side session guard (Fiabilité d'abord) ──────────────
+
+  const activeSession = { id: 'sess-1', storeId: STORE, terminalId: 'T2', employeeId: EMP, isActive: true };
+
+  it('accepts a sensitive event when the sessionId matches the terminal active session', async () => {
+    await build([], activeSession);
+    const ev = await service.logEvent({
+      employeeId: EMP, storeId: STORE, eventType: 'DISCOUNT_ABOVE_LIMIT',
+      terminalId: 'T2', sessionId: 'sess-1', enforceSession: true,
+    });
+    expect(ev!.eventType).toBe('DISCOUNT_ABOVE_LIMIT');
+    expect(ev!.pointsDelta).toBe(DEFAULT_SCORE_RULES.DISCOUNT_ABOVE_LIMIT.pointsDelta);
+  });
+
+  it('downgrades a sensitive event with a spoofed sessionId to ACTION_WITHOUT_VALID_SESSION', async () => {
+    await build([], activeSession);
+    const ev = await service.logEvent({
+      employeeId: EMP, storeId: STORE, eventType: 'REFUND_WITHOUT_REASON',
+      terminalId: 'T2', sessionId: 'not-the-active-one', enforceSession: true,
+    });
+    expect(ev!.eventType).toBe('ACTION_WITHOUT_VALID_SESSION');
+    expect(ev!.pointsDelta).toBe(DEFAULT_SCORE_RULES.ACTION_WITHOUT_VALID_SESSION.pointsDelta); // -15
+    expect(ev!.category).toBe('session');
+    expect((ev!.metadata as any).claimedEventType).toBe('REFUND_WITHOUT_REASON');
+    expect((ev!.metadata as any).claimedSessionId).toBe('not-the-active-one');
+  });
+
+  it('downgrades a sensitive event when no session is provided at all', async () => {
+    await build([], activeSession);
+    const ev = await service.logEvent({
+      employeeId: EMP, storeId: STORE, eventType: 'CASH_DRAWER_OPENED_MANUALLY',
+      terminalId: 'T2', sessionId: null, enforceSession: true,
+    });
+    expect(ev!.eventType).toBe('ACTION_WITHOUT_VALID_SESSION');
+  });
+
+  it('downgrades when the active session belongs to another employee', async () => {
+    await build([], { ...activeSession, employeeId: 'other-emp' });
+    const ev = await service.logEvent({
+      employeeId: EMP, storeId: STORE, eventType: 'SALE_VOIDED',
+      terminalId: 'T2', sessionId: 'sess-1', enforceSession: true,
+    });
+    expect(ev!.eventType).toBe('ACTION_WITHOUT_VALID_SESSION');
+  });
+
+  it('does NOT enforce sessions for session-lifecycle events (SESSION_OPENED)', async () => {
+    await build([], null);
+    const ev = await service.logEvent({
+      employeeId: EMP, storeId: STORE, eventType: 'SESSION_OPENED',
+      terminalId: 'T2', sessionId: 'sess-1', enforceSession: true,
+    });
+    expect(ev!.eventType).toBe('SESSION_OPENED');
+  });
+
+  it('does NOT enforce sessions for backend-authoritative callers (enforceSession off)', async () => {
+    await build([], null);
+    const ev = await service.logEvent({
+      employeeId: EMP, storeId: STORE, eventType: 'DISCOUNT_ABOVE_LIMIT',
+      terminalId: 'T2', sessionId: 'whatever',
+    });
+    expect(ev!.eventType).toBe('DISCOUNT_ABOVE_LIMIT');
+  });
+
+  it('keeps the original event (not an anomaly) when the session read fails (unverifiable)', async () => {
+    await build([], activeSession);
+    sessionRepo.findOne.mockRejectedValueOnce(new Error('db timeout'));
+    const ev = await service.logEvent({
+      employeeId: EMP, storeId: STORE, eventType: 'DISCOUNT_ABOVE_LIMIT',
+      terminalId: 'T2', sessionId: 'sess-1', enforceSession: true,
+    });
+    expect(ev!.eventType).toBe('DISCOUNT_ABOVE_LIMIT');
+    expect((ev!.metadata as any).sessionVerification).toBe('unverifiable');
   });
 });

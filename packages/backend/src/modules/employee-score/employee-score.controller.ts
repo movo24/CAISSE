@@ -37,7 +37,8 @@ export class EmployeeScoreController {
     @Headers('x-terminal-id') terminalHeader?: string,
   ) {
     const isManager = hasMinRole(req.user.role, 'manager');
-    const employeeId = isManager && dto.targetEmployeeId ? dto.targetEmployeeId : req.user.employeeId;
+    const isManagerOverride = isManager && !!dto.targetEmployeeId;
+    const employeeId = isManagerOverride ? dto.targetEmployeeId! : req.user.employeeId;
     return this.service.logEvent({
       employeeId,
       storeId: req.user.storeId,
@@ -48,6 +49,10 @@ export class EmployeeScoreController {
       metadata: dto.metadata ?? null,
       createdBy: req.user.employeeId,
       source: 'pos',
+      // Chemin client POS : le sessionId envoyé doit correspondre à une session
+      // active réelle du terminal. Exception : un manager loggant POUR un
+      // caissier (action out-of-band, pas depuis sa propre session terminal).
+      enforceSession: !isManagerOverride,
     });
   }
 
