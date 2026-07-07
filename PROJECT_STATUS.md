@@ -62,8 +62,12 @@
 - [x] **Garde serveur `POST /employee-score/events`** (PR #16) : un fait sensible du chemin POS doit correspondre à une session active réelle du terminal (store+terminal+employé), sinon requalifié `ACTION_WITHOUT_VALID_SESSION`. Le `sessionId` client n'est plus cru sur parole.
 - [x] **Binding vente→session** : migration additive/réversible `1748` (`sales.session_id` uuid + `sales.terminal_id` varchar, nullable, index partiel) ; résolution **serveur** via `X-Terminal-Id` (create + void) → liée à la session active du terminal seulement si elle appartient à l'employé, sinon `session_id` null (« session inconnue » auditable, jamais fabriquée). Colonnes **HORS empreinte fiscale** (v1/v2) → aucun ticket validé re-hashé. Chemin sync offline : binding client **refusé** (null forcé). Front POS : `X-Terminal-Id` posé sur create/void. **5 specs** dédiées, suite backend **852** verte.
 
+**Livré (suite — comptage caisse)**
+- [x] **Cash-count à la fermeture de session** (migration additive/réversible `1749`, champs cash nullable sur `pos_sessions`) : **attendu SERVEUR** (fond d'ouverture + ventes espèces de la session, dérivées via `session_id` — jamais déclarées par le client) **vs compté RÉEL** (seule valeur saisie), écart = compté − attendu. Rattaché à une vraie session + terminal + employé. Fond d'ouverture optionnel (null = inconnu, tracé). Écart matériel → événement de score `CASH_DIFFERENCE_*` (via `classifyCashDifference`, seuils env) + `CASH_COUNT_COMPLETED`, rattachés à la session. Audit `pos_session_cash_counted` décomposant attendu/compté/écart. Fermeture SANS comptage = comportement inchangé (résilience). Ne compte que les legs espèces capturés, hors ventes annulées. **6 specs** d'intégration, suite backend **858** verte ; API POS `close(sessionId, countedCash)` / `open(openingCash)` câblée.
+
 **Reste à faire (étapes suivantes, non bloquantes)**
-- [ ] **Comptage caisse** : ajouter le comptage à la fermeture de session + dérivation de l'écart (le binding vente→session est désormais en place → les ventes espèces d'une session sont agrégeables).
+- [ ] **UI POS comptage** : modale de saisie du montant compté à la fermeture (l'API et la dérivation backend sont prêtes).
+- [ ] **Remboursements/retraits espèces** non déduits de l'attendu (retours pas encore rattachés à la session) — extension future.
 - [ ] **Fin de shift TW24** non parsée (`normalizeShifts` ne lit que `startsAt`) → nécessaire pour `*_AFTER_SHIFT_END`.
 - [ ] UI backoffice : file d'alertes manager + tableau scores équipe.
 

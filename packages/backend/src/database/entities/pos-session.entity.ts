@@ -66,6 +66,36 @@ export class PosSessionEntity {
   @Column({ name: 'is_active', default: true })
   isActive: boolean;
 
+  // ── Cash count / écart caisse (probante, dérivé serveur) ─────────────────
+  // All amounts are integer centimes. All nullable & additive: a session that
+  // never counts cash (older rows, close-without-count) simply carries nulls —
+  // an auditable "not counted", never a fabricated figure.
+
+  /** Fond de caisse déclaré à l'ouverture (optionnel). null = inconnu. */
+  @Column({ name: 'opening_cash_minor_units', type: 'integer', nullable: true })
+  openingCashMinorUnits: number | null;
+
+  /** Somme des règlements ESPÈCES encaissés sur les ventes de cette session
+   *  (dérivée côté serveur, jamais déclarée par le client). */
+  @Column({ name: 'cash_sales_minor_units', type: 'integer', nullable: true })
+  cashSalesMinorUnits: number | null;
+
+  /** Montant ATTENDU en caisse = fond d'ouverture + ventes espèces de la session. */
+  @Column({ name: 'expected_cash_minor_units', type: 'integer', nullable: true })
+  expectedCashMinorUnits: number | null;
+
+  /** Montant COMPTÉ physiquement à la fermeture (saisi par le caissier). */
+  @Column({ name: 'counted_cash_minor_units', type: 'integer', nullable: true })
+  countedCashMinorUnits: number | null;
+
+  /** Écart = compté − attendu (négatif = manquant, positif = excédent). */
+  @Column({ name: 'cash_difference_minor_units', type: 'integer', nullable: true })
+  cashDifferenceMinorUnits: number | null;
+
+  /** Horodatage du comptage de caisse. */
+  @Column({ name: 'cash_counted_at', type: 'timestamp', nullable: true })
+  cashCountedAt: Date | null;
+
   @CreateDateColumn({ name: 'opened_at' })
   openedAt: Date;
 

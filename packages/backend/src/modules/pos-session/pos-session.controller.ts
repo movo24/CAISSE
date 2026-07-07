@@ -14,6 +14,7 @@ import { ApiTags, ApiBearerAuth, ApiOperation, ApiHeader } from '@nestjs/swagger
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PosSessionService } from './pos-session.service';
 import { OpenSessionDto } from './dto/open-session.dto';
+import { CloseSessionDto } from './dto/close-session.dto';
 
 @ApiTags('pos-sessions')
 @ApiBearerAuth()
@@ -48,19 +49,27 @@ export class PosSessionController {
       {
         terminalId,
         offlineMode: dto.offlineMode,
+        openingCashMinorUnits: dto.openingCashMinorUnits,
       },
     );
   }
 
   @Post(':id/close')
   @ApiOperation({
-    summary: 'Close an active POS session. Only the owning employee can close their session.',
+    summary:
+      'Close an active POS session. Only the owning employee can close their session. ' +
+      'Optionally send countedCashMinorUnits to record the cash count + écart (attendu serveur vs compté).',
   })
-  close(@Param('id', ParseUUIDPipe) id: string, @Request() req: any) {
+  close(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+    @Body() dto: CloseSessionDto,
+  ) {
     return this.service.closeSession(
       id,
       req.user.storeId,
       req.user.employeeId,
+      { countedCashMinorUnits: dto?.countedCashMinorUnits },
     );
   }
 
