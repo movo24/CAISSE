@@ -64,6 +64,7 @@ export class EmployeesController {
   }
 
   @Get(':id')
+  @Roles('admin', 'manager')
   @ApiOperation({ summary: 'Get employee details' })
   findOne(@Param('id') id: string, @Request() req: any) {
     return this.employeesService.findOneForStore(id, req.user.storeId);

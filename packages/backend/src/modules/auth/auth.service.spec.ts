@@ -49,13 +49,19 @@ describe('AuthService — code authority (POS Caisse primary)', () => {
     delete process.env.POS_AUTH_TIMEWIN_FALLBACK;
 
     employeeRepo = {
-      find: jest.fn(),
+      find: jest.fn().mockResolvedValue([]),
+      findOne: jest.fn(),
+      // pinHash is select:false → the service loads employees via QueryBuilder.addSelect.
+      // getMany delegates to find() so existing find.mockResolvedValue(...) drives both paths.
       createQueryBuilder: jest.fn(() => ({
         where: jest.fn().mockReturnThis(),
         andWhere: jest.fn().mockReturnThis(),
-        getMany: jest.fn().mockResolvedValue([]),
+        addSelect: jest.fn().mockReturnThis(),
+        getMany: jest.fn(() => employeeRepo.find()),
       })),
     };
+    // validateEmployee() re-checks the employee exists + isActive in the DB.
+    employeeRepo.findOne.mockResolvedValue({ id: 'emp-1', isActive: true });
     storeRepo = { findOne: jest.fn().mockResolvedValue(null) };
     timewin = { loginEmployee: jest.fn() };
 

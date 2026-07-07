@@ -153,6 +153,14 @@ function validateEnvironment() {
   if (process.env.JWT_SECRET!.length < 32) {
     throw new Error('JWT_SECRET must be at least 32 characters');
   }
+  if (process.env.JWT_REFRESH_SECRET!.length < 32) {
+    throw new Error('JWT_REFRESH_SECRET must be at least 32 characters');
+  }
+  // Access and refresh secrets MUST differ — otherwise a 15m access token and a
+  // 7d refresh token become interchangeable material (weakens replay defence).
+  if (process.env.JWT_SECRET === process.env.JWT_REFRESH_SECRET) {
+    throw new Error('JWT_REFRESH_SECRET must be different from JWT_SECRET');
+  }
 
   // Production-only checks
   const isProd = process.env.NODE_ENV === 'production';
@@ -282,8 +290,12 @@ async function bootstrap() {
     .setVersion('0.2.0')
     .addBearerAuth()
     .build();
-  const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api/docs', app, document);
+  // Swagger exposes the full API surface — keep it off in production unless
+  // explicitly enabled (ENABLE_SWAGGER=true), to avoid handing attackers a map.
+  if (process.env.NODE_ENV !== 'production' || process.env.ENABLE_SWAGGER === 'true') {
+    const document = SwaggerModule.createDocument(app, config);
+    SwaggerModule.setup('api/docs', app, document);
+  }
 
   const port = process.env.PORT || 3001;
   await app.listen(port, '0.0.0.0');

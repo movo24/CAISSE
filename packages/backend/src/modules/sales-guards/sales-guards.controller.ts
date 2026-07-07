@@ -56,8 +56,9 @@ export class SalesGuardsController {
   @Get('anomalies')
   @ApiOperation({ summary: 'List detected anomalies (filterable)' })
   listAnomalies(@Query() dto: ListAnomaliesDto, @Req() req: Request & { user: AuthUser }) {
-    // Cashiers are scoped to their own store; managers/admins may pass storeId.
-    if (req.user.role === 'cashier') {
+    // Only admins may read across stores; every non-admin is pinned to their own
+    // store (a manager omitting storeId must NOT get the whole network).
+    if (req.user.role !== 'admin') {
       dto.storeId = req.user.storeId;
     }
     return this.service.listAnomalies(dto);
@@ -70,7 +71,7 @@ export class SalesGuardsController {
     @Query('from') from: string | undefined,
     @Req() req: Request & { user: AuthUser },
   ) {
-    const scopedStore = req.user.role === 'cashier' ? req.user.storeId : storeId;
+    const scopedStore = req.user.role === 'admin' ? storeId : req.user.storeId;
     return this.service.getSummary(scopedStore, from);
   }
 
@@ -79,7 +80,7 @@ export class SalesGuardsController {
   @ApiOperation({ summary: 'Approve an anomaly (manager/admin only)' })
   approve(@Param('id', ParseUUIDPipe) id: string, @Req() req: Request & { user: AuthUser }) {
     this.assertReviewer(req.user.role);
-    return this.service.approveAnomaly(id, req.user.employeeId);
+    return this.service.approveAnomaly(id, req.user.employeeId, req.user.storeId, req.user.role);
   }
 
   @Post('anomalies/:id/ignore')
@@ -87,7 +88,7 @@ export class SalesGuardsController {
   @ApiOperation({ summary: 'Ignore an anomaly (manager/admin only)' })
   ignore(@Param('id', ParseUUIDPipe) id: string, @Req() req: Request & { user: AuthUser }) {
     this.assertReviewer(req.user.role);
-    return this.service.ignoreAnomaly(id, req.user.employeeId);
+    return this.service.ignoreAnomaly(id, req.user.employeeId, req.user.storeId, req.user.role);
   }
 
   private assertReviewer(role: AuthUser['role']): void {

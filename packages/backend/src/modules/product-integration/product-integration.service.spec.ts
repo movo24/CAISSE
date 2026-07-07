@@ -76,6 +76,13 @@ describe('ProductIntegrationService', () => {
     };
     employeeRepo = {
       find: jest.fn().mockResolvedValue([managerEmployee, cashierEmployee]),
+      // pinHash is select:false → the service loads employees via QueryBuilder.addSelect
+      createQueryBuilder: jest.fn(() => ({
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue([managerEmployee, cashierEmployee]),
+      })),
     };
     auditService = { log: jest.fn().mockResolvedValue({}) };
 

@@ -34,12 +34,27 @@ describe('EmployeesService — PIN uniqueness & validation', () => {
     }) as EmployeeEntity;
 
   beforeEach(async () => {
+    // pinHash is select:false → assertPinUniqueInStore loads peers via
+    // QueryBuilder.addSelect. getMany delegates to find() (so existing
+    // find.mockResolvedValue(...) keeps driving the tests) and the `where`
+    // params are captured so we can assert the store scoping.
+    const qbParams: Record<string, unknown> = {};
     repo = {
       find: jest.fn().mockResolvedValue([]),
       findOne: jest.fn(),
       create: jest.fn((x) => x),
       save: jest.fn(async (x) => ({ ...x, id: 'new-id' })),
       update: jest.fn().mockResolvedValue({ affected: 1 }),
+      qbParams,
+      createQueryBuilder: jest.fn(() => {
+        const chain: any = {
+          where: jest.fn((_c: string, p: Record<string, unknown>) => { Object.assign(qbParams, p); return chain; }),
+          andWhere: jest.fn((_c: string, p?: Record<string, unknown>) => { if (p) Object.assign(qbParams, p); return chain; }),
+          addSelect: jest.fn(() => chain),
+          getMany: jest.fn(() => repo.find()),
+        };
+        return chain;
+      }),
     };
     audit = { log: jest.fn().mockResolvedValue(undefined) };
     const module: TestingModule = await Test.createTestingModule({
@@ -73,7 +88,7 @@ describe('EmployeesService — PIN uniqueness & validation', () => {
     const res = await service.create({ ...base, storeId: 'store-1', pin: '1234' });
     expect(res.id).toBe('new-id');
     // confirm the uniqueness query was scoped to the creation store
-    expect(repo.find).toHaveBeenCalledWith({ where: { storeId: 'store-1', isActive: true } });
+    expect(repo.qbParams.storeId).toBe('store-1');
   });
 
   it('rejects an invalid PIN format (too short / non-numeric)', async () => {

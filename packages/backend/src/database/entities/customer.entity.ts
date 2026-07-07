@@ -43,7 +43,9 @@ export class CustomerEntity {
   storeId: string | null;
 
   // ── Wesley Club extensions ─────────────────────────────────
-  @Column({ name: 'password_hash', type: 'varchar', length: 100, nullable: true })
+  // select:false — never serialise the password hash. The login path opts in
+  // explicitly via .addSelect('c.passwordHash').
+  @Column({ name: 'password_hash', type: 'varchar', length: 100, nullable: true, select: false })
   passwordHash: string | null;
 
   @Column({ name: 'preferred_store_id', type: 'uuid', nullable: true })

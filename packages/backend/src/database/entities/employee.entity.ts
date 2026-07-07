@@ -27,7 +27,9 @@ export class EmployeeEntity {
   @Column()
   email: string;
 
-  @Column({ name: 'pin_hash' })
+  // select:false — the PIN hash must NEVER be serialised into an API response.
+  // Auth/verification paths that need it opt in explicitly via .addSelect('e.pinHash').
+  @Column({ name: 'pin_hash', select: false })
   pinHash: string;
 
   @Column({ name: 'qr_code', unique: true })

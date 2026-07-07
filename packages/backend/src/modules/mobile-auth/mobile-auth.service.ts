@@ -72,9 +72,13 @@ export class MobileAuthService {
   }
 
   async login(email: string, password: string) {
-    const customer = await this.customerRepo.findOne({
-      where: { email: email.toLowerCase().trim(), deletedAt: IsNull() } as any,
-    });
+    // passwordHash is select:false — opt in explicitly for the credential check.
+    const customer = await this.customerRepo
+      .createQueryBuilder('c')
+      .where('c.email = :email', { email: email.toLowerCase().trim() })
+      .andWhere('c.deletedAt IS NULL')
+      .addSelect('c.passwordHash')
+      .getOne();
     if (!customer || !customer.passwordHash) {
       throw new UnauthorizedException('Identifiants invalides');
     }

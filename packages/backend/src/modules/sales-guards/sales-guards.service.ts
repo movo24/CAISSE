@@ -3,6 +3,7 @@ import {
   Logger,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Brackets } from 'typeorm';
@@ -230,21 +231,40 @@ export class SalesGuardsService {
     return { byCode, bySeverity, total };
   }
 
-  async approveAnomaly(id: string, reviewerId: string): Promise<SaleAnomalyLogEntity> {
-    return this.transition(id, reviewerId, 'approved');
+  async approveAnomaly(
+    id: string,
+    reviewerId: string,
+    actorStoreId?: string,
+    actorRole?: string,
+  ): Promise<SaleAnomalyLogEntity> {
+    return this.transition(id, reviewerId, 'approved', actorStoreId, actorRole);
   }
 
-  async ignoreAnomaly(id: string, reviewerId: string): Promise<SaleAnomalyLogEntity> {
-    return this.transition(id, reviewerId, 'ignored');
+  async ignoreAnomaly(
+    id: string,
+    reviewerId: string,
+    actorStoreId?: string,
+    actorRole?: string,
+  ): Promise<SaleAnomalyLogEntity> {
+    return this.transition(id, reviewerId, 'ignored', actorStoreId, actorRole);
   }
 
   private async transition(
     id: string,
     reviewerId: string,
     next: AnomalyStatus,
+    actorStoreId?: string,
+    actorRole?: string,
   ): Promise<SaleAnomalyLogEntity> {
     const anomaly = await this.anomalyRepo.findOne({ where: { id } });
     if (!anomaly) throw new NotFoundException(`Anomaly ${id} not found`);
+    // Tenant scope: a non-admin reviewer may only act on their own store's
+    // anomalies (skipped when no actor context is supplied — internal calls).
+    if (actorStoreId && actorRole !== 'admin' && anomaly.storeId !== actorStoreId) {
+      throw new ForbiddenException(
+        "Accès refusé : cette anomalie appartient à un autre magasin.",
+      );
+    }
     if (anomaly.status !== 'detected') {
       throw new BadRequestException(
         `Anomaly ${id} is '${anomaly.status}', only 'detected' can transition`,
