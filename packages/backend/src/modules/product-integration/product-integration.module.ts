@@ -8,6 +8,7 @@ import { EmployeeEntity } from '../../database/entities/employee.entity';
 import { SaleLineItemEntity } from '../../database/entities/sale-line-item.entity';
 import { AuditModule } from '../audit/audit.module';
 import { ProductsModule } from '../products/products.module';
+import { EmployeeScoreModule } from '../employee-score/employee-score.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { ProductsModule } from '../products/products.module';
     ]),
     AuditModule,
     ProductsModule,
+    EmployeeScoreModule,
   ],
   controllers: [ProductIntegrationController],
   providers: [ProductIntegrationService],

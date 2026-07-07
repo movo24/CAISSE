@@ -42,6 +42,7 @@ function OnlineReturn({ onClose }: { onClose: () => void }) {
   const [lines, setLines] = useState<ReturnableLine[]>([]);
   const [qty, setQty] = useState<Record<string, number>>({});
   const [method, setMethod] = useState<'cash' | 'card' | 'store_credit'>('store_credit');
+  const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [createdCode, setCreatedCode] = useState<string | null>(null);
@@ -74,13 +75,14 @@ function OnlineReturn({ onClose }: { onClose: () => void }) {
   const submit = async () => {
     const items = lines.map((l) => ({ lineItemId: l.lineItemId, quantity: qty[l.lineItemId] || 0 })).filter((i) => i.quantity > 0);
     if (!items.length) { setErr('Sélectionnez au moins un article.'); return; }
+    if (reason.trim().length < 3) { setErr('Motif de remboursement obligatoire (min. 3 caractères).'); return; }
     setSubmitting(true); setErr(null);
     try {
       const idem = (crypto as any).randomUUID ? crypto.randomUUID() : `ret-${Date.now()}`;
-      const res = await returnsApi.create({ originalSaleId: sale.id, items, refundMethod: method }, idem);
+      const res = await returnsApi.create({ originalSaleId: sale.id, items, refundMethod: method, reason: reason.trim() }, idem);
       setCreatedCode(res.data?.code || 'AV');
-      // Fait objectif signé : remboursement créé (session courante).
-      usePOSStore.getState().logScoreEvent('REFUND_CREATED', `Avoir ${res.data?.code || ''} · ${method}`);
+      // Fait objectif signé : remboursement AVEC motif (session courante).
+      usePOSStore.getState().logScoreEvent('REFUND_WITH_REASON', `Avoir ${res.data?.code || ''} · ${method} · ${reason.trim()}`);
     } catch (e: any) { setErr(e.response?.data?.message || 'Échec du retour.'); }
     finally { setSubmitting(false); }
   };
@@ -103,6 +105,7 @@ function OnlineReturn({ onClose }: { onClose: () => void }) {
           rows={lines.map((l) => ({ key: l.lineItemId, name: l.productName, hint: `retournable : ${l.returnableQty}/${l.soldQty}`, max: l.returnableQty, value: qty[l.lineItemId] ?? 0 }))}
           onQty={(k, v) => setQty({ ...qty, [k]: v })}
           method={method} onMethod={setMethod}
+          reason={reason} onReason={setReason}
           total={refundTotal} submitting={submitting}
           onBack={() => { setSale(null); setLines([]); }} onSubmit={submit}
         />
@@ -120,6 +123,7 @@ function OfflineReturn({ onClose }: { onClose: () => void }) {
   const [ticket, setTicket] = useState<any | null>(null);
   const [qty, setQty] = useState<Record<string, number>>({});
   const [method, setMethod] = useState<'cash' | 'card' | 'store_credit'>('store_credit');
+  const [reason, setReason] = useState('');
   const [queued, setQueued] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -138,13 +142,15 @@ function OfflineReturn({ onClose }: { onClose: () => void }) {
       .map((it: any) => ({ ean: it.ean, quantity: qty[it.ean] || 0 }))
       .filter((i: any) => i.quantity > 0);
     if (!items.length) { setErr('Sélectionnez au moins un article.'); return; }
+    if (reason.trim().length < 3) { setErr('Motif de remboursement obligatoire (min. 3 caractères).'); return; }
     enqueue({
       type: 'credit_note_return',
-      payload: { ticketNumber: ticket.ticketNumber, items, refundMethod: method },
+      payload: { ticketNumber: ticket.ticketNumber, items, refundMethod: method, reason: reason.trim() },
       cashierId: employee?.id || 'unknown',
       cashierName: employee ? `${employee.firstName} ${employee.lastName}` : 'Caissier',
       storeId: employee?.storeId || 'unknown',
     });
+    usePOSStore.getState().logScoreEvent('REFUND_WITH_REASON', `Retour hors-ligne mis en file · ${reason.trim()}`);
     setQueued(true);
   };
 
@@ -172,6 +178,7 @@ function OfflineReturn({ onClose }: { onClose: () => void }) {
           rows={(ticket.items || []).map((it: any) => ({ key: it.ean, name: it.name, hint: `vendu : ${it.quantity}`, max: it.quantity, value: qty[it.ean] ?? 0 }))}
           onQty={(k, v) => setQty({ ...qty, [k]: v })}
           method={method} onMethod={setMethod}
+          reason={reason} onReason={setReason}
           total={refundTotal} submitting={false} submitLabel="Mettre en file"
           onBack={() => setTicket(null)} onSubmit={submit}
         />
@@ -217,9 +224,12 @@ function ItemPicker(props: {
   onQty: (key: string, v: number) => void;
   method: 'cash' | 'card' | 'store_credit';
   onMethod: (m: 'cash' | 'card' | 'store_credit') => void;
+  reason: string;
+  onReason: (r: string) => void;
   total: number; submitting: boolean; submitLabel?: string;
   onBack: () => void; onSubmit: () => void;
 }) {
+  const reasonOk = props.reason.trim().length >= 3;
   return (
     <>
       <p className="text-sm text-gray-500 mb-3">Ticket <strong>{props.ticketNumber}</strong></p>
@@ -239,11 +249,20 @@ function ItemPicker(props: {
         <option value="cash">Espèces</option>
         <option value="card">Carte</option>
       </select>
+      {/* Motif OBLIGATOIRE — tracé dans l'avoir + l'audit, pas juste visuel. */}
+      <label className="block text-xs font-semibold text-gray-700 mb-1">Motif du remboursement <span className="text-red-500">*</span></label>
+      <input type="text" value={props.reason} onChange={(e) => props.onReason(e.target.value)}
+        placeholder="Ex : article défectueux, erreur de caisse, client insatisfait…"
+        className="w-full mb-1 px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400/40" />
+      {!reasonOk && <p className="text-[11px] text-gray-400 mb-3">Motif obligatoire (min. 3 caractères).</p>}
+      {reasonOk && <div className="mb-3" />}
       <div className="flex items-center justify-between pt-4 border-t border-gray-100">
         <div><p className="text-xs text-gray-500">Montant</p><p className="text-xl font-bold text-gray-900">{(props.total / 100).toFixed(2)} €</p></div>
         <div className="flex gap-3">
           <button onClick={props.onBack} className="px-5 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-500">Retour</button>
-          <button onClick={props.onSubmit} disabled={props.submitting || props.total <= 0} className="px-6 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold disabled:opacity-50 flex items-center gap-2">
+          <button onClick={props.onSubmit} disabled={props.submitting || props.total <= 0 || !reasonOk}
+            title={!reasonOk ? 'Renseignez un motif' : undefined}
+            className="px-6 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold disabled:opacity-50 flex items-center gap-2">
             {props.submitting && <Loader2 size={14} className="animate-spin" />} {props.submitLabel || 'Valider'}
           </button>
         </div>

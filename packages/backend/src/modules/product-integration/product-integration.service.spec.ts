@@ -8,6 +8,7 @@ import { EmployeeEntity } from '../../database/entities/employee.entity';
 import { SaleLineItemEntity } from '../../database/entities/sale-line-item.entity';
 import { AuditService } from '../audit/audit.service';
 import { ProductsService } from '../products/products.service';
+import { EmployeeScoreService } from '../employee-score/employee-score.service';
 import { BusinessError } from '../../common/errors/business-error';
 
 const STORE = 'store-1';
@@ -17,6 +18,7 @@ const ADMIN = { employeeId: 'emp-admin', role: 'admin' };
 
 describe('ProductIntegrationService', () => {
   let service: ProductIntegrationService;
+  let scoreService: any;
   let requestRepo: any;
   let productRepo: any;
   let employeeRepo: any;
@@ -100,6 +102,7 @@ describe('ProductIntegrationService', () => {
       getOrCreateBrand: jest.fn().mockResolvedValue({ id: 'brand-1' }),
       getOrCreateSupplier: jest.fn().mockResolvedValue({ id: 'sup-1' }),
     };
+    scoreService = { logEvent: jest.fn().mockResolvedValue({}) };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -110,6 +113,7 @@ describe('ProductIntegrationService', () => {
         { provide: getRepositoryToken(SaleLineItemEntity), useValue: saleLineRepo },
         { provide: AuditService, useValue: auditService },
         { provide: ProductsService, useValue: productsService },
+        { provide: EmployeeScoreService, useValue: scoreService },
       ],
     }).compile();
 
@@ -181,7 +185,7 @@ describe('ProductIntegrationService', () => {
       );
     });
 
-    it('bloque la demande si le code-barres existe déjà (anti-doublon)', async () => {
+    it('bloque la demande si le code-barres existe déjà (anti-doublon) + score PRODUCT_DUPLICATE_BLOCKED', async () => {
       productRepo.findOne.mockResolvedValue(existingProduct);
 
       await expect(
@@ -190,6 +194,17 @@ describe('ProductIntegrationService', () => {
           source: 'inventory',
         }),
       ).rejects.toMatchObject({ code: 'PRODUCT_BARCODE_ALREADY_EXISTS' });
+
+      expect(scoreService.logEvent).toHaveBeenCalledWith(
+        expect.objectContaining({ eventType: 'PRODUCT_DUPLICATE_BLOCKED' }),
+      );
+    });
+
+    it('journalise PRODUCT_CREATION_REQUESTED_FROM_POS pour une demande caisse', async () => {
+      await service.createRequest(STORE, CASHIER.employeeId, { barcode: '9990000000002', source: 'pos' });
+      expect(scoreService.logEvent).toHaveBeenCalledWith(
+        expect.objectContaining({ eventType: 'PRODUCT_CREATION_REQUESTED_FROM_POS' }),
+      );
     });
 
     it('ne duplique pas une demande déjà en attente pour le même code-barres', async () => {
