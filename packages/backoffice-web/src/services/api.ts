@@ -574,4 +574,24 @@ export const salesGuardsApi = {
   ignore: (id: string) => api.post(`/sales-guards/anomalies/${id}/ignore`),
 };
 
+// ---------------------------------------------------------------------------
+// POS sessions & écarts caisse (manager/admin, lecture) — source probante :
+// chaque session porte employé + terminal + comptage (attendu/compté/écart
+// dérivés serveur, jamais déclarés par le client).
+// ---------------------------------------------------------------------------
+export const posSessionsApi = {
+  list: (params?: { limit?: number; activeOnly?: boolean; withCashCountOnly?: boolean; storeId?: string }) =>
+    api.get('/pos-sessions', { params }),
+};
+
+// ---------------------------------------------------------------------------
+// Score employé — alertes manager (faits importants récents) + score par employé.
+// ---------------------------------------------------------------------------
+export const employeeScoreApi = {
+  alerts: (sinceHours?: number) => api.get('/employee-score/alerts', { params: { sinceHours } }),
+  employee: (employeeId: string, period: 'day' | 'week' | 'year' = 'day') =>
+    api.get(`/employee-score/employee/${employeeId}`, { params: { period } }),
+  employeeDetail: (employeeId: string) => api.get(`/employee-score/employee/${employeeId}/detail`),
+};
+
 export default api;

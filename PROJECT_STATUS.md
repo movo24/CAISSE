@@ -65,11 +65,14 @@
 **Livré (suite — comptage caisse)**
 - [x] **Cash-count à la fermeture de session** (migration additive/réversible `1749`, champs cash nullable sur `pos_sessions`) : **attendu SERVEUR** (fond d'ouverture + ventes espèces de la session, dérivées via `session_id` — jamais déclarées par le client) **vs compté RÉEL** (seule valeur saisie), écart = compté − attendu. Rattaché à une vraie session + terminal + employé. Fond d'ouverture optionnel (null = inconnu, tracé). Écart matériel → événement de score `CASH_DIFFERENCE_*` (via `classifyCashDifference`, seuils env) + `CASH_COUNT_COMPLETED`, rattachés à la session. Audit `pos_session_cash_counted` décomposant attendu/compté/écart. Fermeture SANS comptage = comportement inchangé (résilience). Ne compte que les legs espèces capturés, hors ventes annulées. **6 specs** d'intégration, suite backend **858** verte ; API POS `close(sessionId, countedCash)` / `open(openingCash)` câblée.
 
+**Livré (suite — UI comptage & manager)**
+- [x] **Modale POS de comptage** à la fermeture (`CashCountModal`) : le caissier saisit UNIQUEMENT le compté (€→centimes) ; l'attendu/écart restent calculés serveur, jamais affichés comme modifiables ni envoyés. Option « Fermer sans compter ». `posStore.logout(counted)` → `close(sessionId, counted)`. Specs pos-desktop (source-invariants + close forwards counted), suite **173** verte.
+- [x] **UI backoffice manager** (`/cash-sessions`, `CashSessionsPage`, manager/admin) : sessions récentes (caissier, terminal, ouverture/fermeture, attendu/compté/écart couleur), KPI (sessions comptées, écart cumulé, écarts matériels), file d'alertes score (72 h). Endpoint backend `GET /pos-sessions` (manager/admin, tenant-scoped) + `posSessionsApi`/`employeeScoreApi.alerts`. Suite backend **859** verte.
+
 **Reste à faire (étapes suivantes, non bloquantes)**
-- [ ] **UI POS comptage** : modale de saisie du montant compté à la fermeture (l'API et la dérivation backend sont prêtes).
 - [ ] **Remboursements/retraits espèces** non déduits de l'attendu (retours pas encore rattachés à la session) — extension future.
 - [ ] **Fin de shift TW24** non parsée (`normalizeShifts` ne lit que `startsAt`) → nécessaire pour `*_AFTER_SHIFT_END`.
-- [ ] UI backoffice : file d'alertes manager + tableau scores équipe.
+- [ ] **Tableau scores équipe** (liste employés + score jour/semaine) : nécessite un endpoint d'agrégation par magasin (les alertes + score/employé existent déjà).
 
 ## Bloqués réels (⛔) — préparés, attente owner/accès
 - **D6** Rotation token Railway (accès Railway = owner)
