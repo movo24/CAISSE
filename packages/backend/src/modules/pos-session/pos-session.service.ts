@@ -260,7 +260,7 @@ export class PosSessionService {
     sessionId: string,
     storeId: string,
     employeeId: string,
-    options: { countedCashMinorUnits?: number } = {},
+    options: { countedCashMinorUnits?: number; skipReason?: string } = {},
   ): Promise<PosSessionEntity> {
     const session = await this.repo.findOne({ where: { id: sessionId } });
     if (!session) {
@@ -287,6 +287,7 @@ export class PosSessionService {
     // Le compté est la seule valeur venant du client ; l'attendu et l'écart
     // sont dérivés côté serveur des ventes rattachées à cette session.
     const counted = options.countedCashMinorUnits;
+    const skipReason = options.skipReason?.trim();
     if (typeof counted === 'number') {
       const cashSales = await this.computeSessionCashSales(session.id);
       const opening = session.openingCashMinorUnits ?? 0;
@@ -296,17 +297,65 @@ export class PosSessionService {
       session.countedCashMinorUnits = counted;
       session.cashDifferenceMinorUnits = counted - expected;
       session.cashCountedAt = new Date();
+    } else if (skipReason) {
+      // Fermeture explicite SANS comptage : encadrée (motif obligatoire),
+      // jamais une échappatoire muette. La résilience reste : une fermeture
+      // silencieuse (logout/abandon) n'envoie pas de motif et n'entre pas ici.
+      session.cashCountSkippedReason = skipReason;
+      session.cashCountSkippedAt = new Date();
     }
 
     const saved = await this.repo.save(session);
     this.logger.log(`POS session closed: ${saved.id}`);
     await this.observeSession(saved, 'session.closed');
 
-    // Score + audit du comptage (best-effort, jamais bloquant).
+    // Score + audit (best-effort, jamais bloquant).
     if (typeof counted === 'number') {
       await this.observeCashCount(saved);
+    } else if (skipReason) {
+      await this.observeCashCountSkipped(saved);
     }
     return saved;
+  }
+
+  /**
+   * Journalise une fermeture sans comptage MOTIVÉE : audit
+   * `pos_session_cash_count_skipped` + événement de score CASH_COUNT_SKIPPED
+   * (rattaché session/terminal/employé, alerte manager). Best-effort.
+   */
+  private async observeCashCountSkipped(session: PosSessionEntity): Promise<void> {
+    if (this.audit) {
+      try {
+        await this.audit.log({
+          storeId: session.storeId,
+          employeeId: session.employeeId,
+          action: 'pos_session_cash_count_skipped',
+          entityType: 'pos_session',
+          entityId: session.id,
+          details: {
+            terminalId: session.terminalId,
+            reason: session.cashCountSkippedReason,
+            at: new Date().toISOString(),
+          },
+        });
+      } catch (e: any) {
+        this.logger.warn(`[audit cash_skip] ${e?.message}`);
+      }
+    }
+    if (this.scoreService) {
+      await this.scoreService
+        .logEvent({
+          employeeId: session.employeeId,
+          storeId: session.storeId,
+          eventType: 'CASH_COUNT_SKIPPED',
+          terminalId: session.terminalId,
+          sessionId: session.id,
+          createdBy: session.employeeId,
+          source: 'pos',
+          reason: session.cashCountSkippedReason ?? undefined,
+        })
+        .catch((e: any) => this.logger.warn(`[score cash_skip] ${e?.message}`));
+    }
   }
 
   /**

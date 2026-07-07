@@ -18,8 +18,17 @@ describe('CashCountModal — compté uniquement, attendu serveur', () => {
     expect(src).toMatch(/logout\(centimes\)/);
   });
 
-  it('permet une fermeture sans comptage (logout sans montant)', () => {
-    expect(src).toMatch(/logout\(\);/);
+  it('exige un motif (≥ 3 car.) pour fermer sans compter', () => {
+    expect(src).toMatch(/skipReason\.trim\(\)\.length >= 3/);
+    expect(src).toMatch(/obligatoire pour fermer sans compter/i);
+  });
+
+  it('transmet le motif de skip au serveur (logout(undefined, motif))', () => {
+    expect(src).toMatch(/logout\(undefined, skipReason\.trim\(\)\)/);
+  });
+
+  it('désactive la confirmation de skip sans motif valide', () => {
+    expect(src).toMatch(/disabled=\{skipMode && !skipReasonOk\}/);
   });
 
   it('ne contient AUCUN champ de saisie « attendu »/expected éditable', () => {

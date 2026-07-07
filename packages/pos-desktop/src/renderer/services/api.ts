@@ -199,12 +199,16 @@ export const posSessionApi = {
     ),
   // countedCashMinorUnits (optionnel) : montant espèces compté physiquement. Le
   // backend dérive l'attendu (fond + ventes espèces de la session) et l'écart.
-  close: (sessionId: string, countedCashMinorUnits?: number) =>
-    api.post(
-      `/pos-sessions/${sessionId}/close`,
-      typeof countedCashMinorUnits === 'number' ? { countedCashMinorUnits } : {},
-      { headers: { 'X-Terminal-Id': currentTerminalId() } },
-    ),
+  // skipReason (optionnel) : motif d'une fermeture explicite SANS comptage —
+  // encadre la résilience (audité + scoré CASH_COUNT_SKIPPED), jamais muet.
+  close: (sessionId: string, countedCashMinorUnits?: number, skipReason?: string) => {
+    const body: Record<string, unknown> = {};
+    if (typeof countedCashMinorUnits === 'number') body.countedCashMinorUnits = countedCashMinorUnits;
+    else if (skipReason) body.skipReason = skipReason;
+    return api.post(`/pos-sessions/${sessionId}/close`, body, {
+      headers: { 'X-Terminal-Id': currentTerminalId() },
+    });
+  },
   active: () =>
     api.get('/pos-sessions/active', { headers: { 'X-Terminal-Id': currentTerminalId() } }),
 };

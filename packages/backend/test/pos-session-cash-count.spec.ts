@@ -147,6 +147,44 @@ describe('POS session cash count (attendu serveur vs compté réel)', () => {
     expect(closed.cashDifferenceMinorUnits).toBe(0);
   });
 
+  it('a MOTIVATED skip records CASH_COUNT_SKIPPED (reason persisted + scored)', async () => {
+    const storeId = await seedStore();
+    const empId = uuidv4();
+    const terminal = 'TERMINAL 20';
+    const session = await sessions.openSession(storeId, empId, SNAP, { terminalId: terminal, openingCashMinorUnits: 5000 });
+    await sales.createSale(storeId, empId, cashSale(0) as any, SNAP, undefined, terminal);
+
+    const closed = await sessions.closeSession(session.id, storeId, empId, { skipReason: 'tiroir relevé par le responsable' });
+    expect(closed.isActive).toBe(false);
+    expect(closed.cashCountSkippedReason).toBe('tiroir relevé par le responsable');
+    expect(closed.cashCountSkippedAt).toBeTruthy();
+    expect(closed.countedCashMinorUnits).toBeNull(); // pas de comptage
+    expect(closed.cashDifferenceMinorUnits).toBeNull();
+
+    const evs = await scoreEvents.find({ where: { sessionId: session.id } });
+    const skip = evs.find((e) => e.eventType === 'CASH_COUNT_SKIPPED');
+    expect(skip).toBeTruthy();
+    expect(skip!.terminalId).toBe(terminal);
+    expect(skip!.employeeId).toBe(empId);
+    expect(skip!.pointsDelta).toBeLessThan(0); // fait pénalisant (motivé mais tracé)
+  });
+
+  it('a SILENT close (no count, no reason) records no cash/skip event (résilience)', async () => {
+    const storeId = await seedStore();
+    const empId = uuidv4();
+    const terminal = 'TERMINAL 21';
+    const session = await sessions.openSession(storeId, empId, SNAP, { terminalId: terminal, openingCashMinorUnits: 5000 });
+    await sales.createSale(storeId, empId, cashSale(0) as any, SNAP, undefined, terminal);
+
+    const closed = await sessions.closeSession(session.id, storeId, empId);
+    expect(closed.cashCountSkippedReason).toBeNull();
+    expect(closed.cashCountSkippedAt).toBeNull();
+
+    const evs = await scoreEvents.find({ where: { sessionId: session.id } });
+    expect(evs.some((e) => e.eventType === 'CASH_COUNT_SKIPPED')).toBe(false);
+    expect(evs.some((e) => e.eventType.startsWith('CASH_DIFFERENCE_'))).toBe(false);
+  });
+
   it('a close WITHOUT a count leaves cash fields null (resilience unchanged)', async () => {
     const storeId = await seedStore();
     const empId = uuidv4();

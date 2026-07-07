@@ -202,9 +202,10 @@ interface POSState {
   /**
    * Ferme la session et déconnecte. `countedCashMinorUnits` (optionnel) = le
    * SEUL montant saisi par le caissier ; l'attendu et l'écart sont calculés
-   * côté serveur, jamais envoyés par le client.
+   * côté serveur, jamais envoyés par le client. `skipReason` (optionnel) =
+   * motif obligatoire d'une fermeture explicite SANS comptage.
    */
-  logout: (countedCashMinorUnits?: number) => void;
+  logout: (countedCashMinorUnits?: number, skipReason?: string) => void;
   addToCart: (item: Omit<CartItem, 'quantity' | 'discountMinorUnits'>) => void;
   removeFromCart: (productId: string) => void;
   updateQuantity: (productId: string, quantity: number) => void;
@@ -332,13 +333,14 @@ export const usePOSStore = create<POSState>((set, get) => ({
     }
   },
 
-  logout: (countedCashMinorUnits?: number) => {
+  logout: (countedCashMinorUnits?: number, skipReason?: string) => {
     const { posSession } = get();
     if (posSession?.id) {
       // Le compté est la seule valeur transmise ; l'attendu/écart sont dérivés
-      // côté serveur. Best-effort : une panne réseau ne bloque pas la fermeture.
+      // côté serveur. skipReason encadre une fermeture explicite sans comptage.
+      // Best-effort : une panne réseau ne bloque pas la fermeture.
       posSessionApi
-        .close(posSession.id, countedCashMinorUnits)
+        .close(posSession.id, countedCashMinorUnits, skipReason)
         .catch(() => console.warn('[POS] Session close failed'));
     }
     authApi.logout().catch(() => console.warn('[POS] Server-side logout failed'));

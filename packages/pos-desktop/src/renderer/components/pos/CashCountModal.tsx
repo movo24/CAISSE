@@ -24,8 +24,12 @@ export function CashCountModal() {
 
   const [value, setValue] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [skipMode, setSkipMode] = useState(false);
+  const [skipReason, setSkipReason] = useState('');
 
   if (!open) return null;
+
+  const skipReasonOk = skipReason.trim().length >= 3;
 
   /** Effets de bord communs à toute fermeture explicite (sync, event, pointage). */
   const runCloseSideEffects = () => {
@@ -61,8 +65,15 @@ export function CashCountModal() {
   };
 
   const handleSkip = () => {
+    // Étape 1 : révèle le champ motif. Étape 2 : confirme avec un motif valide.
+    if (!skipMode) { setSkipMode(true); return; }
+    if (!skipReasonOk) {
+      setError('Un motif (min. 3 caractères) est obligatoire pour fermer sans compter.');
+      return;
+    }
     runCloseSideEffects();
-    logout(); // fermeture sans comptage → champs cash nuls côté serveur
+    // Fermeture encadrée : le motif est audité + scoré (CASH_COUNT_SKIPPED).
+    logout(undefined, skipReason.trim());
   };
 
   return (
@@ -108,20 +119,46 @@ export function CashCountModal() {
           {posSession?.terminalId && (
             <p className="text-[11px] text-pos-muted">Terminal : {posSession.terminalId}</p>
           )}
+
+          {skipMode && (
+            <label className="block">
+              <span className="text-xs font-semibold text-pos-danger uppercase tracking-wide">
+                Motif de la fermeture sans comptage (obligatoire)
+              </span>
+              <textarea
+                autoFocus
+                rows={2}
+                value={skipReason}
+                onChange={(e) => { setSkipReason(e.target.value); setError(null); }}
+                placeholder="Ex : tiroir déjà relevé par le responsable, incident technique…"
+                className="mt-1 w-full rounded-xl border border-pos-danger/40 px-3 py-2 text-sm text-pos-text focus:outline-none focus:ring-2 focus:ring-pos-danger/30"
+              />
+              <span className="mt-1 block text-[11px] text-pos-muted">
+                Une fermeture sans comptage est tracée et signalée au responsable.
+              </span>
+            </label>
+          )}
         </div>
 
         <div className="px-5 py-4 border-t border-pos-border/30 space-y-2">
-          <button
-            onClick={handleConfirm}
-            className="w-full flex items-center justify-center gap-2 rounded-xl bg-pos-accent px-4 py-2.5 text-sm font-semibold text-white hover:opacity-90 transition-opacity"
-          >
-            <LogOut size={15} /> Valider et fermer
-          </button>
+          {!skipMode && (
+            <button
+              onClick={handleConfirm}
+              className="w-full flex items-center justify-center gap-2 rounded-xl bg-pos-accent px-4 py-2.5 text-sm font-semibold text-white hover:opacity-90 transition-opacity"
+            >
+              <LogOut size={15} /> Valider et fermer
+            </button>
+          )}
           <button
             onClick={handleSkip}
-            className="w-full rounded-xl px-4 py-2 text-sm font-medium text-pos-muted hover:bg-pos-subtle transition-colors"
+            disabled={skipMode && !skipReasonOk}
+            className={`w-full rounded-xl px-4 py-2 text-sm font-medium transition-colors ${
+              skipMode
+                ? 'bg-pos-danger text-white hover:opacity-90 disabled:opacity-40'
+                : 'text-pos-muted hover:bg-pos-subtle'
+            }`}
           >
-            Fermer sans compter
+            {skipMode ? 'Confirmer la fermeture sans comptage' : 'Fermer sans compter'}
           </button>
         </div>
       </div>
