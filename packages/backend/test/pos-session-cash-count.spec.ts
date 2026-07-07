@@ -164,6 +164,31 @@ describe('POS session cash count (attendu serveur vs compté réel)', () => {
     expect(evs.some((e) => e.eventType.startsWith('CASH_'))).toBe(false);
   });
 
+  it('listSessions exposes the counted session (manager read) and filters by cash count', async () => {
+    const storeId = await seedStore();
+    const empId = uuidv4();
+    const terminal = 'TERMINAL 08';
+    const session = await sessions.openSession(storeId, empId, SNAP, { terminalId: terminal, openingCashMinorUnits: 1000 });
+    await sales.createSale(storeId, empId, cashSale(0) as any, SNAP, undefined, terminal);
+    await sessions.closeSession(session.id, storeId, empId, { countedCashMinorUnits: 1400 });
+
+    const all = await sessions.listSessions(storeId);
+    const row = all.find((s) => s.id === session.id)!;
+    expect(row).toBeTruthy();
+    expect(row.expectedCashMinorUnits).toBe(1500);
+    expect(row.countedCashMinorUnits).toBe(1400);
+    expect(row.cashDifferenceMinorUnits).toBe(-100);
+
+    const counted = await sessions.listSessions(storeId, { withCashCountOnly: true });
+    expect(counted.every((s) => s.cashCountedAt != null)).toBe(true);
+    expect(counted.some((s) => s.id === session.id)).toBe(true);
+
+    // Tenant scoping: another store sees nothing of this one.
+    const otherStore = await seedStore();
+    const otherList = await sessions.listSessions(otherStore);
+    expect(otherList.some((s) => s.id === session.id)).toBe(false);
+  });
+
   it('only counts cash legs — a card sale does not inflate the expected cash', async () => {
     const storeId = await seedStore();
     const empId = uuidv4();

@@ -150,6 +150,8 @@ interface POSState {
   posSession: PosSession | null;
   /** Demande de verrouillage explicite (bouton « Changer de caissier »). */
   lockRequested: boolean;
+  /** Modale de comptage caisse ouverte (fermeture explicite de la session). */
+  cashCountOpen: boolean;
 
   // Cart
   cartItems: CartItem[];
@@ -194,7 +196,15 @@ interface POSState {
   logScoreEvent: (eventType: string, reason?: string) => void;
   /** Demande/annule un verrouillage explicite de la caisse. */
   requestLock: (v: boolean) => void;
-  logout: () => void;
+  /** Ouvre/ferme la modale de comptage caisse (fermeture explicite). */
+  openCashCount: () => void;
+  closeCashCount: () => void;
+  /**
+   * Ferme la session et déconnecte. `countedCashMinorUnits` (optionnel) = le
+   * SEUL montant saisi par le caissier ; l'attendu et l'écart sont calculés
+   * côté serveur, jamais envoyés par le client.
+   */
+  logout: (countedCashMinorUnits?: number) => void;
   addToCart: (item: Omit<CartItem, 'quantity' | 'discountMinorUnits'>) => void;
   removeFromCart: (productId: string) => void;
   updateQuantity: (productId: string, quantity: number) => void;
@@ -232,6 +242,7 @@ export const usePOSStore = create<POSState>((set, get) => ({
   accessToken: null,
   posSession: null,
   lockRequested: false,
+  cashCountOpen: false,
   cartItems: [],
   customerQrCode: null,
   customer: null,
@@ -266,6 +277,9 @@ export const usePOSStore = create<POSState>((set, get) => ({
   setPosSession: (session) => set({ posSession: session }),
 
   requestLock: (v) => set({ lockRequested: v }),
+
+  openCashCount: () => set({ cashCountOpen: true }),
+  closeCashCount: () => set({ cashCountOpen: false }),
 
   logScoreEvent: (eventType, reason) => {
     const { posSession } = get();
@@ -318,10 +332,14 @@ export const usePOSStore = create<POSState>((set, get) => ({
     }
   },
 
-  logout: () => {
+  logout: (countedCashMinorUnits?: number) => {
     const { posSession } = get();
     if (posSession?.id) {
-      posSessionApi.close(posSession.id).catch(() => console.warn('[POS] Session close failed'));
+      // Le compté est la seule valeur transmise ; l'attendu/écart sont dérivés
+      // côté serveur. Best-effort : une panne réseau ne bloque pas la fermeture.
+      posSessionApi
+        .close(posSession.id, countedCashMinorUnits)
+        .catch(() => console.warn('[POS] Session close failed'));
     }
     authApi.logout().catch(() => console.warn('[POS] Server-side logout failed'));
     localStorage.removeItem('accessToken');
@@ -331,6 +349,7 @@ export const usePOSStore = create<POSState>((set, get) => ({
       employee: null,
       accessToken: null,
       posSession: null,
+      cashCountOpen: false,
       cartItems: [],
       customer: null,
       customerQrCode: null,

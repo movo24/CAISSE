@@ -32,6 +32,7 @@ import { BrandsSuppliersPage } from './pages/BrandsSuppliersPage';
 import { PromoCodesPage } from './pages/PromoCodesPage';
 import { PendingPaymentsPage } from './pages/PendingPaymentsPage';
 import { InventoryVariancePage } from './pages/InventoryVariancePage';
+import { CashSessionsPage } from './pages/CashSessionsPage';
 import ProductIntegrationPage from './pages/ProductIntegrationPage';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import './styles/globals.css';
@@ -90,6 +91,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             <Route path="/performance" element={<ProductPerformancePage />} />
 
             {/* Couche 5: Analyse */}
+            <Route path="/cash-sessions" element={<CashSessionsPage />} />
             <Route path="/reports" element={<ReportsPage />} />
             <Route path="/sales-guards" element={<SalesGuardsPage />} />
             <Route path="/returns" element={<ReturnsPage />} />

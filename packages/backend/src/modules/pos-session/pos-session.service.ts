@@ -403,4 +403,24 @@ export class PosSessionService {
       where: { storeId, terminalId, isActive: true },
     });
   }
+
+  /**
+   * Liste les sessions récentes d'un magasin (lecture manager/admin) — la source
+   * probante des écarts caisse : chaque ligne porte l'employé, le terminal, les
+   * horodatages et le comptage (attendu/compté/écart, dérivés serveur). Tenant-
+   * scoped : le storeId vient de `req.tenantStoreId`/JWT, jamais du client.
+   */
+  async listSessions(
+    storeId: string,
+    opts: { limit?: number; activeOnly?: boolean; withCashCountOnly?: boolean } = {},
+  ): Promise<PosSessionEntity[]> {
+    const qb = this.repo
+      .createQueryBuilder('s')
+      .where('s.store_id = :storeId', { storeId })
+      .orderBy('s.opened_at', 'DESC')
+      .take(Math.min(opts.limit ?? 100, 500));
+    if (opts.activeOnly) qb.andWhere('s.is_active = true');
+    if (opts.withCashCountOnly) qb.andWhere('s.cash_counted_at IS NOT NULL');
+    return qb.getMany();
+  }
 }

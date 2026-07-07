@@ -4,6 +4,7 @@ import {
   Get,
   Body,
   Param,
+  Query,
   Headers,
   Request,
   UseGuards,
@@ -12,6 +13,7 @@ import {
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiHeader } from '@nestjs/swagger';
 
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { RolesGuard, Roles } from '../../common/guards/roles.guard';
 import { PosSessionService } from './pos-session.service';
 import { OpenSessionDto } from './dto/open-session.dto';
 import { CloseSessionDto } from './dto/close-session.dto';
@@ -71,6 +73,30 @@ export class PosSessionController {
       req.user.employeeId,
       { countedCashMinorUnits: dto?.countedCashMinorUnits },
     );
+  }
+
+  @Get()
+  @Roles('admin', 'manager')
+  @UseGuards(RolesGuard)
+  @ApiOperation({
+    summary:
+      'List recent POS sessions for the store (manager/admin). Source probante des écarts caisse : ' +
+      'employé, terminal, horodatages, comptage (attendu/compté/écart dérivés serveur).',
+  })
+  list(
+    @Request() req: any,
+    @Query('limit') limit?: string,
+    @Query('activeOnly') activeOnly?: string,
+    @Query('withCashCountOnly') withCashCountOnly?: string,
+    @Query('storeId') queryStoreId?: string,
+  ) {
+    // Admin peut cibler un magasin via ?storeId= ; sinon magasin du JWT.
+    const storeId = req.user.role === 'admin' && queryStoreId ? queryStoreId : req.user.storeId;
+    return this.service.listSessions(storeId, {
+      limit: limit ? parseInt(limit, 10) : undefined,
+      activeOnly: activeOnly === 'true',
+      withCashCountOnly: withCashCountOnly === 'true',
+    });
   }
 
   @Get('active')

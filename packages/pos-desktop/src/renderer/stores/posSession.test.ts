@@ -15,7 +15,7 @@ vi.mock('../services/api', () => ({
   // Wrappers always return a promise so `.then/.catch` in the store are safe.
   posSessionApi: {
     open: () => Promise.resolve(open()),
-    close: (id: string) => Promise.resolve(close(id)),
+    close: (id: string, counted?: number) => Promise.resolve(close(id, counted)),
     active: () => Promise.resolve(active()),
   },
   employeeScoreApi: { logEvent: (d: any) => Promise.resolve(logEvent(d)) },
@@ -58,9 +58,15 @@ describe('POS session lifecycle — une caisse appartient à un caissier', () =>
   it('closes the POS session on logout and clears identity', () => {
     usePOSStore.setState({ employee: emp as any, accessToken: 'jwt', posSession: { id: 'sess-1', openedAt: 'x', terminalId: null } });
     usePOSStore.getState().logout();
-    expect(close).toHaveBeenCalledWith('sess-1');
+    expect(close).toHaveBeenCalledWith('sess-1', undefined);
     expect(usePOSStore.getState().employee).toBeNull();
     expect(usePOSStore.getState().posSession).toBeNull();
+  });
+
+  it('logout forwards the counted cash to the close call (attendu resté serveur)', () => {
+    usePOSStore.setState({ employee: emp as any, accessToken: 'jwt', posSession: { id: 'sess-1', openedAt: 'x', terminalId: null } });
+    usePOSStore.getState().logout(15240); // 152,40 € comptés
+    expect(close).toHaveBeenCalledWith('sess-1', 15240);
   });
 
   it('switchEmployee closes the old session, opens a new one, logs EMPLOYEE_SWITCHED (no silent switch)', async () => {
@@ -69,7 +75,7 @@ describe('POS session lifecycle — une caisse appartient à un caissier', () =>
 
     await usePOSStore.getState().switchEmployee(emp2 as any, 'jwt2');
 
-    expect(close).toHaveBeenCalledWith('sess-1');           // ancienne session fermée
+    expect(close).toHaveBeenCalledWith('sess-1', undefined); // ancienne session fermée
     expect(open).toHaveBeenCalled();                         // nouvelle session ouverte
     expect(usePOSStore.getState().employee?.id).toBe('emp-2'); // identité basculée
     expect(usePOSStore.getState().posSession?.id).toBe('sess-2');
