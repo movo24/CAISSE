@@ -4,6 +4,7 @@ import { Repository, Between } from 'typeorm';
 import { EmployeeScoreEventEntity } from '../../database/entities/employee-score-event.entity';
 import { EmployeeScoreRuleEntity } from '../../database/entities/employee-score-rule.entity';
 import { EmployeeScoreDailyEntity } from '../../database/entities/employee-score-daily.entity';
+import { PosSessionEntity } from '../../database/entities/pos-session.entity';
 import { AuditService } from '../audit/audit.service';
 import {
   DEFAULT_SCORE_RULES,
@@ -13,6 +14,7 @@ import {
   ScoreCategory,
   ScoreEventType,
   ScoreRule,
+  requiresValidSession,
   scoreColor,
 } from './employee-score.constants';
 
@@ -26,6 +28,15 @@ export interface LogScoreEventInput {
   metadata?: Record<string, unknown> | null;
   createdBy?: string | null;
   source?: string;
+  /**
+   * Quand vrai (chemin client POS), le backend VÉRIFIE que `sessionId`
+   * correspond à une session active du terminal pour l'employé, pour les faits
+   * sensibles (voir SESSION_BOUND_EVENT_TYPES). Un fait sensible sans session
+   * valide est requalifié en ACTION_WITHOUT_VALID_SESSION. Les émetteurs
+   * backend autoritatifs (product-integration, stock-reconciliation, cycle de
+   * vie de session, cron) laissent ce flag à false.
+   */
+  enforceSession?: boolean;
 }
 
 export interface ScoreBreakdown {
@@ -76,8 +87,37 @@ export class EmployeeScoreService {
     private ruleRepo: Repository<EmployeeScoreRuleEntity>,
     @InjectRepository(EmployeeScoreDailyEntity)
     private dailyRepo: Repository<EmployeeScoreDailyEntity>,
+    @InjectRepository(PosSessionEntity)
+    private sessionRepo: Repository<PosSessionEntity>,
     private auditService: AuditService,
   ) {}
+
+  /**
+   * Vérifie qu'un fait sensible est bien rattaché à une session caisse réelle.
+   * Retourne :
+   *  - 'valid'        : sessionId posté = session ACTIVE du terminal, même employé
+   *  - 'invalid'      : session manquante / terminal absent / mismatch id ou employé
+   *  - 'unverifiable' : la lecture DB a échoué (on ne fabrique pas d'anomalie)
+   */
+  private async validateSession(input: LogScoreEventInput): Promise<'valid' | 'invalid' | 'unverifiable'> {
+    const terminalId = input.terminalId ?? null;
+    const sessionId = input.sessionId ?? null;
+    // Un fait sensible qui ne porte ni terminal ni session ne peut pas être rattaché.
+    if (!terminalId || !sessionId) return 'invalid';
+    let session: PosSessionEntity | null;
+    try {
+      session = await this.sessionRepo.findOne({
+        where: { storeId: input.storeId, terminalId, isActive: true },
+      });
+    } catch (err) {
+      this.logger.warn(`validateSession read failed (${input.eventType}): ${err}`);
+      return 'unverifiable';
+    }
+    if (!session) return 'invalid';
+    if (session.id !== sessionId) return 'invalid';
+    if (session.employeeId !== input.employeeId) return 'invalid';
+    return 'valid';
+  }
 
   /** Merge DB rule overrides over the versioned defaults. */
   private async resolveRules(): Promise<Record<string, ScoreRule>> {
@@ -110,14 +150,36 @@ export class EmployeeScoreService {
    */
   async logEvent(input: LogScoreEventInput): Promise<EmployeeScoreEventEntity | null> {
     try {
+      // Garde serveur : un fait sensible du chemin POS doit être rattaché à une
+      // session caisse réelle. Sinon on le requalifie en anomalie technique —
+      // on ne fait PAS confiance au sessionId envoyé par le client seul.
+      let eventType: string = input.eventType;
+      let reason = input.reason ?? null;
+      let metadata: Record<string, unknown> | null = input.metadata ?? null;
+      if (input.enforceSession && requiresValidSession(input.eventType)) {
+        const verdict = await this.validateSession(input);
+        if (verdict === 'invalid') {
+          metadata = {
+            ...(input.metadata ?? {}),
+            claimedEventType: input.eventType,
+            claimedSessionId: input.sessionId ?? null,
+            claimedTerminalId: input.terminalId ?? null,
+          };
+          reason = `Action « ${input.eventType} » jouée sans session caisse valide`;
+          eventType = 'ACTION_WITHOUT_VALID_SESSION';
+        } else if (verdict === 'unverifiable') {
+          metadata = { ...(input.metadata ?? {}), sessionVerification: 'unverifiable' };
+        }
+      }
+
       const rules = await this.resolveRules();
-      const rule = rules[input.eventType] ?? {
+      const rule = rules[eventType] ?? {
         category: 'procedure' as ScoreCategory,
         pointsDelta: 0,
         severity: 'info' as const,
         maxDailyPenalty: 0,
         alert: false,
-        label: input.eventType,
+        label: eventType,
       };
 
       const event = await this.eventRepo.save(
@@ -126,12 +188,12 @@ export class EmployeeScoreService {
           storeId: input.storeId,
           terminalId: input.terminalId ?? null,
           sessionId: input.sessionId ?? null,
-          eventType: input.eventType,
+          eventType,
           category: rule.category,
           severity: rule.severity,
           pointsDelta: rule.pointsDelta,
-          reason: input.reason ?? null,
-          metadata: input.metadata ?? null,
+          reason,
+          metadata,
           createdBy: input.createdBy ?? input.employeeId,
           source: input.source ?? 'pos',
           ruleVersion: SCORE_RULES_VERSION,
@@ -147,13 +209,13 @@ export class EmployeeScoreService {
           entityType: 'employee_score',
           entityId: event.id,
           details: {
-            eventType: input.eventType,
+            eventType,
             category: rule.category,
             severity: rule.severity,
             pointsDelta: rule.pointsDelta,
             terminalId: input.terminalId ?? null,
             sessionId: input.sessionId ?? null,
-            reason: input.reason ?? null,
+            reason,
           },
         })
         .catch(() => undefined);
