@@ -33,11 +33,9 @@ import { TicketHistoryModal } from '../pos/TicketHistoryModal';
 import { AvoirTenderModal } from '../pos/AvoirTenderModal';
 import { useBluetoothPrinter } from '../../hooks/useBluetoothPrinter';
 import { peripheralBridge } from '../../services/peripheralBridge';
-import { usePerformanceStore } from '../../stores/performanceStore';
-import { posEventBus } from '../../services/posEventBus';
 import { ActiveCashierBanner } from '../ActiveCashierBanner';
 import { ScoreDetailModal } from '../ScoreDetailModal';
-import { usePointageStore } from '../../stores/pointageStore';
+import { CashCountModal } from '../pos/CashCountModal';
 import { Wifi, WifiOff, CloudOff, Cloud, RefreshCw as SyncIcon, ShieldAlert, Upload, Lock as LockIcon } from 'lucide-react';
 
 /* ── Helpers ── */
@@ -338,22 +336,12 @@ export function IPadPOSLayout() {
                     >
                       <Users size={14} /> Changer de caissier
                     </button>
-                    {/* Fermer ma caisse / terminer ma session (fermeture explicite) */}
+                    {/* Fermer ma caisse : ouvre la modale de comptage (le comptage
+                        collecte le compté ; l'attendu/écart sont calculés serveur). */}
                     <button
                       className="w-full flex items-center gap-2 px-3 py-2 text-sm text-pos-danger rounded-xl hover:bg-pos-danger/5 transition-colors"
                       onClick={() => {
-                        usePerformanceStore.getState().flushToSyncQueue();
-                        if (store.employee) {
-                          posEventBus.emit('SESSION_CLOSED', {
-                            storeId: store.storeInfo?.siret || store.employee.storeId || 'unknown',
-                            cashierId: store.employee.id,
-                            cashierName: `${store.employee.firstName} ${store.employee.lastName}`,
-                            timestamp: new Date().toISOString(),
-                            reason: 'manual_logout',
-                          });
-                          usePointageStore.getState().clockOut();
-                        }
-                        store.logout();
+                        store.openCashCount();
                         setProfileOpen(false);
                       }}
                     >
@@ -385,6 +373,7 @@ export function IPadPOSLayout() {
 
       {/* Détail du score (au clic sur le score du bandeau) */}
       {scoreDetailOpen && <ScoreDetailModal onClose={() => setScoreDetailOpen(false)} />}
+      <CashCountModal />
 
       {/* ═══ MAIN 3-COLUMN LAYOUT ═══ */}
       <div className={`flex-1 min-h-0 ${isLandscape ? 'ipad-pos-grid' : 'ipad-pos-grid-portrait'}`}>
