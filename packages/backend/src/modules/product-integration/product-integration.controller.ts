@@ -9,6 +9,7 @@ import {
   Request,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard, Roles } from '../../common/guards/roles.guard';
 import { ProductIntegrationService } from './product-integration.service';
@@ -72,17 +73,27 @@ export class ProductIntegrationController {
   }
 
   @Post('authorize')
+  // Anti-brute-force : un PIN opérateur court (4-6 chiffres) — même plafond que
+  // les routes de login. Empêche un caissier de forcer le PIN d'un responsable.
+  @Throttle({ default: { ttl: 60000, limit: 5 } })
   @ApiOperation({ summary: 'Vérifie un code opérateur (admin / employé autorisé)' })
-  authorize(@Body() dto: AuthorizeOperatorDto, @Request() req: any) {
-    return this.service.verifyOperatorPin(
+  async authorize(@Body() dto: AuthorizeOperatorDto, @Request() req: any) {
+    const auth = await this.service.verifyOperatorPin(
       req.user.storeId,
       req.user.employeeId,
       dto.pin,
       { action: 'authorize' },
     );
+    // Ne pas divulguer QUEL employé correspond au PIN (oracle d'énumération) :
+    // on ne renvoie que le fait d'être autorisé et le droit d'activation.
+    return { authorized: true, canActivate: auth.canActivate };
   }
 
   @Post('products')
+  // Le PIN opérateur peut passer par ce endpoint (dto.pin) → plafond réduit vs
+  // global (1000/min) pour limiter le brute-force, mais assez large pour
+  // l'intégration manuelle légitime en session responsable.
+  @Throttle({ default: { ttl: 60000, limit: 20 } })
   @ApiOperation({
     summary:
       'Crée une fiche produit (session manager/admin OU code PIN autorisé obligatoire)',

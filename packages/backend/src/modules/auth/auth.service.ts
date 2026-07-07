@@ -238,7 +238,16 @@ export class AuthService {
   async validateEmployee(id: string): Promise<any | null> {
     const isRevoked = await this.cache.sismember('revoked_tokens', id);
     if (isRevoked) return null;
-    return { id, isActive: true };
+    // Re-check identity against the DB on every request: a deactivated/deleted
+    // employee's token must stop working immediately, and a token whose `sub`
+    // is not an employee (e.g. a mobile-customer JWT signed with the same
+    // secret) must be rejected on employee routes.
+    const emp = await this.employeeRepo.findOne({
+      where: { id, isActive: true },
+      select: { id: true },
+    });
+    if (!emp) return null;
+    return { id: emp.id, isActive: true };
   }
 
   /**
@@ -384,11 +393,15 @@ export class AuthService {
 
     let employees: EmployeeEntity[];
 
+    // pinHash is select:false — every branch must .addSelect it to compare the PIN.
     if (opts.email) {
       // Admin login by email — search across all stores
-      employees = await this.employeeRepo.find({
-        where: { email: opts.email, isActive: true },
-      });
+      employees = await this.employeeRepo
+        .createQueryBuilder('e')
+        .where('e.email = :email', { email: opts.email })
+        .andWhere('e.isActive = true')
+        .addSelect('e.pinHash')
+        .getMany();
     } else {
       // PIN login — search employees authorized for this store
       // Checks both primary storeId AND multi-store access table
@@ -400,12 +413,18 @@ export class AuthService {
             '(e.storeId = :storeId OR e.id IN (SELECT employee_id FROM employee_store_access WHERE store_id = :storeId))',
             { storeId },
           )
+          .addSelect('e.pinHash')
           .getMany();
       } catch (err: any) {
         // If employee_store_access doesn't exist yet (migration pending), fallback gracefully
         if (err?.message?.includes('employee_store_access') || err?.message?.includes('does not exist')) {
           this.logger.warn('[AUTH] employee_store_access table missing — using simple store match');
-          employees = await this.employeeRepo.find({ where: { storeId, isActive: true } });
+          employees = await this.employeeRepo
+            .createQueryBuilder('e')
+            .where('e.storeId = :storeId', { storeId })
+            .andWhere('e.isActive = true')
+            .addSelect('e.pinHash')
+            .getMany();
         } else {
           throw err; // Re-throw real errors — don't mask them
         }

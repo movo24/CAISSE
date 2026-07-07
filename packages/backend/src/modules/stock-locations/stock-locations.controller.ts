@@ -17,6 +17,7 @@ export class StockLocationsController {
   // ─── LOCATIONS ─────────────────────────────────────────────────
 
   @Get('locations')
+  @Roles('admin', 'manager')
   @ApiOperation({ summary: 'List all stock locations' })
   listLocations() {
     return this.service.listLocations();
@@ -54,12 +55,14 @@ export class StockLocationsController {
   }
 
   @Get('product/:productId/balances')
+  @Roles('admin', 'manager')
   @ApiOperation({ summary: 'Stock balances for a product across all locations' })
   getProductBalances(@Param('productId') productId: string) {
     return this.service.getBalancesForProduct(productId);
   }
 
   @Get('location/:locationId/balances')
+  @Roles('admin', 'manager')
   @ApiOperation({ summary: 'All products stock at a location' })
   getLocationBalances(@Param('locationId') locationId: string) {
     return this.service.getBalancesForLocation(locationId);
@@ -84,6 +87,8 @@ export class StockLocationsController {
       ...body,
       employeeId: req.user.employeeId,
       employeeName: req.user.employeeName || req.user.employeeId,
+      actorStoreId: req.user.storeId,
+      actorRole: req.user.role,
     });
   }
 
@@ -105,6 +110,8 @@ export class StockLocationsController {
       ...body,
       employeeId: req.user.employeeId,
       employeeName: req.user.employeeName || req.user.employeeId,
+      actorStoreId: req.user.storeId,
+      actorRole: req.user.role,
     });
   }
 
@@ -125,6 +132,8 @@ export class StockLocationsController {
       ...body,
       employeeId: req.user.employeeId,
       employeeName: req.user.employeeName || req.user.employeeId,
+      actorStoreId: req.user.storeId,
+      actorRole: req.user.role,
     });
   }
 
@@ -144,12 +153,15 @@ export class StockLocationsController {
       ...body,
       employeeId: req.user.employeeId,
       employeeName: req.user.employeeName || req.user.employeeId,
+      actorStoreId: req.user.storeId,
+      actorRole: req.user.role,
     });
   }
 
   // ─── HISTORY ───────────────────────────────────────────────────
 
   @Get('movements/product/:productId')
+  @Roles('admin', 'manager')
   @ApiOperation({ summary: 'Movement history for a product' })
   getProductMovements(
     @Param('productId') productId: string,
@@ -159,6 +171,7 @@ export class StockLocationsController {
   }
 
   @Get('movements/location/:locationId')
+  @Roles('admin', 'manager')
   @ApiOperation({ summary: 'Movement history for a location' })
   getLocationMovements(
     @Param('locationId') locationId: string,

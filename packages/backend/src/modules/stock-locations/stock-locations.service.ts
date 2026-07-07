@@ -1,5 +1,5 @@
 import {
-  Injectable, Logger, BadRequestException, NotFoundException,
+  Injectable, Logger, BadRequestException, NotFoundException, ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
@@ -181,6 +181,30 @@ export class StockLocationsService {
       .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
   }
 
+  /**
+   * Tenant guard for stock operations: a non-admin actor may only move products
+   * belonging to their own store. Products always carry a concrete storeId, so
+   * this is independent of the (store-null) central/transit location model and
+   * never blocks a legitimate central→store dispatch of the store's own product.
+   * Skipped when no actor context is supplied (internal/trusted calls) or for admins.
+   */
+  private async assertProductOwned(
+    productId: string,
+    actorStoreId?: string,
+    actorRole?: string,
+  ): Promise<void> {
+    if (!actorStoreId || actorRole === 'admin') return;
+    const product = await this.productRepo.findOne({
+      where: { id: productId },
+      select: { id: true, storeId: true },
+    });
+    if (!product || product.storeId !== actorStoreId) {
+      throw new ForbiddenException(
+        "Accès refusé : ce produit n'appartient pas à votre magasin.",
+      );
+    }
+  }
+
   // ─── MOVEMENTS (the core) ─────────────────────────────────────
 
   /**
@@ -194,8 +218,11 @@ export class StockLocationsService {
     reason?: string;
     employeeId: string;
     employeeName: string;
+    actorStoreId?: string;
+    actorRole?: string;
   }): Promise<StockMovementEntity> {
     if (data.quantity <= 0) throw new BadRequestException('Quantity must be positive');
+    await this.assertProductOwned(data.productId, data.actorStoreId, data.actorRole);
 
     return this.dataSource.transaction(async (manager) => {
       // Update or create balance
@@ -251,11 +278,14 @@ export class StockLocationsService {
     reason?: string;
     employeeId: string;
     employeeName: string;
+    actorStoreId?: string;
+    actorRole?: string;
   }): Promise<StockMovementEntity> {
     if (data.quantity <= 0) throw new BadRequestException('Quantity must be positive');
     if (data.fromLocationId === data.toLocationId) {
       throw new BadRequestException('Cannot transfer to same location');
     }
+    await this.assertProductOwned(data.productId, data.actorStoreId, data.actorRole);
 
     return this.dataSource.transaction(async (manager) => {
       // Lock source balance
@@ -328,6 +358,8 @@ export class StockLocationsService {
     reason: string;
     employeeId: string;
     employeeName: string;
+    actorStoreId?: string;
+    actorRole?: string;
   }): Promise<StockMovementEntity> {
     if (data.quantity <= 0) throw new BadRequestException('Quantity must be positive');
     if (!data.reason || !data.reason.trim()) {
@@ -337,6 +369,7 @@ export class StockLocationsService {
     if (!allowed.includes(data.lossType)) {
       throw new BadRequestException(`Invalid loss type: ${data.lossType}`);
     }
+    await this.assertProductOwned(data.productId, data.actorStoreId, data.actorRole);
 
     return this.dataSource.transaction(async (manager) => {
       const balance = await manager.findOne(StockBalanceEntity, {
@@ -384,9 +417,12 @@ export class StockLocationsService {
     reference?: string;
     employeeId: string;
     employeeName: string;
+    actorStoreId?: string;
+    actorRole?: string;
   }): Promise<StockMovementEntity[]> {
     const totalQty = data.dispatches.reduce((s, d) => s + d.quantity, 0);
     if (totalQty <= 0) throw new BadRequestException('Total dispatch quantity must be positive');
+    await this.assertProductOwned(data.productId, data.actorStoreId, data.actorRole);
 
     return this.dataSource.transaction(async (manager) => {
       // Lock source

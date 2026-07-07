@@ -5,7 +5,6 @@ import {
   ConflictException,
   BadRequestException,
 } from '@nestjs/common';
-import { Not } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as QRCode from 'qrcode';
@@ -87,9 +86,13 @@ export class EmployeesService {
     pin: string,
     excludeId?: string,
   ): Promise<void> {
-    const where: any = { storeId, isActive: true };
-    if (excludeId) where.id = Not(excludeId);
-    const peers = await this.employeeRepo.find({ where });
+    const qb = this.employeeRepo
+      .createQueryBuilder('e')
+      .where('e.storeId = :storeId', { storeId })
+      .andWhere('e.isActive = true')
+      .addSelect('e.pinHash'); // select:false — opt in to compare
+    if (excludeId) qb.andWhere('e.id != :excludeId', { excludeId });
+    const peers = await qb.getMany();
 
     for (const peer of peers) {
       if (peer.pinHash && (await bcrypt.compare(pin, peer.pinHash))) {

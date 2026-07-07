@@ -150,9 +150,13 @@ export class ProductIntegrationService {
     pin: string,
     context: Record<string, unknown> = {},
   ): Promise<OperatorAuthorization> {
-    const employees = await this.employeeRepo.find({
-      where: { storeId, isActive: true },
-    });
+    // pinHash is select:false — opt in explicitly to compare the operator PIN.
+    const employees = await this.employeeRepo
+      .createQueryBuilder('e')
+      .where('e.storeId = :storeId', { storeId })
+      .andWhere('e.isActive = true')
+      .addSelect('e.pinHash')
+      .getMany();
 
     let matched: EmployeeEntity | null = null;
     for (const emp of employees) {

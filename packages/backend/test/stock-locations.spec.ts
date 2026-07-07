@@ -94,6 +94,30 @@ describe('Bloc 6 — multi-location stock (runnable via migration 1735)', () => 
     await expect(svc.createLocation({ name: 'dup', code: 'CENTRAL-001', type: 'central' })).rejects.toThrow(/already exists/);
   });
 
+  it('SECURITY — a non-admin from another store cannot move this store\'s product (tenant guard)', async () => {
+    const before = await svc.getBalance(P1, store.id);
+    // A manager whose JWT store is a DIFFERENT store tries to transfer P1 (store STORE).
+    await expect(
+      svc.transfer({
+        productId: P1, fromLocationId: store.id, toLocationId: central.id, quantity: 1,
+        ...actor, actorStoreId: uuidv4(), actorRole: 'manager',
+      }),
+    ).rejects.toThrow(/n'appartient pas à votre magasin/);
+    expect(await svc.getBalance(P1, store.id)).toBe(before); // untouched
+    // The legitimate owner (same store) is still allowed.
+    await svc.transfer({
+      productId: P1, fromLocationId: store.id, toLocationId: central.id, quantity: 1,
+      ...actor, actorStoreId: STORE, actorRole: 'manager',
+    });
+    expect(await svc.getBalance(P1, store.id)).toBe(before - 1);
+    // An admin bypasses the store scope entirely.
+    await svc.transfer({
+      productId: P1, fromLocationId: central.id, toLocationId: store.id, quantity: 1,
+      ...actor, actorStoreId: uuidv4(), actorRole: 'admin',
+    });
+    expect(await svc.getBalance(P1, store.id)).toBe(before);
+  });
+
   it('Bloc 6.2 — recordLoss decrements the location balance + writes a loss journal movement', async () => {
     const beforeStore = await svc.getBalance(P1, store.id); // 30 on the shop floor
     const m = await svc.recordLoss({

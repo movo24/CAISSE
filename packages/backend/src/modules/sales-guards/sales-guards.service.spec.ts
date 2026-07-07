@@ -77,3 +77,45 @@ describe('SalesGuardsService.evaluate (enrichment)', () => {
     expect(res.hasBlocking).toBe(false);
   });
 });
+
+describe('SalesGuardsService anomaly review — tenant isolation', () => {
+  let service: SalesGuardsService;
+  let anomalyRepo: any;
+
+  beforeEach(async () => {
+    anomalyRepo = {
+      findOne: jest.fn(),
+      save: jest.fn(async (x: any) => x),
+    };
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        SalesGuardsService,
+        { provide: getRepositoryToken(SaleAnomalyLogEntity), useValue: anomalyRepo },
+        { provide: getRepositoryToken(ProductEntity), useValue: { createQueryBuilder: jest.fn() } },
+        SalesGuardsConfigProvider,
+      ],
+    }).compile();
+    service = module.get(SalesGuardsService);
+  });
+
+  it('a manager cannot approve an anomaly from ANOTHER store', async () => {
+    anomalyRepo.findOne.mockResolvedValue({ id: 'a1', storeId: 'store-B', status: 'detected' });
+    await expect(
+      service.approveAnomaly('a1', 'mgr-A', 'store-A', 'manager'),
+    ).rejects.toThrow(/autre magasin/);
+    expect(anomalyRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('a manager CAN approve an anomaly from their OWN store', async () => {
+    anomalyRepo.findOne.mockResolvedValue({ id: 'a1', storeId: 'store-A', status: 'detected' });
+    const res = await service.approveAnomaly('a1', 'mgr-A', 'store-A', 'manager');
+    expect(res.status).toBe('approved');
+    expect(anomalyRepo.save).toHaveBeenCalled();
+  });
+
+  it('an admin can approve any store\'s anomaly (bypass)', async () => {
+    anomalyRepo.findOne.mockResolvedValue({ id: 'a1', storeId: 'store-B', status: 'detected' });
+    const res = await service.ignoreAnomaly('a1', 'admin-1', 'store-A', 'admin');
+    expect(res.status).toBe('ignored');
+  });
+});
