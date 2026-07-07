@@ -35,6 +35,8 @@ import { useBluetoothPrinter } from '../../hooks/useBluetoothPrinter';
 import { peripheralBridge } from '../../services/peripheralBridge';
 import { usePerformanceStore } from '../../stores/performanceStore';
 import { posEventBus } from '../../services/posEventBus';
+import { ActiveCashierBanner } from '../ActiveCashierBanner';
+import { ScoreDetailModal } from '../ScoreDetailModal';
 import { usePointageStore } from '../../stores/pointageStore';
 import { Wifi, WifiOff, CloudOff, Cloud, RefreshCw as SyncIcon, ShieldAlert, Upload, Lock as LockIcon } from 'lucide-react';
 
@@ -90,6 +92,7 @@ export function IPadPOSLayout() {
   const [printerSettingsOpen, setPrinterSettingsOpen] = useState(false);
   const [avoirOpen, setAvoirOpen] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
+  const [scoreDetailOpen, setScoreDetailOpen] = useState(false);
   const btPrinter = useBluetoothPrinter();
 
   // Sync BT printer status with peripheralBridge
@@ -211,12 +214,8 @@ export function IPadPOSLayout() {
               <span className="text-white font-black text-xs">C</span>
             </div>
 
-            {/* Employee name — compact in landscape */}
-            {store.employee && (
-              <span className={`font-semibold text-pos-text truncate ${isLandscape ? 'text-xs max-w-[100px]' : 'text-sm'}`}>
-                {store.employee.firstName}
-              </span>
-            )}
+            {/* Caissier actif — bloc VISIBLE EN PERMANENCE (impossible à rater) */}
+            <ActiveCashierBanner compact onScoreClick={() => setScoreDetailOpen(true)} />
 
             {/* Network status — icon only in landscape */}
             <button
@@ -360,16 +359,24 @@ export function IPadPOSLayout() {
         </header>
       )}
 
-      {/* ═══ FULLSCREEN: floating exit button ═══ */}
+      {/* ═══ FULLSCREEN: cashier banner stays visible (impossible à rater) ═══ */}
       {fullscreen && (
-        <button
-          onClick={() => setFullscreen(false)}
-          className="fixed top-3 right-3 z-50 w-10 h-10 rounded-full bg-black/40 backdrop-blur-md text-white flex items-center justify-center hover:bg-black/60 transition-all product-card-touch shadow-lg"
-          title="Quitter le plein ecran"
-        >
-          <Minimize2 size={16} />
-        </button>
+        <>
+          <div className="fixed top-3 left-3 z-50">
+            <ActiveCashierBanner compact onScoreClick={() => setScoreDetailOpen(true)} />
+          </div>
+          <button
+            onClick={() => setFullscreen(false)}
+            className="fixed top-3 right-3 z-50 w-10 h-10 rounded-full bg-black/40 backdrop-blur-md text-white flex items-center justify-center hover:bg-black/60 transition-all product-card-touch shadow-lg"
+            title="Quitter le plein ecran"
+          >
+            <Minimize2 size={16} />
+          </button>
+        </>
       )}
+
+      {/* Détail du score (au clic sur le score du bandeau) */}
+      {scoreDetailOpen && <ScoreDetailModal onClose={() => setScoreDetailOpen(false)} />}
 
       {/* ═══ MAIN 3-COLUMN LAYOUT ═══ */}
       <div className={`flex-1 min-h-0 ${isLandscape ? 'ipad-pos-grid' : 'ipad-pos-grid-portrait'}`}>

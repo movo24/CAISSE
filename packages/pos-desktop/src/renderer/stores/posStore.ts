@@ -1,5 +1,12 @@
 import { create } from 'zustand';
-import { authApi } from '../services/api';
+import { authApi, posSessionApi } from '../services/api';
+
+/** Session POS active (une caisse appartient à un caissier pendant une session). */
+export interface PosSession {
+  id: string;
+  openedAt: string; // ISO
+  terminalId: string | null;
+}
 import type { PaymentMethod } from '../services/paymentMachine';
 import { computePromoDiscount } from '../services/discount-policy';
 
@@ -140,6 +147,7 @@ interface POSState {
   // Auth
   employee: Employee | null;
   accessToken: string | null;
+  posSession: PosSession | null;
 
   // Cart
   cartItems: CartItem[];
@@ -175,6 +183,8 @@ interface POSState {
 
   // Actions
   setEmployee: (employee: Employee, token: string) => void;
+  setPosSession: (session: PosSession | null) => void;
+  openPosSession: () => Promise<void>;
   logout: () => void;
   addToCart: (item: Omit<CartItem, 'quantity' | 'discountMinorUnits'>) => void;
   removeFromCart: (productId: string) => void;
@@ -211,6 +221,7 @@ interface POSState {
 export const usePOSStore = create<POSState>((set, get) => ({
   employee: null,
   accessToken: null,
+  posSession: null,
   cartItems: [],
   customerQrCode: null,
   customer: null,
@@ -237,9 +248,39 @@ export const usePOSStore = create<POSState>((set, get) => ({
     localStorage.setItem('accessToken', token);
     localStorage.setItem('pos_employee', JSON.stringify(employee));
     set({ employee, accessToken: token });
+    // Ouvre une session POS liée au terminal (signature technique). Best-effort :
+    // une panne de session ne bloque pas la connexion.
+    void get().openPosSession();
+  },
+
+  setPosSession: (session) => set({ posSession: session }),
+
+  openPosSession: async () => {
+    try {
+      const res = await posSessionApi.open();
+      const s = res.data;
+      if (s?.id) {
+        set({ posSession: { id: s.id, openedAt: s.openedAt || new Date().toISOString(), terminalId: s.terminalId ?? null } });
+      }
+    } catch (e: any) {
+      // 409 = une session est déjà active sur ce terminal → on la récupère.
+      try {
+        const act = await posSessionApi.active();
+        const s = act.data;
+        if (s?.id) {
+          set({ posSession: { id: s.id, openedAt: s.openedAt || new Date().toISOString(), terminalId: s.terminalId ?? null } });
+        }
+      } catch {
+        set({ posSession: null });
+      }
+    }
   },
 
   logout: () => {
+    const { posSession } = get();
+    if (posSession?.id) {
+      posSessionApi.close(posSession.id).catch(() => console.warn('[POS] Session close failed'));
+    }
     authApi.logout().catch(() => console.warn('[POS] Server-side logout failed'));
     localStorage.removeItem('accessToken');
     localStorage.removeItem('refreshToken');
@@ -247,6 +288,7 @@ export const usePOSStore = create<POSState>((set, get) => ({
     set({
       employee: null,
       accessToken: null,
+      posSession: null,
       cartItems: [],
       customer: null,
       customerQrCode: null,
