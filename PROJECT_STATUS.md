@@ -58,8 +58,12 @@
 - [x] **Motif de remboursement OBLIGATOIRE** (front online+offline + DTO validé backend `POST /returns`) — persisté dans `credit_note.reason` + audit `sale_returned`, pas juste visuel → REFUND_WITH_REASON. Chemin offline/by-ticket/gift-card non impacté (résilience préservée).
 - [x] Événements produit/stock signés côté backend (autoritatif) : UNKNOWN_BARCODE_SCANNED, PRODUCT_CREATION_REQUESTED_FROM_POS, PRODUCT_DUPLICATE_BLOCKED (product-integration) ; STOCK_CORRECTION_WITH_REASON (stock-reconciliation).
 
+**Livré (suite — fiabilité)**
+- [x] **Garde serveur `POST /employee-score/events`** (PR #16) : un fait sensible du chemin POS doit correspondre à une session active réelle du terminal (store+terminal+employé), sinon requalifié `ACTION_WITHOUT_VALID_SESSION`. Le `sessionId` client n'est plus cru sur parole.
+- [x] **Binding vente→session** : migration additive/réversible `1748` (`sales.session_id` uuid + `sales.terminal_id` varchar, nullable, index partiel) ; résolution **serveur** via `X-Terminal-Id` (create + void) → liée à la session active du terminal seulement si elle appartient à l'employé, sinon `session_id` null (« session inconnue » auditable, jamais fabriquée). Colonnes **HORS empreinte fiscale** (v1/v2) → aucun ticket validé re-hashé. Chemin sync offline : binding client **refusé** (null forcé). Front POS : `X-Terminal-Id` posé sur create/void. **5 specs** dédiées, suite backend **852** verte.
+
 **Reste à faire (étapes suivantes, non bloquantes)**
-- [ ] **Comptage caisse** : aucune source aujourd'hui (pos_sessions sans champs cash) → ajouter comptage à la fermeture + dérivation de l'écart (dépend du binding vente→session, issue #4).
+- [ ] **Comptage caisse** : ajouter le comptage à la fermeture de session + dérivation de l'écart (le binding vente→session est désormais en place → les ventes espèces d'une session sont agrégeables).
 - [ ] **Fin de shift TW24** non parsée (`normalizeShifts` ne lit que `startsAt`) → nécessaire pour `*_AFTER_SHIFT_END`.
 - [ ] UI backoffice : file d'alertes manager + tableau scores équipe.
 

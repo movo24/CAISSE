@@ -18,6 +18,7 @@ import { SalePaymentEntity } from '../../database/entities/sale-payment.entity';
 import { IdempotencyKeyEntity } from '../../database/entities/idempotency-key.entity';
 import { ProductEntity } from '../../database/entities/product.entity';
 import { FiscalJournalEntity } from '../../database/entities/fiscal-journal.entity';
+import { PosSessionEntity } from '../../database/entities/pos-session.entity';
 import { ProductsService } from '../products/products.service';
 import { CustomersService } from '../customers/customers.service';
 import { PromotionsService, CartItem } from '../promotions/promotions.service';
@@ -89,7 +90,41 @@ export class SalesService {
     private employeeRepo: Repository<EmployeeEntity>,
     // Optional so existing tests that don't exercise promo codes keep constructing.
     @Optional() private promoCodesService?: PromoCodesService,
+    // Optional: bind a sale to the terminal's active POS session. Resolved
+    // server-side (never client-declared). Absent → sale carries null session.
+    @Optional()
+    @InjectRepository(PosSessionEntity)
+    private posSessionRepo?: Repository<PosSessionEntity>,
   ) {}
+
+  /**
+   * Resolve the register binding (session + terminal) for a sale, SERVER-SIDE.
+   * A sale is bound to a session ONLY when an active session exists for
+   * (storeId, terminalId) AND it belongs to the acting employee — never on the
+   * word of the client. When the terminal is known but no matching active
+   * session is found, the terminal is still recorded (a fact) with a null
+   * session ("session unknown", auditable). No terminal header → both null.
+   */
+  private async resolveRegisterBinding(
+    storeId: string,
+    employeeId: string,
+    terminalId?: string | null,
+  ): Promise<{ terminalId: string | null; sessionId: string | null }> {
+    const t = terminalId && terminalId.trim() ? terminalId.trim() : null;
+    if (!t || !this.posSessionRepo) return { terminalId: t, sessionId: null };
+    try {
+      const session = await this.posSessionRepo.findOne({
+        where: { storeId, terminalId: t, isActive: true },
+      });
+      if (session && session.employeeId === employeeId) {
+        return { terminalId: t, sessionId: session.id };
+      }
+      return { terminalId: t, sessionId: null };
+    } catch (err) {
+      this.logger.warn(`resolveRegisterBinding failed (store ${storeId}, terminal ${t}): ${err}`);
+      return { terminalId: t, sessionId: null };
+    }
+  }
 
   /** Manual store discounts are capped here (decision 5) — never above 30%. */
   private static readonly MANUAL_DISCOUNT_MAX_PCT = 30;
@@ -191,6 +226,7 @@ export class SalesService {
     dto: CreateSaleDto,
     employeeSnapshot?: { employeeName?: string; employeeRole?: string; maxDiscount?: number },
     idempotencyKey?: string,
+    terminalId?: string | null,
   ): Promise<SaleEntity> {
     // --- Idempotency (NF525): a replayed offline-sync POST must NEVER create a
     // second sale. Fast path BEFORE validation so a replay does not falsely fail
@@ -536,6 +572,13 @@ export class SalesService {
       sale.hashVersion = 2;
       sale.completedAt = completedAt;
 
+      // Register binding — resolved server-side, OUTSIDE the fiscal hash above.
+      // Binds to the terminal's active session only if it belongs to this
+      // employee; otherwise session stays null (auditable "session unknown").
+      const registerBinding = await this.resolveRegisterBinding(storeId, employeeId, terminalId);
+      sale.terminalId = registerBinding.terminalId;
+      sale.sessionId = registerBinding.sessionId;
+
       for (const li of lineItems) {
         li.saleId = sale.id;
       }
@@ -669,6 +712,9 @@ export class SalesService {
             itemCount: lineItems.length,
             discount: totalDiscount,
             hash: currentHash,
+            terminalId: saved.terminalId ?? null,
+            sessionId: saved.sessionId ?? null,
+            sessionBound: saved.sessionId != null,
           },
         });
       } catch (auditErr: any) {
@@ -1098,6 +1144,7 @@ export class SalesService {
     maxDiscountPercent?: number,
     reason?: string,
     idempotencyKey?: string,
+    terminalId?: string | null,
   ): Promise<SaleEntity> {
     // --- Idempotency: a replayed void must return the cached result, NOT throw
     // "already voided" (which a naive network retry would otherwise hit). ---
@@ -1282,6 +1329,10 @@ export class SalesService {
       // NOTE: there is no dedicated `refund` action in the codebase yet — the
       // closest real operation is this void (annulation). A true refund must be
       // a separate feature (route, business/NF525 rules, permissions, audit).
+      // Void-time register binding — resolved server-side, recorded in the
+      // audit trail only (NOT the fiscal void payload above, whose fingerprint
+      // must stay stable). Ties the annulation to the terminal's active session.
+      const voidBinding = await this.resolveRegisterBinding(storeId, employeeId, terminalId);
       try {
         await this.auditService.log({
           storeId: sale.storeId,
@@ -1296,6 +1347,9 @@ export class SalesService {
             reason: reason ?? null,
             avoirRestoredMinorUnits,
             source: 'pos_void',
+            terminalId: voidBinding.terminalId,
+            sessionId: voidBinding.sessionId,
+            sessionBound: voidBinding.sessionId != null,
           },
         });
       } catch (auditErr: any) {

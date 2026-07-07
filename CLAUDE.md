@@ -185,6 +185,8 @@ Current migrations (run in order):
 1743000000000-AddPaymentCapture
 1745000000000-AddStoreLegalIdentity
 1746000000000-AddProductStatusAndIntegrationRequests
+1747000000000-AddEmployeeSystemScore
+1748000000000-AddSaleSessionBinding
 ```
 > Saut de numérotation 1719→1735 volontaire (réservation d'une plage pour les blocs POS).
 

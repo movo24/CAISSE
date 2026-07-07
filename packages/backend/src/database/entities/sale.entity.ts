@@ -40,6 +40,25 @@ export class SaleEntity {
   @Column({ name: 'customer_id', nullable: true })
   customerId: string;
 
+  /**
+   * POS cash session (pos_sessions.id) this sale was rung under, resolved
+   * server-side from the terminal's ACTIVE session at creation — NOT declared by
+   * the client. Nullable & additive: legacy sales and paths without a resolvable
+   * session (offline replay, by-ticket) carry null — an auditable "session
+   * unknown", never a fabricated binding. DELIBERATELY OUTSIDE the fiscal hash
+   * fingerprint (v1/v2), so existing validated tickets stay valid and no row is
+   * ever rehashed.
+   */
+  @Column({ name: 'session_id', type: 'uuid', nullable: true })
+  sessionId: string | null;
+
+  /**
+   * Physical terminal (X-Terminal-Id) the sale was rung on — technical
+   * signature of the register. Nullable/additive, same rationale as sessionId.
+   */
+  @Column({ name: 'terminal_id', type: 'varchar', nullable: true })
+  terminalId: string | null;
+
   @Column({ default: 'pending' })
   status: string;
 
