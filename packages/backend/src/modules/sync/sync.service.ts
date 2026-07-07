@@ -123,7 +123,17 @@ export class SyncService {
             // client-supplied per-row storeId → no cross-store fiscal-record forgery.
             // (Dedup stays UNSCOPED by id: a forged id matching an existing sale is
             // skipped above, never upserted into another store.)
-            chunk.forEach((s: any) => { s.storeId = payload.storeId; });
+            // SECURITY (session binding): the register↔session link must be
+            // established SERVER-SIDE, never accepted from the client. An offline
+            // replay cannot be re-validated against a live session, so we refuse
+            // any client-declared session_id/terminal_id and persist the sale
+            // with a null binding ("session unknown, offline") — an auditable
+            // fact, not a spoofable claim.
+            chunk.forEach((s: any) => {
+              s.storeId = payload.storeId;
+              s.sessionId = null;
+              s.terminalId = null;
+            });
             await queryRunner.manager.save(SaleEntity, chunk);
           }
           accepted += newSales.length;

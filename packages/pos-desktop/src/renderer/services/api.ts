@@ -210,13 +210,25 @@ export const employeeScoreApi = {
 
 // Sales
 export const salesApi = {
-  // idempotencyKey: stable per offline-queue entry, so a sync replay is deduped server-side
+  // idempotencyKey: stable per offline-queue entry, so a sync replay is deduped server-side.
+  // X-Terminal-Id lets the server bind the sale to the terminal's active POS session
+  // (resolved server-side; the header is only a terminal signature, never the session id).
   create: (data: any, idempotencyKey?: string) =>
-    api.post('/sales', data, idempotencyKey ? { headers: { 'Idempotency-Key': idempotencyKey } } : undefined),
+    api.post('/sales', data, {
+      headers: {
+        'X-Terminal-Id': currentTerminalId(),
+        ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
+      },
+    }),
   list: (date?: string) => api.get('/sales', { params: { date } }),
   get: (id: string) => api.get(`/sales/${id}`),
   void: (id: string, idempotencyKey?: string) =>
-    api.post(`/sales/${id}/void`, undefined, idempotencyKey ? { headers: { 'Idempotency-Key': idempotencyKey } } : undefined),
+    api.post(`/sales/${id}/void`, undefined, {
+      headers: {
+        'X-Terminal-Id': currentTerminalId(),
+        ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
+      },
+    }),
 };
 
 // Promo codes (decision 6) — at-sale entry. validate() is read-only feedback; the

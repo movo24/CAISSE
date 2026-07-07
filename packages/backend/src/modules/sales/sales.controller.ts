@@ -29,6 +29,7 @@ export class SalesController {
     @Body() dto: CreateSaleDto,
     @Request() req: any,
     @Headers('idempotency-key') idempotencyKey?: string,
+    @Headers('x-terminal-id') terminalId?: string,
   ) {
     return this.salesService.createSale(
       req.user.storeId,
@@ -40,6 +41,7 @@ export class SalesController {
         maxDiscount: req.user.maxDiscount,
       },
       idempotencyKey,
+      terminalId,
     );
   }
 
@@ -103,6 +105,7 @@ export class SalesController {
     @Request() req: any,
     @Body() body?: { reason?: string },
     @Headers('idempotency-key') idempotencyKey?: string,
+    @Headers('x-terminal-id') terminalId?: string,
   ) {
     return this.salesService.voidSale(
       id,
@@ -112,6 +115,7 @@ export class SalesController {
       req.user.maxDiscount,
       body?.reason,
       idempotencyKey,
+      terminalId,
     );
   }
 }
