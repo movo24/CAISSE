@@ -3,11 +3,12 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 // Mock the api module BEFORE importing the store (hoisted-safe).
-const { open, close, active, logout } = vi.hoisted(() => ({
+const { open, close, active, logout, logEvent } = vi.hoisted(() => ({
   open: vi.fn(),
   close: vi.fn(),
   active: vi.fn(),
   logout: vi.fn().mockResolvedValue(undefined),
+  logEvent: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock('../services/api', () => ({
   authApi: { logout },
@@ -17,6 +18,7 @@ vi.mock('../services/api', () => ({
     close: (id: string) => Promise.resolve(close(id)),
     active: () => Promise.resolve(active()),
   },
+  employeeScoreApi: { logEvent: (d: any) => Promise.resolve(logEvent(d)) },
 }));
 
 import { usePOSStore } from './posStore';
@@ -26,11 +28,13 @@ describe('POS session lifecycle — une caisse appartient à un caissier', () =>
     open.mockReset();
     close.mockReset();
     active.mockReset();
+    logEvent.mockReset();
     localStorage.clear();
     usePOSStore.setState({ employee: null, accessToken: null, posSession: null });
   });
 
   const emp = { id: 'emp-1', firstName: 'Karim', lastName: 'B.', role: 'cashier', storeId: 'store-1' };
+  const emp2 = { id: 'emp-2', firstName: 'Sofia', lastName: 'M.', role: 'cashier', storeId: 'store-1' };
 
   it('opens a POS session on login', async () => {
     open.mockResolvedValue({ data: { id: 'sess-1', openedAt: '2026-07-07T09:04:00Z', terminalId: 'TERMINAL 02' } });
@@ -57,6 +61,25 @@ describe('POS session lifecycle — une caisse appartient à un caissier', () =>
     expect(close).toHaveBeenCalledWith('sess-1');
     expect(usePOSStore.getState().employee).toBeNull();
     expect(usePOSStore.getState().posSession).toBeNull();
+  });
+
+  it('switchEmployee closes the old session, opens a new one, logs EMPLOYEE_SWITCHED (no silent switch)', async () => {
+    open.mockResolvedValue({ data: { id: 'sess-2', openedAt: '2026-07-07T10:00:00Z', terminalId: 'TERMINAL 02' } });
+    usePOSStore.setState({ employee: emp as any, accessToken: 'jwt', posSession: { id: 'sess-1', openedAt: 'x', terminalId: null } });
+
+    await usePOSStore.getState().switchEmployee(emp2 as any, 'jwt2');
+
+    expect(close).toHaveBeenCalledWith('sess-1');           // ancienne session fermée
+    expect(open).toHaveBeenCalled();                         // nouvelle session ouverte
+    expect(usePOSStore.getState().employee?.id).toBe('emp-2'); // identité basculée
+    expect(usePOSStore.getState().posSession?.id).toBe('sess-2');
+    expect(logEvent).toHaveBeenCalledWith(expect.objectContaining({ eventType: 'EMPLOYEE_SWITCHED' }));
+  });
+
+  it('logScoreEvent signs the event with the current session id', () => {
+    usePOSStore.setState({ employee: emp as any, posSession: { id: 'sess-9', openedAt: 'x', terminalId: null } });
+    usePOSStore.getState().logScoreEvent('SESSION_LOCKED', 'test');
+    expect(logEvent).toHaveBeenCalledWith(expect.objectContaining({ eventType: 'SESSION_LOCKED', sessionId: 'sess-9' }));
   });
 });
 

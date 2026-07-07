@@ -5,7 +5,7 @@ import {
   ScanBarcode, UserCircle, Weight, Tag, ArrowRight,
   FileText, Smartphone, XCircle, Clock, Trash2, Coins, Split,
   History, RotateCcw, Printer, Receipt, AlertTriangle,
-  Camera, Pause, Maximize2, Minimize2, Share, Download, QrCode, Ticket, Gift,
+  Camera, Pause, Maximize2, Minimize2, Share, Download, QrCode, Ticket, Gift, Users,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { usePOSStore } from '../../stores/posStore';
@@ -331,6 +331,14 @@ export function IPadPOSLayout() {
                       <p className="text-sm font-semibold">{store.employee?.firstName} {store.employee?.lastName}</p>
                       <p className="text-xs text-pos-muted capitalize">{store.employee?.role}</p>
                     </div>
+                    {/* Changer de caissier — verrouille + demande le PIN du nouveau */}
+                    <button
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-pos-text rounded-xl hover:bg-pos-subtle transition-colors"
+                      onClick={() => { store.requestLock(true); setProfileOpen(false); }}
+                    >
+                      <Users size={14} /> Changer de caissier
+                    </button>
+                    {/* Fermer ma caisse / terminer ma session (fermeture explicite) */}
                     <button
                       className="w-full flex items-center gap-2 px-3 py-2 text-sm text-pos-danger rounded-xl hover:bg-pos-danger/5 transition-colors"
                       onClick={() => {
@@ -349,7 +357,7 @@ export function IPadPOSLayout() {
                         setProfileOpen(false);
                       }}
                     >
-                      <LogOut size={14} /> Deconnexion
+                      <LogOut size={14} /> Fermer ma caisse
                     </button>
                   </div>
                 </>

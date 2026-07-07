@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { authApi, posSessionApi } from '../services/api';
+import { authApi, posSessionApi, employeeScoreApi } from '../services/api';
 
 /** Session POS active (une caisse appartient à un caissier pendant une session). */
 export interface PosSession {
@@ -148,6 +148,8 @@ interface POSState {
   employee: Employee | null;
   accessToken: string | null;
   posSession: PosSession | null;
+  /** Demande de verrouillage explicite (bouton « Changer de caissier »). */
+  lockRequested: boolean;
 
   // Cart
   cartItems: CartItem[];
@@ -185,6 +187,13 @@ interface POSState {
   setEmployee: (employee: Employee, token: string) => void;
   setPosSession: (session: PosSession | null) => void;
   openPosSession: () => Promise<void>;
+  /** Changement de caissier explicite : ferme la session précédente, ouvre une
+   *  nouvelle et journalise EMPLOYEE_SWITCHED (jamais de switch silencieux). */
+  switchEmployee: (employee: Employee, token: string) => Promise<void>;
+  /** Journalise un fait de score signé (session courante). Best-effort. */
+  logScoreEvent: (eventType: string, reason?: string) => void;
+  /** Demande/annule un verrouillage explicite de la caisse. */
+  requestLock: (v: boolean) => void;
   logout: () => void;
   addToCart: (item: Omit<CartItem, 'quantity' | 'discountMinorUnits'>) => void;
   removeFromCart: (productId: string) => void;
@@ -222,6 +231,7 @@ export const usePOSStore = create<POSState>((set, get) => ({
   employee: null,
   accessToken: null,
   posSession: null,
+  lockRequested: false,
   cartItems: [],
   customerQrCode: null,
   customer: null,
@@ -254,6 +264,38 @@ export const usePOSStore = create<POSState>((set, get) => ({
   },
 
   setPosSession: (session) => set({ posSession: session }),
+
+  requestLock: (v) => set({ lockRequested: v }),
+
+  logScoreEvent: (eventType, reason) => {
+    const { posSession } = get();
+    employeeScoreApi
+      .logEvent({ eventType, sessionId: posSession?.id, reason })
+      .catch(() => { /* best-effort : ne bloque jamais la caisse */ });
+  },
+
+  switchEmployee: async (employee, token) => {
+    const { posSession, employee: previous } = get();
+    // 1. Journalise le changement AVANT de basculer (attribué à l'ancienne session).
+    if (previous && previous.id !== employee.id) {
+      employeeScoreApi
+        .logEvent({
+          eventType: 'EMPLOYEE_SWITCHED',
+          sessionId: posSession?.id,
+          reason: `${previous.firstName} ${previous.lastName} → ${employee.firstName} ${employee.lastName}`,
+        })
+        .catch(() => undefined);
+    }
+    // 2. Ferme la session précédente (fermeture explicite, pas d'abandon).
+    if (posSession?.id) {
+      await posSessionApi.close(posSession.id).catch(() => undefined);
+    }
+    // 3. Bascule l'identité + nouvelle session.
+    localStorage.setItem('accessToken', token);
+    localStorage.setItem('pos_employee', JSON.stringify(employee));
+    set({ employee, accessToken: token, posSession: null });
+    await get().openPosSession();
+  },
 
   openPosSession: async () => {
     try {

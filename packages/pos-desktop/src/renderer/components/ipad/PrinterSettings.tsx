@@ -11,6 +11,7 @@ import {
   Zap, TestTube, Unplug, Trash2, Loader2, DoorOpen,
 } from 'lucide-react';
 import { useBluetoothPrinter, BTPrinterStatus } from '../../hooks/useBluetoothPrinter';
+import { usePOSStore } from '../../stores/posStore';
 
 interface PrinterSettingsProps {
   open: boolean;
@@ -45,6 +46,8 @@ export function PrinterSettings({ open, onClose }: PrinterSettingsProps) {
   const handleTestDrawer = async () => {
     setDrawerResult('sending');
     const ok = await bt.openCashDrawer();
+    // Ouverture manuelle du tiroir = fait sensible signé (session courante).
+    if (ok) usePOSStore.getState().logScoreEvent('CASH_DRAWER_OPENED_MANUALLY', 'Ouverture manuelle du tiroir');
     setDrawerResult(ok ? 'success' : 'fail');
     setTimeout(() => setDrawerResult('idle'), 3000);
   };
