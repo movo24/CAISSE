@@ -36,6 +36,7 @@ import { peripheralBridge } from '../../services/peripheralBridge';
 import { ActiveCashierBanner } from '../ActiveCashierBanner';
 import { ScoreDetailModal } from '../ScoreDetailModal';
 import { CashCountModal } from '../pos/CashCountModal';
+import { CashOpenModal } from '../pos/CashOpenModal';
 import { Wifi, WifiOff, CloudOff, Cloud, RefreshCw as SyncIcon, ShieldAlert, Upload, Lock as LockIcon } from 'lucide-react';
 
 /* ── Helpers ── */
@@ -373,6 +374,7 @@ export function IPadPOSLayout() {
 
       {/* Détail du score (au clic sur le score du bandeau) */}
       {scoreDetailOpen && <ScoreDetailModal onClose={() => setScoreDetailOpen(false)} />}
+      <CashOpenModal />
       <CashCountModal />
 
       {/* ═══ MAIN 3-COLUMN LAYOUT ═══ */}

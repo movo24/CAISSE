@@ -51,7 +51,7 @@ npm run build:pos
 | `packages/backend` | NestJS 10 + TypeORM + PostgreSQL | Central API, all business logic |
 | `packages/pos-desktop` | Electron + React + TypeScript | Desktop POS, offline-first, dual-window |
 | `packages/backoffice-web` | React + TypeScript + Vite | Web management dashboard |
-| `packages/mobile` | React + TypeScript + Vite (Capacitor-ready) | Wesley Club loyalty app |
+| `packages/mobile` | React + TypeScript + Vite | App inventaire staff (scan, réception, comptage) — la fidélité Wesley Club est dans `customer-app` |
 | `packages/customer-app` | React + TypeScript | Customer-facing app |
 | `shared/` | TypeScript | Shared types, utils, constants |
 
@@ -190,6 +190,7 @@ Current migrations (run in order):
 1749000000000-AddPosSessionCashCount
 1750000000000-AddPosSessionCashSkip
 1751000000000-AddCreditNoteSessionBinding
+1752000000000-AddPosSessionOpeningCashTrace
 ```
 > Saut de numérotation 1719→1735 volontaire (réservation d'une plage pour les blocs POS).
 

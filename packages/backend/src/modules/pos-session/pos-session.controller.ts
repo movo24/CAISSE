@@ -17,6 +17,7 @@ import { RolesGuard, Roles } from '../../common/guards/roles.guard';
 import { PosSessionService } from './pos-session.service';
 import { OpenSessionDto } from './dto/open-session.dto';
 import { CloseSessionDto } from './dto/close-session.dto';
+import { SetOpeningCashDto } from './dto/set-opening-cash.dto';
 
 @ApiTags('pos-sessions')
 @ApiBearerAuth()
@@ -72,6 +73,26 @@ export class PosSessionController {
       req.user.storeId,
       req.user.employeeId,
       { countedCashMinorUnits: dto?.countedCashMinorUnits, skipReason: dto?.skipReason },
+    );
+  }
+
+  @Post(':id/opening-cash')
+  @ApiOperation({
+    summary:
+      'Declare (cashier, once) or correct (manager/admin, audited) the opening cash float of a session. ' +
+      'Saisi à l\'ouverture, immuable ensuite ; toute correction laisse une trace.',
+  })
+  setOpeningCash(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+    @Body() dto: SetOpeningCashDto,
+  ) {
+    return this.service.setOpeningCash(
+      id,
+      req.user.storeId,
+      req.user.employeeId,
+      req.user.role,
+      dto.openingCashMinorUnits,
     );
   }
 

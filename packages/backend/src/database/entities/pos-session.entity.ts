@@ -71,9 +71,20 @@ export class PosSessionEntity {
   // never counts cash (older rows, close-without-count) simply carries nulls —
   // an auditable "not counted", never a fabricated figure.
 
-  /** Fond de caisse déclaré à l'ouverture (optionnel). null = inconnu. */
+  /** Fond de caisse déclaré à l'ouverture (optionnel). null = inconnu/non déclaré. */
   @Column({ name: 'opening_cash_minor_units', type: 'integer', nullable: true })
   openingCashMinorUnits: number | null;
+
+  /** Horodatage de la déclaration du fond (par le caissier, à l'ouverture). */
+  @Column({ name: 'opening_cash_set_at', type: 'timestamp', nullable: true })
+  openingCashSetAt: Date | null;
+
+  /** Manager/admin ayant corrigé le fond après déclaration (jamais le caissier). */
+  @Column({ name: 'opening_cash_corrected_by', type: 'uuid', nullable: true })
+  openingCashCorrectedBy: string | null;
+
+  @Column({ name: 'opening_cash_corrected_at', type: 'timestamp', nullable: true })
+  openingCashCorrectedAt: Date | null;
 
   /** Somme des règlements ESPÈCES encaissés sur les ventes de cette session
    *  (dérivée côté serveur, jamais déclarée par le client). */

@@ -3,10 +3,11 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 // Mock the api module BEFORE importing the store (hoisted-safe).
-const { open, close, active, logout, logEvent } = vi.hoisted(() => ({
+const { open, close, active, setOpeningCash, logout, logEvent } = vi.hoisted(() => ({
   open: vi.fn(),
   close: vi.fn(),
   active: vi.fn(),
+  setOpeningCash: vi.fn().mockResolvedValue(undefined),
   logout: vi.fn().mockResolvedValue(undefined),
   logEvent: vi.fn().mockResolvedValue(undefined),
 }));
@@ -17,6 +18,7 @@ vi.mock('../services/api', () => ({
     open: () => Promise.resolve(open()),
     close: (id: string, counted?: number) => Promise.resolve(close(id, counted)),
     active: () => Promise.resolve(active()),
+    setOpeningCash: (id: string, amount: number) => Promise.resolve(setOpeningCash(id, amount)),
   },
   employeeScoreApi: { logEvent: (d: any) => Promise.resolve(logEvent(d)) },
 }));
@@ -28,9 +30,10 @@ describe('POS session lifecycle — une caisse appartient à un caissier', () =>
     open.mockReset();
     close.mockReset();
     active.mockReset();
+    setOpeningCash.mockReset().mockResolvedValue(undefined);
     logEvent.mockReset();
     localStorage.clear();
-    usePOSStore.setState({ employee: null, accessToken: null, posSession: null });
+    usePOSStore.setState({ employee: null, accessToken: null, posSession: null, openingCashRequired: false });
   });
 
   const emp = { id: 'emp-1', firstName: 'Karim', lastName: 'B.', role: 'cashier', storeId: 'store-1' };
@@ -80,6 +83,35 @@ describe('POS session lifecycle — une caisse appartient à un caissier', () =>
     expect(usePOSStore.getState().employee?.id).toBe('emp-2'); // identité basculée
     expect(usePOSStore.getState().posSession?.id).toBe('sess-2');
     expect(logEvent).toHaveBeenCalledWith(expect.objectContaining({ eventType: 'EMPLOYEE_SWITCHED' }));
+  });
+
+  it('requests the opening-cash entry when a fresh session has no float', async () => {
+    open.mockResolvedValue({ data: { id: 'sess-1', openedAt: 'x', terminalId: 'TERMINAL 02', openingCashMinorUnits: null } });
+    usePOSStore.getState().setEmployee(emp as any, 'jwt');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(usePOSStore.getState().openingCashRequired).toBe(true);
+  });
+
+  it('does NOT request opening cash when the recovered session already has a float', async () => {
+    open.mockRejectedValue({ response: { status: 409 } });
+    active.mockResolvedValue({ data: { id: 'sess-x', openedAt: 'x', terminalId: 'T', openingCashMinorUnits: 5000 } });
+    usePOSStore.getState().setEmployee(emp as any, 'jwt');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(usePOSStore.getState().openingCashRequired).toBe(false);
+  });
+
+  it('declareOpeningCash sends the float and clears the prompt', async () => {
+    usePOSStore.setState({ posSession: { id: 'sess-1', openedAt: 'x', terminalId: null }, openingCashRequired: true });
+    await usePOSStore.getState().declareOpeningCash(15000);
+    expect(setOpeningCash).toHaveBeenCalledWith('sess-1', 15000);
+    expect(usePOSStore.getState().openingCashRequired).toBe(false);
+  });
+
+  it('dismissOpeningCash clears the prompt without sending (float unknown)', () => {
+    usePOSStore.setState({ posSession: { id: 'sess-1', openedAt: 'x', terminalId: null }, openingCashRequired: true });
+    usePOSStore.getState().dismissOpeningCash();
+    expect(setOpeningCash).not.toHaveBeenCalled();
+    expect(usePOSStore.getState().openingCashRequired).toBe(false);
   });
 
   it('logScoreEvent signs the event with the current session id', () => {

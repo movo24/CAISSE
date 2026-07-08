@@ -23,6 +23,7 @@ interface Session {
   cashCountedAt: string | null;
   cashCountSkippedReason: string | null;
   cashCountSkippedAt: string | null;
+  openingCashCorrectedAt: string | null;
 }
 
 interface ScoreAlert {
@@ -196,11 +197,14 @@ export function CashSessionsPage() {
                         className="px-3 py-2 text-right text-gray-700"
                         title={
                           s.cashCountedAt
-                            ? `fond ${euros(s.openingCashMinorUnits ?? 0)} + ventes ${euros(s.cashSalesMinorUnits ?? 0)} − remb. ${euros(s.cashRefundsMinorUnits ?? 0)}`
+                            ? `fond ${euros(s.openingCashMinorUnits ?? 0)}${s.openingCashCorrectedAt ? ' (corrigé)' : ''} + ventes ${euros(s.cashSalesMinorUnits ?? 0)} − remb. ${euros(s.cashRefundsMinorUnits ?? 0)}`
                             : undefined
                         }
                       >
                         {euros(s.expectedCashMinorUnits)}
+                        {s.openingCashCorrectedAt && (
+                          <span className="ml-1 text-[10px] text-amber-600" title="Fond corrigé par un responsable">⚑</span>
+                        )}
                       </td>
                       <td className="px-3 py-2 text-right text-gray-700">{euros(s.countedCashMinorUnits)}</td>
                       <td className={`px-3 py-2 text-right ${diffClass(s.cashDifferenceMinorUnits)}`}>

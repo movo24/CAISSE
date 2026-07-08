@@ -3,12 +3,14 @@ import {
   ConflictException,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
   Optional,
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
+import { hasMinRole } from '../../common/guards/permissions';
 import { PosSessionEntity } from '../../database/entities/pos-session.entity';
 import { SalePaymentEntity } from '../../database/entities/sale-payment.entity';
 import { CreditNoteEntity } from '../../database/entities/credit-note.entity';
@@ -313,6 +315,92 @@ export class PosSessionService {
         source: 'pos',
       })
       .catch((e: any) => this.logger.warn(`[score shift_end] ${e?.message}`));
+  }
+
+  /**
+   * Déclare (ou corrige) le fond de caisse d'une session.
+   *
+   * Règle produit ratifiée :
+   *  - Le fond se saisit à l'ouverture. Première déclaration (fond null) :
+   *    autorisée au caissier propriétaire de la session (ou à un manager+).
+   *  - Ensuite le fond est IMMUABLE pour le caissier. Une correction (fond déjà
+   *    déclaré) exige un rôle manager/admin, sinon 403 — et laisse une trace
+   *    (correctedBy/At + audit old→new). Jamais de re-déclaration silencieuse.
+   *  - Interdit sur une session fermée.
+   * L'attendu caisse (fond + ventes espèces − remboursements) est recalculé à la
+   * fermeture ; ce montant n'est donc qu'un input probant, jamais rétro-fiscal.
+   */
+  async setOpeningCash(
+    sessionId: string,
+    storeId: string,
+    actingEmployeeId: string,
+    actingRole: string | undefined,
+    openingCashMinorUnits: number,
+  ): Promise<PosSessionEntity> {
+    if (!Number.isInteger(openingCashMinorUnits) || openingCashMinorUnits < 0) {
+      throw new BadRequestException('openingCashMinorUnits must be an integer ≥ 0');
+    }
+    const session = await this.repo.findOne({ where: { id: sessionId } });
+    if (!session) throw new NotFoundException(`POS session ${sessionId} not found`);
+    if (session.storeId !== storeId) throw new BadRequestException('POS session belongs to a different store');
+    if (!session.isActive) throw new ConflictException('POS session is closed — opening cash is frozen');
+
+    const isManager = hasMinRole(actingRole ?? 'cashier', 'manager');
+    const alreadyDeclared = session.openingCashMinorUnits != null;
+
+    if (!alreadyDeclared) {
+      // Première déclaration : le caissier propriétaire, ou un manager+.
+      if (session.employeeId !== actingEmployeeId && !isManager) {
+        throw new ForbiddenException('Only the session owner (or a manager) may declare the opening cash');
+      }
+      session.openingCashMinorUnits = openingCashMinorUnits;
+      session.openingCashSetAt = new Date();
+      const saved = await this.repo.save(session);
+      await this.auditOpeningCash(saved, 'pos_session_opening_cash_set', {
+        openingCashMinorUnits,
+        declaredBy: actingEmployeeId,
+      });
+      return saved;
+    }
+
+    // Correction : manager/admin obligatoire (trace + audit old→new).
+    if (!isManager) {
+      throw new ForbiddenException(
+        'Opening cash already declared — a correction requires a manager/admin',
+      );
+    }
+    const previous = session.openingCashMinorUnits;
+    session.openingCashMinorUnits = openingCashMinorUnits;
+    session.openingCashCorrectedBy = actingEmployeeId;
+    session.openingCashCorrectedAt = new Date();
+    const saved = await this.repo.save(session);
+    await this.auditOpeningCash(saved, 'pos_session_opening_cash_corrected', {
+      previousMinorUnits: previous,
+      openingCashMinorUnits,
+      correctedBy: actingEmployeeId,
+    });
+    return saved;
+  }
+
+  /** Trace append-only du fond de caisse (déclaration/correction). Best-effort. */
+  private async auditOpeningCash(
+    session: PosSessionEntity,
+    action: string,
+    details: Record<string, unknown>,
+  ): Promise<void> {
+    if (!this.audit) return;
+    try {
+      await this.audit.log({
+        storeId: session.storeId,
+        employeeId: session.employeeId,
+        action,
+        entityType: 'pos_session',
+        entityId: session.id,
+        details: { terminalId: session.terminalId, ...details, at: new Date().toISOString() },
+      });
+    } catch (e: any) {
+      this.logger.warn(`[audit ${action}] ${e?.message}`);
+    }
   }
 
   /**
