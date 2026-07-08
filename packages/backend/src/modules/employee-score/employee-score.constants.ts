@@ -33,6 +33,7 @@ export const SCORE_EVENT_TYPES = [
   'SESSION_CLOSED',
   'SESSION_LOCKED',
   'SESSION_UNLOCKED',
+  'SESSION_UNLOCKED_OFFLINE',
   'SESSION_ABANDONED',
   'SESSION_FORCE_CLOSED_BY_MANAGER',
   'EMPLOYEE_SWITCHED',
@@ -164,6 +165,9 @@ export const DEFAULT_SCORE_RULES: Record<ScoreEventType, ScoreRule> = {
   SESSION_CLOSED: { category: 'session', pointsDelta: 0, severity: 'info', maxDailyPenalty: 0, alert: false, label: 'Session fermée correctement' },
   SESSION_LOCKED: { category: 'session', pointsDelta: 0, severity: 'info', maxDailyPenalty: 0, alert: false, label: 'Caisse verrouillée (inactivité)' },
   SESSION_UNLOCKED: { category: 'session', pointsDelta: 0, severity: 'info', maxDailyPenalty: 0, alert: false, label: 'Caisse déverrouillée' },
+  // PR #28 — trace neutre (jamais pénalisant : un unlock offline légitime n'est pas
+  // une faute) mais VISIBLE : le manager peut requêter les unlocks hors ligne.
+  SESSION_UNLOCKED_OFFLINE: { category: 'session', pointsDelta: 0, severity: 'info', maxDailyPenalty: 0, alert: false, label: 'Caisse déverrouillée HORS LIGNE (PIN cache, droits plafonnés)' },
   SESSION_ABANDONED: { category: 'session', pointsDelta: -8, severity: 'major', maxDailyPenalty: 16, alert: true, label: 'Session non fermée / abandonnée' },
   SESSION_FORCE_CLOSED_BY_MANAGER: { category: 'session', pointsDelta: -12, severity: 'critical', maxDailyPenalty: 24, alert: true, label: 'Session oubliée fermée par un responsable' },
   EMPLOYEE_SWITCHED: { category: 'session', pointsDelta: 0, severity: 'info', maxDailyPenalty: 0, alert: false, label: 'Changement de caissier (propre)' },

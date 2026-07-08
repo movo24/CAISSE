@@ -2,6 +2,8 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { Lock, Delete, UserCircle, Loader2 } from 'lucide-react';
 import { usePOSStore } from '../stores/posStore';
 import { authApi } from '../services/api';
+import { useOfflineStore } from '../stores/offlineStore';
+import { cacheEmployeePin, verifyOfflinePin, OFFLINE_UNLOCK_MESSAGES } from '../services/offlineAuthCache';
 
 /**
  * Verrou caisse — une caisse appartient à un caissier pendant une session.
@@ -119,12 +121,58 @@ export function EmployeePinGate({ onVerified }: Props) {
         );
       }
 
+      // Auth ONLINE réussie → (re)armer le cache offline de CET employé
+      // (seul moment où une entrée peut être créée — décision produit PR #28).
+      void cacheEmployeePin(
+        { id: verified.id, firstName: verified.firstName, lastName: verified.lastName, storeId: verified.storeId, role: verified.role },
+        pin,
+      ).catch(() => { /* cache best-effort — l'auth online reste la référence */ });
+
       requestLock(false);
       setLocked(false);
       setPin('');
       setError('');
       onVerified(`${verified.firstName} ${verified.lastName}`);
     } catch (err: any) {
+      // ── Fallback OFFLINE (V1 sécurisée, limitée, traçable) ──
+      // UNIQUEMENT sur erreur réseau (jamais sur 401/403 : un PIN refusé par le
+      // serveur ne doit pas être re-tenté contre le cache local).
+      const isNetworkError =
+        !err?.response ||
+        err?.code === 'ERR_NETWORK' ||
+        err?.code === 'ECONNABORTED' ||
+        err?.message?.includes('Network Error');
+
+      if (isNetworkError) {
+        // Titulaire uniquement — pas de switch d'employé hors ligne.
+        const result = await verifyOfflinePin(employee.id, pin).catch(() => null);
+        if (result?.ok) {
+          // Traçable : journal durable, synchronisé au retour online.
+          useOfflineStore.getState().enqueue({
+            type: 'offline_unlock_audit',
+            payload: {
+              eventType: 'SESSION_UNLOCKED_OFFLINE',
+              reason: 'Déverrouillage HORS LIGNE par le titulaire (PIN cache, droits caisse plafonnés)',
+              cachedRole: result.employee.cachedRole,
+            },
+            cashierId: employee.id,
+            cashierName: `${employee.firstName} ${employee.lastName}`,
+            storeId: employee.storeId,
+          });
+          requestLock(false);
+          setLocked(false);
+          setPin('');
+          setError('');
+          onVerified(`${result.employee.firstName} ${result.employee.lastName}`);
+          setVerifying(false);
+          return;
+        }
+        const reason = result && !result.ok ? result.reason : 'no_cache';
+        setError(OFFLINE_UNLOCK_MESSAGES[reason]);
+        setPin('');
+        setVerifying(false);
+        return;
+      }
       const msg = err?.response?.data?.message || 'PIN invalide';
       setError(msg);
       setPin('');
