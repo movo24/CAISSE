@@ -218,7 +218,7 @@ export const stockReconciliationApi = {
 export const salesApi = {
   list: (date?: string, storeId?: string) => api.get('/sales', { params: { date, storeId } }),
   get: (id: string) => api.get(`/sales/${id}`),
-  void: (id: string) => api.post(`/sales/${id}/void`),
+  void: (id: string, reason?: string) => api.post(`/sales/${id}/void`, reason ? { reason } : {}),
   // Payments to regularise (decision 6)
   pendingPayments: () => api.get('/sales/pending-payments'),
   regularizePayment: (id: string, data: { success: boolean; paymentId?: string; stripePaymentIntentId?: string }) =>
