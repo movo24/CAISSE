@@ -1959,6 +1959,16 @@ export function POSPage() {
                   <Clock size={11} /> Transaction en {lastTransactionTime}s
                 </p>
               )}
+
+              {/* Honest print status: this desktop path has no real printer wired —
+                  the platform must SAY it cannot print (décision produit, PR #27). */}
+              {(!peripheralBridge.status.printer.connected ||
+                peripheralBridge.status.printer.type === 'none' ||
+                peripheralBridge.status.printer.type === 'browser_print') && (
+                <p className="mt-2 text-xs font-black text-amber-300">
+                  Aucune imprimante connectée — ticket NON imprimé (QR / email disponibles).
+                </p>
+              )}
             </div>
 
             {/* ── Ticket choice buttons ── */}

@@ -889,6 +889,16 @@ export function IPadPOSLayout() {
                   <span className="font-black text-amber-400">Monnaie : {formatPrice(payment.confirmation.changeAmount)}</span>
                 </div>
               )}
+              {/* Honest print status — the platform must SAY when it cannot print */}
+              {payment.lastPrintStatus === 'printed' && (
+                <p className="mt-3 text-xs font-semibold text-emerald-300/80">Ticket imprimé</p>
+              )}
+              {payment.lastPrintStatus === 'print_failed' && (
+                <p className="mt-3 text-xs font-black text-red-300">Ticket NON imprimé — échec imprimante. Réimpression possible depuis l'historique.</p>
+              )}
+              {payment.lastPrintStatus === 'no_printer' && (
+                <p className="mt-3 text-xs font-black text-amber-300">Aucune imprimante connectée — ticket NON imprimé (QR / email disponibles).</p>
+              )}
             </div>
 
             {/* Ticket choices — QR code primary, email secondary */}
