@@ -80,6 +80,13 @@ export class PosSessionEntity {
   @Column({ name: 'cash_sales_minor_units', type: 'integer', nullable: true })
   cashSalesMinorUnits: number | null;
 
+  /** Somme des remboursements ESPÈCES rattachés à cette session (avoirs
+   *  refund_method='cash' liés via credit_notes.session_id — dérivée serveur).
+   *  Déduite de l'attendu : seul un remboursement PROUVÉ sur cette session
+   *  diminue l'attendu ; un remboursement non rattaché apparaît en écart (fait). */
+  @Column({ name: 'cash_refunds_minor_units', type: 'integer', nullable: true })
+  cashRefundsMinorUnits: number | null;
+
   /** Montant ATTENDU en caisse = fond d'ouverture + ventes espèces de la session. */
   @Column({ name: 'expected_cash_minor_units', type: 'integer', nullable: true })
   expectedCashMinorUnits: number | null;

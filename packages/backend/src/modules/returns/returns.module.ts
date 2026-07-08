@@ -7,7 +7,9 @@ import { CreditNoteLineEntity } from '../../database/entities/credit-note-line.e
 import { CreditNoteRedemptionEntity } from '../../database/entities/credit-note-redemption.entity';
 import { SaleEntity } from '../../database/entities/sale.entity';
 import { IdempotencyKeyEntity } from '../../database/entities/idempotency-key.entity';
+import { PosSessionEntity } from '../../database/entities/pos-session.entity';
 import { AuditModule } from '../audit/audit.module';
+import { EmployeeScoreModule } from '../employee-score/employee-score.module';
 
 @Module({
   imports: [
@@ -17,8 +19,10 @@ import { AuditModule } from '../audit/audit.module';
       CreditNoteRedemptionEntity,
       SaleEntity,
       IdempotencyKeyEntity,
+      PosSessionEntity,
     ]),
     AuditModule,
+    EmployeeScoreModule,
   ],
   controllers: [ReturnsController],
   providers: [ReturnsService],

@@ -260,7 +260,10 @@ export const receiptsApi = {
     api.post(`/receipts/${saleId}/email`, { email }),
 };
 
-// Returns / credit notes (avoirs) — online only (needs the server-side sale)
+// Returns / credit notes (avoirs) — online only (needs the server-side sale).
+// X-Terminal-Id : le serveur rattache l'avoir à la session ACTIVE du terminal
+// (résolu serveur — le header n'est qu'une signature terminal, jamais la session).
+// Un remboursement espèces ainsi rattaché est déduit de l'attendu caisse.
 export const returnsApi = {
   listSales: (date: string) => api.get('/sales', { params: { date } }),
   returnable: (saleId: string) => api.get(`/returns/sale/${saleId}/returnable`),
@@ -268,7 +271,10 @@ export const returnsApi = {
   createByTicket: (
     data: { ticketNumber: string; items: { ean: string; quantity: number }[]; reason?: string; refundMethod: 'cash' | 'card' | 'store_credit' },
     idempotencyKey: string,
-  ) => api.post('/returns/by-ticket', data, { headers: { 'Idempotency-Key': idempotencyKey } }),
+  ) =>
+    api.post('/returns/by-ticket', data, {
+      headers: { 'Idempotency-Key': idempotencyKey, 'X-Terminal-Id': currentTerminalId() },
+    }),
   create: (
     data: {
       originalSaleId: string;
@@ -277,7 +283,10 @@ export const returnsApi = {
       refundMethod: 'cash' | 'card' | 'store_credit';
     },
     idempotencyKey: string,
-  ) => api.post('/returns', data, { headers: { 'Idempotency-Key': idempotencyKey } }),
+  ) =>
+    api.post('/returns', data, {
+      headers: { 'Idempotency-Key': idempotencyKey, 'X-Terminal-Id': currentTerminalId() },
+    }),
 };
 
 // Customers

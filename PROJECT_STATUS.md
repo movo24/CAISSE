@@ -76,9 +76,16 @@
 - [x] **Tableau scores équipe** : endpoint `GET /employee-score/team` (manager/admin, tenant-scoped) → employés actifs du magasin (fenêtre) avec score jour + semaine (dérivés du ledger), volume d'événements, dernière activité, nom via dernière session ; trié du plus faible au plus fort (cas à regarder d'abord). Page backoffice `EmployeeScoresPage` (`/employee-scores`, manager) : badges couleur, KPI (actifs / à surveiller), fenêtre 7/30/90 j. **1 spec** d'intégration (agrégation, tri worst-first, tenant scoping).
 - [x] **Fix fuseau minuit Paris** (`periodRange`/`recomputeDaily`/`recomputeAllForDate`) : les bornes jour/semaine/année sont désormais des instants UTC = minuit **Paris** (DST-aware via `parisMidnightUtc`), pas le fuseau du runner. Corrige un **bug réel** (un score « du jour » lu entre 22:00–24:00 UTC ratait les faits du jour) qui rendait `getTeamScores`/`getScore` faux près de minuit. Suite backend **862** verte, déterministe.
 
+**Livré (suite — mouvements espèces probants + fin de shift TW24, PR #22)**
+- [x] **Binding retours → session** (migration additive/réversible `1751`) : `credit_notes.session_id`/`terminal_id` résolus **serveur** via `X-Terminal-Id` (create + by-ticket ; replay offline après fermeture → null « session inconnue », jamais fabriqué). Colonnes **HORS empreinte** avoir ({code, storeId, originalSaleId, total, lines}) → aucun avoir re-hashé. Audit `sale_returned` enrichi (terminal/session/sessionBound). Front POS : header posé sur les deux endpoints.
+- [x] **Attendu caisse corrigé** : `attendu = fond + ventes espèces − remboursements espèces rattachés à la session` (`pos_sessions.cash_refunds_minor_units`, dérivé serveur). Un remboursement cash NON rattaché n'est pas déduit → il apparaît dans l'écart (fait, pas approximation). Remboursement carte : jamais déduit. Décomposition dans l'audit + tooltip backoffice + colonne « Remb. espèces ».
+- [x] **`REFUND_CREATED` autoritatif** (source `returns`, neutre) émis **uniquement** quand le retour est rattaché à une session vérifiée.
+- [x] **Fin de shift TW24** : `shift-normalize.util` partagé parse défensivement `endsAt` + `employeeId` (variantes de clés) ; à l'ouverture de session, check fire-and-forget → `EMPLOYEE_SESSION_OPEN_AFTER_SHIFT_END` **uniquement si probant** (endsAt + employeeId présents, TOUS les shifts du jour terminés — coupure/2e service → rien ; TW24 down → rien ; jamais bloquant).
+- [x] **Audit factuel** : aucun concept de cash-drop/retrait caisse n'existe dans le code — le remboursement espèces est aujourd'hui la seule sortie tiroir.
+
 **Reste à faire (étapes suivantes, non bloquantes)**
-- [ ] **Remboursements/retraits espèces** non déduits de l'attendu (retours pas encore rattachés à la session) — extension future.
-- [ ] **Fin de shift TW24** non parsée (`normalizeShifts` ne lit que `startsAt`) → nécessaire pour `*_AFTER_SHIFT_END`.
+- [ ] **Flux retrait caisse / cash-drop** : inexistant aujourd'hui — à concevoir comme un fait signé (session + motif + montant) si le besoin métier est confirmé (décision produit owner).
+- [ ] **`EMPLOYEE_LOGIN_ON_SCHEDULE` / `OUTSIDE_SCHEDULE` / `LOGIN_AFTER_SHIFT_END`** : le check probant existe à l'ouverture de session ; l'étendre au login (avant session) est possible sur la même util.
 
 ## Bloqués réels (⛔) — préparés, attente owner/accès
 - **D6** Rotation token Railway (accès Railway = owner)

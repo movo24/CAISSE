@@ -16,6 +16,7 @@ interface Session {
   closedAt: string | null;
   openingCashMinorUnits: number | null;
   cashSalesMinorUnits: number | null;
+  cashRefundsMinorUnits: number | null;
   expectedCashMinorUnits: number | null;
   countedCashMinorUnits: number | null;
   cashDifferenceMinorUnits: number | null;
@@ -155,6 +156,7 @@ export function CashSessionsPage() {
                   <th className="px-3 py-2">Terminal</th>
                   <th className="px-3 py-2">Ouverte</th>
                   <th className="px-3 py-2">Fermée</th>
+                  <th className="px-3 py-2 text-right">Remb. espèces</th>
                   <th className="px-3 py-2 text-right">Attendu</th>
                   <th className="px-3 py-2 text-right">Compté</th>
                   <th className="px-3 py-2 text-right">Écart</th>
@@ -187,7 +189,19 @@ export function CashSessionsPage() {
                           <span className="text-gray-500">{dt(s.closedAt)}</span>
                         )}
                       </td>
-                      <td className="px-3 py-2 text-right text-gray-700">{euros(s.expectedCashMinorUnits)}</td>
+                      <td className="px-3 py-2 text-right text-gray-500">
+                        {s.cashRefundsMinorUnits ? `− ${euros(s.cashRefundsMinorUnits)}` : '—'}
+                      </td>
+                      <td
+                        className="px-3 py-2 text-right text-gray-700"
+                        title={
+                          s.cashCountedAt
+                            ? `fond ${euros(s.openingCashMinorUnits ?? 0)} + ventes ${euros(s.cashSalesMinorUnits ?? 0)} − remb. ${euros(s.cashRefundsMinorUnits ?? 0)}`
+                            : undefined
+                        }
+                      >
+                        {euros(s.expectedCashMinorUnits)}
+                      </td>
                       <td className="px-3 py-2 text-right text-gray-700">{euros(s.countedCashMinorUnits)}</td>
                       <td className={`px-3 py-2 text-right ${diffClass(s.cashDifferenceMinorUnits)}`}>
                         {s.cashCountedAt ? (

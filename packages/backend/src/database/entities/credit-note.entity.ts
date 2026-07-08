@@ -57,6 +57,23 @@ export class CreditNoteEntity {
   @Column({ name: 'employee_id' })
   employeeId: string;
 
+  /**
+   * POS cash session (pos_sessions.id) this return was rung under, resolved
+   * SERVER-SIDE from the terminal's ACTIVE session at creation — never declared
+   * by the client. Nullable & additive: legacy avoirs and paths without a
+   * resolvable session (offline replay after the session closed) carry null —
+   * an auditable "session unknown". DELIBERATELY OUTSIDE the credit-note hash
+   * payload ({code, storeId, originalSaleId, total, lines}) so no existing
+   * avoir is rehashed. Cash refunds bound here are deducted from the session's
+   * expected cash at close.
+   */
+  @Column({ name: 'session_id', type: 'uuid', nullable: true })
+  sessionId: string | null;
+
+  /** Physical terminal (X-Terminal-Id) the return was rung on. Same rationale. */
+  @Column({ name: 'terminal_id', type: 'varchar', nullable: true })
+  terminalId: string | null;
+
   @Column({ name: 'employee_name_snapshot', type: 'varchar', nullable: true })
   employeeNameSnapshot: string | null;
 

@@ -26,6 +26,7 @@ import { TimewinModule } from '../src/modules/timewin/timewin.module';
 import { SalesService } from '../src/modules/sales/sales.service';
 import { PosSessionService } from '../src/modules/pos-session/pos-session.service';
 import { EmployeeScoreService } from '../src/modules/employee-score/employee-score.service';
+import { ReturnsService } from '../src/modules/returns/returns.service';
 import { StoreEntity } from '../src/database/entities/store.entity';
 import { ProductEntity } from '../src/database/entities/product.entity';
 import { EmployeeScoreEventEntity } from '../src/database/entities/employee-score-event.entity';
@@ -40,6 +41,7 @@ describe('POS session cash count (attendu serveur vs compté réel)', () => {
   let sales: SalesService;
   let sessions: PosSessionService;
   let score: EmployeeScoreService;
+  let returns: ReturnsService;
   let scoreEvents: Repository<EmployeeScoreEventEntity>;
 
   /** Fresh isolated store + one product per EAN (distinct product per sale to
@@ -75,6 +77,7 @@ describe('POS session cash count (attendu serveur vs compté réel)', () => {
     sales = moduleRef.get(SalesService);
     sessions = moduleRef.get(PosSessionService);
     score = moduleRef.get(EmployeeScoreService);
+    returns = moduleRef.get(ReturnsService);
     scoreEvents = moduleRef.get(getRepositoryToken(EmployeeScoreEventEntity));
   });
 
@@ -240,6 +243,90 @@ describe('POS session cash count (attendu serveur vs compté réel)', () => {
 
     const closed = await sessions.closeSession(session.id, storeId, empId, { countedCashMinorUnits: 500 });
     expect(closed.cashSalesMinorUnits).toBe(500); // card leg excluded
+    expect(closed.cashDifferenceMinorUnits).toBe(0);
+  });
+
+  it('deducts a session-bound CASH refund from the expected cash (attendu = fond + ventes − remb.)', async () => {
+    const storeId = await seedStore();
+    const empId = uuidv4();
+    const terminal = 'TERMINAL 30';
+    const session = await sessions.openSession(storeId, empId, SNAP, { terminalId: terminal, openingCashMinorUnits: 10000 });
+
+    // Vente espèces 500, puis remboursement espèces 500 sur cette même session.
+    const sale: any = await sales.createSale(storeId, empId, cashSale(0) as any, SNAP, undefined, terminal);
+    const cn = await returns.createReturn(
+      storeId,
+      empId,
+      { originalSaleId: sale.id, items: [{ lineItemId: sale.lineItems[0].id, quantity: 1 }], reason: 'article défectueux', refundMethod: 'cash' },
+      'Alice',
+      undefined,
+      terminal,
+    );
+    expect(cn.sessionId).toBe(session.id); // rattachement serveur
+    expect(cn.terminalId).toBe(terminal);
+
+    // Tiroir réel : 10 000 + 500 − 500 = 10 000 → écart 0 (le remboursement est déduit).
+    const closed = await sessions.closeSession(session.id, storeId, empId, { countedCashMinorUnits: 10000 });
+    expect(closed.cashSalesMinorUnits).toBe(500);
+    expect(closed.cashRefundsMinorUnits).toBe(500);
+    expect(closed.expectedCashMinorUnits).toBe(10000);
+    expect(closed.cashDifferenceMinorUnits).toBe(0);
+
+    // Fait de score AUTORITATIF : REFUND_CREATED rattaché à la session vérifiée.
+    const evs = await scoreEvents.find({ where: { sessionId: session.id } });
+    const refund = evs.find((e) => e.eventType === 'REFUND_CREATED');
+    expect(refund).toBeTruthy();
+    expect(refund!.source).toBe('returns');
+    expect(refund!.terminalId).toBe(terminal);
+  });
+
+  it('a return WITHOUT a resolvable session stays unbound: no deduction, no score event (fait, pas approximation)', async () => {
+    const storeId = await seedStore();
+    const empId = uuidv4();
+    const terminal = 'TERMINAL 31';
+    const session = await sessions.openSession(storeId, empId, SNAP, { terminalId: terminal, openingCashMinorUnits: 0 });
+    const sale: any = await sales.createSale(storeId, empId, cashSale(0) as any, SNAP, undefined, terminal);
+
+    // Retour SANS terminal (ex: replay offline) → binding null.
+    const cn = await returns.createReturn(
+      storeId,
+      empId,
+      { originalSaleId: sale.id, items: [{ lineItemId: sale.lineItems[0].id, quantity: 1 }], reason: 'retour offline', refundMethod: 'cash' },
+      'Alice',
+    );
+    expect(cn.sessionId).toBeNull();
+    expect(cn.terminalId).toBeNull();
+
+    // Non rattaché → non déduit : l'écart montre le fait (500 sortis du tiroir).
+    const closed = await sessions.closeSession(session.id, storeId, empId, { countedCashMinorUnits: 0 });
+    expect(closed.cashRefundsMinorUnits).toBe(0);
+    expect(closed.expectedCashMinorUnits).toBe(500);
+    expect(closed.cashDifferenceMinorUnits).toBe(-500);
+
+    const evs = await scoreEvents.find({ where: { sessionId: session.id } });
+    expect(evs.some((e) => e.eventType === 'REFUND_CREATED')).toBe(false);
+  });
+
+  it('a card refund bound to the session does NOT reduce the expected cash (drawer untouched)', async () => {
+    const storeId = await seedStore();
+    const empId = uuidv4();
+    const terminal = 'TERMINAL 32';
+    const session = await sessions.openSession(storeId, empId, SNAP, { terminalId: terminal, openingCashMinorUnits: 0 });
+    const sale: any = await sales.createSale(storeId, empId, cashSale(0) as any, SNAP, undefined, terminal); // 500 cash in
+
+    const cn = await returns.createReturn(
+      storeId,
+      empId,
+      { originalSaleId: sale.id, items: [{ lineItemId: sale.lineItems[0].id, quantity: 1 }], reason: 'remboursé sur carte', refundMethod: 'card' },
+      'Alice',
+      undefined,
+      terminal,
+    );
+    expect(cn.sessionId).toBe(session.id);
+
+    const closed = await sessions.closeSession(session.id, storeId, empId, { countedCashMinorUnits: 500 });
+    expect(closed.cashRefundsMinorUnits).toBe(0); // carte ≠ tiroir
+    expect(closed.expectedCashMinorUnits).toBe(500);
     expect(closed.cashDifferenceMinorUnits).toBe(0);
   });
 

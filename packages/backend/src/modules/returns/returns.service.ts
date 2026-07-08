@@ -1,4 +1,4 @@
-import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, NotFoundException, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
@@ -7,7 +7,9 @@ import { CreditNoteEntity } from '../../database/entities/credit-note.entity';
 import { CreditNoteLineEntity } from '../../database/entities/credit-note-line.entity';
 import { SaleEntity } from '../../database/entities/sale.entity';
 import { IdempotencyKeyEntity } from '../../database/entities/idempotency-key.entity';
+import { PosSessionEntity } from '../../database/entities/pos-session.entity';
 import { AuditService } from '../audit/audit.service';
+import { EmployeeScoreService } from '../employee-score/employee-score.service';
 import { PaginatedResult } from '../../common/dto/pagination.dto';
 
 const GENESIS = '0'.repeat(64);
@@ -36,7 +38,41 @@ export class ReturnsService {
     @InjectRepository(IdempotencyKeyEntity) private idemRepo: Repository<IdempotencyKeyEntity>,
     private dataSource: DataSource,
     private auditService: AuditService,
+    // Optionnels : le binding session et le score n'empêchent JAMAIS un avoir
+    // (résilience) — absents dans les specs unitaires qui construisent à la main.
+    @Optional()
+    @InjectRepository(PosSessionEntity)
+    private posSessionRepo?: Repository<PosSessionEntity>,
+    @Optional() private scoreService?: EmployeeScoreService,
   ) {}
+
+  /**
+   * Résout le rattachement caisse (session + terminal) d'un retour, CÔTÉ
+   * SERVEUR — mêmes règles que SalesService.resolveRegisterBinding : lié à la
+   * session ACTIVE du terminal seulement si elle appartient à l'employé qui
+   * agit ; sinon terminal enregistré (fait) et session null (« session
+   * inconnue », auditable). Jamais sur la parole du client.
+   */
+  private async resolveRegisterBinding(
+    storeId: string,
+    employeeId: string,
+    terminalId?: string | null,
+  ): Promise<{ terminalId: string | null; sessionId: string | null }> {
+    const t = terminalId && terminalId.trim() ? terminalId.trim() : null;
+    if (!t || !this.posSessionRepo) return { terminalId: t, sessionId: null };
+    try {
+      const session = await this.posSessionRepo.findOne({
+        where: { storeId, terminalId: t, isActive: true },
+      });
+      if (session && session.employeeId === employeeId) {
+        return { terminalId: t, sessionId: session.id };
+      }
+      return { terminalId: t, sessionId: null };
+    } catch (err) {
+      this.logger.warn(`resolveRegisterBinding failed (store ${storeId}, terminal ${t}): ${err}`);
+      return { terminalId: t, sessionId: null };
+    }
+  }
 
   private normalizeIdempotencyKey(key?: string): string | undefined {
     if (!key) return undefined;
@@ -71,6 +107,7 @@ export class ReturnsService {
     dto: CreateReturnDto,
     employeeName?: string,
     idempotencyKey?: string,
+    terminalId?: string | null,
   ): Promise<CreditNoteEntity> {
     const idemKey = this.normalizeIdempotencyKey(idempotencyKey);
     if (idemKey) {
@@ -123,6 +160,11 @@ export class ReturnsService {
       });
     }
     if (total <= 0) throw new BadRequestException('Montant de retour nul');
+
+    // Rattachement caisse résolu serveur, HORS transaction (lecture seule) et
+    // HORS chainPayload (l'empreinte de l'avoir reste {code, storeId,
+    // originalSaleId, total, lines} — aucun avoir existant re-hashé).
+    const registerBinding = await this.resolveRegisterBinding(storeId, employeeId, terminalId);
 
     const MAX_RETRIES = 3;
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
@@ -179,6 +221,8 @@ export class ReturnsService {
         cn.currencyCode = sale.currencyCode || 'EUR';
         cn.hashChainPrev = prevHash;
         cn.hashChainCurrent = currentHash;
+        cn.sessionId = registerBinding.sessionId;
+        cn.terminalId = registerBinding.terminalId;
         cn.lines = returnLines.map((l) => Object.assign(new CreditNoteLineEntity(), l));
 
         const saved = await qr.manager.save(CreditNoteEntity, cn);
@@ -225,9 +269,36 @@ export class ReturnsService {
               itemCount: returnLines.length,
               hash: currentHash,
               source: 'pos_return',
+              terminalId: registerBinding.terminalId,
+              sessionId: registerBinding.sessionId,
+              sessionBound: registerBinding.sessionId != null,
             },
           })
           .catch((e: any) => this.logger.warn(`Audit (sale_returned) failed: ${e?.message}`));
+
+        // Fait de score AUTORITATIF (serveur) — émis UNIQUEMENT quand le retour
+        // est rattaché à une session vérifiée : pas de scoring approximatif.
+        // Neutre (0 pt) : un remboursement légitime ne pénalise jamais.
+        if (registerBinding.sessionId && this.scoreService) {
+          this.scoreService
+            .logEvent({
+              employeeId,
+              storeId,
+              eventType: 'REFUND_CREATED',
+              terminalId: registerBinding.terminalId,
+              sessionId: registerBinding.sessionId,
+              reason: saved.reason ?? undefined,
+              metadata: {
+                creditNoteId: saved.id,
+                code: saved.code,
+                refundMethod: saved.refundMethod,
+                totalMinorUnits: total,
+              },
+              createdBy: employeeId,
+              source: 'returns',
+            })
+            .catch((e: any) => this.logger.warn(`Score (REFUND_CREATED) failed: ${e?.message}`));
+        }
 
         return saved;
       } catch (err: any) {
@@ -365,6 +436,7 @@ export class ReturnsService {
     dto: { ticketNumber: string; items: { ean: string; quantity: number }[]; reason?: string; refundMethod: 'cash' | 'card' | 'store_credit' },
     employeeName?: string,
     idempotencyKey?: string,
+    terminalId?: string | null,
   ): Promise<CreditNoteEntity> {
     const sale = await this.saleRepo.findOne({ where: { ticketNumber: dto.ticketNumber, storeId } });
     if (!sale) throw new NotFoundException(`Vente introuvable pour le ticket ${dto.ticketNumber}`);
@@ -373,13 +445,17 @@ export class ReturnsService {
       if (!li) throw new BadRequestException(`Article absent du ticket: ${it.ean}`);
       return { lineItemId: li.id, quantity: it.quantity };
     });
-    // Delegates to the canonical path (validation, hash chain, stock, idempotency, audit).
+    // Delegates to the canonical path (validation, hash chain, stock, idempotency,
+    // audit, register binding). On an offline replay hours later the terminal's
+    // active session will have changed/closed → binding resolves to null
+    // ("session inconnue"), never to a fabricated link.
     return this.createReturn(
       storeId,
       employeeId,
       { originalSaleId: sale.id, items, reason: dto.reason, refundMethod: dto.refundMethod },
       employeeName,
       idempotencyKey,
+      terminalId,
     );
   }
 

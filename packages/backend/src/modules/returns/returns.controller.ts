@@ -30,6 +30,7 @@ export class ReturnsController {
     @Body() dto: CreateReturnRequestDto,
     @Request() req: any,
     @Headers('idempotency-key') idempotencyKey?: string,
+    @Headers('x-terminal-id') terminalId?: string,
   ) {
     return this.returns.createReturn(
       req.user.storeId,
@@ -37,6 +38,7 @@ export class ReturnsController {
       dto,
       req.user.employeeName,
       idempotencyKey,
+      terminalId,
     );
   }
 
@@ -47,6 +49,7 @@ export class ReturnsController {
     @Body() dto: { ticketNumber: string; items: { ean: string; quantity: number }[]; reason?: string; refundMethod: 'cash' | 'card' | 'store_credit' },
     @Request() req: any,
     @Headers('idempotency-key') idempotencyKey?: string,
+    @Headers('x-terminal-id') terminalId?: string,
   ) {
     return this.returns.createReturnByTicket(
       req.user.storeId,
@@ -54,6 +57,7 @@ export class ReturnsController {
       dto,
       req.user.employeeName,
       idempotencyKey,
+      terminalId,
     );
   }
 
