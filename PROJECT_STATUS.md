@@ -87,6 +87,60 @@
 - [ ] **Flux retrait caisse / cash-drop** : inexistant aujourd'hui — à concevoir comme un fait signé (session + motif + montant) si le besoin métier est confirmé (décision produit owner).
 - [ ] **`EMPLOYEE_LOGIN_ON_SCHEDULE` / `OUTSIDE_SCHEDULE` / `LOGIN_AFTER_SHIFT_END`** : le check probant existe à l'ouverture de session ; l'étendre au login (avant session) est possible sur la même util.
 
+## AUDIT GLOBAL POS TERRAIN (2026-07-08) — état réel module par module
+
+> Audit factuel avec preuves `fichier:ligne` (5 agents read-only, zéro supposition). Légende :
+> ✅ prêt terrain · 🔄 partiel · ⚠️ fragile/mock · ❌ manquant · ⛔ bloqué owner/décision.
+> **Fait structurant** : le POS embarque DEUX implémentations parallèles — chemin **iPad**
+> (`useCart`/`usePayment`, récent, sain) et chemin **desktop inline** (`POSPage.tsx:505-826`,
+> ancien, divergent). La cible produit V1 = **iPad** (CLAUDE.md, Apple strategy).
+
+| # | Module | Statut | Réalité (preuve) |
+|---|--------|--------|------------------|
+| 1 | POS dashboard caisse | 🔄 | iPad prêt (scan, panier, qty, suppression, inconnu→demande, TTC centimes). **Desktop inline divergent** : remises affichées mais **non transmises** (`POSPage.tsx:736-740` n'envoie pas `toSaleDiscountFields`) |
+| 2 | Sessions caisse (ouverture/fermeture) | 🔄 | Backend ✅ (γ invariant, comptage attendu/compté/écart, skip motivé, PR #18-#22). **Fond de caisse SANS UI POS** : `posStore.openPosSession()` appelle `open()` sans montant alors que l'API l'accepte |
+| 3 | Ventes | 🔄 | Backend ✅ (hash v2, idempotence, session binding). iPad OK. ⚠️ **Desktop : sur échec de création, fabrique un faux ticket `T-######` et vide le panier** (`POSPage.tsx:743-745`) — succès silencieux sans trace serveur. Pas d'`Idempotency-Key` sur la vente ONLINE (seul le replay offline en a) |
+| 4 | Paiements | ⚠️ | Espèces ✅ (rendu `paymentMachine`, tiroir iPad). **Carte : MOCK minuterie 25 s — `handleTpeResponse('success')` n'est appelé NULLE PART**, l'encaissement carte ne peut jamais aboutir (M601 confirmé). `useStripeTerminal` (WisePad 3) complet mais **orphelin** (0 consommateur) ; backend Stripe réel env-gated |
+| 5 | Retours / remboursements | ✅ | Online + offline, motif obligatoire, idempotence, session-bound serveur, cash déduit de l'attendu (PR #22). Pas de capture TPE pour le remboursement carte (cohérent avec #4) |
+| 6 | Stock | ✅/⚠️ | Décrément/restore atomiques dans les tx. Réconciliation ≥20 % complète (backend+UI+rôles). ⚠️ Alerte seuil AU MOMENT de la vente dormante (`sales.service.ts:632` SQL inline ne passe pas par `StockService.decrementStock`) — alertes par polling uniquement ; seuils absolus 10/5, pas de « règle 20 % » stock bas |
+| 7 | Produits / SKU / variantes | ✅ | CRUD, anti-doublon EAN (index unique DB + 409), variantes complètes, création POS interdite serveur (PIN manager sinon 403, `product-integration.service.ts:247-271`) |
+| 8 | Prix magasin | ✅ | `resolveEffectivePrice` réellement appelé dans le chemin de vente (`sales.service.ts:262`), historisé + audité |
+| 9 | Scanner code-barres | 🔄 | Douchette = input focalisé + Enter (fragile si perte de focus, pas de debounce) ; le listener document dédié existe mais est **mort** (`startBarcodeListener` jamais appelé). Caméra ZXing réelle ; douchette BT réelle (iPad) |
+| 10 | Imprimante ticket | ⚠️ | ESC/POS Bluetooth **réel mais monté iPad uniquement** (`IPadPOSLayout.tsx:99`). **Desktop : AUCUNE impression** — `window.electronAPI` jamais exposé (`preload.ts`), zéro handler ipcMain → chemin USB/Electron mort. Backend `printTicketMock` = console.log |
+| 11 | Tiroir caisse | 🔄 | Kick RJ11 réel via imprimante BT (iPad, auto sur espèces). Desktop : mort (même cause que #10) |
+| 12 | Rapports | 🔄 | X/Z/journalier/période/analytics/trend backend ✅ + ReportsPage. Onglet « Analytique » = placeholder (mais Performance page consomme analytics/trend). **PDF duplicata/avoir/Z implémentés mais INACCESSIBLES : `DocumentsModule` non importé dans `app.module.ts`** |
+| 13 | Backoffice manager/admin | 🔄 | Sessions/écarts ✅, scores équipe+alertes ✅, produits/stock ✅, réconciliation ✅. **Pas de page Ventes** (list/détail/void backend sans UI). Filtres employé/terminal absents (colonnes seulement). Import CSV backend validé **sans UI**. Garde de rôle front = nav-hide (le serveur tient via `@Roles`) |
+| 14 | Employés / droits | ✅/⚠️ | Serveur ✅ (PIN bcrypt, rotation refresh + anti-replay, lockout par IP, hiérarchie rôles, audit chaîné). ⚠️ **AUCUNE auth employé offline** (gate POS = appel serveur ; cache TW24 sans hash PIN par design) ; QR badge = TW24 online-only |
+| 15 | TimeWin24 | 🔄 | Proxy réel : HMAC+Bearer, circuit breaker, push idempotent, stores/shifts feeds, fin de shift probante (PR #22). Défaut = **local-first** (`POS_AUTH_AUTHORITY='caisse'`). Dépend du service TW24 externe + env vars (sans elles : « disabled » cosmétique, appels vers localhost:3000) |
+| 16 | Comptamax24 | ❌⛔ | **Zéro code** (grep exhaustif). Parqué par design : SaaS séparé consommant des exports/API — rien à auditer |
+| 17 | Mobile inventaire | 🔄 | App réelle (scan ZXing, offline queue idb + syncEngine, auth PIN) mais 1 seul fichier de test. **Doc drift : CLAUDE.md l'étiquette « Wesley Club loyalty »** — la vraie app fidélité est `customer-app` (⛔ build sur simple `npm install`, 0 test). « Pay24 Max » / « Analytik R » : n'existent nulle part dans le repo |
+| 18 | Déploiement Railway/Vercel | ⛔ | Railway : **déploiement manuel obligatoire** (webhook impossible) + token owner. **DNS `api.addxintelligence.com` NON cut-over alors que les 3 `vercel.json` réécrivent `/api/*` vers ce domaine** ; ancien CNAME = service mort → pas de rollback. Vercel sert la **PWA** du POS (pas le .exe). `.exe` **non signé**, **pas d'auto-update**. Seed dev-only ; onboarding catalogue réel = import CSV… sans UI |
+| 19 | Tests / CI | 🔄 | Backend ✅ 104 specs (878 verts, pg-mem, fiscal/session/cash/e2e-money). **CI n'exécute QUE le backend** : vitest pos-desktop (23 fichiers) + backoffice (6 fichiers/36 cas — la doc disait « 12 ») hors CI ; 3 specs pg réels jamais exécutés (pas de `TEST_DATABASE_URL`) ; 1 e2e Playwright smoke (login→scan→cash) **hors CI** ; **0 test périphérique** ; scénario magasin complet = segments disjoints, impression jamais couverte |
+| 20 | Risques terrain | — | Voir top 10 ci-dessous |
+
+### Pourcentage réaliste d'avancement POS complet
+- Backend métier (ventes/fiscal/sessions/score/retours/stock) : **~90 %**
+- POS chemin iPad (cible V1) : **~75 %** (manquent : carte réelle, fond de caisse UI, auth offline)
+- POS chemin desktop : **~50 %** (divergent, 3 défauts sérieux)
+- Matériel : **~55 %** (BT iPad réel ; Electron/USB mort ; 0 test)
+- Backoffice : **~75 %** · Intégrations : **~40 %** · Déploiement : **~40 %** (owner-gated)
+- **Global « prêt magasin » : ~60 %** — un magasin iPad + espèces + imprimante BT peut fonctionner aujourd'hui ; carte, fond de caisse, offline-auth et distribution le bloquent pour un usage réel complet.
+
+### TOP 10 blocages avant mise en magasin (ordre de gravité)
+1. **P0 — Paiement carte impossible** : mock minuterie, `useStripeTerminal` orphelin. Un magasin ne peut pas encaisser en carte. (Câblage WisePad 3 dans `usePayment` = chantier dédié.)
+2. **P0 — Desktop : faux succès sur échec de vente** (`POSPage.tsx:743-745`) — ticket fabriqué, panier vidé, zéro trace serveur. Intégrité fiscale. Décision produit : aligner desktop sur les hooks OU neutraliser le chemin desktop (cible V1 = iPad).
+3. **P0 — Desktop : remises non transmises** (même racine que #2 — divergence des 2 chemins).
+4. **P0 — Aucune impression ticket sur desktop** (`electronAPI` jamais exposé) — si la cible reste iPad+BT, à documenter ; sinon à câbler.
+5. **P0/P1 — Fond de caisse sans UI POS** (validé owner). Règle produit ratifiée : saisi uniquement à l'ouverture, non modifiable ensuite, correction = code manager/admin + audit.
+6. **P1 — Aucune auth employé offline** : coupure internet = impossible de déverrouiller la caisse (le gate appelle le serveur ; cache TW24 sans hash PIN).
+7. **⛔ P1 — DNS non cut-over + déploiement Railway manuel** : les fronts déployés pointent vers un domaine inactif ; pas de rollback. GO owner requis.
+8. **P1 — Pas d'`Idempotency-Key` sur la vente online** (double-submit protégé seulement par un state lock ; l'offline replay, lui, est protégé).
+9. **P1 — Onboarding catalogue magasin** : seed dev-only, import CSV backend validé **sans UI** — aucun chemin outillé pour charger le catalogue d'un vrai magasin.
+10. **P1 — Couverture CI incomplète** : tests front/e2e/périphériques hors CI, PDF documents non branchés (`DocumentsModule`), page Ventes backoffice absente.
+
+### Prochaine PR recommandée
+**PR #23 — Fond de caisse à l'ouverture de session (UI POS + règle produit ratifiée)** : petite, sûre, validée owner, ferme le dernier trou de l'attendu caisse. Ensuite, deux décisions produit à trancher avant les gros chantiers : **(a)** câblage carte réelle WisePad 3 (`useStripeTerminal` → `usePayment`) ; **(b)** sort du chemin desktop inline (aligner sur les hooks ou le retirer — cible V1 = iPad).
+
 ## Bloqués réels (⛔) — préparés, attente owner/accès
 - **D6** Rotation token Railway (accès Railway = owner)
 - **D8** Rotation des clés fuitées dans l'historique git (AUDIT-FINAL S1) — accès secrets + réécriture historique = owner
