@@ -171,10 +171,12 @@ export function useStripeTerminal() {
 
       terminalRef.current = terminal;
 
-      // Discover internet readers (WisePad 3 uses "internet" method)
+      // Discover internet readers (WisePad 3 uses "internet" method).
+      // Simulated readers ONLY in dev builds (import.meta.env is the Vite-correct
+      // check — process.env.NODE_ENV is not defined in the renderer bundle).
       setStatus('discovering');
       const discoverResult = await terminal.discoverReaders({
-        simulated: process.env.NODE_ENV !== 'production',
+        simulated: !import.meta.env.PROD,
       });
 
       if ('error' in discoverResult && (discoverResult as any).error) {
