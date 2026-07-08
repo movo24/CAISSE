@@ -13,6 +13,7 @@ import { app, BrowserWindow, protocol, net, shell } from 'electron';
 import * as path from 'path';
 import { pathToFileURL } from 'url';
 import { CustomerDisplayController } from './customerDisplay';
+import { registerPosPrintingIpc } from './posPrinting';
 
 let posWindow: BrowserWindow | null = null;
 let customerDisplay: CustomerDisplayController | null = null;
@@ -149,6 +150,9 @@ if (!gotLock) {
   app.whenReady().then(() => {
     if (!isDev) registerAppProtocol();
     createPOSWindow();
+
+    // Impression ticket via le spooler OS (PR #33) — honest-fail, IPC borné.
+    registerPosPrintingIpc();
 
     // Managed customer display (screen 2): screen selection, on/off, reload,
     // fullscreen/kiosk, crash watchdog, persistence, IPC control.
