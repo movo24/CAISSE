@@ -150,7 +150,14 @@ class PeripheralBridge {
     }
   }
 
-  async printTicket(data: TicketData): Promise<boolean> {
+  /**
+   * Print a ticket. `allowBrowserFallback: false` (sale auto-print) makes a failed
+   * thermal print return FALSE instead of silently opening the browser print dialog
+   * — the caller must tell the cashier the ticket was NOT printed (no fake print).
+   * Explicit reprints keep the default fallback (user-initiated dialog is fine).
+   */
+  async printTicket(data: TicketData, opts?: { allowBrowserFallback?: boolean }): Promise<boolean> {
+    const allowBrowserFallback = opts?.allowBrowserFallback !== false;
     const { type, connected } = this._status.printer;
 
     // Use registered BT printer function if available and connected
@@ -161,19 +168,26 @@ class PeripheralBridge {
       } catch (e) {
         console.warn('[PERIPH] BT print via hook failed, fallback:', e);
       }
+      if (!allowBrowserFallback) return false; // honest failure, no dialog
     }
 
     switch (type) {
-      case 'thermal_usb': return this.printThermalUSB(data);
-      case 'thermal_bluetooth': return this.printThermalBluetooth(data);
+      case 'thermal_usb': {
+        const ok = await this.printThermalUSB(data, allowBrowserFallback);
+        return ok;
+      }
+      case 'thermal_bluetooth': {
+        const ok = await this.printThermalBluetooth(data, allowBrowserFallback);
+        return ok;
+      }
       case 'airprint':
       case 'browser_print':
       default:
-        return this.printBrowserFallback(data);
+        return allowBrowserFallback ? this.printBrowserFallback(data) : false;
     }
   }
 
-  private async printThermalUSB(data: TicketData): Promise<boolean> {
+  private async printThermalUSB(data: TicketData, allowBrowserFallback = true): Promise<boolean> {
     try {
       if (this.isElectron() && (window as any).electronAPI?.printTicket) {
         const escPosCommands = this.buildESCPOSCommands(data);
@@ -181,15 +195,15 @@ class PeripheralBridge {
         console.log('[PERIPH] Thermal USB print success');
         return true;
       }
-      if ('usb' in navigator) return this.printWebUSB(data);
-      return this.printBrowserFallback(data);
+      if ('usb' in navigator) return this.printWebUSB(data, allowBrowserFallback);
+      return allowBrowserFallback ? this.printBrowserFallback(data) : false;
     } catch (e) {
       console.error('[PERIPH] Thermal USB print failed:', e);
-      return this.printBrowserFallback(data);
+      return allowBrowserFallback ? this.printBrowserFallback(data) : false;
     }
   }
 
-  private async printWebUSB(data: TicketData): Promise<boolean> {
+  private async printWebUSB(data: TicketData, allowBrowserFallback = true): Promise<boolean> {
     try {
       const device = await (navigator as any).usb.requestDevice({ filters: [{ classCode: 7 }] });
       await device.open();
@@ -203,13 +217,13 @@ class PeripheralBridge {
       return true;
     } catch (e) {
       console.warn('[PERIPH] WebUSB failed, fallback:', e);
-      return this.printBrowserFallback(data);
+      return allowBrowserFallback ? this.printBrowserFallback(data) : false;
     }
   }
 
-  private async printThermalBluetooth(data: TicketData): Promise<boolean> {
+  private async printThermalBluetooth(data: TicketData, allowBrowserFallback = true): Promise<boolean> {
     try {
-      if (!('bluetooth' in navigator)) return this.printBrowserFallback(data);
+      if (!('bluetooth' in navigator)) return allowBrowserFallback ? this.printBrowserFallback(data) : false;
       const device = await (navigator as any).bluetooth.requestDevice({
         filters: [{ services: ['000018f0-0000-1000-8000-00805f9b34fb'] }],
       });
@@ -226,7 +240,7 @@ class PeripheralBridge {
       return true;
     } catch (e) {
       console.warn('[PERIPH] Bluetooth print failed:', e);
-      return this.printBrowserFallback(data);
+      return allowBrowserFallback ? this.printBrowserFallback(data) : false;
     }
   }
 

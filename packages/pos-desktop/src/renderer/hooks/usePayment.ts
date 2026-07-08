@@ -66,6 +66,11 @@ export function usePayment() {
   const [transactionStart, setTransactionStart] = useState<number | null>(null);
   const [lastTransactionTime, setLastTransactionTime] = useState<number | null>(null);
 
+  // Honest print outcome for the LAST confirmed sale — shown on the confirmation
+  // overlay. 'no_printer' when no real printer is connected (the platform must SAY
+  // it cannot print — never pretend), 'print_failed' when the thermal print failed.
+  const [lastPrintStatus, setLastPrintStatus] = useState<'printed' | 'print_failed' | 'no_printer' | null>(null);
+
   // Confirmation overlay
   const [confirmation, setConfirmation] = useState<ConfirmationData | null>(null);
   const confirmationRef = useRef<ConfirmationData | null>(null);
@@ -180,6 +185,7 @@ export function usePayment() {
       throw new Error(discCheck.reason || 'Remise refusée');
     }
     setProcessing(true);
+    setLastPrintStatus(null); // per-sale outcome — never show a stale status
     try {
     const totalAmount = store.total();
     const itemCount = store.cartItems.reduce((s, i) => s + i.quantity, 0);
@@ -300,6 +306,10 @@ export function usePayment() {
     const hasRealPrinter = printerStatus.connected &&
       printerStatus.type !== 'none' &&
       printerStatus.type !== 'browser_print';
+    if (!hasRealPrinter) {
+      // Platform cannot really print → say so, never pretend (decision produit).
+      setLastPrintStatus('no_printer');
+    }
     if (hasRealPrinter) {
       try {
         const storeInfo = store.storeInfo;
@@ -330,8 +340,17 @@ export function usePayment() {
           nifCaisse: storeInfo?.nifCaisse || '',
           softwareVersion: '1.0',
         };
-        peripheralBridge.printTicket(ticketData).catch((err) =>
-          console.warn('[POS] Ticket print failed:', err?.message || err));
+        // Auto-print: NO browser-dialog fallback — a failed thermal print must
+        // surface as "non imprimé", not silently pretend success.
+        peripheralBridge.printTicket(ticketData, { allowBrowserFallback: false })
+          .then((ok) => {
+            setLastPrintStatus(ok ? 'printed' : 'print_failed');
+            if (!ok) console.warn('[POS] Ticket NON imprimé — échec imprimante (réimpression possible depuis l\'historique)');
+          })
+          .catch((err) => {
+            setLastPrintStatus('print_failed');
+            console.warn('[POS] Ticket print failed:', err?.message || err);
+          });
 
         // Auto-open cash drawer on cash payments
         const hasCash = payments.some(p => p.method === 'cash');
@@ -529,6 +548,7 @@ export function usePayment() {
 
     // Confirmation
     confirmation,
+    lastPrintStatus,
     ticketCountdown,
     TICKET_TIMEOUT_MS,
     completeTransaction,
