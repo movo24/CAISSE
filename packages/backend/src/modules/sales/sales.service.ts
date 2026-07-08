@@ -32,6 +32,7 @@ import { TimewinService } from '../timewin/timewin.service';
 import { PaginatedResult } from '../../common/dto/pagination.dto';
 import { logBusinessEvent } from '../../common/business-logger';
 import { RealtimeService } from '../../common/realtime/realtime.service';
+import { returningRows } from '../../common/utils/returning-rows';
 
 function sha256(data: string): string {
   return createHash('sha256').update(data).digest('hex');
@@ -726,15 +727,29 @@ export class SalesService {
       }
 
       // --- Decrement stock atomically within transaction ---
+      // BUG FIX (specs pg réels, bloc TEST_DATABASE_URL) : le check stock pré-tx
+      // (ligne ~276) lit une valeur PÉRIMÉE sous concurrence, et l'ancien
+      // `GREATEST(0, stock - qty)` n'échouait jamais → 10 ventes concurrentes sur
+      // un stock de 5 réussissaient TOUTES (sur-vente d'unités fantômes, prouvé
+      // par sales-stock-concurrency.pg.spec). Le décrément devient CONDITIONNEL
+      // (même patron race-safe que le cap promo) : 0 ligne touchée = stock
+      // insuffisant AU MOMENT du commit → la vente entière est rejetée/rollback.
       for (const item of dto.items) {
         const product = resolvedProducts.get(item.ean)!;
-        await queryRunner.query(
+        const decRes = await queryRunner.query(
           `UPDATE products
-           SET stock_quantity = GREATEST(0, stock_quantity - $1),
+           SET stock_quantity = stock_quantity - $1,
                updated_at = NOW()
-           WHERE id = $2 AND store_id = $3`,
+           WHERE id = $2 AND store_id = $3 AND stock_quantity >= $1
+           RETURNING stock_quantity`,
           [item.quantity, product.id, storeId],
         );
+        if (returningRows(decRes).length === 0) {
+          throw new BadRequestException(
+            `Insufficient stock for ${product.name} (${item.ean}): ` +
+              `${item.quantity} requested, stock épuisé au moment de la validation`,
+          );
+        }
       }
 
       // --- Mark first purchase used ---

@@ -144,6 +144,10 @@ describe('E2E — money flow (login → sale → return → avoir → pay → Z)
   });
 
   it('pays a new sale with the avoir (balance decremented, marked redeemed)', async () => {
+    // pg-mem mis-computes the parameterised decrement (real PG is exact) and can
+    // leave garbage/negative stock — reseed so the race-safe conditional decrement
+    // (stock >= qty) exercises the avoir logic, not the pg-mem quirk.
+    await ds.getRepository(ProductEntity).update({ storeId: STORE_ID, ean: '3000000000001' }, { stockQuantity: 100 });
     const dto = {
       items: [{ ean: '3000000000001', quantity: 1 }],
       payments: [{ method: 'store_credit', amountMinorUnits: 500, creditNoteCode: avoirCode }],

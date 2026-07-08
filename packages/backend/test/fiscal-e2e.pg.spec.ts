@@ -72,11 +72,20 @@ d('Fiscal E2E (real Postgres)', () => {
   afterAll(async () => { await moduleRef?.close(); });
 
   it('exécute les flux fiscaux réels puis le vérificateur passe (round-trip PG inclus)', async () => {
-    // vente simple, vente multi-lignes, carte cadeau, annulation
-    const s1: any = await sales.createSale(STORE_ID, EMP_ID, { items: [{ ean: '5000000000001', quantity: 1 }], payments: [{ method: 'cash', amountMinorUnits: 500 }] } as any, SNAP);
-    await sales.createSale(STORE_ID, EMP_ID, { items: [{ ean: '5000000000001', quantity: 3 }], payments: [{ method: 'card', amountMinorUnits: 1500 }] } as any, SNAP);
+    // Vente simple, vente multi-lignes, carte cadeau, annulation, retour cash.
+    // Transposition ère-guard (comme M3/M4) : le void s'exerce sur une vente CARTE
+    // (le guard void-cash-realized refuse — correctement — de voider du cash
+    // réalisé) ; le reversal cash s'exerce via createReturn (chemin imposé, D1).
+    const s1: any = await sales.createSale(STORE_ID, EMP_ID, { items: [{ ean: '5000000000001', quantity: 1 }], payments: [{ method: 'card', amountMinorUnits: 500 }] } as any, SNAP);
+    const s2: any = await sales.createSale(STORE_ID, EMP_ID, { items: [{ ean: '5000000000001', quantity: 3 }], payments: [{ method: 'cash', amountMinorUnits: 1500 }] } as any, SNAP);
     await returns.issueGiftCard(STORE_ID, EMP_ID, { amountMinorUnits: 2000 }, 'Alice');
     await sales.voidSale(s1.id, EMP_ID, STORE_ID, 'admin');
+    // Retour cash guard-era sur s2 (1 unité) — la chaîne credit_notes entre au verify.
+    await returns.createReturn(
+      STORE_ID, EMP_ID,
+      { originalSaleId: s2.id, items: [{ lineItemId: s2.lineItems[0].id, quantity: 1 }], reason: 'e2e retour cash', refundMethod: 'cash' } as any,
+      'Alice',
+    );
 
     const report = await verifier.verify(STORE_ID);
     // log complet pour diagnostic (visible dans la sortie jest)

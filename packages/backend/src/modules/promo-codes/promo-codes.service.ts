@@ -4,6 +4,7 @@ import { DataSource, EntityManager, Repository } from 'typeorm';
 import { PromoCodeEntity } from '../../database/entities/promo-code.entity';
 import { PromoCodeRedemptionEntity } from '../../database/entities/promo-code-redemption.entity';
 import { AuditService } from '../audit/audit.service';
+import { returningRows } from '../../common/utils/returning-rows';
 
 export interface PromoValidation {
   valid: boolean;
@@ -12,6 +13,12 @@ export interface PromoValidation {
   discountValue?: number;
   promoCodeId?: string;
 }
+
+// BUG FIX (premier run des specs pg réels, bloc TEST_DATABASE_URL) : le check
+// `res.length === 0` sur un UPDATE…RETURNING ne se déclenchait JAMAIS sur vrai
+// Postgres (TypeORM y retourne [rows, rowCount]) → cap d'utilisation contourné,
+// remise accordée au-delà de la limite. pg-mem renvoie les rows nues, ce qui
+// masquait le bug. Normalisation : returningRows (common/utils).
 
 /**
  * PromoCodes (decision 6) — shared, human-readable promo codes. Owner-defined;
@@ -114,7 +121,7 @@ export class PromoCodesService {
        RETURNING used_count`,
       [v.promoCodeId, storeId],
     );
-    if (!Array.isArray(res) || res.length === 0) {
+    if (returningRows(res).length === 0) {
       throw new BadRequestException('limite d’utilisation atteinte');
     }
 
@@ -156,7 +163,7 @@ export class PromoCodesService {
        RETURNING used_count`,
       [args.promoCodeId, args.storeId],
     );
-    if (!Array.isArray(res) || res.length === 0) {
+    if (returningRows(res).length === 0) {
       throw new BadRequestException('Code promo : limite d’utilisation atteinte');
     }
     await manager.getRepository(PromoCodeRedemptionEntity).insert({

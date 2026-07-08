@@ -41,7 +41,11 @@ d('Concurrent stock decrement (real Postgres)', () => {
     moduleRef = await Test.createTestingModule({
       imports: [
         ConfigModule.forRoot({ isGlobal: true }),
-        TypeOrmModule.forRoot({ type: 'postgres', url: TEST_DB, entities: loadAllEntities() as any, synchronize: true }),
+        // Pool 30 : 10 createSale concurrents tiennent chacun un queryRunner dédié
+        // PENDANT que le verrou store (FOR UPDATE) les sérialise — avec le pool par
+        // défaut (10), les requêtes annexes attendent une connexion libre et le
+        // test s'affame (timeout). Le harnais dimensionne son pool ; la prod garde le sien.
+        TypeOrmModule.forRoot({ type: 'postgres', url: TEST_DB, entities: loadAllEntities() as any, synchronize: true, extra: { max: 30 } }),
         CacheModule, MessagingModule, RealtimeModule, TimewinModule, SalesModule,
       ],
     }).compile();
@@ -58,6 +62,7 @@ d('Concurrent stock decrement (real Postgres)', () => {
   });
 
   it('DECISIVE — 10 concurrent 1-unit sales on stock=5: no oversell, stock floors at 0', async () => {
+    jest.setTimeout(90_000); // 10 ventes sérialisées par le verrou store sur vrai PG
     const oneSale = (i: number) =>
       sales.createSale(
         STORE, EMP,
