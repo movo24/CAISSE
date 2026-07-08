@@ -190,6 +190,7 @@ Current migrations (run in order):
 1749000000000-AddPosSessionCashCount
 1750000000000-AddPosSessionCashSkip
 1751000000000-AddCreditNoteSessionBinding
+1752000000000-AddPosSessionOpeningCashTrace
 ```
 > Saut de numérotation 1719→1735 volontaire (réservation d'une plage pour les blocs POS).
 

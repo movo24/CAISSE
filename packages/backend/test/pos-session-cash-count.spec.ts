@@ -330,6 +330,54 @@ describe('POS session cash count (attendu serveur vs compté réel)', () => {
     expect(closed.cashDifferenceMinorUnits).toBe(0);
   });
 
+  it('opening cash: cashier declares once → reflected in expected at close', async () => {
+    const storeId = await seedStore();
+    const empId = uuidv4();
+    const terminal = 'TERMINAL 40';
+    // Open WITHOUT float (as the POS auto-open does), then declare it.
+    const session = await sessions.openSession(storeId, empId, SNAP, { terminalId: terminal });
+    expect(session.openingCashMinorUnits).toBeNull();
+
+    const declared = await sessions.setOpeningCash(session.id, storeId, empId, 'cashier', 15000);
+    expect(declared.openingCashMinorUnits).toBe(15000);
+    expect(declared.openingCashSetAt).toBeTruthy();
+
+    await sales.createSale(storeId, empId, cashSale(0) as any, SNAP, undefined, terminal); // +500
+    const closed = await sessions.closeSession(session.id, storeId, empId, { countedCashMinorUnits: 15500 });
+    expect(closed.expectedCashMinorUnits).toBe(15500); // 15000 fond + 500 ventes
+    expect(closed.cashDifferenceMinorUnits).toBe(0);
+  });
+
+  it('opening cash: a cashier CANNOT re-declare once set (403), a manager can correct (audited)', async () => {
+    const storeId = await seedStore();
+    const empId = uuidv4();
+    const terminal = 'TERMINAL 41';
+    const session = await sessions.openSession(storeId, empId, SNAP, { terminalId: terminal });
+    await sessions.setOpeningCash(session.id, storeId, empId, 'cashier', 10000);
+
+    // Cashier re-declaration → forbidden.
+    await expect(
+      sessions.setOpeningCash(session.id, storeId, empId, 'cashier', 12000),
+    ).rejects.toThrow(/manager\/admin/i);
+
+    // Manager correction → allowed + tracked.
+    const corrected = await sessions.setOpeningCash(session.id, storeId, uuidv4(), 'manager', 12000);
+    expect(corrected.openingCashMinorUnits).toBe(12000);
+    expect(corrected.openingCashCorrectedBy).toBeTruthy();
+    expect(corrected.openingCashCorrectedAt).toBeTruthy();
+  });
+
+  it('opening cash: refused on a closed session', async () => {
+    const storeId = await seedStore();
+    const empId = uuidv4();
+    const terminal = 'TERMINAL 42';
+    const session = await sessions.openSession(storeId, empId, SNAP, { terminalId: terminal });
+    await sessions.closeSession(session.id, storeId, empId);
+    await expect(
+      sessions.setOpeningCash(session.id, storeId, empId, 'cashier', 10000),
+    ).rejects.toThrow(/closed|frozen/i);
+  });
+
   it('getTeamScores aggregates the store team (worst day-score first, tenant-scoped)', async () => {
     const storeId = await seedStore();
     const empA = uuidv4();

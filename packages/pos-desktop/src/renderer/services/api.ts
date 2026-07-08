@@ -197,6 +197,14 @@ export const posSessionApi = {
       typeof openingCashMinorUnits === 'number' ? { openingCashMinorUnits } : {},
       { headers: { 'X-Terminal-Id': currentTerminalId() } },
     ),
+  // Fond de caisse : déclaré à l'ouverture (caissier, une fois) ; une correction
+  // ultérieure est manager/admin + auditée côté serveur.
+  setOpeningCash: (sessionId: string, openingCashMinorUnits: number) =>
+    api.post(
+      `/pos-sessions/${sessionId}/opening-cash`,
+      { openingCashMinorUnits },
+      { headers: { 'X-Terminal-Id': currentTerminalId() } },
+    ),
   // countedCashMinorUnits (optionnel) : montant espèces compté physiquement. Le
   // backend dérive l'attendu (fond + ventes espèces de la session) et l'écart.
   // skipReason (optionnel) : motif d'une fermeture explicite SANS comptage —

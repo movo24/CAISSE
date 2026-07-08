@@ -98,7 +98,7 @@
 | # | Module | Statut | Réalité (preuve) |
 |---|--------|--------|------------------|
 | 1 | POS dashboard caisse | 🔄 | iPad prêt (scan, panier, qty, suppression, inconnu→demande, TTC centimes). **Desktop inline divergent** : remises affichées mais **non transmises** (`POSPage.tsx:736-740` n'envoie pas `toSaleDiscountFields`) |
-| 2 | Sessions caisse (ouverture/fermeture) | 🔄 | Backend ✅ (γ invariant, comptage attendu/compté/écart, skip motivé, PR #18-#22). **Fond de caisse SANS UI POS** : `posStore.openPosSession()` appelle `open()` sans montant alors que l'API l'accepte |
+| 2 | Sessions caisse (ouverture/fermeture) | ✅ (iPad) | Backend ✅ (γ invariant, comptage attendu/compté/écart, skip motivé, PR #18-#22). **Fond de caisse : UI POS livrée (PR #23)** — `CashOpenModal` à l'ouverture ; déclaration caissier une fois, correction manager/admin gated + auditée (migration 1752, `POST /pos-sessions/:id/opening-cash`), intégré à l'attendu, marqueur backoffice |
 | 3 | Ventes | 🔄 | Backend ✅ (hash v2, idempotence, session binding). iPad OK. ⚠️ **Desktop : sur échec de création, fabrique un faux ticket `T-######` et vide le panier** (`POSPage.tsx:743-745`) — succès silencieux sans trace serveur. Pas d'`Idempotency-Key` sur la vente ONLINE (seul le replay offline en a) |
 | 4 | Paiements | ⚠️ | Espèces ✅ (rendu `paymentMachine`, tiroir iPad). **Carte : MOCK minuterie 25 s — `handleTpeResponse('success')` n'est appelé NULLE PART**, l'encaissement carte ne peut jamais aboutir (M601 confirmé). `useStripeTerminal` (WisePad 3) complet mais **orphelin** (0 consommateur) ; backend Stripe réel env-gated |
 | 5 | Retours / remboursements | ✅ | Online + offline, motif obligatoire, idempotence, session-bound serveur, cash déduit de l'attendu (PR #22). Pas de capture TPE pour le remboursement carte (cohérent avec #4) |
@@ -131,7 +131,7 @@
 2. **P0 — Desktop : faux succès sur échec de vente** (`POSPage.tsx:743-745`) — ticket fabriqué, panier vidé, zéro trace serveur. Intégrité fiscale. Décision produit : aligner desktop sur les hooks OU neutraliser le chemin desktop (cible V1 = iPad).
 3. **P0 — Desktop : remises non transmises** (même racine que #2 — divergence des 2 chemins).
 4. **P0 — Aucune impression ticket sur desktop** (`electronAPI` jamais exposé) — si la cible reste iPad+BT, à documenter ; sinon à câbler.
-5. **P0/P1 — Fond de caisse sans UI POS** (validé owner). Règle produit ratifiée : saisi uniquement à l'ouverture, non modifiable ensuite, correction = code manager/admin + audit.
+5. ~~**P0/P1 — Fond de caisse sans UI POS**~~ ✅ **RÉSOLU (PR #23)** : `CashOpenModal` à l'ouverture ; déclaration caissier une fois puis immuable ; correction manager/admin gated + auditée (`setOpeningCash`, migration 1752) ; intégré à l'attendu ; marqueur backoffice.
 6. **P1 — Aucune auth employé offline** : coupure internet = impossible de déverrouiller la caisse (le gate appelle le serveur ; cache TW24 sans hash PIN).
 7. **⛔ P1 — DNS non cut-over + déploiement Railway manuel** : les fronts déployés pointent vers un domaine inactif ; pas de rollback. GO owner requis.
 8. **P1 — Pas d'`Idempotency-Key` sur la vente online** (double-submit protégé seulement par un state lock ; l'offline replay, lui, est protégé).

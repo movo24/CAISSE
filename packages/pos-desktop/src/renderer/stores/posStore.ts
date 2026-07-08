@@ -152,6 +152,8 @@ interface POSState {
   lockRequested: boolean;
   /** Modale de comptage caisse ouverte (fermeture explicite de la session). */
   cashCountOpen: boolean;
+  /** La session vient d'ouvrir sans fond de caisse déclaré → saisie demandée. */
+  openingCashRequired: boolean;
 
   // Cart
   cartItems: CartItem[];
@@ -199,6 +201,10 @@ interface POSState {
   /** Ouvre/ferme la modale de comptage caisse (fermeture explicite). */
   openCashCount: () => void;
   closeCashCount: () => void;
+  /** Déclare le fond de caisse à l'ouverture (caissier, une fois). */
+  declareOpeningCash: (openingCashMinorUnits: number) => Promise<void>;
+  /** Passe la saisie du fond (fond inconnu — état auditable côté serveur). */
+  dismissOpeningCash: () => void;
   /**
    * Ferme la session et déconnecte. `countedCashMinorUnits` (optionnel) = le
    * SEUL montant saisi par le caissier ; l'attendu et l'écart sont calculés
@@ -244,6 +250,7 @@ export const usePOSStore = create<POSState>((set, get) => ({
   posSession: null,
   lockRequested: false,
   cashCountOpen: false,
+  openingCashRequired: false,
   cartItems: [],
   customerQrCode: null,
   customer: null,
@@ -282,6 +289,20 @@ export const usePOSStore = create<POSState>((set, get) => ({
   openCashCount: () => set({ cashCountOpen: true }),
   closeCashCount: () => set({ cashCountOpen: false }),
 
+  declareOpeningCash: async (openingCashMinorUnits) => {
+    const { posSession } = get();
+    if (!posSession?.id) { set({ openingCashRequired: false }); return; }
+    try {
+      await posSessionApi.setOpeningCash(posSession.id, openingCashMinorUnits);
+    } catch {
+      // Best-effort : ne bloque jamais la caisse (le fond reste null = inconnu).
+      console.warn('[POS] setOpeningCash failed');
+    } finally {
+      set({ openingCashRequired: false });
+    }
+  },
+  dismissOpeningCash: () => set({ openingCashRequired: false }),
+
   logScoreEvent: (eventType, reason) => {
     const { posSession } = get();
     employeeScoreApi
@@ -317,7 +338,11 @@ export const usePOSStore = create<POSState>((set, get) => ({
       const res = await posSessionApi.open();
       const s = res.data;
       if (s?.id) {
-        set({ posSession: { id: s.id, openedAt: s.openedAt || new Date().toISOString(), terminalId: s.terminalId ?? null } });
+        set({
+          posSession: { id: s.id, openedAt: s.openedAt || new Date().toISOString(), terminalId: s.terminalId ?? null },
+          // Fond non déclaré → on demande la saisie à l'ouverture.
+          openingCashRequired: s.openingCashMinorUnits == null,
+        });
       }
     } catch (e: any) {
       // 409 = une session est déjà active sur ce terminal → on la récupère.
@@ -325,7 +350,11 @@ export const usePOSStore = create<POSState>((set, get) => ({
         const act = await posSessionApi.active();
         const s = act.data;
         if (s?.id) {
-          set({ posSession: { id: s.id, openedAt: s.openedAt || new Date().toISOString(), terminalId: s.terminalId ?? null } });
+          set({
+            posSession: { id: s.id, openedAt: s.openedAt || new Date().toISOString(), terminalId: s.terminalId ?? null },
+            // Session récupérée : ne redemande que si le fond n'a jamais été déclaré.
+            openingCashRequired: s.openingCashMinorUnits == null,
+          });
         }
       } catch {
         set({ posSession: null });
