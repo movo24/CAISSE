@@ -15,6 +15,24 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    services:
+      # Postgres JETABLE, job-scoped, localhost-only (bloc TEST_DATABASE_URL).
+      # Le mot de passe ci-dessous n'est PAS un secret : il ne protège qu'un
+      # container éphémère détruit à la fin du job, inaccessible hors du runner.
+      # Aucun secret GitHub requis ; aucune dépendance à la prod.
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: caisse
+          POSTGRES_PASSWORD: ci_throwaway_not_a_secret
+          POSTGRES_DB: caisse_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
 
@@ -31,6 +49,16 @@ jobs:
 
       - name: Backend tests
         run: npm run test:backend
+
+      # Specs pg réels (concurrence promo/stock + fiscal E2E round-trip) — en
+      # SÉRIE (--runInBand) : les 3 suites partagent la base et construisent leur
+      # schéma via synchronize. TEST_DATABASE_URL est scopée à CETTE étape : la
+      # suite pg-mem ci-dessus ne la voit pas (les 3 specs y restent skipped).
+      - name: Backend PG specs (real Postgres, serial)
+        env:
+          TEST_DATABASE_URL: postgresql://caisse:ci_throwaway_not_a_secret@localhost:5432/caisse_test
+        run: npx jest --runInBand --forceExit --testPathPattern '\.pg\.spec\.ts$'
+        working-directory: packages/backend
 
       - name: POS desktop tests (vitest)
         run: npm run test --workspace=@caisse/pos-desktop
