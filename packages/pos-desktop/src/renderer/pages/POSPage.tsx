@@ -11,6 +11,10 @@ import {
 import { usePOSStore } from '../stores/posStore';
 import { productsApi, productIntegrationApi, salesApi, customersApi, occupancyApi, receiptsApi } from '../services/api';
 import { newIdempotencyKey } from '../services/idempotency';
+import { toWirePayments, toSaleDiscountFields } from '../services/salePayload';
+import { validateManualDiscount } from '../services/discount-policy';
+import { useOfflineStore } from '../stores/offlineStore';
+import { getCardPaymentMode, CARD_DISABLED_MESSAGE } from '../services/cardPaymentMode';
 import { loadSettings as loadCustomerDisplaySettings, terminalLabel } from '../services/customerDisplay/settings';
 import { computePaymentState, type PaymentMethod } from '../services/paymentMachine';
 import { FluxWidget } from '../components/FluxWidget';
@@ -97,6 +101,8 @@ interface PartialPayment {
   method: PaymentMethod;
   amountMinorUnits: number;
   creditNoteCode?: string;
+  /** Card leg NOT really captured (demo) → sale lands payment_pending. */
+  pendingCapture?: boolean;
 }
 
 /* ── Confirmation overlay types ── */
@@ -179,18 +185,24 @@ export function POSPage() {
   const [splitAmountInput, setSplitAmountInput] = useState('');
   const splitInputRef = useRef<HTMLInputElement>(null);
 
-  // TPE waiting state
+  // TPE waiting state — on this legacy desktop path only the labelled DEMO flow
+  // can open the overlay (real card = iPad/aligned pipeline; prod unconfigured = disabled).
   const [tpeWaiting, setTpeWaiting] = useState<{
     amountMinorUnits: number;
     method: 'card';
     context: 'quick' | 'split';
     startedAt: number;
+    mode: 'demo';
   } | null>(null);
   const tpeWaitingRef = useRef<typeof tpeWaiting>(null); // mirror to avoid stale closures
   const [tpeCountdown, setTpeCountdown] = useState(25);
   const [tpeResult, setTpeResult] = useState<'success' | 'refused' | 'timeout' | null>(null);
   const tpeTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const tpeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Capture facts attached to a card leg before commit — a card leg can ONLY be
+  // committed when facts are set (demo → pendingCapture:true). Nothing can
+  // fabricate a captured card payment on this path.
+  const cardLegFactsRef = useRef<{ pendingCapture?: boolean } | null>(null);
 
   // Ticket history (extracted hook)
   const ticketHistory = useTicketHistory();
@@ -606,36 +618,59 @@ export function POSPage() {
   const startTpeWaiting = (amountMinor: number, context: 'quick' | 'split') => {
     // Clear any previous TPE session
     clearTpeTimers();
-
-    const tpeState = { amountMinorUnits: amountMinor, method: 'card' as const, context, startedAt: Date.now() };
     setTpeResult(null);
-    setTpeCountdown(25);
-    setTpeWaiting(tpeState);
-    tpeWaitingRef.current = tpeState; // keep ref in sync
+    cardLegFactsRef.current = null;
 
-    // Countdown timer
-    tpeTimerRef.current = setInterval(() => {
-      setTpeCountdown((prev) => {
-        if (prev <= 1) {
-          handleTpeResponse('timeout');
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
+    void (async () => {
+      // Card gate (decision produit ratifiée) : this legacy desktop path never runs
+      // a real reader flow — real card lives on the aligned iPad pipeline. Prod
+      // without Stripe = disabled. Dev without Stripe = labelled DEMO only.
+      const mode = await getCardPaymentMode();
+      if (mode === 'disabled') {
+        setError(CARD_DISABLED_MESSAGE);
+        return;
+      }
+      if (mode === 'real') {
+        setError('Paiement carte réel : utilisez la caisse iPad (lecteur WisePad 3). Ce poste desktop n\'est pas encore raccordé au lecteur.');
+        return;
+      }
 
-    // Real TPE response comes via peripheralBridge event
+      const tpeState = { amountMinorUnits: amountMinor, method: 'card' as const, context, startedAt: Date.now(), mode };
+      setTpeCountdown(25);
+      setTpeWaiting(tpeState);
+      tpeWaitingRef.current = tpeState; // keep ref in sync
+
+      // Countdown timer — demo auto-times out; acceptance is ONLY the explicit demo button
+      tpeTimerRef.current = setInterval(() => {
+        setTpeCountdown((prev) => {
+          if (prev <= 1) {
+            handleTpeResponse('timeout');
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    })();
   };
 
   const handleTpeResponse = (result: 'success' | 'refused' | 'timeout') => {
     // Stop all TPE timers immediately
     clearTpeTimers();
-    setTpeResult(result);
 
     // Read from ref to avoid stale closure on tpeWaiting state
     const currentTpe = tpeWaitingRef.current;
 
-    if (result === 'success' && currentTpe) {
+    if (result === 'success') {
+      // INVARIANT: a card leg only commits with capture facts attached
+      // (demo → pendingCapture:true). No facts → refuse, never fabricate.
+      const facts = cardLegFactsRef.current;
+      if (!currentTpe || !facts) {
+        cardLegFactsRef.current = null;
+        setTpeResult('refused');
+        return;
+      }
+      cardLegFactsRef.current = null;
+      setTpeResult('success');
       const { amountMinorUnits, context } = currentTpe;
 
       // TPE approved → show green success 2s, then clear overlay and finalize
@@ -649,15 +684,29 @@ export function POSPage() {
         setTimeout(() => {
           if (context === 'quick') {
             const totalAmount = store.total();
-            finalizePayment([{ id: `pay-${Date.now()}`, method: 'card', amountMinorUnits: totalAmount }], 0);
+            finalizePayment([{ id: `pay-${Date.now()}`, method: 'card', amountMinorUnits: totalAmount, ...facts }], 0);
           } else {
-            commitPartialPayment('card', amountMinorUnits);
+            commitPartialPayment('card', amountMinorUnits, undefined, facts);
           }
         }, 100);
       }, 2000);
+      return;
     }
+    cardLegFactsRef.current = null;
+    setTpeResult(result);
     // Refused / Timeout → overlay stays visible with retry/cash buttons (no auto-dismiss)
     // The user must explicitly choose: retry, switch to cash, or cancel
+  };
+
+  /**
+   * DEV/DEMO ONLY — simulate a card acceptance. The committed leg is flagged
+   * pendingCapture=true → the sale lands payment_pending (à régulariser),
+   * NEVER a "paid" card sale.
+   */
+  const simulateDemoTpeSuccess = () => {
+    if (tpeWaitingRef.current?.mode !== 'demo') return;
+    cardLegFactsRef.current = { pendingCapture: true };
+    handleTpeResponse('success');
   };
 
   const cancelTpeWaiting = () => {
@@ -665,6 +714,7 @@ export function POSPage() {
     setTpeWaiting(null);
     setTpeResult(null);
     tpeWaitingRef.current = null;
+    cardLegFactsRef.current = null;
   };
 
   // Cleanup timers on unmount
@@ -674,12 +724,13 @@ export function POSPage() {
 
   /* ── Commit partial payment (after TPE approval for card) ── */
 
-  const commitPartialPayment = (method: PaymentMethod, amountMinor: number, creditNoteCode?: string) => {
+  const commitPartialPayment = (method: PaymentMethod, amountMinor: number, creditNoteCode?: string, cardFacts?: { pendingCapture?: boolean }) => {
     const payment: PartialPayment = {
       id: `pay-${Date.now()}`,
       method,
       amountMinorUnits: amountMinor,
       creditNoteCode,
+      ...(cardFacts || {}),
     };
 
     const newPayments = [...partialPayments, payment];
@@ -719,6 +770,16 @@ export function POSPage() {
   };
 
   const finalizePayment = async (payments: PartialPayment[], changeMinor: number) => {
+    // Decision 5 mirror: refuse an impossible manual discount before the network.
+    const discCheck = validateManualDiscount({
+      subtotalMinor: store.subtotal(),
+      manualDiscountMinor: store.manualDiscountMinorUnits,
+      approverId: store.discountApproverId,
+    });
+    if (!discCheck.ok) {
+      setError(discCheck.reason || 'Remise refusée');
+      return;
+    }
     setProcessing(true);
     setError('');
     const totalAmount = store.total();
@@ -738,20 +799,69 @@ export function POSPage() {
     // Stable idempotency key for this checkout — a double-click / retry reuses it,
     // so the backend dedupes instead of creating a second sale + cash-in.
     if (!saleIdemKeyRef.current) saleIdemKeyRef.current = newIdempotencyKey();
+    const idempotencyKey = saleIdemKeyRef.current;
     try {
       const res = await salesApi.create({
         items: store.cartItems.map((i) => ({ ean: i.ean, quantity: i.quantity })),
         customerQrCode: store.customerQrCode || undefined,
-        payments: payments.map((p) => ({ method: p.method, amountMinorUnits: p.amountMinorUnits, creditNoteCode: p.creditNoteCode })),
-      }, saleIdemKeyRef.current);
+        // Manual discount (decision 5) + promo (decision 6) — server re-validates.
+        // This path silently DROPPED them before (P0 #3 of the field audit).
+        ...toSaleDiscountFields(store),
+        payments: toWirePayments(payments),
+      }, idempotencyKey);
       ticketNumber = res.data.ticketNumber || `T-${Date.now().toString().slice(-6)}`;
+      saleIdemKeyRef.current = null; // confirmed online → next sale gets a fresh key
       if (res.data.jackpotResult) store.setJackpotResult(res.data.jackpotResult);
-    } catch {
-      ticketNumber = `T-${Date.now().toString().slice(-6)}`;
-    } finally {
-      // Reset so the next distinct sale gets a fresh key. (The dangerous fake-ticket
-      // fallback in the catch above is addressed separately in the desktop-path PR.)
-      saleIdemKeyRef.current = null;
+    } catch (err: any) {
+      // NO fake ticket, EVER (P0 #2 of the field audit): a failed create must not
+      // produce a "successful" sale. Network down → honest offline queue (same
+      // pipeline as the iPad path). Any other error → keep the cart, show it.
+      const isNetworkError =
+        !err?.response ||
+        err?.code === 'ERR_NETWORK' ||
+        err?.code === 'ECONNABORTED' ||
+        err?.message?.includes('Network Error');
+
+      if (isNetworkError) {
+        console.warn('[POS] Backend unreachable — queuing sale offline');
+        const offlineStore = useOfflineStore.getState();
+        ticketNumber = `OFF-${Date.now().toString(36).toUpperCase()}`;
+        offlineStore.enqueue({
+          type: 'ticket',
+          payload: {
+            ticketNumber,
+            items: store.cartItems.map((i) => ({ ean: i.ean, quantity: i.quantity, name: i.name, unitPriceMinorUnits: i.unitPriceMinorUnits })),
+            payments: toWirePayments(payments),
+            totalMinorUnits: totalAmount,
+            customerQrCode: store.customerQrCode || undefined,
+            ...toSaleDiscountFields(store),
+            // Same key as the failed online attempt → a lost-response create is
+            // deduped on sync replay, not duplicated.
+            idempotencyKey,
+          },
+          cashierId: store.employee?.id || 'unknown',
+          cashierName,
+          storeId: store.employee?.storeId || 'unknown',
+        });
+        saleIdemKeyRef.current = null; // queued → this checkout is done
+        store.cartItems.forEach((item) => {
+          offlineStore.decrementLocalStock(item.ean, item.quantity);
+        });
+        posEventBus.emit('SALE_OFFLINE', { ticketNumber, pendingCount: offlineStore.pendingCount + 1 });
+        // Continue to confirmation — the sale was honestly accepted locally
+      } else {
+        setProcessing(false);
+        const message =
+          err?.response?.data?.message ||
+          err?.response?.data?.details?.[0] ||
+          err?.message ||
+          'Erreur lors de la vente';
+        setError(message);
+        posEventBus.emit('SALE_ERROR', { message });
+        console.error('[POS] Sale failed:', message);
+        // Keep the cart — the cashier fixes the issue and retries with the SAME key
+        return;
+      }
     }
 
     const timestamp = new Date();
@@ -1604,6 +1714,9 @@ export function POSPage() {
             {/* Waiting state */}
             {!tpeResult && (
               <>
+                <div className="mb-4 px-3 py-2 rounded-xl bg-amber-100 text-amber-800 text-xs font-black tracking-wide">
+                  MODE DÉMO — aucun paiement réel. La vente restera « à régulariser ».
+                </div>
                 {/* Animated card icon */}
                 <div className="relative mx-auto w-24 h-24 mb-6">
                   <div className="absolute inset-0 rounded-full bg-pos-accent/10 animate-ping" />
@@ -1612,7 +1725,7 @@ export function POSPage() {
                   </div>
                 </div>
 
-                <h3 className="text-xl font-black text-pos-text mb-2">En attente du TPE...</h3>
+                <h3 className="text-xl font-black text-pos-text mb-2">En attente du TPE (démo)...</h3>
                 <p className="text-sm text-pos-muted mb-1">Presentez la carte sur le terminal</p>
                 <p className="text-2xl font-black text-pos-accent mb-4">
                   {(tpeWaiting.amountMinorUnits / 100).toFixed(2).replace('.', ',')} €
@@ -1637,6 +1750,12 @@ export function POSPage() {
                 </div>
 
                 <button
+                  className="w-full py-3 mb-2 rounded-xl text-sm font-black bg-amber-500 text-white"
+                  onClick={simulateDemoTpeSuccess}
+                >
+                  Simuler l'acceptation (DÉMO)
+                </button>
+                <button
                   className="btn-ghost w-full text-sm"
                   onClick={cancelTpeWaiting}
                 >
@@ -1651,8 +1770,8 @@ export function POSPage() {
                 <div className="mx-auto w-24 h-24 rounded-full bg-gradient-to-br from-emerald-400 to-green-500 flex items-center justify-center mb-6 animate-scale-in">
                   <CheckCircle2 size={48} className="text-white" />
                 </div>
-                <h3 className="text-xl font-black text-emerald-600 mb-2">Paiement accepte</h3>
-                <p className="text-sm text-pos-muted">Transaction validee par le terminal</p>
+                <h3 className="text-xl font-black text-emerald-600 mb-2">Paiement simule (DÉMO) — a regulariser</h3>
+                <p className="text-sm text-pos-muted">Aucun paiement reel n'a ete capture</p>
                 <p className="text-2xl font-black text-emerald-600 mt-3">
                   {(tpeWaiting.amountMinorUnits / 100).toFixed(2).replace('.', ',')} €
                 </p>

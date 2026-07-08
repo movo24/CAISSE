@@ -97,9 +97,9 @@
 
 | # | Module | Statut | Réalité (preuve) |
 |---|--------|--------|------------------|
-| 1 | POS dashboard caisse | 🔄 | iPad prêt (scan, panier, qty, suppression, inconnu→demande, TTC centimes). **Desktop inline divergent** : remises affichées mais **non transmises** (`POSPage.tsx:736-740` n'envoie pas `toSaleDiscountFields`) |
+| 1 | POS dashboard caisse | 🔄 | iPad prêt (scan, panier, qty, suppression, inconnu→demande, TTC centimes). **Desktop inline sécurisé (PR #26)** : remises/promo transmises (`toSaleDiscountFields` + pré-validation décision 5), payload via `toWirePayments` |
 | 2 | Sessions caisse (ouverture/fermeture) | ✅ (iPad) | Backend ✅ (γ invariant, comptage attendu/compté/écart, skip motivé, PR #18-#22). **Fond de caisse : UI POS livrée (PR #23)** — `CashOpenModal` à l'ouverture ; déclaration caissier une fois, correction manager/admin gated + auditée (migration 1752, `POST /pos-sessions/:id/opening-cash`), intégré à l'attendu, marqueur backoffice |
-| 3 | Ventes | 🔄 | Backend ✅ (hash v2, idempotence, session binding). iPad OK. **`Idempotency-Key` maintenant posé sur la vente ONLINE (PR #24)** — clé stable par encaissement (`saleIdemKeyRef`), réutilisée sur double-clic / retry, portée dans l'enqueue offline pour dédup d'un create à réponse perdue (`syncEngine` préfère `payload.idempotencyKey`). ⚠️ Reste : **Desktop, sur échec de création, fabrique un faux ticket `T-######` et vide le panier** (`POSPage.tsx:743-745`) — traité en PR #26 |
+| 3 | Ventes | ✅ | Backend ✅ (hash v2, idempotence, session binding). iPad OK. `Idempotency-Key` sur la vente ONLINE (PR #24). **Faux ticket desktop supprimé (PR #26)** : échec réseau → file offline honnête (`OFF-…`, même clé d'idempotence) ; autre échec → erreur affichée, panier conservé, AUCUN ticket fabriqué, aucune confirmation |
 | 4 | Paiements | 🔄 | Espèces ✅ (rendu `paymentMachine`, tiroir iPad). **Carte réelle câblée (PR #25)** : `useStripeTerminal` (WisePad 3) consommé par `usePayment` — mode `real` (Stripe configuré : PI lié à la clé d'idempotence vente, capture réelle, leg `stripePaymentIntentId`), mode `demo` (build dev sans Stripe : étiqueté DÉMO, leg `pendingCapture=true` → vente `payment_pending`, jamais « payée »), mode `disabled` (prod sans Stripe : bouton carte = erreur claire, fail-closed). Invariant code : un leg carte ne se commit qu'avec des faits de capture (`cardLegRef`). ⚠️ Reste : test matériel WisePad 3 physique (aucun device ici) ; chemin desktop inline (PR #26) |
 | 5 | Retours / remboursements | ✅ | Online + offline, motif obligatoire, idempotence, session-bound serveur, cash déduit de l'attendu (PR #22). Pas de capture TPE pour le remboursement carte (cohérent avec #4) |
 | 6 | Stock | ✅/⚠️ | Décrément/restore atomiques dans les tx. Réconciliation ≥20 % complète (backend+UI+rôles). ⚠️ Alerte seuil AU MOMENT de la vente dormante (`sales.service.ts:632` SQL inline ne passe pas par `StockService.decrementStock`) — alertes par polling uniquement ; seuils absolus 10/5, pas de « règle 20 % » stock bas |
@@ -128,8 +128,8 @@
 
 ### TOP 10 blocages avant mise en magasin (ordre de gravité)
 1. ~~**P0 — Paiement carte impossible**~~ ✅ **CÂBLÉ (PR #25)** : `useStripeTerminal` → `usePayment` (init/connexion lecteur auto, collectPayment avec retry/annulation/timeout, erreurs FR). Gate 3 modes via `GET /stripe-terminal/status` : `real` / `demo` (dev, leg `pendingCapture` → `payment_pending`) / `disabled` (prod sans config, fail-closed). Aucun paiement carte fictif ne peut valider une vente payée. ⚠️ Validation matérielle WisePad 3 physique restante (nécessite le device + clé Stripe réelle sur Railway).
-2. **P0 — Desktop : faux succès sur échec de vente** (`POSPage.tsx:743-745`) — ticket fabriqué, panier vidé, zéro trace serveur. Intégrité fiscale. Décision produit : aligner desktop sur les hooks OU neutraliser le chemin desktop (cible V1 = iPad).
-3. **P0 — Desktop : remises non transmises** (même racine que #2 — divergence des 2 chemins).
+2. ~~**P0 — Desktop : faux succès sur échec de vente**~~ ✅ **RÉSOLU (PR #26)** : plus aucun ticket fabriqué — échec réseau → file offline honnête (`OFF-…`, clé d'idempotence conservée, `SALE_OFFLINE`) ; autre échec → message d'erreur, panier conservé, retry avec la même clé.
+3. ~~**P0 — Desktop : remises non transmises**~~ ✅ **RÉSOLU (PR #26)** : `toSaleDiscountFields` + `toWirePayments` sur le chemin inline, pré-validation remise (miroir décision 5). Carte inline gated : prod sans Stripe = désactivée ; Stripe configuré = renvoyée vers le pipeline aligné iPad/WisePad 3 (pas de 2e flux lecteur parallèle) ; dev = DÉMO étiquetée, leg `pendingCapture` → `payment_pending`.
 4. **P0 — Aucune impression ticket sur desktop** (`electronAPI` jamais exposé) — si la cible reste iPad+BT, à documenter ; sinon à câbler.
 5. ~~**P0/P1 — Fond de caisse sans UI POS**~~ ✅ **RÉSOLU (PR #23)** : `CashOpenModal` à l'ouverture ; déclaration caissier une fois puis immuable ; correction manager/admin gated + auditée (`setOpeningCash`, migration 1752) ; intégré à l'attendu ; marqueur backoffice.
 6. **P1 — Aucune auth employé offline** : coupure internet = impossible de déverrouiller la caisse (le gate appelle le serveur ; cache TW24 sans hash PIN).
@@ -139,8 +139,7 @@
 10. **P1 — Couverture CI incomplète** : tests front/e2e/périphériques hors CI, PDF documents non branchés (`DocumentsModule`), page Ventes backoffice absente.
 
 ### Prochaine PR recommandée
-**PR #24 — Idempotency-Key vente online** ✅ **LIVRÉ** · **PR #25 — Carte réelle WisePad 3** ✅ **LIVRÉ** (gate 3 modes, capture réelle, démo étiquetée `pendingCapture`, prod fail-closed). Suite de la roadmap terrain (ordre imposé owner) :
-- **PR #26 — Neutraliser/aligner le chemin desktop inline** : supprimer le faux ticket sur échec (`POSPage.tsx:743-745`), aligner sur le pipeline sécurisé ou verrouiller le chemin (cible V1 = iPad).
+**PR #24 — Idempotency-Key vente online** ✅ · **PR #25 — Carte réelle WisePad 3** ✅ · **PR #26 — Chemin desktop inline sécurisé** ✅ (faux ticket supprimé, remises transmises, offline honnête, carte gated). Suite de la roadmap terrain (ordre imposé owner) :
 - **PR #27** impression ticket terrain · **PR #28** auth employé offline V1 · **PR #29** produit inconnu/onboarding catalogue · **PR #30** page Ventes/rapports manager.
 
 ## Bloqués réels (⛔) — préparés, attente owner/accès
