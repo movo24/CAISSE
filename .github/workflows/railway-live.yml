@@ -59,6 +59,29 @@ jobs:
           }
           EOF
 
+      # Diagnostic de périmètre du token : n'imprime QUE des identifiants de
+      # projet/environnement (déjà documentés dans le RUNBOOK) et un nom de
+      # compte — jamais le token ni aucune valeur de variable.
+      - name: Diagnostic périmètre token (IDs seulement)
+        if: steps.probe.outputs.present == 'true'
+        run: |
+          echo "Attendu : project=$PROJECT env=$ENVID service=$SERVICE"
+          echo "--- Format compte/équipe (Bearer) : query me ---"
+          curl -sS --max-time 30 -X POST https://backboard.railway.app/graphql/v2 \
+            -H "Authorization: Bearer $RAILWAY_TOKEN" -H "Content-Type: application/json" \
+            -d '{"query":"query { me { name } }"}' \
+            | jq -c '{me: .data.me, errors: (.errors // [] | map(.message))}' 2>/dev/null || echo "(réponse non-JSON)"
+          echo "--- Format projet (Project-Access-Token) : query projectToken ---"
+          curl -sS --max-time 30 -X POST https://backboard.railway.app/graphql/v2 \
+            -H "Project-Access-Token: $RAILWAY_TOKEN" -H "Content-Type: application/json" \
+            -d '{"query":"query { projectToken { projectId environmentId } }"}' \
+            | jq -c '{projectToken: .data.projectToken, errors: (.errors // [] | map(.message))}' 2>/dev/null || echo "(réponse non-JSON)"
+          echo "--- Lecture projet attendu (Bearer) ---"
+          curl -sS --max-time 30 -X POST https://backboard.railway.app/graphql/v2 \
+            -H "Authorization: Bearer $RAILWAY_TOKEN" -H "Content-Type: application/json" \
+            -d "{\"query\":\"query { project(id: \\\"$PROJECT\\\") { name } }\"}" \
+            | jq -c '{project: .data.project, errors: (.errors // [] | map(.message))}' 2>/dev/null || echo "(réponse non-JSON)"
+
       - name: Smoke PRE-deploy (état live actuel de l'URL native)
         run: |
           echo "== GET /api/health =="
