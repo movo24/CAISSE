@@ -94,12 +94,16 @@ describe('Decision 6 — payment_pending (no paid ticket without real capture)',
     expect((await sales.listPendingPayments(STORE)).some((x) => x.id === s.id)).toBe(true);
   });
 
-  it('a fully-captured sale (cash + captured card) completes normally', async () => {
+  it('GO WisePad3 — an UNVERIFIED capture claim (Stripe not configured) degrades to payment_pending, never trusted as paid', async () => {
+    // Before the GO WisePad3 hardening this exact dto was accepted as
+    // "completed" on the client's word. Now: no Stripe client available to
+    // verify pi_x → the claim is unverifiable → honest payment_pending.
     const dto = {
       items: [{ ean: '3000000000001', quantity: 1 }],
-      payments: [{ method: 'card', amountMinorUnits: 1000, stripePaymentIntentId: 'pi_x' }], // captured (no pendingCapture)
+      payments: [{ method: 'card', amountMinorUnits: 1000, stripePaymentIntentId: 'pi_x' }], // claims captured
     };
     const s: any = await sales.createSale(STORE, EMP, dto as any, snap, `ok-${uuidv4()}`);
-    expect(s.status).toBe('completed');
+    expect(s.status).toBe('payment_pending');
+    expect((await sales.listPendingPayments(STORE)).some((x) => x.id === s.id)).toBe(true);
   });
 });
