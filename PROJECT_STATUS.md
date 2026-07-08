@@ -135,12 +135,11 @@
 6. ~~**P1 — Aucune auth employé offline**~~ ✅ **RÉSOLU (PR #28, V1 sécurisée/limitée/traçable)** : déverrouillage hors ligne du titulaire via cache PIN salé (jamais en clair), armé seulement après auth online, TTL strict 24 h, anti-brute-force (5 → brûlé), rôle plafonné cashier, fallback déclenché UNIQUEMENT sur erreur réseau (jamais sur 401), trace `SESSION_UNLOCKED_OFFLINE` synchronisée au retour online.
 7. **⛔ P1 — DNS non cut-over + déploiement Railway manuel** : les fronts déployés pointent vers un domaine inactif ; pas de rollback. GO owner requis.
 8. ~~**P1 — Pas d'`Idempotency-Key` sur la vente online**~~ ✅ **RÉSOLU (PR #24)** : clé client stable par encaissement (`newIdempotencyKey` + `saleIdemKeyRef`), envoyée en en-tête `Idempotency-Key` sur les deux chemins (hooks iPad + desktop inline), réinitialisée après confirmation, et **portée dans l'enqueue offline** pour qu'un create à réponse perdue soit dédupliqué et non dupliqué. Backend `createSale` déjà idempotent (fast-path replay + recheck in-tx + clé persistée, expiry 7 j). Tests : `sale-idempotency.spec.ts` (backend pg-mem : même clé → 1 vente + ticket rejoué ; clés distinctes → ventes distinctes), `idempotency.test.ts` (pos-desktop : unicité/format + invariants de câblage source).
-9. **P1 — Onboarding catalogue magasin** : seed dev-only, import CSV backend validé **sans UI** — aucun chemin outillé pour charger le catalogue d'un vrai magasin.
+9. ~~**P1 — Onboarding catalogue magasin**~~ ✅ **RÉSOLU (PR #29)** : UI d'import CSV sur la page Produits (backoffice, manager/admin) branchée sur l'endpoint serveur validé (`POST /products/import`, upsert par EAN, validation par ligne) ; **rapport honnête affiché** (lues/créés/mis à jour/ignorés + table des lignes en erreur — rien d'ignoré silencieusement) ; bouton « Modèle / Export serveur » = CSV canonique **round-trippable** ; liste rafraîchie post-import.
 10. **P1 — Couverture CI incomplète** : tests front/e2e/périphériques hors CI, PDF documents non branchés (`DocumentsModule`), page Ventes backoffice absente.
 
 ### Prochaine PR recommandée
-**PR #24 — Idempotency-Key vente online** ✅ · **PR #25 — Carte réelle WisePad 3** ✅ · **PR #26 — Chemin desktop inline sécurisé** ✅ · **PR #27 — Impression honnête** ✅ · **PR #28 — Auth employé offline V1** ✅. Suite de la roadmap terrain (ordre imposé owner) :
-- **PR #29** produit inconnu / onboarding catalogue · **PR #30** page Ventes / rapports manager.
+**PR #24** ✅ · **PR #25 carte réelle** ✅ · **PR #26 desktop sécurisé** ✅ · **PR #27 impression honnête** ✅ · **PR #28 auth offline V1** ✅ · **PR #29 onboarding catalogue (UI import CSV)** ✅. Reste de la roadmap imposée : **PR #30 — page Ventes / rapports manager** (list/détail/void backend existants sans UI).
 
 ## Bloqués réels (⛔) — préparés, attente owner/accès
 - **D6** Rotation token Railway (accès Railway = owner)
