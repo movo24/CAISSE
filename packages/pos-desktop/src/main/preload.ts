@@ -19,6 +19,18 @@ contextBridge.exposeInMainWorld('posDesktop', {
 });
 
 /**
+ * Impression ticket desktop (PR #33) — deux canaux étroits vers le main :
+ * liste des imprimantes OS + impression silencieuse d'un reçu HTML (généré
+ * localement par DOM sûr côté renderer). Résout { ok:false } en cas d'échec —
+ * jamais de faux succès (règle d'honnêteté PR #27). Rien d'autre n'est exposé.
+ */
+contextBridge.exposeInMainWorld('electronAPI', {
+  getPrinters: () => ipcRenderer.invoke('pos-print:getPrinters'),
+  printTicketHtml: (html: string, deviceName?: string) =>
+    ipcRenderer.invoke('pos-print:printHtml', html, deviceName),
+});
+
+/**
  * Native control bridge for the customer display (screen 2). Only the operator
  * window uses these; they manage the physical window (screen selection, on/off,
  * reload, fullscreen/kiosk) via IPC to the main process. Content sync stays on

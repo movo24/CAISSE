@@ -189,11 +189,18 @@ class PeripheralBridge {
 
   private async printThermalUSB(data: TicketData, allowBrowserFallback = true): Promise<boolean> {
     try {
-      if (this.isElectron() && (window as any).electronAPI?.printTicket) {
-        const escPosCommands = this.buildESCPOSCommands(data);
-        await (window as any).electronAPI.printTicket(escPosCommands);
-        console.log('[PERIPH] Thermal USB print success');
-        return true;
+      // Desktop (PR #33) : impression RÉELLE via le spooler OS d'Electron —
+      // reçu HTML 80 mm construit par DOM sûr, imprimé en silencieux. Un échec
+      // résout { ok:false } côté main → false honnête ici, jamais de faux succès.
+      if (this.isElectron() && (window as any).electronAPI?.printTicketHtml) {
+        const html = this.buildReceiptHtml(data);
+        const result = await (window as any).electronAPI.printTicketHtml(html);
+        if (result?.ok) {
+          console.log('[PERIPH] Desktop OS print success');
+          return true;
+        }
+        console.warn('[PERIPH] Desktop OS print failed:', result?.error);
+        return allowBrowserFallback ? this.printBrowserFallback(data) : false;
       }
       if ('usb' in navigator) return this.printWebUSB(data, allowBrowserFallback);
       return allowBrowserFallback ? this.printBrowserFallback(data) : false;
@@ -201,6 +208,13 @@ class PeripheralBridge {
       console.error('[PERIPH] Thermal USB print failed:', e);
       return allowBrowserFallback ? this.printBrowserFallback(data) : false;
     }
+  }
+
+  /** Serialize the safe receipt DOM (escaped values) to standalone HTML for the main process. */
+  private buildReceiptHtml(data: TicketData): string {
+    const doc = document.implementation.createHTMLDocument('ticket');
+    this.buildReceiptDOM(doc, data);
+    return '<!doctype html>' + doc.documentElement.outerHTML;
   }
 
   private async printWebUSB(data: TicketData, allowBrowserFallback = true): Promise<boolean> {
