@@ -11,7 +11,7 @@ Statuts : OPEN · IN PROGRESS · BLOCKED (owner/accès) · CLOSED (PR retire l'e
 ---
 
 ## D1 — Reversal fiscal d'une vente **cash** via `createReturn` non couvert
-**Status:** PARTIELLEMENT FERMÉE (2026-07-08) — **(2) spec end-to-end ✅ livrée** (`avoir-d1-cash-return.spec.ts`, 7 cas verts) ; **(1) ratification design owner OUVERTE**. **Since:** void-cash-realized guard (#10), 2026-06-12.
+**Status:** ✅ **CLOSED (D1.4 ratifiée + implémentée, GO owner 2026-07-08).** Modèle ratifié : credit_notes = pièce opposable (numéro séquentiel/magasin, HT/TVA/TTC, approbation cash) ; fiscal_journal = scellement immuable — 4 maillons chaînés dans la MÊME tx (`sale_original_referenced` → `credit_note_issued` → `stock_restored` → `cash_refund_recorded`). Atomicité totale prouvée sur VRAI Postgres (`avoir-d14-atomicity.pg.spec.ts`). Migration `1753` additive ; empreintes hash inchangées. **Since:** void-cash-realized guard (#10), 2026-06-12.
 
 **Contexte.** Le guard `void-cash-realized` (`sales.service.ts` ~L933+) refuse de `void` une vente avec leg cash réalisé ; l'annulation doit passer par le **retour** (`createReturn`, remboursement cash). Le trou de sécu (voider du cash réalisé) est **fermé**.
 

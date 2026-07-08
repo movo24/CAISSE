@@ -229,7 +229,7 @@ export const salesApi = {
 // Returns / Credit notes (avoirs)
 // ---------------------------------------------------------------------------
 export const returnsApi = {
-  list: (page = 1, limit = 50) => api.get('/returns', { params: { page, limit } }),
+  list: (page = 1, limit = 50, saleId?: string) => api.get('/returns', { params: { page, limit, saleId } }),
   get: (id: string) => api.get(`/returns/${id}`),
   returnable: (saleId: string) => api.get(`/returns/sale/${saleId}/returnable`),
   create: (
@@ -245,6 +245,14 @@ export const returnsApi = {
     data: { amountMinorUnits: number; code?: string },
     idempotencyKey: string,
   ) => api.post('/returns/gift-card', data, { headers: { 'Idempotency-Key': idempotencyKey } }),
+};
+
+// Documents PDF (duplicata / justificatif avoir / Z) — rendus verbatim serveur.
+export const documentsApi = {
+  saleDuplicata: (saleId: string) =>
+    api.get(`/documents/sales/${saleId}/duplicata`, { responseType: 'blob' }),
+  creditNoteJustificatif: (creditNoteId: string) =>
+    api.get(`/documents/credit-notes/${creditNoteId}/justificatif`, { responseType: 'blob' }),
 };
 
 // ---------------------------------------------------------------------------

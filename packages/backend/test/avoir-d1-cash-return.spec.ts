@@ -144,21 +144,61 @@ describe('Fiscal D1 — retour CASH via createReturn (caractérisation end-to-en
     expect(await stockOf()).toBe(beforeStock + 1);
   });
 
-  it('D1.4 — FAIT ÉPINGLÉ (décision owner ouverte) : un retour cash n\'écrit AUCUN maillon fiscal_journal', async () => {
-    // Contrairement au void (M4), createReturn ne touche pas fiscal_journal :
-    // l'enregistrement opposable du retour est la chaîne credit_notes (D1.1).
-    // Si un futur changement fait écrire un maillon journal ici (ou cesse de
-    // chaîner l'avoir), ce test doit être MIS À JOUR avec la ratification
-    // owner correspondante — jamais silencieusement (TECHNICAL_DEBT D1/D17).
-    const journalBefore = await ds.getRepository(FiscalJournalEntity).count({ where: { storeId: STORE_ID } });
+  it('D1.4 — RATIFIÉ (GO owner 2026-07-08) : un retour cash scelle 4 maillons fiscal_journal chaînés', async () => {
+    // Décision owner : credit_notes = pièce opposable, fiscal_journal = registre
+    // immuable qui prouve la chronologie. Un retour cash écrit, dans la MÊME tx :
+    // sale_original_referenced → credit_note_issued → stock_restored →
+    // cash_refund_recorded, chaînés sur la chaîne journal existante.
+    const journalRepo = ds.getRepository(FiscalJournalEntity);
+    const before = await journalRepo.count({ where: { storeId: STORE_ID } });
     const sale = await cashSale();
-    await returns.createReturn(
+    const cn: any = await returns.createReturn(
       STORE_ID, EMP_ID,
       { originalSaleId: sale.id, items: [{ lineItemId: sale.lineItems[0].id, quantity: 1 }], reason: 'retour', refundMethod: 'cash' } as any,
       'Alice',
     );
-    const journalAfter = await ds.getRepository(FiscalJournalEntity).count({ where: { storeId: STORE_ID } });
-    expect(journalAfter).toBe(journalBefore); // aucun event journal émis par le retour cash (état actuel)
+
+    const rows: any[] = await journalRepo.find({ where: { storeId: STORE_ID }, order: { createdAt: 'ASC' } });
+    expect(rows.length).toBe(before + 4);
+    const mine = rows.filter((r) => r.refId === cn.id);
+    expect(mine.map((r) => r.eventType)).toEqual([
+      'sale_original_referenced', 'credit_note_issued', 'stock_restored', 'cash_refund_recorded',
+    ]);
+    // Chaque maillon est auto-cohérent et chaîne sur le précédent (pas de fork).
+    for (const r of mine) {
+      expect(r.hashChainCurrent).toBe(sha256(r.hashChainPrev + r.payload));
+      const links = rows.some((o) => o.hashChainCurrent === r.hashChainPrev) || r.hashChainPrev === GENESIS;
+      expect(links).toBe(true);
+    }
+    // Le payload d'émission porte la pièce opposable complète (IDs, montants, TVA).
+    const issued = JSON.parse(mine[1].payload);
+    expect(issued.creditNoteId).toBe(cn.id);
+    expect(issued.originalSaleId).toBe(sale.id);
+    expect(issued.totalMinorUnits).toBe(500);
+    expect(issued.taxTotalMinorUnits).toBe(500 - Math.round(500 / 1.2)); // TVA 20 %
+    expect(issued.netTotalMinorUnits + issued.taxTotalMinorUnits).toBe(500); // HT + TVA = TTC
+    // Sortie cash : jamais sans avoir lié ; l'exécutant manager approuve.
+    const cash = JSON.parse(mine[3].payload);
+    expect(cash.cashOutMinorUnits).toBe(500);
+    expect(cash.creditNoteId).toBe(cn.id);
+    expect(cash.approvedByEmployeeId).toBe(EMP_ID);
+  });
+
+  it('D1.4b — numéro d\'avoir séquentiel par magasin, unique et croissant', async () => {
+    const s1 = await cashSale();
+    const cn1: any = await returns.createReturn(
+      STORE_ID, EMP_ID,
+      { originalSaleId: s1.id, items: [{ lineItemId: s1.lineItems[0].id, quantity: 1 }], reason: 'seq 1', refundMethod: 'cash' } as any,
+      'Alice',
+    );
+    const s2 = await cashSale();
+    const cn2: any = await returns.createReturn(
+      STORE_ID, EMP_ID,
+      { originalSaleId: s2.id, items: [{ lineItemId: s2.lineItems[0].id, quantity: 1 }], reason: 'seq 2', refundMethod: 'cash' } as any,
+      'Alice',
+    );
+    expect(cn1.sequentialNumber).toBeGreaterThan(0);
+    expect(cn2.sequentialNumber).toBe(cn1.sequentialNumber + 1); // séquence stricte par magasin
   });
 
   it('D1.5 — replay idempotent : même clé → même avoir, pas de second remboursement', async () => {
