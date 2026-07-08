@@ -399,7 +399,7 @@ shared/
 | Railway deploys not auto-triggered | Structural | Cross-account GitHub limit. Manual via `serviceInstanceDeployV2`. See RUNBOOK. |
 | In-memory cache (no Redis) | Low risk | Set `REDIS_URL` before multi-instance prod. |
 | Backend A untouched | Hard constraint | `api.addxintelligence.com` = prod canonical. Never touch without explicit GO. |
-| Cash-sale fiscal reversal via `createReturn` — UNCOVERED | **Named debt** | The `void-cash-realized` guard blocks voiding a sale with a realized cash leg; such a sale must be reversed via `createReturn` (cash refund), not `void`. The fiscal-chain/journal behaviour of that **createReturn-cash** path is **not yet tested/carried**. M3/M4 specs were transposed onto non-cash tenders (M3 → `store_credit`, M4 → `card`) to preserve their assertions after the guard landed. See [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md) (D1). Address in a **separate fiscal-design PR** — do not let it disappear silently. |
+| Cash-sale fiscal reversal via `createReturn` — spec ✅ / design decision OPEN | **Named debt (partial)** | The `void-cash-realized` guard blocks voiding a sale with a realized cash leg; reversal goes through `createReturn` (cash refund). **The end-to-end characterization spec now exists** (`avoir-d1-cash-return.spec.ts`, 7 green: guard enforced, chained self-consistent refund avoir, sale immutable, stock restored, idempotent replay, over-return blocked — no bug found). **Still open (owner fiscal-design decision, pinned by test D1.4)**: a cash return writes NO `fiscal_journal` link (unlike void/M4) — the opposable record is the `credit_notes` chain. Ratify or change via a dedicated fiscal PR; the pinning test makes any silent change break CI. See [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md) (D1). |
 
 ---
 
