@@ -5,7 +5,9 @@ import {
   ConflictException,
   Logger,
   Optional,
+  Inject,
 } from '@nestjs/common';
+import type Stripe from 'stripe';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, QueryRunner } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
@@ -95,6 +97,13 @@ export class SalesService {
     @Optional()
     @InjectRepository(PosSessionEntity)
     private posSessionRepo?: Repository<PosSessionEntity>,
+    // Optional: Stripe client (GO WisePad 3 / Stripe prod). Used ONLY to VERIFY a
+    // claimed card capture against the real PaymentIntent — never to move money.
+    // Absent (no STRIPE_SECRET_KEY / tests) → capture claims are unverifiable and
+    // degrade to payment_pending, never trusted as paid.
+    @Optional()
+    @Inject('STRIPE')
+    private readonly stripe?: Stripe,
   ) {}
 
   /**
@@ -123,6 +132,91 @@ export class SalesService {
     } catch (err) {
       this.logger.warn(`resolveRegisterBinding failed (store ${storeId}, terminal ${t}): ${err}`);
       return { terminalId: t, sessionId: null };
+    }
+  }
+
+  /**
+   * GO WisePad 3 / Stripe prod — verify claimed card captures SERVER-SIDE.
+   *
+   * Invariant (mission): « a card payment is not paid until captured » — and the
+   * capture claim must be PROVEN, never taken on the client's word. For every
+   * card leg NOT flagged pendingCapture:
+   *
+   *  - no PaymentIntent id            → claim unverifiable → forced pendingCapture
+   *    (sale lands payment_pending « à régulariser » — honest, never silently paid);
+   *  - PI id, Stripe configured       → retrieve the PI and require
+   *    status === 'succeeded' AND metadata.storeId === storeId AND
+   *    amount_received ≥ leg amount. A missing/foreign/unpaid/short PI is a FAKE
+   *    payment claim → the sale is REFUSED (goods must not leave on it);
+   *  - PI id, Stripe NOT configured   → cannot verify → forced pendingCapture;
+   *  - Stripe network/5xx failure     → degraded mode: forced pendingCapture
+   *    (sales continue during degraded payment flow; settlement regularised later).
+   *
+   * Mutates the dto legs (pendingCapture=true) so the existing decision-6
+   * machinery (payment_pending + manager queue + alert) applies unchanged.
+   * Read-only towards Stripe — this method never moves money.
+   */
+  private async verifyCardCaptureClaims(
+    storeId: string,
+    payments: CreateSaleDto['payments'],
+  ): Promise<void> {
+    for (const p of payments) {
+      if (p.method !== 'card' || p.pendingCapture) continue;
+
+      if (!p.stripePaymentIntentId) {
+        this.logger.warn(
+          `[CARD-VERIFY] store ${storeId}: card capture claimed WITHOUT PaymentIntent — degraded to payment_pending`,
+        );
+        p.pendingCapture = true;
+        continue;
+      }
+
+      if (!this.stripe) {
+        this.logger.warn(
+          `[CARD-VERIFY] store ${storeId}: Stripe not configured — capture claim for ${p.stripePaymentIntentId} unverifiable, degraded to payment_pending`,
+        );
+        p.pendingCapture = true;
+        continue;
+      }
+
+      let pi: Stripe.PaymentIntent;
+      try {
+        pi = await this.stripe.paymentIntents.retrieve(p.stripePaymentIntentId);
+      } catch (err: any) {
+        if (err?.code === 'resource_missing' || err?.statusCode === 404) {
+          // The PI does not exist — a fabricated payment claim. Refuse the sale.
+          throw new BadRequestException(
+            `Paiement carte invalide : PaymentIntent introuvable (${p.stripePaymentIntentId}).`,
+          );
+        }
+        // Network / Stripe outage → degraded mode, never a fake "paid".
+        this.logger.warn(
+          `[CARD-VERIFY] store ${storeId}: Stripe unreachable for ${p.stripePaymentIntentId} (${err?.message}) — degraded to payment_pending`,
+        );
+        p.pendingCapture = true;
+        continue;
+      }
+
+      if (pi.metadata?.storeId && pi.metadata.storeId !== storeId) {
+        this.logger.warn(
+          `[SECURITY] store ${storeId} claimed PI ${pi.id} owned by store ${pi.metadata.storeId}`,
+        );
+        throw new BadRequestException('Paiement carte invalide : PaymentIntent d\'un autre magasin.');
+      }
+      if (pi.status !== 'succeeded') {
+        throw new BadRequestException(
+          `Paiement carte non capturé (statut Stripe: ${pi.status}) — encaissement refusé.`,
+        );
+      }
+      const received = (pi as any).amount_received ?? pi.amount;
+      if (received < p.amountMinorUnits) {
+        throw new BadRequestException(
+          `Paiement carte insuffisant : ${received} reçu < ${p.amountMinorUnits} déclaré.`,
+        );
+      }
+      this.logger.log(
+        `[CARD-VERIFY] store ${storeId}: PI ${pi.id} verified (succeeded, ${received} ≥ ${p.amountMinorUnits})`,
+      );
     }
   }
 
@@ -466,6 +560,11 @@ export class SalesService {
         `Montant d'avoir (${storeCreditRequested}) dépasse le reste dû (${storeCreditAllowed})`,
       );
     }
+
+    // --- GO WisePad 3 / Stripe prod: PROVE claimed card captures against the
+    // real PaymentIntent BEFORE the transaction (network read, no tx held).
+    // Fake/foreign/unpaid PI → sale refused. Unverifiable → payment_pending. ---
+    await this.verifyCardCaptureClaims(storeId, dto.payments);
 
     // =====================================================================
     // TRANSACTION BOUNDARY — everything below is atomic
