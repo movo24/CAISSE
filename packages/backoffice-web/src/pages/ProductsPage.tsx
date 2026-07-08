@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Search,
   Plus,
@@ -8,6 +8,7 @@ import {
   ArrowUpDown,
   Filter,
   Download,
+  Upload,
   BarChart3,
   AlertTriangle,
   CheckCircle2,
@@ -132,6 +133,54 @@ export function ProductsPage() {
   const lowStock = products.filter((p) => p.stock <= 15).length;
   const avgPrice = products.length > 0 ? products.reduce((s, p) => s + p.price, 0) / products.length : 0;
 
+  /* ── Onboarding catalogue (PR #29) — import CSV serveur + modèle round-trip ── */
+  interface ImportReport {
+    total: number;
+    created: number;
+    updated: number;
+    skipped: number;
+    errors: Array<{ line: number; ean: string; reason: string }>;
+  }
+  const [importing, setImporting] = useState(false);
+  const [importReport, setImportReport] = useState<ImportReport | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImportFile = async (file: File) => {
+    setImporting(true);
+    setImportError(null);
+    try {
+      const csv = await file.text();
+      const res = await productsApi.importCsv(csv);
+      // Rapport honnête par ligne : rien n'est silencieusement ignoré.
+      setImportReport(res.data as ImportReport);
+      await fetchProducts(); // le catalogue affiché reflète l'état réel post-import
+    } catch (err: any) {
+      setImportError(err?.response?.data?.message || err?.message || 'Import impossible');
+    } finally {
+      setImporting(false);
+      if (importInputRef.current) importInputRef.current.value = '';
+    }
+  };
+
+  /** Modèle/export canonique SERVEUR — round-trippable avec l'import (colonnes officielles). */
+  const handleExportServerCsv = async () => {
+    try {
+      const res = await productsApi.exportCsv();
+      const blob = new Blob(['﻿' + (res.data as string)], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `catalogue-import-${new Date().toISOString().split('T')[0]}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      setImportError(err?.response?.data?.message || 'Export serveur impossible');
+    }
+  };
+
   const handleExportCsv = () => {
     if (filtered.length === 0) return;
     const header = ['Nom', 'EAN', 'Categorie', 'Prix (EUR)', 'Stock'];
@@ -255,6 +304,30 @@ export function ProductsPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <input
+            ref={importInputRef}
+            type="file"
+            accept=".csv,text/csv"
+            className="hidden"
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleImportFile(f); }}
+          />
+          <button
+            onClick={() => importInputRef.current?.click()}
+            disabled={importing}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50"
+            title="Importer / mettre à jour le catalogue depuis un CSV (colonnes du modèle serveur)"
+          >
+            {importing ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
+            {importing ? 'Import...' : 'Importer CSV'}
+          </button>
+          <button
+            onClick={handleExportServerCsv}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+            title="Télécharger le catalogue au format d'import (modèle round-trip serveur)"
+          >
+            <Download size={16} />
+            Modèle / Export serveur
+          </button>
           <button
             onClick={handleExportCsv}
             disabled={filtered.length === 0}
@@ -568,6 +641,74 @@ export function ProductsPage() {
               >
                 {saving && <Loader2 size={14} className="animate-spin" />}
                 {priceConfirm ? 'Confirmer le changement de prix' : editingId ? 'Enregistrer' : 'Ajouter'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ Rapport d'import CSV (PR #29) — honnête, ligne par ligne ═══ */}
+      {importError && (
+        <div className="fixed bottom-6 right-6 z-50 bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm shadow-lg flex items-center gap-3">
+          <XCircle size={16} />
+          {importError}
+          <button onClick={() => setImportError(null)} className="text-red-400 hover:text-red-600"><X size={14} /></button>
+        </div>
+      )}
+      {importReport && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-6">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+              <h3 className="text-lg font-bold text-bo-text">Rapport d'import catalogue</h3>
+              <button onClick={() => setImportReport(null)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+            </div>
+            <div className="grid grid-cols-4 gap-3 px-6 py-4">
+              <div className="rounded-xl bg-gray-50 p-3 text-center">
+                <p className="text-2xl font-black text-bo-text">{importReport.total}</p>
+                <p className="text-xs text-gray-500">Lignes lues</p>
+              </div>
+              <div className="rounded-xl bg-emerald-50 p-3 text-center">
+                <p className="text-2xl font-black text-emerald-600">{importReport.created}</p>
+                <p className="text-xs text-emerald-600">Créés</p>
+              </div>
+              <div className="rounded-xl bg-indigo-50 p-3 text-center">
+                <p className="text-2xl font-black text-indigo-600">{importReport.updated}</p>
+                <p className="text-xs text-indigo-600">Mis à jour</p>
+              </div>
+              <div className={`rounded-xl p-3 text-center ${importReport.skipped > 0 ? 'bg-red-50' : 'bg-gray-50'}`}>
+                <p className={`text-2xl font-black ${importReport.skipped > 0 ? 'text-red-600' : 'text-gray-400'}`}>{importReport.skipped}</p>
+                <p className={`text-xs ${importReport.skipped > 0 ? 'text-red-600' : 'text-gray-500'}`}>Ignorés (erreur)</p>
+              </div>
+            </div>
+            {importReport.errors.length > 0 && (
+              <div className="px-6 pb-4 overflow-y-auto">
+                <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Lignes en erreur — aucune n'a été importée silencieusement</p>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-xs text-gray-400 border-b border-gray-100">
+                      <th className="py-1.5 pr-3">Ligne</th>
+                      <th className="py-1.5 pr-3">EAN</th>
+                      <th className="py-1.5">Motif</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {importReport.errors.map((e) => (
+                      <tr key={`imp-err-${e.line}`} className="border-b border-gray-50">
+                        <td className="py-1.5 pr-3 font-mono text-gray-500">{e.line}</td>
+                        <td className="py-1.5 pr-3 font-mono">{e.ean || '—'}</td>
+                        <td className="py-1.5 text-red-600">{e.reason}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <div className="px-6 py-4 border-t border-gray-100 text-right">
+              <button
+                onClick={() => setImportReport(null)}
+                className="px-5 py-2.5 rounded-xl text-sm font-medium bg-bo-accent text-white hover:bg-bo-accent/90"
+              >
+                Fermer
               </button>
             </div>
           </div>
