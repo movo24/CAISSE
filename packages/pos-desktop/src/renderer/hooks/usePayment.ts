@@ -3,6 +3,7 @@ import { usePOSStore } from '../stores/posStore';
 import { salesApi } from '../services/api';
 import { validateManualDiscount } from '../services/discount-policy';
 import { toWirePayments, toSaleDiscountFields } from '../services/salePayload';
+import { newIdempotencyKey } from '../services/idempotency';
 import { usePerformanceStore } from '../stores/performanceStore';
 import { posEventBus } from '../services/posEventBus';
 import { peripheralBridge, TicketData } from '../services/peripheralBridge';
@@ -45,6 +46,10 @@ export function usePayment() {
   const [splitAmountInput, setSplitAmountInput] = useState('');
   const splitInputRef = useRef<HTMLInputElement>(null);
   const [processing, setProcessing] = useState(false);
+  // One idempotency key per checkout — generated on the first finalize attempt,
+  // reused across double-click / network retry / offline fallback, reset after a
+  // sale is confirmed. Prevents a double sale / double cash-in on retry.
+  const saleIdemKeyRef = useRef<string | null>(null);
 
   // Transaction speed tracking
   const [transactionStart, setTransactionStart] = useState<number | null>(null);
@@ -163,6 +168,9 @@ export function usePayment() {
     setLastTransactionTime(txTime);
     const primaryMethod: PaymentMethod = payments.length === 1 ? payments[0].method : 'mixed';
     let ticketNumber = '';
+    // Stable key for THIS checkout (synchronous ref → a double-click reuses it).
+    if (!saleIdemKeyRef.current) saleIdemKeyRef.current = newIdempotencyKey();
+    const idempotencyKey = saleIdemKeyRef.current;
     try {
       const res = await salesApi.create({
         items: store.cartItems.map((i) => ({ ean: i.ean, quantity: i.quantity })),
@@ -170,8 +178,10 @@ export function usePayment() {
         // Manual discount (decision 5) + promo (decision 6) — server re-validates.
         ...toSaleDiscountFields(store),
         payments: toWirePayments(payments),
-      });
+      }, idempotencyKey);
       ticketNumber = res.data.ticketNumber || `T-${Date.now().toString().slice(-6)}`;
+      // Confirmed online → next sale gets a fresh key.
+      saleIdemKeyRef.current = null;
       // Store sale ID for QR receipt generation
       if (res.data.id) (store as any).lastSaleId = res.data.id;
       if (res.data.jackpotResult) store.setJackpotResult(res.data.jackpotResult);
@@ -206,11 +216,17 @@ export function usePayment() {
             totalMinorUnits: totalAmount,
             customerQrCode: store.customerQrCode || undefined,
             ...toSaleDiscountFields(store),
+            // Carry the SAME key as the failed online attempt: if the create had
+            // actually reached the server (response lost), the replay is deduped
+            // and no second sale is created.
+            idempotencyKey,
           },
           cashierId: store.employee?.id || 'unknown',
           cashierName,
           storeId: store.employee?.storeId || 'unknown',
         });
+        // Sale left the online path (queued) → this checkout is done; next is fresh.
+        saleIdemKeyRef.current = null;
 
         // Decrement local stock cache
         store.cartItems.forEach((item) => {

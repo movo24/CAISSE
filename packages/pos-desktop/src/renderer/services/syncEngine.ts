@@ -127,9 +127,11 @@ async function syncEntry(entry: OfflineQueueEntry): Promise<{ success: boolean; 
       }
     }
 
-    // Stable idempotency key (durable: derived from the persisted queue entry id).
-    // Sent to the backend so a replayed write is deduped server-side (NF525).
-    const idemKey = idempotencyKeyFor(entry.type, entry.id);
+    // Stable idempotency key. Prefer the key the ONLINE attempt already used
+    // (carried in the payload) so a create whose response was lost is deduped by
+    // the backend instead of duplicated; otherwise derive a durable key from the
+    // persisted queue entry id. Sent to the backend either way (NF525).
+    const idemKey = (entry.payload as any)?.idempotencyKey || idempotencyKeyFor(entry.type, entry.id);
 
     // Persist the dedup marker BEFORE the network call (closes the crash-after-
     // success window). On failure we roll it back below so the entry retries —

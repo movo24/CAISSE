@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { usePOSStore } from '../stores/posStore';
 import { productsApi, productIntegrationApi, salesApi, customersApi, occupancyApi, receiptsApi } from '../services/api';
+import { newIdempotencyKey } from '../services/idempotency';
 import { loadSettings as loadCustomerDisplaySettings, terminalLabel } from '../services/customerDisplay/settings';
 import { computePaymentState, type PaymentMethod } from '../services/paymentMachine';
 import { FluxWidget } from '../components/FluxWidget';
@@ -125,6 +126,8 @@ export function POSPage() {
   const cloudSync = useCloudSyncStore();
   const scanRef = useRef<HTMLInputElement>(null);
   const cameraVideoRef = useRef<HTMLVideoElement>(null);
+  // One idempotency key per checkout (reused on double-click / retry, reset on success).
+  const saleIdemKeyRef = useRef<string | null>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [scanValue, setScanValue] = useState('');
   const [error, setError] = useState('');
@@ -732,16 +735,23 @@ export function POSPage() {
 
     let ticketNumber = '';
 
+    // Stable idempotency key for this checkout — a double-click / retry reuses it,
+    // so the backend dedupes instead of creating a second sale + cash-in.
+    if (!saleIdemKeyRef.current) saleIdemKeyRef.current = newIdempotencyKey();
     try {
       const res = await salesApi.create({
         items: store.cartItems.map((i) => ({ ean: i.ean, quantity: i.quantity })),
         customerQrCode: store.customerQrCode || undefined,
         payments: payments.map((p) => ({ method: p.method, amountMinorUnits: p.amountMinorUnits, creditNoteCode: p.creditNoteCode })),
-      });
+      }, saleIdemKeyRef.current);
       ticketNumber = res.data.ticketNumber || `T-${Date.now().toString().slice(-6)}`;
       if (res.data.jackpotResult) store.setJackpotResult(res.data.jackpotResult);
     } catch {
       ticketNumber = `T-${Date.now().toString().slice(-6)}`;
+    } finally {
+      // Reset so the next distinct sale gets a fresh key. (The dangerous fake-ticket
+      // fallback in the catch above is addressed separately in the desktop-path PR.)
+      saleIdemKeyRef.current = null;
     }
 
     const timestamp = new Date();
