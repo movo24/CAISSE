@@ -191,6 +191,7 @@ Current migrations (run in order):
 1750000000000-AddPosSessionCashSkip
 1751000000000-AddCreditNoteSessionBinding
 1752000000000-AddPosSessionOpeningCashTrace
+1753000000000-AddCreditNoteFiscalFields
 ```
 > Saut de numérotation 1719→1735 volontaire (réservation d'une plage pour les blocs POS).
 
@@ -399,7 +400,7 @@ shared/
 | Railway deploys not auto-triggered | Structural | Cross-account GitHub limit. Manual via `serviceInstanceDeployV2`. See RUNBOOK. |
 | In-memory cache (no Redis) | Low risk | Set `REDIS_URL` before multi-instance prod. |
 | Backend A untouched | Hard constraint | `api.addxintelligence.com` = prod canonical. Never touch without explicit GO. |
-| Cash-sale fiscal reversal via `createReturn` — spec ✅ / design decision OPEN | **Named debt (partial)** | The `void-cash-realized` guard blocks voiding a sale with a realized cash leg; reversal goes through `createReturn` (cash refund). **The end-to-end characterization spec now exists** (`avoir-d1-cash-return.spec.ts`, 7 green: guard enforced, chained self-consistent refund avoir, sale immutable, stock restored, idempotent replay, over-return blocked — no bug found). **Still open (owner fiscal-design decision, pinned by test D1.4)**: a cash return writes NO `fiscal_journal` link (unlike void/M4) — the opposable record is the `credit_notes` chain. Ratify or change via a dedicated fiscal PR; the pinning test makes any silent change break CI. See [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md) (D1). |
+| Cash-sale fiscal reversal via `createReturn` | ✅ **CLOSED — D1.4 ratified & implemented (owner GO 2026-07-08)** | Ratified model: **credit_notes = the opposable record** (sequential number per store, HT/TVA/TTC, manager approval on cash), **fiscal_journal = the immutable seal**. A return writes, in the SAME transaction: `sale_original_referenced` → `credit_note_issued` → `stock_restored` → `cash_refund_recorded` (cash only), hash-chained on the existing journal. Full atomicity proven on REAL Postgres (`avoir-d14-atomicity.pg.spec.ts`: a failing link rolls back avoir+journal+stock entirely). Migration `1753` additive; hash allowlists untouched. Specs: `avoir-d1-cash-return.spec.ts` (8), `avoir-d14-fiscal-seal.spec.ts` (3). |
 
 ---
 

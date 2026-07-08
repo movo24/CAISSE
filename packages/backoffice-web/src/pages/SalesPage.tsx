@@ -3,7 +3,7 @@ import {
   ReceiptText, Loader2, AlertTriangle, RefreshCw, Search, XCircle,
   CreditCard, Banknote, Ticket, X, Ban,
 } from 'lucide-react';
-import { salesApi } from '../services/api';
+import { salesApi, returnsApi, documentsApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
 
 /**
@@ -90,6 +90,81 @@ export function SalesPage() {
   const [voidReason, setVoidReason] = useState('');
   const [voiding, setVoiding] = useState(false);
   const [voidError, setVoidError] = useState<string | null>(null);
+
+  /* ── D1.4 — retour / avoir depuis la vente (pièce opposable) ── */
+  interface ReturnableLine {
+    lineItemId: string; productName: string; ean: string;
+    soldQty: number; returnedQty: number; returnableQty: number;
+    unitPriceMinorUnits: number; lineTotalMinorUnits: number;
+  }
+  interface LinkedCreditNote {
+    id: string; code: string; sequentialNumber: number | null; type: string;
+    refundMethod: string | null; status: string; totalMinorUnits: number;
+    reason: string | null; createdAt: string;
+  }
+  const [returnTarget, setReturnTarget] = useState<Sale | null>(null);
+  const [returnableLines, setReturnableLines] = useState<ReturnableLine[]>([]);
+  const [returnQty, setReturnQty] = useState<Record<string, number>>({});
+  const [returnReason, setReturnReason] = useState('');
+  const [returnMethod, setReturnMethod] = useState<'cash' | 'store_credit' | 'card'>('store_credit');
+  const [returning, setReturning] = useState(false);
+  const [returnError, setReturnError] = useState<string | null>(null);
+  const [returnDone, setReturnDone] = useState<LinkedCreditNote | null>(null);
+  const [linkedNotes, setLinkedNotes] = useState<LinkedCreditNote[]>([]);
+
+  const openReturnFlow = async (s: Sale) => {
+    setReturnTarget(s); setReturnError(null); setReturnDone(null);
+    setReturnReason(''); setReturnMethod('store_credit'); setReturnQty({});
+    try {
+      const res = await returnsApi.returnable(s.id);
+      setReturnableLines(res.data?.lines || []);
+    } catch (e: any) {
+      setReturnError(e?.response?.data?.message || 'Lignes retournables indisponibles');
+      setReturnableLines([]);
+    }
+  };
+
+  const loadLinkedNotes = async (saleId: string) => {
+    try {
+      const res = await returnsApi.list(1, 20, saleId);
+      setLinkedNotes(Array.isArray(res.data?.data) ? res.data.data : []);
+    } catch { setLinkedNotes([]); }
+  };
+
+  // Estimation affichée (le serveur recalcule au prorata — source de vérité).
+  const returnEstimate = returnableLines.reduce((sum, l) => {
+    const q = returnQty[l.lineItemId] || 0;
+    return sum + Math.round((l.lineTotalMinorUnits * q) / (l.soldQty || 1));
+  }, 0);
+
+  const submitReturn = async () => {
+    if (!returnTarget || returnReason.trim().length < 3 || returnEstimate <= 0) return;
+    setReturning(true); setReturnError(null);
+    try {
+      const items = Object.entries(returnQty)
+        .filter(([, q]) => q > 0)
+        .map(([lineItemId, quantity]) => ({ lineItemId, quantity }));
+      const res = await returnsApi.create(
+        { originalSaleId: returnTarget.id, items, reason: returnReason.trim(), refundMethod: returnMethod },
+        `bo-ret-${returnTarget.id}-${Date.now()}`.slice(0, 64),
+      );
+      setReturnDone(res.data as LinkedCreditNote);
+      await loadLinkedNotes(returnTarget.id);
+      await load();
+    } catch (e: any) {
+      // Les refus serveur (sur-retour, garde) sont affichés tels quels.
+      setReturnError(e?.response?.data?.message || 'Retour refusé par le serveur.');
+    } finally { setReturning(false); }
+  };
+
+  const openJustificatif = async (creditNoteId: string) => {
+    try {
+      const res = await documentsApi.creditNoteJustificatif(creditNoteId);
+      const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+      window.open(url, '_blank');
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch { setReturnError('Justificatif PDF indisponible'); }
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -237,7 +312,7 @@ export function SalesPage() {
             </thead>
             <tbody>
               {filtered.map((s) => (
-                <tr key={s.id} className="border-b border-gray-50 hover:bg-gray-50/60 cursor-pointer" onClick={() => setDetail(s)}>
+                <tr key={s.id} className="border-b border-gray-50 hover:bg-gray-50/60 cursor-pointer" onClick={() => { setDetail(s); void loadLinkedNotes(s.id); }}>
                   <td className="px-4 py-2.5 font-mono text-gray-700">{s.ticketNumber}</td>
                   <td className="px-4 py-2.5 text-gray-500">{dt(s.createdAt)}</td>
                   <td className="px-4 py-2.5">{s.employeeNameSnapshot || s.employeeId.slice(0, 8)}</td>
@@ -311,7 +386,121 @@ export function SalesPage() {
                   <span>Total</span><span>{euros(detail.totalMinorUnits)}</span>
                 </div>
               </div>
+
+              {/* D1.4 — avoirs liés à la vente (pièces opposables) */}
+              {linkedNotes.length > 0 && (
+                <div className="mt-4 pt-3 border-t border-gray-100">
+                  <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Avoirs liés</p>
+                  {linkedNotes.map((n) => (
+                    <div key={n.id} className="flex items-center justify-between text-sm py-1">
+                      <span className="font-mono text-gray-600">
+                        {n.sequentialNumber != null ? `N°${n.sequentialNumber} · ` : ''}{n.code}
+                        <span className="ml-2 text-xs text-gray-400">{n.refundMethod || n.type} · {n.status}</span>
+                      </span>
+                      <span className="flex items-center gap-3">
+                        <span className="font-semibold">{euros(n.totalMinorUnits)}</span>
+                        <button onClick={() => openJustificatif(n.id)} className="text-xs text-indigo-600 hover:underline">PDF</button>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {canVoid && detail.status !== 'voided' && (
+                <button
+                  onClick={() => { const s = detail; setDetail(null); void openReturnFlow(s); }}
+                  className="mt-4 w-full rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-sm font-medium text-indigo-700 hover:bg-indigo-100"
+                >
+                  Créer un retour / avoir
+                </button>
+              )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* D1.4 — création d'un retour / avoir (pièce opposable, motif obligatoire) */}
+      {returnTarget && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-6">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[85vh] overflow-y-auto p-6">
+            {!returnDone ? (
+              <>
+                <h3 className="text-lg font-bold text-gray-900 mb-1">Retour / avoir — {returnTarget.ticketNumber}</h3>
+                <p className="text-sm text-gray-500 mb-4">
+                  La vente d'origine reste intouchable. Le retour crée une pièce séparée (avoir numéroté),
+                  scellée au journal fiscal ; le cash ne sort que via cette pièce.
+                </p>
+                <div className="space-y-2 mb-4">
+                  {returnableLines.map((l) => (
+                    <div key={l.lineItemId} className="flex items-center justify-between text-sm">
+                      <span>
+                        {l.productName}
+                        <span className="text-xs text-gray-400 ml-2">vendu {l.soldQty} · déjà retourné {l.returnedQty}</span>
+                      </span>
+                      <select
+                        value={returnQty[l.lineItemId] || 0}
+                        disabled={l.returnableQty === 0}
+                        onChange={(e) => setReturnQty((prev) => ({ ...prev, [l.lineItemId]: Number(e.target.value) }))}
+                        className="rounded-lg border border-gray-200 px-2 py-1 text-sm"
+                      >
+                        {Array.from({ length: l.returnableQty + 1 }, (_, i) => (
+                          <option key={i} value={i}>{i}</option>
+                        ))}
+                      </select>
+                    </div>
+                  ))}
+                  {returnableLines.length === 0 && <p className="text-sm text-gray-400">Aucune ligne retournable.</p>}
+                </div>
+                <textarea
+                  value={returnReason}
+                  onChange={(e) => setReturnReason(e.target.value)}
+                  placeholder="Motif obligatoire (min 3 caractères)..."
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm mb-3"
+                  rows={2}
+                />
+                <div className="flex items-center justify-between mb-4">
+                  <select
+                    value={returnMethod}
+                    onChange={(e) => setReturnMethod(e.target.value as any)}
+                    className="rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                  >
+                    <option value="store_credit">Avoir (crédit magasin)</option>
+                    <option value="cash">Remboursement espèces</option>
+                    <option value="card">Remboursement carte</option>
+                  </select>
+                  <span className="text-sm">Montant estimé : <strong>{euros(returnEstimate)}</strong> <span className="text-xs text-gray-400">(le serveur recalcule)</span></span>
+                </div>
+                {returnError && (
+                  <div className="mb-3 flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">
+                    <XCircle size={13} /> {returnError}
+                  </div>
+                )}
+                <div className="flex justify-end gap-2">
+                  <button onClick={() => setReturnTarget(null)} className="px-4 py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-100">Fermer</button>
+                  <button
+                    onClick={submitReturn}
+                    disabled={returning || returnReason.trim().length < 3 || returnEstimate <= 0}
+                    className="px-4 py-2 rounded-lg text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 flex items-center gap-2"
+                  >
+                    {returning && <Loader2 size={13} className="animate-spin" />}
+                    Créer l'avoir
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <h3 className="text-lg font-bold text-emerald-700 mb-1">Avoir créé</h3>
+                <p className="text-sm text-gray-600 mb-4">
+                  {returnDone.sequentialNumber != null ? `N°${returnDone.sequentialNumber} · ` : ''}
+                  <span className="font-mono">{returnDone.code}</span> · {euros(returnDone.totalMinorUnits)} ·
+                  {' '}{returnDone.refundMethod || returnDone.type} — scellé au journal fiscal, stock restauré.
+                </p>
+                <div className="flex justify-end gap-2">
+                  <button onClick={() => openJustificatif(returnDone.id)} className="px-4 py-2 rounded-lg text-sm text-indigo-700 bg-indigo-50 hover:bg-indigo-100">Justificatif PDF</button>
+                  <button onClick={() => setReturnTarget(null)} className="px-4 py-2 rounded-lg text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700">Fermer</button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

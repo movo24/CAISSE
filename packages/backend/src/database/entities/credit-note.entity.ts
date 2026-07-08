@@ -80,6 +80,22 @@ export class CreditNoteEntity {
   @Column({ name: 'total_minor_units', type: 'integer' })
   totalMinorUnits: number;
 
+  /**
+   * D1.4 — numéro d'avoir séquentiel par magasin (pièce opposable). Attribué
+   * sous le verrou store à la création ; les avoirs historiques gardent null
+   * (jamais de renumérotation). HORS empreinte hash (scellé via fiscal_journal).
+   */
+  @Column({ name: 'sequential_number', type: 'integer', nullable: true })
+  sequentialNumber: number | null;
+
+  /** D1.4 — TVA de l'avoir (TTC = total ; HT = total − tax, dérivé). */
+  @Column({ name: 'tax_total_minor_units', type: 'integer', nullable: true })
+  taxTotalMinorUnits: number | null;
+
+  /** D1.4 — manager/admin ayant validé un remboursement CASH (règle existante : POST /returns est manager-gated). */
+  @Column({ name: 'approved_by_employee_id', type: 'uuid', nullable: true })
+  approvedByEmployeeId: string | null;
+
   /** For store_credit: remaining spendable balance. For refund: 0. */
   @Column({ name: 'remaining_minor_units', type: 'integer', default: 0 })
   remainingMinorUnits: number;

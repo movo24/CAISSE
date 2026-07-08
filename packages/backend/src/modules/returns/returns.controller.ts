@@ -85,10 +85,12 @@ export class ReturnsController {
     @Request() req: any,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
+    @Query('saleId') saleId?: string,
   ) {
     return this.returns.listForStore(req.user.storeId, {
       page: page ? parseInt(page, 10) : 1,
       limit: limit ? Math.min(parseInt(limit, 10), 100) : 50,
+      originalSaleId: saleId || undefined,
     });
   }
 

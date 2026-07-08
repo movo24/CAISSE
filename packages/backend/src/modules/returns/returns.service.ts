@@ -8,6 +8,7 @@ import { CreditNoteLineEntity } from '../../database/entities/credit-note-line.e
 import { SaleEntity } from '../../database/entities/sale.entity';
 import { IdempotencyKeyEntity } from '../../database/entities/idempotency-key.entity';
 import { PosSessionEntity } from '../../database/entities/pos-session.entity';
+import { FiscalJournalEntity } from '../../database/entities/fiscal-journal.entity';
 import { AuditService } from '../audit/audit.service';
 import { EmployeeScoreService } from '../employee-score/employee-score.service';
 import { PaginatedResult } from '../../common/dto/pagination.dto';
@@ -193,6 +194,25 @@ export class ReturnsService {
         );
         const prevHash = lastCn.length > 0 ? lastCn[0].hash_chain_current : GENESIS;
         const code = this.genCode();
+
+        // D1.4 — numéro d'avoir séquentiel par magasin, attribué SOUS le verrou
+        // store déjà tenu (pas de course). Les avoirs historiques restent null.
+        const seqRows = await qr.query(
+          `SELECT COALESCE(MAX(sequential_number), 0) + 1 AS next
+             FROM credit_notes WHERE store_id = $1`,
+          [storeId],
+        );
+        const sequentialNumber = Number(
+          (Array.isArray(seqRows) && seqRows[0]?.next) || 1,
+        );
+
+        // D1.4 — ventilation TVA de l'avoir : part de taxe contenue dans chaque
+        // ligne TTC remboursée (même arrondi ligne à ligne que la vente).
+        const taxTotal = returnLines.reduce((sum, l) => {
+          const rate = Number(l.taxRate ?? 0);
+          const ttc = l.lineTotalMinorUnits ?? 0;
+          return sum + (ttc - Math.round(ttc / (1 + rate / 100)));
+        }, 0);
         const isStoreCredit = dto.refundMethod === 'store_credit';
         const chainPayload = JSON.stringify({
           code,
@@ -223,6 +243,12 @@ export class ReturnsService {
         cn.hashChainCurrent = currentHash;
         cn.sessionId = registerBinding.sessionId;
         cn.terminalId = registerBinding.terminalId;
+        // D1.4 — champs opposables (HORS empreinte hash ; scellés via le journal).
+        cn.sequentialNumber = sequentialNumber;
+        cn.taxTotalMinorUnits = taxTotal;
+        // Remboursement CASH → l'acteur est le valideur (POST /returns est
+        // manager-gated par les rôles existants — le manager qui exécute approuve).
+        cn.approvedByEmployeeId = dto.refundMethod === 'cash' ? employeeId : null;
         cn.lines = returnLines.map((l) => Object.assign(new CreditNoteLineEntity(), l));
 
         const saved = await qr.manager.save(CreditNoteEntity, cn);
@@ -233,6 +259,85 @@ export class ReturnsService {
             `UPDATE products SET stock_quantity = stock_quantity + $1, updated_at = NOW() WHERE id = $2 AND store_id = $3`,
             [l.quantity, l.productId, storeId],
           );
+        }
+
+        // ── D1.4 (GO owner) — SCELLEMENT fiscal_journal, dans la MÊME transaction.
+        // L'avoir est la pièce opposable ; le journal prouve la chronologie et
+        // l'intégrité. Quatre maillons chaînés (même mécanique que le void/M4),
+        // atomiques avec l'avoir + le stock : toute erreur → rollback complet.
+        {
+          const lastJournal = await qr.query(
+            `SELECT hash_chain_current FROM fiscal_journal
+              WHERE store_id = $1 ORDER BY created_at DESC LIMIT 1`,
+            [storeId],
+          );
+          let jPrev =
+            Array.isArray(lastJournal) && lastJournal.length > 0
+              ? lastJournal[0].hash_chain_current
+              : GENESIS;
+          const nowIso = new Date().toISOString();
+          const base = {
+            creditNoteId: saved.id,
+            creditNoteCode: code,
+            sequentialNumber,
+            originalSaleId: sale.id,
+            originalTicketNumber: sale.ticketNumber,
+            storeId,
+            employeeId,
+            sessionId: registerBinding.sessionId,
+            terminalId: registerBinding.terminalId,
+            at: nowIso,
+          };
+          const events: Array<{ type: string; extra: Record<string, unknown> }> = [
+            // 1. La vente d'origine est RÉFÉRENCÉE, jamais modifiée (son hash figé en preuve).
+            { type: 'sale_original_referenced', extra: { saleHashChainCurrent: sale.hashChainCurrent } },
+            // 2. Émission de la pièce opposable, montants HT/TVA/TTC + lignes.
+            {
+              type: 'credit_note_issued',
+              extra: {
+                refundMethod: isStoreCredit ? 'store_credit' : dto.refundMethod,
+                reason: dto.reason ?? null,
+                totalMinorUnits: total,
+                taxTotalMinorUnits: taxTotal,
+                netTotalMinorUnits: total - taxTotal,
+                creditNoteHashChainCurrent: currentHash,
+                approvedByEmployeeId: cn.approvedByEmployeeId,
+                lines: returnLines.map((l) => ({
+                  p: l.productId, q: l.quantity, t: l.lineTotalMinorUnits, tva: l.taxRate ?? 0,
+                })),
+              },
+            },
+            // 3. Restauration du stock (atomique avec l'avoir).
+            {
+              type: 'stock_restored',
+              extra: { restored: returnLines.map((l) => ({ productId: l.productId, quantity: l.quantity })) },
+            },
+          ];
+          // 4. Sortie de caisse : AUCUN mouvement cash négatif sans avoir lié.
+          if (!isStoreCredit && dto.refundMethod === 'cash') {
+            events.push({
+              type: 'cash_refund_recorded',
+              extra: {
+                cashOutMinorUnits: total,
+                sessionBound: registerBinding.sessionId != null,
+                approvedByEmployeeId: cn.approvedByEmployeeId,
+              },
+            });
+          }
+          for (const ev of events) {
+            const payload = JSON.stringify({ type: ev.type, ...base, ...ev.extra });
+            const jCurrent = sha256(jPrev + payload);
+            await qr.manager.insert(FiscalJournalEntity, {
+              storeId,
+              eventType: ev.type,
+              refId: saved.id,
+              ticketNumber: sale.ticketNumber,
+              payload,
+              hashChainPrev: jPrev,
+              hashChainCurrent: jCurrent,
+            });
+            jPrev = jCurrent;
+          }
         }
 
         if (idemKey) {
@@ -461,12 +566,13 @@ export class ReturnsService {
 
   async listForStore(
     storeId: string,
-    opts: { page?: number; limit?: number } = {},
+    opts: { page?: number; limit?: number; originalSaleId?: string } = {},
   ): Promise<PaginatedResult<CreditNoteEntity>> {
     const limit = Math.min(Math.max(opts.limit ?? 50, 1), 100);
     const page = Math.max(opts.page ?? 1, 1);
     const [data, total] = await this.cnRepo.findAndCount({
-      where: { storeId },
+      // D1.4 UI — historique des avoirs LIÉS à une vente (tenant-scoped).
+      where: opts.originalSaleId ? { storeId, originalSaleId: opts.originalSaleId } : { storeId },
       order: { createdAt: 'DESC' },
       take: limit,
       skip: (page - 1) * limit,
