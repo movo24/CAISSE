@@ -1,6 +1,6 @@
 import { useOfflineStore, OfflineQueueEntry } from '../stores/offlineStore';
 import { signSyncRequest, markAsSent, unmarkSent, isAlreadySent, idempotencyKeyFor, logSecurityEvent } from './hmacSecurity';
-import { salesApi, timewinApi, returnsApi } from './api';
+import { salesApi, timewinApi, returnsApi, employeeScoreApi } from './api';
 import { toSyncCreateBody } from './salePayload';
 import { API_URL } from '../utils/apiConfig';
 
@@ -20,6 +20,7 @@ const SYNC_ORDER: Record<string, number> = {
   pointage: 7,
   cashier_metrics: 8,
   staffing_snapshot: 9,
+  offline_unlock_audit: 10,
 };
 
 // ── Network Check ──
@@ -200,6 +201,17 @@ async function syncEntry(entry: OfflineQueueEntry): Promise<{ success: boolean; 
           data: entry.payload,
         });
         console.log(`[SYNC] Cashier metrics synced via TimeWin24: ${entry.payload.employeeName}`);
+        break;
+
+      case 'offline_unlock_audit':
+        // Traçabilité auth offline (PR #28) : l'unlock hors ligne est journalisé
+        // côté serveur au retour du réseau (SESSION_UNLOCKED_OFFLINE, neutre).
+        await employeeScoreApi.logEvent({
+          eventType: entry.payload.eventType || 'SESSION_UNLOCKED_OFFLINE',
+          reason: entry.payload.reason,
+          metadata: { cachedRole: entry.payload.cachedRole, offlineAt: entry.timestamp },
+        });
+        console.log(`[SYNC] Offline unlock audit synced for ${entry.cashierName}`);
         break;
 
       case 'staffing_snapshot':
