@@ -52,13 +52,17 @@ project tied to `movo24` directly).
 
 ## Required env vars (must NEVER be committed)
 
+> Table VÉRIFIÉE par boot prod-like réel (preflight Railway 2026-07-08) : chaque
+> ligne "required" fait refuser le démarrage si absente.
+
 | Var | Purpose | Source / format |
 |---|---|---|
 | `NODE_ENV` | `production` | static |
 | `DATABASE_URL` | Neon connection | `postgresql://neondb_owner:***@ep-square-violet-agqygacb-pooler.c-2.eu-central-1.aws.neon.tech/caisse_pos?sslmode=require` |
 | `JWT_SECRET` | access-token HMAC | 64-char hex (`openssl rand -hex 32`) |
 | `JWT_REFRESH_SECRET` | refresh-token HMAC | 64-char hex, ≠ JWT_SECRET |
-| `CORS_ORIGIN` | allowed frontend origins | comma-separated list |
+| `CORS_ORIGIN` | **REQUIRED in prod** — explicit comma-separated origin list (credentials enabled; boot refuses otherwise) | e.g. `https://app.addxintelligence.com` |
+| `REDIS_URL` **ou** `ALLOW_INMEMORY_CACHE=true` | **REQUIRED in prod** — shared cache (token revocation / OTP / rate-limit). Sans Redis, l'opt-out `ALLOW_INMEMORY_CACHE=true` n'est sûr que pour UN seul pod | Redis URL, ou opt-out single-pod |
 | `LOG_LEVEL` | `info` (default) | `error\|warn\|info\|debug\|verbose` |
 
 ## Recommended (currently NOT set — V2 hardening)
@@ -66,8 +70,25 @@ project tied to `movo24` directly).
 | Var | Effect when unset | Action |
 |---|---|---|
 | `SENTRY_DSN` | error tracking disabled | Create Sentry project, add DSN |
-| `REDIS_URL` | rate-limit & token revocation in-memory only (NOT multi-instance safe) | Add Redis service on Railway (or Upstash free tier) |
+| `REDIS_URL` | (see required table — in-memory opt-out is single-pod only) | Add Redis service on Railway (or Upstash free tier) |
 | `ALERT_WEBHOOK_URL` | Slack/Discord alerts disabled | Add Slack incoming webhook |
+
+## Preflight local (reproductible avant tout deploy)
+
+Prouvé le 2026-07-08 sur Postgres 16 jetable :
+
+```bash
+# 1. Chaîne de migrations from-scratch (34/34, ordre OK, re-run = no-op, down réversible)
+DATABASE_URL=postgresql://<user>@localhost:5432/<db_jetable> npm run migration:run
+
+# 2. Boot prod-like + smoke local
+NODE_ENV=production PORT=3199 ALLOW_INMEMORY_CACHE=true \
+  CORS_ORIGIN=https://app.addxintelligence.com \
+  DATABASE_URL=... JWT_SECRET=<test-32+> JWT_REFRESH_SECRET=<test-32+-different> \
+  node dist/main &
+curl http://localhost:3199/api/health          # 200 {"status":"ok","database":"up",...}
+curl http://localhost:3199/api/products        # 401
+```
 
 ## Common operations
 

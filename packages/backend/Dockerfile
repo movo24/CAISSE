@@ -35,8 +35,9 @@ USER nestjs
 
 EXPOSE 3001
 
-# Health check
+# Health check — respecte le PORT injecté (Railway: 8080) au lieu du 3001 en dur,
+# sinon tout orchestrateur honorant HEALTHCHECK verrait le container "unhealthy".
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
-  CMD wget -qO- http://localhost:3001/api/health || exit 1
+  CMD wget -qO- http://localhost:${PORT:-3001}/api/health || exit 1
 
 CMD ["node", "dist/main"]
