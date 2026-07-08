@@ -92,8 +92,13 @@
 > Audit factuel avec preuves `fichier:ligne` (5 agents read-only, zéro supposition). Légende :
 > ✅ prêt terrain · 🔄 partiel · ⚠️ fragile/mock · ❌ manquant · ⛔ bloqué owner/décision.
 > **Fait structurant** : le POS embarque DEUX implémentations parallèles — chemin **iPad**
-> (`useCart`/`usePayment`, récent, sain) et chemin **desktop inline** (`POSPage.tsx:505-826`,
-> ancien, divergent). La cible produit V1 = **iPad** (CLAUDE.md, Apple strategy).
+> (`useCart`/`usePayment`, récent, sain) et chemin **desktop inline** (`POSPage.tsx`,
+> ancien — **sécurisé et aligné par PR #26/#33/#34** : plus de faux ticket, remises
+> transmises, impression OS réelle, tiroir honnête ; la carte réelle reste sur le pipeline
+> iPad). La cible produit V1 = **iPad** (CLAUDE.md, Apple strategy).
+> **Rafraîchi 2026-07-08 après la salve PR #24→#34** (idempotence, carte réelle, desktop
+> sécurisé, impression/tiroir honnêtes, auth offline, onboarding catalogue, page Ventes,
+> documents PDF, CI 3 suites).
 
 | # | Module | Statut | Réalité (preuve) |
 |---|--------|--------|------------------|
@@ -118,13 +123,14 @@
 | 19 | Tests / CI | 🔄 | Backend ✅ (888 verts, pg-mem, fiscal/session/cash/e2e-money). **CI exécute maintenant les 3 suites (PR #32)** : jest backend + **vitest pos-desktop (232)** + **vitest backoffice (46)** + lint + 3 builds. Reste hors CI : 3 specs pg réels (pas de `TEST_DATABASE_URL`), 1 e2e Playwright smoke, tests périphériques (0) — scénario magasin complet toujours en segments |
 | 20 | Risques terrain | — | Voir top 10 ci-dessous |
 
-### Pourcentage réaliste d'avancement POS complet
-- Backend métier (ventes/fiscal/sessions/score/retours/stock) : **~90 %**
-- POS chemin iPad (cible V1) : **~75 %** (manquent : carte réelle, fond de caisse UI, auth offline)
-- POS chemin desktop : **~50 %** (divergent, 3 défauts sérieux)
-- Matériel : **~55 %** (BT iPad réel ; Electron/USB mort ; 0 test)
-- Backoffice : **~75 %** · Intégrations : **~40 %** · Déploiement : **~40 %** (owner-gated)
-- **Global « prêt magasin » : ~60 %** — un magasin iPad + espèces + imprimante BT peut fonctionner aujourd'hui ; carte, fond de caisse, offline-auth et distribution le bloquent pour un usage réel complet.
+### Pourcentage réaliste d'avancement POS complet (rafraîchi post-PR #24→#34, 2026-07-08)
+- Backend métier (ventes/fiscal/sessions/score/retours/stock/documents PDF) : **~92 %**
+- POS chemin iPad (cible V1) : **~90 %** — carte réelle câblée (validation WisePad 3 physique restante), fond de caisse ✅, auth offline V1 ✅, impression honnête ✅, idempotence online ✅
+- POS chemin desktop : **~75 %** — sécurisé (plus de faux ticket, remises transmises, offline honnête), impression OS réelle (PR #33, validation imprimante physique restante), tiroir honnête ; carte réelle = renvoyée vers iPad (pas de flux lecteur legacy)
+- Matériel : **~70 %** — BT iPad réel + spooler OS desktop câblés ; **0 test sur device physique** (imprimante Windows, WisePad 3) ; kick tiroir USB desktop absent (honnête)
+- Backoffice : **~85 %** — page Ventes ✅, import CSV catalogue ✅, sessions/écarts/scores ✅
+- Intégrations : **~40 %** (inchangé — TW24 env-gated, Stripe clé prod manquante) · Déploiement : **~40 %** (owner-gated, inchangé)
+- **Global « prêt magasin » : ~80 %** — un magasin iPad (espèces + imprimante BT + fond de caisse + auth offline + carte si Stripe configuré) est opérationnel de bout en bout côté logiciel. **Les bloquants restants ne sont plus du code** : validation matérielle (WisePad 3, imprimante thermique Windows), clé Stripe prod, DNS cutover + déploiement Railway, distribution (.exe non signé / iPad PWA).
 
 ### TOP 10 blocages avant mise en magasin (ordre de gravité)
 1. ~~**P0 — Paiement carte impossible**~~ ✅ **CÂBLÉ (PR #25)** : `useStripeTerminal` → `usePayment` (init/connexion lecteur auto, collectPayment avec retry/annulation/timeout, erreurs FR). Gate 3 modes via `GET /stripe-terminal/status` : `real` / `demo` (dev, leg `pendingCapture` → `payment_pending`) / `disabled` (prod sans config, fail-closed). Aucun paiement carte fictif ne peut valider une vente payée. ⚠️ Validation matérielle WisePad 3 physique restante (nécessite le device + clé Stripe réelle sur Railway).
@@ -164,4 +170,9 @@ NF525 Z-seal · Comptamax export comptable · porte offline-sale · onboarding/p
 - **M310/M509** Stripe billing = PARQUÉ + env absent.
 
 ## Prochaine action automatique (continuité)
-Exécution autonome sur le safe restant (audit read-only des ⚠️, garde-fous additifs, tests, docs). Vrais blocages ci-dessus uniquement.
+**L'espace « safe » est épuisé (2026-07-08, post PR #24→#34).** Tout le restant est Tier-2 /
+owner-gated / matériel : validation WisePad 3 + clé Stripe prod (GO owner), DNS cutover + déploiement
+Railway (GO owner explicite), `TEST_DATABASE_URL` pour les specs pg/e2e en CI (décision infra),
+rotations de secrets D6/D8, réconciliation stock one-shot (écrit le stock réel — validation prod),
+signature du `.exe` / distribution. Chaque action attend son GO nommé — aucune ne s'ouvre sur un
+« continue » générique (charte §0).
