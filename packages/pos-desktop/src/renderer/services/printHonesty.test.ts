@@ -42,6 +42,20 @@ describe('usePayment — the print outcome is tracked and truthful', () => {
   });
 });
 
+describe('cash drawer — honest kick (PR #34)', () => {
+  it('no invented drawer: an Electron install does NOT claim a connected printer_kick drawer', () => {
+    expect(bridge).not.toMatch(/type: this\.isElectron\(\) \? 'printer_kick' : 'none'/);
+    expect(bridge).toMatch(/this\._status\.cashDrawer = \{ type: 'none', connected: false \};\s*\n\s*\}/);
+  });
+
+  it('the fake "kick pulse sent" success is gone — only a REAL BT kick returns true', () => {
+    expect(bridge).not.toMatch(/kick pulse sent/);
+    expect(bridge).not.toMatch(/electronAPI\?\.openCashDrawer/);
+    expect(bridge).toMatch(/kick refused \(honest\)/);
+    expect(bridge).toMatch(/return false; \/\/ real kick attempted and failed — say so/);
+  });
+});
+
 describe('confirmation overlays — the cashier is TOLD when no ticket printed', () => {
   it('iPad overlay renders all three outcomes', () => {
     expect(ipad).toMatch(/lastPrintStatus === 'printed'/);

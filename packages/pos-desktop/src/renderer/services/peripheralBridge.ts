@@ -558,16 +558,18 @@ class PeripheralBridge {
       this._status.cashDrawer = { type: 'bluetooth', connected: this._status.printer.connected };
       return;
     }
-    if (this.platform === 'ipad' || this.platform === 'android_tablet') {
-      this._status.cashDrawer = { type: 'none', connected: false };
-      return;
-    }
-    this._status.cashDrawer = {
-      type: this.isElectron() ? 'printer_kick' : 'none',
-      connected: this.isElectron(),
-    };
+    // HONESTY (PR #34, même règle que l'impression) : aucun kick tiroir réel
+    // n'existe hors du chemin Bluetooth (RJ11 via imprimante BT). Un poste
+    // Electron ne « possède » pas un tiroir par optimisme — le statut dit la
+    // vérité et le chantier kick USB/spooler reste documenté.
+    this._status.cashDrawer = { type: 'none', connected: false };
   }
 
+  /**
+   * Kick the cash drawer. Returns TRUE only when a real kick was actually
+   * sent (Bluetooth printer RJ11). No connected drawer → honest false — never
+   * a fake "pulse sent" success.
+   */
   async openCashDrawer(): Promise<boolean> {
     // Try Bluetooth drawer kick first
     if (this._status.cashDrawer.type === 'bluetooth' && this._btDrawerFn) {
@@ -580,24 +582,11 @@ class PeripheralBridge {
       } catch (e) {
         console.warn('[PERIPH] BT drawer kick failed:', e);
       }
+      return false; // real kick attempted and failed — say so
     }
 
-    if (!this._status.cashDrawer.connected) {
-      console.warn('[PERIPH] No cash drawer connected');
-      return false;
-    }
-    try {
-      if (this.isElectron() && (window as any).electronAPI?.openCashDrawer) {
-        await (window as any).electronAPI.openCashDrawer();
-        console.log('[PERIPH] Cash drawer opened via Electron');
-        return true;
-      }
-      console.log('[PERIPH] Cash drawer kick pulse sent');
-      return true;
-    } catch (e) {
-      console.error('[PERIPH] Cash drawer open failed:', e);
-      return false;
-    }
+    console.warn('[PERIPH] No cash drawer connected — kick refused (honest)');
+    return false;
   }
 
   /* ── Helpers ── */
