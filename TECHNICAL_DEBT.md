@@ -11,15 +11,15 @@ Statuts : OPEN · IN PROGRESS · BLOCKED (owner/accès) · CLOSED (PR retire l'e
 ---
 
 ## D1 — Reversal fiscal d'une vente **cash** via `createReturn` non couvert
-**Status:** OPEN · named debt · fiscal-design PR séparée. **Since:** void-cash-realized guard (#10), 2026-06-12.
+**Status:** PARTIELLEMENT FERMÉE (2026-07-08) — **(2) spec end-to-end ✅ livrée** (`avoir-d1-cash-return.spec.ts`, 7 cas verts) ; **(1) ratification design owner OUVERTE**. **Since:** void-cash-realized guard (#10), 2026-06-12.
 
 **Contexte.** Le guard `void-cash-realized` (`sales.service.ts` ~L933+) refuse de `void` une vente avec leg cash réalisé ; l'annulation doit passer par le **retour** (`createReturn`, remboursement cash). Le trou de sécu (voider du cash réalisé) est **fermé**.
 
-**Ce qui n'est PAS couvert (la dette).** Le comportement chaîne-fiscale / `fiscal_journal` du **chemin remboursement cash `createReturn`** n'est **pas testé** : M3/M4 ont été exercés sur `void` puis transposés vers `store_credit`/`card`. Aucun test ne prouve qu'un retour cash produit l'événement/chaîne/effet Z corrects.
+**Ce que la spec de caractérisation PROUVE (2026-07-08).** `avoir-d1-cash-return.spec.ts` : le guard impose bien le chemin retour (D1.0) ; le retour cash produit un avoir `type=refund` **soldé** (remaining 0), **chaîné et auto-cohérent** sur l'allowlist canonique (D1.1) ; la vente d'origine reste **immuable** — statut/hash/total (D1.2) ; le stock est restauré (D1.3) ; le replay est idempotent (D1.5) ; le sur-retour est refusé (D1.6). **Aucun bug découvert.**
 
-**Pourquoi différé.** C'est une question de *design* fiscal (le retour cash émet-il son propre événement journal ? chaînage ? ventilation Z), pas un fix une-ligne.
+**Ce qui reste OUVERT (décision owner, épinglée par D1.4).** Un retour cash n'écrit **aucun** maillon `fiscal_journal` (contrairement au void/M4) : l'enregistrement opposable est aujourd'hui la chaîne `credit_notes`. Est-ce le modèle voulu au regard de D17 (« event opposable → fiscal_journal ») ou faut-il aussi un maillon journal (ventilation Z incluse) ? **Décision fiscal-design owner.** Le fait est verrouillé par le test D1.4 : tout changement silencieux casse la CI et doit venir avec la ratification.
 
-**Ce qui la ferme.** PR fiscal-design : (1) spécifie la sémantique retour-cash, (2) spec `createReturn`-cash end-to-end, (3) retire cette entrée. **Cross-refs.** `CLAUDE.md` Known Issues ; `sales.service.ts` ; `void-cash-realized-guard.spec.ts`, `avoir-m1-m3.spec.ts`, `void-m4-journal-chain.spec.ts`.
+**Ce qui la ferme.** Ratification owner de la sémantique (journal ou pas) → si changement : PR fiscale dédiée + mise à jour de D1.4 → retirer cette entrée. **Cross-refs.** `CLAUDE.md` Known Issues ; `avoir-d1-cash-return.spec.ts` ; `void-cash-realized-guard.spec.ts`, `avoir-m1-m3.spec.ts`, `void-m4-journal-chain.spec.ts`.
 
 ---
 
