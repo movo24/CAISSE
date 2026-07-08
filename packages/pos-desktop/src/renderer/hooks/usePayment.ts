@@ -9,6 +9,8 @@ import { posEventBus } from '../services/posEventBus';
 import { peripheralBridge, TicketData } from '../services/peripheralBridge';
 import { useOfflineStore } from '../stores/offlineStore';
 import { computePaymentState, PaymentMethod } from '../services/paymentMachine';
+import { useStripeTerminal } from './useStripeTerminal';
+import { getCardPaymentMode, CARD_DISABLED_MESSAGE, CardPaymentMode } from '../services/cardPaymentMode';
 
 /* ── Types ── */
 
@@ -23,6 +25,15 @@ export interface PartialPayment {
   terminalId?: string;
   /** For method === 'store_credit': the avoir code being redeemed. */
   creditNoteCode?: string;
+  /** Card leg NOT really captured (demo mode) → sale lands payment_pending. */
+  pendingCapture?: boolean;
+}
+
+/** Capture facts attached to a card leg before it is committed. */
+interface CardLegFacts {
+  stripePaymentIntentId?: string;
+  stripeReaderId?: string;
+  pendingCapture?: boolean;
 }
 
 export interface ConfirmationData {
@@ -62,18 +73,27 @@ export function usePayment() {
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // TPE waiting state
+  // TPE waiting state — mode 'real' drives the Stripe Terminal (WisePad 3) reader;
+  // mode 'demo' is the dev-only labelled simulation (leg goes pendingCapture).
   const [tpeWaiting, setTpeWaiting] = useState<{
     amountMinorUnits: number;
     method: 'card';
     context: 'quick' | 'split';
     startedAt: number;
+    mode: CardPaymentMode;
+    countdownTotal: number;
   } | null>(null);
   const tpeWaitingRef = useRef<typeof tpeWaiting>(null);
   const [tpeCountdown, setTpeCountdown] = useState(25);
   const [tpeResult, setTpeResult] = useState<'success' | 'refused' | 'timeout' | null>(null);
+  const [tpeErrorMessage, setTpeErrorMessage] = useState<string | null>(null);
   const tpeTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const tpeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Facts of the ACTUAL capture (PI id, reader, pendingCapture). A card leg can only
+  // be committed when this is set — nothing can fabricate a captured card payment.
+  const cardLegRef = useRef<CardLegFacts | null>(null);
+
+  const stripeTerminal = useStripeTerminal();
 
   const totalPaid = partialPayments.reduce((s, p) => s + p.amountMinorUnits, 0);
   const remaining = store.paymentModalOpen ? store.total() - totalPaid : 0;
@@ -342,8 +362,8 @@ export function usePayment() {
   }
   }, [store, transactionStart]);
 
-  const commitPartialPayment = useCallback((method: PaymentMethod, amountMinor: number, creditNoteCode?: string) => {
-    const payment: PartialPayment = { id: `pay-${Date.now()}`, method, amountMinorUnits: amountMinor, creditNoteCode };
+  const commitPartialPayment = useCallback((method: PaymentMethod, amountMinor: number, creditNoteCode?: string, cardFacts?: CardLegFacts) => {
+    const payment: PartialPayment = { id: `pay-${Date.now()}`, method, amountMinorUnits: amountMinor, creditNoteCode, ...(cardFacts || {}) };
     const newPayments = [...partialPayments, payment];
     const ticketTotal = store.total();
     // Tender state machine: cash change only; voucher/gift-card overpay is forfeited.
@@ -358,9 +378,19 @@ export function usePayment() {
 
   const handleTpeResponse = useCallback((result: 'success' | 'refused' | 'timeout') => {
     clearTpeTimers();
-    setTpeResult(result);
     const currentTpe = tpeWaitingRef.current;
-    if (result === 'success' && currentTpe) {
+    if (result === 'success') {
+      // INVARIANT: a card leg is only committed with capture facts attached
+      // (real: PI id + captured; demo: pendingCapture=true). No facts → refuse.
+      const facts = cardLegRef.current;
+      if (!currentTpe || !facts) {
+        cardLegRef.current = null;
+        setTpeErrorMessage('Paiement non confirmé par le terminal.');
+        setTpeResult('refused');
+        return;
+      }
+      cardLegRef.current = null;
+      setTpeResult('success');
       const { amountMinorUnits, context } = currentTpe;
       setTimeout(() => {
         setTpeWaiting(null);
@@ -369,37 +399,99 @@ export function usePayment() {
         setTimeout(() => {
           if (context === 'quick') {
             const totalAmount = store.total();
-            finalizePayment([{ id: `pay-${Date.now()}`, method: 'card', amountMinorUnits: totalAmount }], 0);
+            finalizePayment([{ id: `pay-${Date.now()}`, method: 'card', amountMinorUnits: totalAmount, ...facts }], 0);
           } else {
-            commitPartialPayment('card', amountMinorUnits);
+            commitPartialPayment('card', amountMinorUnits, undefined, facts);
           }
         }, 100);
       }, 2000);
+      return;
     }
+    cardLegRef.current = null;
+    setTpeResult(result);
   }, [clearTpeTimers, store, finalizePayment, commitPartialPayment]);
+
+  /** Ensure the SDK is up and a reader connected (auto-connects a single reader). */
+  const ensureReaderConnected = useCallback(async () => {
+    if (stripeTerminal.isReady) return;
+    const readers: any[] = await stripeTerminal.initTerminal();
+    if (!readers || readers.length === 0) {
+      throw new Error('Aucun lecteur carte détecté. Vérifiez que le WisePad 3 est allumé et connecté au réseau.');
+    }
+    await stripeTerminal.connectReader(readers[0]);
+  }, [stripeTerminal]);
 
   const startTpeWaiting = useCallback((amountMinor: number, context: 'quick' | 'split') => {
     clearTpeTimers();
-    const tpeState = { amountMinorUnits: amountMinor, method: 'card' as const, context, startedAt: Date.now() };
     setTpeResult(null);
-    setTpeCountdown(25);
-    setTpeWaiting(tpeState);
-    tpeWaitingRef.current = tpeState;
-    tpeTimerRef.current = setInterval(() => {
-      setTpeCountdown((prev) => {
-        if (prev <= 1) { handleTpeResponse('timeout'); return 0; }
-        return prev - 1;
-      });
-    }, 1000);
-    // Real TPE response comes via peripheralBridge event
-  }, [clearTpeTimers, handleTpeResponse]);
+    setTpeErrorMessage(null);
+    cardLegRef.current = null;
+    void (async () => {
+      const mode = await getCardPaymentMode();
+      if (mode === 'disabled') {
+        // Prod without Stripe Terminal config: no flow starts, clear error instead.
+        posEventBus.emit('SALE_ERROR', { message: CARD_DISABLED_MESSAGE });
+        return;
+      }
+      const countdownTotal = mode === 'real' ? 120 : 25;
+      const tpeState = {
+        amountMinorUnits: amountMinor, method: 'card' as const, context,
+        startedAt: Date.now(), mode, countdownTotal,
+      };
+      setTpeCountdown(countdownTotal);
+      setTpeWaiting(tpeState);
+      tpeWaitingRef.current = tpeState;
+      tpeTimerRef.current = setInterval(() => {
+        setTpeCountdown((prev) => (prev <= 1 ? 0 : prev - 1));
+      }, 1000);
+
+      if (mode === 'real') {
+        try {
+          await ensureReaderConnected();
+          // Tie the PaymentIntent to THIS checkout: the sale idempotency key is the
+          // reference, so a retried PI create dedupes server-side (deterministic key).
+          if (!saleIdemKeyRef.current) saleIdemKeyRef.current = newIdempotencyKey();
+          const { paymentIntentId } = await stripeTerminal.collectPayment(amountMinor, saleIdemKeyRef.current);
+          if (!tpeWaitingRef.current) return; // cashier cancelled meanwhile
+          cardLegRef.current = {
+            stripePaymentIntentId: paymentIntentId,
+            stripeReaderId: stripeTerminal.connectedReader?.id,
+            pendingCapture: false,
+          };
+          handleTpeResponse('success');
+        } catch (err: any) {
+          if (!tpeWaitingRef.current) return; // cancelled — reader flow already aborted
+          setTpeErrorMessage(err?.message || 'Erreur terminal de paiement');
+          handleTpeResponse('refused');
+        }
+      } else {
+        // Demo (dev builds only): explicit simulate button; auto-timeout otherwise.
+        tpeTimeoutRef.current = setTimeout(() => handleTpeResponse('timeout'), countdownTotal * 1000);
+      }
+    })();
+  }, [clearTpeTimers, ensureReaderConnected, stripeTerminal, handleTpeResponse]);
+
+  /**
+   * DEV/DEMO ONLY — simulate a card acceptance. The committed leg is flagged
+   * pendingCapture=true, so the backend records the sale as payment_pending
+   * (à régulariser) — a demo can NEVER produce a "paid" card sale.
+   */
+  const simulateDemoTpeSuccess = useCallback(() => {
+    if (tpeWaitingRef.current?.mode !== 'demo') return;
+    cardLegRef.current = { pendingCapture: true };
+    handleTpeResponse('success');
+  }, [handleTpeResponse]);
 
   const cancelTpeWaiting = useCallback(() => {
     clearTpeTimers();
     setTpeWaiting(null);
     setTpeResult(null);
+    setTpeErrorMessage(null);
     tpeWaitingRef.current = null;
-  }, [clearTpeTimers]);
+    cardLegRef.current = null;
+    // Abort an in-progress reader collection so the WisePad screen resets.
+    if (stripeTerminal.isCollecting) void stripeTerminal.cancelCollect();
+  }, [clearTpeTimers, stripeTerminal]);
 
   const addPartialPayment = useCallback((method: PaymentMethod) => {
     const inputVal = splitAmountInput.trim().replace(',', '.');
@@ -448,9 +540,12 @@ export function usePayment() {
     tpeWaitingRef,
     tpeCountdown,
     tpeResult,
+    tpeErrorMessage,
     startTpeWaiting,
     handleTpeResponse,
     cancelTpeWaiting,
+    simulateDemoTpeSuccess,
+    stripeTerminal,
 
     // Actions
     addPartialPayment,

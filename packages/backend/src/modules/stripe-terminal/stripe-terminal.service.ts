@@ -8,6 +8,17 @@ export class StripeTerminalService {
 
   constructor(@Inject('STRIPE') private readonly stripe: Stripe) {}
 
+  // ── Capability ────────────────────────────────────────────────
+
+  /**
+   * Whether real card-present payments are possible (STRIPE_SECRET_KEY set).
+   * The POS uses this to disable the card button (prod) or fall back to an
+   * explicit demo mode (dev) instead of faking a payment.
+   */
+  isConfigured(): boolean {
+    return !!this.stripe;
+  }
+
   // ── Connection Token ──────────────────────────────────────────
 
   async createConnectionToken(locationId?: string): Promise<{ secret: string }> {

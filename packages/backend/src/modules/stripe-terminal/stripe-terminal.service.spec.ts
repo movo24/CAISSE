@@ -18,6 +18,11 @@ describe('StripeTerminalService', () => {
     await expect(svc.createConnectionToken()).rejects.toThrow(BadRequestException);
   });
 
+  it('isConfigured reflects Stripe availability (drives POS card-button gating)', () => {
+    expect(new StripeTerminalService(null as unknown as Stripe).isConfigured()).toBe(false);
+    expect(new StripeTerminalService(mockStripe()).isConfigured()).toBe(true);
+  });
+
   it('createPaymentIntent uses a DETERMINISTIC idempotency key (same inputs → same key)', async () => {
     const stripe = mockStripe();
     const svc = new StripeTerminalService(stripe);

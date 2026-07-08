@@ -787,20 +787,33 @@ export function IPadPOSLayout() {
           <div className="bg-white rounded-3xl shadow-elevated p-8 w-[400px] text-center">
             {!payment.tpeResult && (
               <>
+                {payment.tpeWaiting.mode === 'demo' && (
+                  <div className="mb-4 px-3 py-2 rounded-xl bg-amber-100 text-amber-800 text-xs font-black tracking-wide">
+                    MODE DÉMO — aucun paiement réel. La vente restera « à régulariser ».
+                  </div>
+                )}
                 <div className="relative mx-auto w-20 h-20 mb-5">
                   <div className="absolute inset-0 rounded-full bg-pos-accent/10 animate-ping" />
                   <div className="relative w-20 h-20 rounded-full bg-gradient-to-br from-pos-accent to-indigo-400 flex items-center justify-center">
                     <CreditCard size={36} className="text-white animate-pulse" />
                   </div>
                 </div>
-                <h3 className="text-xl font-black mb-1">En attente du TPE...</h3>
+                <h3 className="text-xl font-black mb-1">{payment.tpeWaiting.mode === 'real' ? 'Presentez la carte sur le lecteur...' : 'En attente du TPE...'}</h3>
                 <p className="text-2xl font-black text-pos-accent mb-4">{formatPrice(payment.tpeWaiting.amountMinorUnits)}</p>
                 <div className="flex items-center justify-center gap-3 mb-4">
                   <div className="w-32 h-2 bg-gray-100 rounded-full overflow-hidden">
-                    <div className="h-full bg-pos-accent rounded-full transition-all duration-1000" style={{ width: `${(payment.tpeCountdown / 25) * 100}%` }} />
+                    <div className="h-full bg-pos-accent rounded-full transition-all duration-1000" style={{ width: `${(payment.tpeCountdown / payment.tpeWaiting.countdownTotal) * 100}%` }} />
                   </div>
                   <span className="text-sm font-mono text-pos-muted">{payment.tpeCountdown}s</span>
                 </div>
+                {payment.tpeWaiting.mode === 'demo' && (
+                  <button
+                    className="w-full py-3 mb-2 rounded-xl text-sm font-black bg-amber-500 text-white"
+                    onClick={payment.simulateDemoTpeSuccess}
+                  >
+                    Simuler l'acceptation (DÉMO)
+                  </button>
+                )}
                 <button className="w-full py-3 rounded-xl text-sm font-medium text-pos-muted hover:bg-pos-subtle" onClick={payment.cancelTpeWaiting}>Annuler</button>
               </>
             )}
@@ -809,7 +822,7 @@ export function IPadPOSLayout() {
                 <div className="mx-auto w-20 h-20 rounded-full bg-gradient-to-br from-emerald-400 to-green-500 flex items-center justify-center mb-5">
                   <CheckCircle2 size={40} className="text-white" />
                 </div>
-                <h3 className="text-xl font-black text-emerald-600 mb-1">Paiement accepte</h3>
+                <h3 className="text-xl font-black text-emerald-600 mb-1">{payment.tpeWaiting.mode === 'demo' ? 'Paiement simule (DÉMO) — a regulariser' : 'Paiement accepte'}</h3>
                 <p className="text-2xl font-black text-emerald-600">{formatPrice(payment.tpeWaiting.amountMinorUnits)}</p>
               </>
             )}
@@ -819,6 +832,9 @@ export function IPadPOSLayout() {
                   <XCircle size={40} className="text-white" />
                 </div>
                 <h3 className="text-xl font-black text-red-600 mb-1">{payment.tpeResult === 'refused' ? 'Paiement refuse' : 'Delai depasse'}</h3>
+                {payment.tpeErrorMessage && (
+                  <p className="text-sm text-pos-muted mb-2">{payment.tpeErrorMessage}</p>
+                )}
                 <div className="grid grid-cols-2 gap-2 mt-4">
                   <button
                     className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-pos-accent/10 text-pos-accent font-semibold text-sm product-card-touch"

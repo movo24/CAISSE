@@ -13,6 +13,8 @@ export interface WirePayment {
   stripeReaderId?: string;
   terminalId?: string;
   creditNoteCode?: string;
+  /** Card leg NOT really captured (demo/degraded) → the sale lands payment_pending. */
+  pendingCapture?: boolean;
 }
 
 export interface PartialPaymentLike {
@@ -22,6 +24,7 @@ export interface PartialPaymentLike {
   stripeReaderId?: string;
   terminalId?: string;
   creditNoteCode?: string;
+  pendingCapture?: boolean;
 }
 
 /** Map cart payments to the wire shape the backend /sales DTO accepts (online + offline). */
@@ -33,6 +36,7 @@ export function toWirePayments(payments: PartialPaymentLike[]): WirePayment[] {
     stripeReaderId: p.stripeReaderId,
     terminalId: p.terminalId,
     creditNoteCode: p.creditNoteCode,
+    pendingCapture: p.pendingCapture,
   }));
 }
 

@@ -374,6 +374,7 @@ export const terminalsApi = {
 
 // Stripe Terminal (in-store card payments)
 export const stripeTerminalApi = {
+  status: () => api.get('/stripe-terminal/status'),
   connectionToken: () => api.post('/stripe-terminal/connection-token'),
   createPaymentIntent: (data: { amount: number; ticketNumber: string; currency?: string; description?: string }) =>
     api.post('/stripe-terminal/payment-intent', data),

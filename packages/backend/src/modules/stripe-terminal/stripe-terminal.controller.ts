@@ -22,6 +22,14 @@ import { BusinessError } from '../../common/errors/business-error';
 export class StripeTerminalController {
   constructor(private terminalService: StripeTerminalService) {}
 
+  // ── Capability ────────────────────────────────────────────────
+
+  @Get('status')
+  @ApiOperation({ summary: 'Whether Stripe Terminal (card-present) is configured on this backend' })
+  getStatus() {
+    return { configured: this.terminalService.isConfigured() };
+  }
+
   // ── Connection Token ──────────────────────────────────────────
 
   @Post('connection-token')
