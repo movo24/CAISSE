@@ -35,6 +35,7 @@ import { EmployeeScoreModule } from './modules/employee-score/employee-score.mod
 import { StockLocationsModule } from './modules/stock-locations/stock-locations.module';
 import { StockReconciliationModule } from './modules/stock-reconciliation/stock-reconciliation.module';
 import { PromoCodesModule } from './modules/promo-codes/promo-codes.module';
+import { DocumentsModule } from './modules/documents/documents.module';
 import { StripeModule } from './common/stripe/stripe.module';
 import { StripeTerminalModule } from './modules/stripe-terminal/stripe-terminal.module';
 import { TerminalsModule } from './modules/terminals/terminals.module';
@@ -122,6 +123,7 @@ const isProd = process.env.NODE_ENV === 'production';
     StockLocationsModule,
     StockReconciliationModule,
     PromoCodesModule,
+    DocumentsModule,
     StripeModule,
     StripeTerminalModule,
     TerminalsModule,
