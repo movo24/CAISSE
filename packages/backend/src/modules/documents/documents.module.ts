@@ -1,15 +1,28 @@
 import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
 import { PdfService } from './pdf.service';
+import { DocumentsController } from './documents.controller';
+import { SalesModule } from '../sales/sales.module';
+import { ReturnsModule } from '../returns/returns.module';
+import { ReportsModule } from '../reports/reports.module';
+import { StoreEntity } from '../../database/entities/store.entity';
 
 /**
- * DocumentsModule — génération de documents PDF isolée.
+ * DocumentsModule — génération de documents PDF + exposition réseau (PR #31).
  *
- * Exporte PdfService pour qu'un module métier (reports, sales, returns) puisse
- * brancher un endpoint de téléchargement/email plus tard. Volontairement sans
- * controller ici : le périmètre de cette phase est le service + ses tests, pas
- * l'exposition réseau (qui demandera auth + choix de route).
+ * Les routes (duplicata ticket / justificatif avoir / export Z) sont JWT-gated,
+ * tenant-scopées via les services métier, et strictement en lecture + rendu :
+ * les montants sont imprimés verbatim (règle fiscale du PdfService), l'export Z
+ * lit un Z scellé existant et ne génère jamais.
  */
 @Module({
+  imports: [
+    SalesModule,
+    ReturnsModule,
+    ReportsModule,
+    TypeOrmModule.forFeature([StoreEntity]),
+  ],
+  controllers: [DocumentsController],
   providers: [PdfService],
   exports: [PdfService],
 })
