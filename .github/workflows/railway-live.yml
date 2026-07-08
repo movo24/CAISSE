@@ -118,6 +118,30 @@ jobs:
             echo "MISS REDIS_URL / ALLOW_INMEMORY_CACHE (le boot prod refusera)"
           fi
 
+      # GO owner explicite (2026-07-09) : « GO création variable
+      # ALLOW_INMEMORY_CACHE=true sur caisse-backend production ». Cause : le
+      # deploy d95c8565 (run n°8) a FAILED au healthcheck — le boot prod refuse
+      # sans REDIS_URL ou ALLOW_INMEMORY_CACHE=true (preflight PR #40, confirmé
+      # par le contrôle des variables). numReplicas=1 → opt-out single-pod sûr.
+      # CRÉATION SEULEMENT : si REDIS_URL ou ALLOW_INMEMORY_CACHE existe déjà,
+      # on ne touche à rien. Aucune autre variable n'est lue/modifiée ici.
+      - name: Créer ALLOW_INMEMORY_CACHE=true si absente (GO owner, création seule)
+        if: steps.probe.outputs.present == 'true'
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          source /tmp/gql.sh
+          if [ -f /tmp/varnames.txt ] && { grep -qx "REDIS_URL" /tmp/varnames.txt || grep -qx "ALLOW_INMEMORY_CACHE" /tmp/varnames.txt; }; then
+            echo "REDIS_URL ou ALLOW_INMEMORY_CACHE déjà présent — aucune modification"
+            exit 0
+          fi
+          echo "Création de ALLOW_INMEMORY_CACHE=true (valeur non secrète, opt-out single-pod du RUNBOOK)"
+          RESP=$(gql "{\"query\":\"mutation { variableUpsert(input: {projectId: \\\"$PROJECT\\\", environmentId: \\\"$ENVID\\\", serviceId: \\\"$SERVICE\\\", name: \\\"ALLOW_INMEMORY_CACHE\\\", value: \\\"true\\\"}) }\"}")
+          echo "$RESP" | jq . 2>/dev/null || echo "$RESP"
+          if echo "$RESP" | jq -e '.errors' >/dev/null 2>&1; then
+            echo "ERREUR variableUpsert — le deploy échouera au boot sans cette variable"; exit 1
+          fi
+
       - name: Déployer le commit main mergé (serviceInstanceDeployV2)
         if: steps.probe.outputs.present == 'true'
         env:
