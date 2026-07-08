@@ -38,6 +38,27 @@ jobs:
             echo "RAILWAY_TOKEN : ABSENT des secrets du repo"
           fi
 
+      # Railway a deux formats de token : compte/équipe (Authorization: Bearer)
+      # et token de PROJET (en-tête Project-Access-Token). gql() essaie Bearer
+      # puis retombe sur Project-Access-Token si « Not Authorized » — sans
+      # jamais imprimer ni le token ni la réponse (le caller décide).
+      - name: Helper GraphQL bi-format (Bearer / Project-Access-Token)
+        if: steps.probe.outputs.present == 'true'
+        run: |
+          cat > /tmp/gql.sh <<'EOF'
+          gql() {
+            local out
+            out=$(curl -sS --max-time 30 -X POST https://backboard.railway.app/graphql/v2 \
+              -H "Authorization: Bearer $RAILWAY_TOKEN" -H "Content-Type: application/json" -d "$1")
+            if printf '%s' "$out" | grep -q 'Not Authorized'; then
+              echo "(Bearer refusé — bascule sur Project-Access-Token)" >&2
+              out=$(curl -sS --max-time 30 -X POST https://backboard.railway.app/graphql/v2 \
+                -H "Project-Access-Token: $RAILWAY_TOKEN" -H "Content-Type: application/json" -d "$1")
+            fi
+            printf '%s' "$out"
+          }
+          EOF
+
       - name: Smoke PRE-deploy (état live actuel de l'URL native)
         run: |
           echo "== GET /api/health =="
@@ -56,10 +77,8 @@ jobs:
           # La query `variables` renvoie les VALEURS : la réponse brute n'est jamais
           # affichée (fichier temporaire), seuls les noms (jq keys) sortent en log.
           set -o pipefail
-          if ! curl -sS --max-time 30 -X POST https://backboard.railway.app/graphql/v2 \
-            -H "Authorization: Bearer $RAILWAY_TOKEN" -H "Content-Type: application/json" \
-            -d "{\"query\":\"query { variables(projectId: \\\"$PROJECT\\\", environmentId: \\\"$ENVID\\\", serviceId: \\\"$SERVICE\\\") }\"}" \
-            -o /tmp/vars.json; then
+          source /tmp/gql.sh
+          if ! gql "{\"query\":\"query { variables(projectId: \\\"$PROJECT\\\", environmentId: \\\"$ENVID\\\", serviceId: \\\"$SERVICE\\\") }\"}" > /tmp/vars.json; then
             echo "Query variables : échec réseau/auth (réponse non affichée)"; exit 0
           fi
           if ! jq -r '.data.variables | keys[]?' /tmp/vars.json > /tmp/varnames.txt 2>/dev/null; then
@@ -81,12 +100,16 @@ jobs:
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         run: |
-          RESP=$(curl -sS --max-time 30 -X POST https://backboard.railway.app/graphql/v2 \
-            -H "Authorization: Bearer $RAILWAY_TOKEN" -H "Content-Type: application/json" \
-            -d "{\"query\":\"mutation { serviceInstanceDeployV2(serviceId: \\\"$SERVICE\\\", environmentId: \\\"$ENVID\\\", commitSha: \\\"$DEPLOY_SHA\\\") }\"}")
+          source /tmp/gql.sh
+          RESP=$(gql "{\"query\":\"mutation { serviceInstanceDeployV2(serviceId: \\\"$SERVICE\\\", environmentId: \\\"$ENVID\\\", commitSha: \\\"$DEPLOY_SHA\\\") }\"}")
           echo "$RESP" | jq . 2>/dev/null || echo "$RESP"
           if echo "$RESP" | jq -e '.errors' >/dev/null 2>&1; then
-            echo "ERREUR mutation deploy — voir ci-dessus"; exit 1
+            echo "ERREUR mutation deploy — voir ci-dessus."
+            echo "Si « Not Authorized » persiste sous les DEUX formats : le token n'a pas"
+            echo "accès au projet 2f5e0afc (workspace vibrant-freedom) — créer soit un"
+            echo "token de PROJET (Project Settings → Tokens, environnement production),"
+            echo "soit un token de compte ayant ce workspace."
+            exit 1
           fi
 
       - name: Attendre le déploiement (poll 15s, max 15 min)
@@ -94,11 +117,10 @@ jobs:
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         run: |
+          source /tmp/gql.sh
           for i in $(seq 1 60); do
             sleep 15
-            RESP=$(curl -sS --max-time 30 -X POST https://backboard.railway.app/graphql/v2 \
-              -H "Authorization: Bearer $RAILWAY_TOKEN" -H "Content-Type: application/json" \
-              -d "{\"query\":\"{ deployments(first:1, input:{projectId:\\\"$PROJECT\\\", serviceId:\\\"$SERVICE\\\", environmentId:\\\"$ENVID\\\"}) { edges { node { id status meta } } } }\"}") || { echo "[$i] poll réseau KO"; continue; }
+            RESP=$(gql "{\"query\":\"{ deployments(first:1, input:{projectId:\\\"$PROJECT\\\", serviceId:\\\"$SERVICE\\\", environmentId:\\\"$ENVID\\\"}) { edges { node { id status meta } } } }\"}") || { echo "[$i] poll réseau KO"; continue; }
             STATUS=$(echo "$RESP" | jq -r '.data.deployments.edges[0].node.status // "UNKNOWN"' 2>/dev/null)
             echo "[$i] status=$STATUS"
             case "$STATUS" in
