@@ -163,6 +163,48 @@ export class ProductsController {
     return this.productsService.createVariant(id, req.user.storeId, body, req.user.employeeId);
   }
 
+  // ── Product Packs — composition d'un produit composé (GO owner 2026-07-09) ──
+
+  @Get(':id/components')
+  @ApiOperation({ summary: 'List the pack components of a product (parent = billed product)' })
+  listComponents(@Param('id') id: string, @Request() req: any) {
+    return this.productsService.listComponents(id, req.user.storeId);
+  }
+
+  @Post(':id/components')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'Add a component to a pack (loop-safe, unique per parent+component)' })
+  addComponent(
+    @Param('id') id: string,
+    @Body() body: { componentProductId: string; quantityPerParent: number },
+    @Request() req: any,
+  ) {
+    return this.productsService.addComponent(id, req.user.storeId, body);
+  }
+
+  @Put(':id/components/:componentRowId')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'Update quantity and/or active flag of a pack component' })
+  updateComponent(
+    @Param('id') id: string,
+    @Param('componentRowId') componentRowId: string,
+    @Body() body: { quantityPerParent?: number; isActive?: boolean },
+    @Request() req: any,
+  ) {
+    return this.productsService.updateComponent(id, componentRowId, req.user.storeId, body);
+  }
+
+  @Delete(':id/components/:componentRowId')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'Remove a component from the CURRENT composition (sale history keeps its snapshot)' })
+  removeComponent(
+    @Param('id') id: string,
+    @Param('componentRowId') componentRowId: string,
+    @Request() req: any,
+  ) {
+    return this.productsService.removeComponent(id, componentRowId, req.user.storeId);
+  }
+
   // ── Per-store price override (decision 4) ──
 
   @Get(':id/store-price')

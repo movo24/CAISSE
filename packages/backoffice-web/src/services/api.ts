@@ -170,6 +170,14 @@ export const productsApi = {
   // CSV (Bloc 4i)
   exportCsv: () => api.get('/products/export', { responseType: 'text' }),
   importCsv: (csv: string) => api.post('/products/import', { csv }),
+  // Product Packs — produits composés (GO owner 2026-07-09)
+  listComponents: (id: string) => api.get(`/products/${id}/components`),
+  addComponent: (id: string, data: { componentProductId: string; quantityPerParent: number }) =>
+    api.post(`/products/${id}/components`, data),
+  updateComponent: (id: string, componentRowId: string, data: { quantityPerParent?: number; isActive?: boolean }) =>
+    api.put(`/products/${id}/components/${componentRowId}`, data),
+  removeComponent: (id: string, componentRowId: string) =>
+    api.delete(`/products/${id}/components/${componentRowId}`),
 };
 
 // Intégration produit — scan code-barres inconnu (création sécurisée

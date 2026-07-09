@@ -541,7 +541,7 @@ export function ProductsPage() {
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => { setShowModal(false); resetForm(); }} />
-          <div className="relative bg-white rounded-2xl shadow-elevated w-full max-w-lg p-6 animate-slide-up">
+          <div className="relative bg-white rounded-2xl shadow-elevated w-full max-w-lg p-6 animate-slide-up max-h-[88vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-lg font-bold text-bo-text">
                 {editingId ? 'Modifier le produit' : 'Nouveau produit'}
@@ -612,6 +612,10 @@ export function ProductsPage() {
                   />
                 </div>
               </div>
+
+              {/* Pack / produit composé (GO owner 2026-07-09) — édition seulement :
+                  le produit doit exister pour porter une composition. */}
+              {editingId && <PackComponentsSection productId={editingId} storeId={storeId} />}
             </div>
 
             <div className="flex items-center justify-end gap-2 mt-6 pt-4 border-t border-gray-100">
@@ -712,6 +716,257 @@ export function ProductsPage() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Message serveur affiché VERBATIM (BadRequest anti-boucle, conflit, etc.). */
+function serverMsg(e: any): string {
+  const m = e?.response?.data?.message;
+  return typeof m === 'string' ? m : Array.isArray(m) ? m.join(', ') : 'Erreur serveur';
+}
+
+/**
+ * Pack / produit composé (GO owner 2026-07-09).
+ * Le produit ÉDITÉ est le parent (facturé, une seule ligne ticket) ; chaque
+ * composant listé ici sort du stock automatiquement à la vente. La composition
+ * est modifiable librement : les ventes passées gardent leur snapshot.
+ */
+function PackComponentsSection({ productId, storeId }: { productId: string; storeId?: string }) {
+  const [open, setOpen] = useState(false);
+  const [rows, setRows] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<any[]>([]);
+  const [selected, setSelected] = useState<any | null>(null);
+  const [qty, setQty] = useState('1');
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      setLoading(true);
+      const res = await productsApi.listComponents(productId);
+      const data = Array.isArray(res.data) ? res.data : [];
+      setRows(data);
+      if (data.length > 0) setOpen(true);
+      setError(null);
+    } catch (e: any) {
+      setError(serverMsg(e));
+    } finally {
+      setLoading(false);
+    }
+  }, [productId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  // Recherche serveur (mêmes params que la liste produits), débouncée.
+  useEffect(() => {
+    if (!adding) return;
+    const t = setTimeout(async () => {
+      try {
+        const res = await productsApi.list({ storeId, search: query.trim() || undefined, limit: 8 });
+        const data: any[] = Array.isArray(res.data) ? res.data : (res.data?.data || res.data?.products || []);
+        setResults(data.filter((p) => p.id !== productId));
+      } catch {
+        /* recherche silencieuse — l'erreur bloquante viendra de l'ajout */
+      }
+    }, 250);
+    return () => clearTimeout(t);
+  }, [adding, query, storeId, productId]);
+
+  const addComponent = async () => {
+    if (!selected) return;
+    const q = parseInt(qty, 10);
+    if (!Number.isInteger(q) || q <= 0) { setError('La quantité doit être un entier strictement positif.'); return; }
+    try {
+      setBusy(true);
+      await productsApi.addComponent(productId, { componentProductId: selected.id, quantityPerParent: q });
+      setSelected(null); setQuery(''); setQty('1'); setAdding(false); setError(null);
+      await load();
+    } catch (e: any) {
+      setError(serverMsg(e)); // anti-boucle / doublon affichés tels quels
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const toggleActive = async (row: any) => {
+    try {
+      setBusy(true);
+      await productsApi.updateComponent(productId, row.id, { isActive: !row.isActive });
+      setError(null);
+      await load();
+    } catch (e: any) { setError(serverMsg(e)); } finally { setBusy(false); }
+  };
+
+  const saveQty = async (row: any, value: string) => {
+    const q = parseInt(value, 10);
+    if (!Number.isInteger(q) || q <= 0 || q === row.quantityPerParent) return;
+    try {
+      setBusy(true);
+      await productsApi.updateComponent(productId, row.id, { quantityPerParent: q });
+      setError(null);
+      await load();
+    } catch (e: any) { setError(serverMsg(e)); } finally { setBusy(false); }
+  };
+
+  const remove = async (row: any) => {
+    if (!confirm(`Retirer « ${row.componentName ?? row.componentProductId} » de la composition ?\n(Les ventes passées gardent leur composition d'origine.)`)) return;
+    try {
+      setBusy(true);
+      await productsApi.removeComponent(productId, row.id);
+      setError(null);
+      await load();
+    } catch (e: any) { setError(serverMsg(e)); } finally { setBusy(false); }
+  };
+
+  const hasComponents = rows.length > 0;
+
+  return (
+    <div className="rounded-xl border border-gray-200 p-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm font-semibold text-bo-text">Pack / produit composé</p>
+          <p className="text-xs text-gray-400">Ce produit contient d'autres produits (inclus dans son prix)</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setOpen(!open)}
+          disabled={hasComponents}
+          title={hasComponents ? 'Composition existante — retirez les composants pour masquer' : ''}
+          className={`relative w-11 h-6 rounded-full transition-colors ${open ? 'bg-bo-accent' : 'bg-gray-200'} ${hasComponents ? 'opacity-70' : ''}`}
+        >
+          <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${open ? 'translate-x-5' : 'translate-x-0'}`} />
+        </button>
+      </div>
+
+      {open && (
+        <div className="mt-3 space-y-3">
+          {error && (
+            <div className="px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs flex items-start gap-2">
+              <XCircle size={14} className="mt-0.5 shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+
+          {loading ? (
+            <p className="text-xs text-gray-400 flex items-center gap-2"><Loader2 size={12} className="animate-spin" /> Chargement de la composition…</p>
+          ) : hasComponents ? (
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-gray-400 text-left">
+                  <th className="py-1 font-medium">Composant</th>
+                  <th className="py-1 font-medium w-20">Qté / unité</th>
+                  <th className="py-1 font-medium w-16">Statut</th>
+                  <th className="py-1 w-8" />
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row) => (
+                  <tr key={row.id} className="border-t border-gray-100">
+                    <td className="py-2 pr-2">
+                      <p className={`font-medium ${row.isActive ? 'text-bo-text' : 'text-gray-400 line-through'}`}>{row.componentName ?? '(produit supprimé)'}</p>
+                      <p className="text-gray-400 font-mono">{row.componentEan}</p>
+                    </td>
+                    <td className="py-2">
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        defaultValue={row.quantityPerParent}
+                        onBlur={(e) => saveQty(row, e.target.value)}
+                        disabled={busy}
+                        className="w-16 px-2 py-1 rounded-lg border border-gray-200 text-xs focus:outline-none focus:ring-2 focus:ring-bo-accent/30"
+                      />
+                    </td>
+                    <td className="py-2">
+                      <button
+                        type="button"
+                        onClick={() => toggleActive(row)}
+                        disabled={busy}
+                        className={`px-2 py-1 rounded-lg text-[11px] font-medium ${row.isActive ? 'bg-emerald-50 text-emerald-600' : 'bg-gray-100 text-gray-400'}`}
+                      >
+                        {row.isActive ? 'Actif' : 'Inactif'}
+                      </button>
+                    </td>
+                    <td className="py-2 text-right">
+                      <button type="button" onClick={() => remove(row)} disabled={busy} className="p-1.5 rounded-lg text-red-400 hover:bg-red-50">
+                        <Trash2 size={13} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <p className="text-xs text-gray-400">Aucun composant — ce produit se vend seul pour l'instant.</p>
+          )}
+
+          {adding ? (
+            <div className="rounded-xl bg-gray-50 p-3 space-y-2">
+              <input
+                type="text"
+                autoFocus
+                placeholder="Rechercher un produit existant (nom ou EAN)…"
+                value={query}
+                onChange={(e) => { setQuery(e.target.value); setSelected(null); }}
+                className="w-full px-3 py-2 rounded-lg border border-gray-200 text-xs focus:outline-none focus:ring-2 focus:ring-bo-accent/30"
+              />
+              {!selected && results.length > 0 && (
+                <ul className="max-h-36 overflow-y-auto divide-y divide-gray-100 rounded-lg border border-gray-200 bg-white">
+                  {results.map((p) => (
+                    <li key={p.id}>
+                      <button
+                        type="button"
+                        onClick={() => { setSelected(p); setQuery(p.name); }}
+                        className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50"
+                      >
+                        <span className="font-medium text-bo-text">{p.name}</span>
+                        <span className="ml-2 text-gray-400 font-mono">{p.ean}</span>
+                        <span className="ml-2 text-gray-400">stock {p.stockQuantity ?? 0}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-gray-500">Quantité consommée par unité vendue :</label>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={qty}
+                  onChange={(e) => setQty(e.target.value)}
+                  className="w-16 px-2 py-1 rounded-lg border border-gray-200 text-xs focus:outline-none focus:ring-2 focus:ring-bo-accent/30"
+                />
+                <div className="flex-1" />
+                <button type="button" onClick={() => { setAdding(false); setSelected(null); setQuery(''); }} className="px-3 py-1.5 rounded-lg text-xs text-gray-500 hover:bg-gray-100">
+                  Annuler
+                </button>
+                <button
+                  type="button"
+                  onClick={addComponent}
+                  disabled={!selected || busy}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium text-white bg-bo-accent disabled:opacity-40 flex items-center gap-1.5"
+                >
+                  {busy && <Loader2 size={11} className="animate-spin" />}
+                  Ajouter au pack
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => { setAdding(true); setResults([]); setQuery(''); }}
+              className="flex items-center gap-1.5 text-xs font-medium text-bo-accent hover:underline"
+            >
+              <Plus size={13} /> Ajouter un composant
+            </button>
+          )}
         </div>
       )}
     </div>

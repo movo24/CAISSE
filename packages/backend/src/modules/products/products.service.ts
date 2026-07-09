@@ -13,6 +13,7 @@ import { ProductCategoryEntity } from '../../database/entities/product-category.
 import { BrandEntity } from '../../database/entities/brand.entity';
 import { SupplierEntity } from '../../database/entities/supplier.entity';
 import { StoreProductPriceEntity } from '../../database/entities/store-product-price.entity';
+import { ProductComponentEntity } from '../../database/entities/product-component.entity';
 import { AuditService } from '../audit/audit.service';
 import { PaginatedResult } from '../../common/dto/pagination.dto';
 import { computePriceVerdict, PriceVerdict } from './price-verdict';
@@ -48,6 +49,8 @@ export class ProductsService {
     private supplierRepo: Repository<SupplierEntity>,
     @InjectRepository(StoreProductPriceEntity)
     private storePriceRepo: Repository<StoreProductPriceEntity>,
+    @InjectRepository(ProductComponentEntity)
+    private componentRepo: Repository<ProductComponentEntity>,
   ) {}
 
   // ── Per-store price override (decision 4) ──
@@ -876,5 +879,136 @@ export class ProductsService {
     product.ean = ean;
     product.barcodeSource = 'generated';
     return this.productRepo.save(product);
+  }
+
+  // ── Product Packs — composition d'un produit composé (GO owner 2026-07-09) ──
+
+  /** Composants (actifs ou non) d'un parent, avec le produit composant joint. */
+  async listComponents(parentId: string, storeId: string) {
+    await this.findOneForStore(parentId, storeId); // tenant guard
+    const rows = await this.componentRepo.find({
+      where: { parentProductId: parentId, storeId },
+      order: { createdAt: 'ASC' },
+    });
+    if (rows.length === 0) return [];
+    const products = await this.productRepo.find({
+      where: rows.map((r) => ({ id: r.componentProductId, storeId })),
+    });
+    const byId = new Map(products.map((p) => [p.id, p]));
+    return rows.map((r) => ({
+      id: r.id,
+      componentProductId: r.componentProductId,
+      componentName: byId.get(r.componentProductId)?.name ?? null,
+      componentEan: byId.get(r.componentProductId)?.ean ?? null,
+      componentStockQuantity: byId.get(r.componentProductId)?.stockQuantity ?? null,
+      quantityPerParent: r.quantityPerParent,
+      isActive: r.isActive,
+      createdAt: r.createdAt,
+      updatedAt: r.updatedAt,
+    }));
+  }
+
+  /**
+   * Anti-boucle (obligatoire) : refuse si `parentId` est atteignable depuis
+   * `startComponentId` en suivant les liens parent→composant du magasin.
+   * Couvre l'auto-inclusion (A⊃A), la boucle directe (A⊃B, B⊃A) et toute
+   * chaîne circulaire (A⊃B⊃C⊃A). BFS borné : le graphe d'un magasin est petit,
+   * et les compositions EXISTANTES sont acycliques par construction.
+   */
+  private async assertNoComponentCycle(parentId: string, startComponentId: string, storeId: string): Promise<void> {
+    if (parentId === startComponentId) {
+      throw new BadRequestException('Un produit ne peut pas se contenir lui-même.');
+    }
+    const visited = new Set<string>([startComponentId]);
+    let frontier = [startComponentId];
+    // Garde-fou de profondeur — jamais atteint sur un graphe légitime.
+    for (let depth = 0; depth < 50 && frontier.length > 0; depth++) {
+      const next = await this.componentRepo.find({
+        where: frontier.map((pid) => ({ parentProductId: pid, storeId })),
+      });
+      frontier = [];
+      for (const edge of next) {
+        if (edge.componentProductId === parentId) {
+          throw new BadRequestException(
+            'Boucle de composition interdite : ce produit contient déjà (directement ou indirectement) le produit parent.',
+          );
+        }
+        if (!visited.has(edge.componentProductId)) {
+          visited.add(edge.componentProductId);
+          frontier.push(edge.componentProductId);
+        }
+      }
+    }
+  }
+
+  /** Ajoute un composant au pack (création seulement — l'unicité refuse les doublons). */
+  async addComponent(
+    parentId: string,
+    storeId: string,
+    dto: { componentProductId: string; quantityPerParent: number },
+  ) {
+    const parent = await this.findOneForStore(parentId, storeId);
+    if (!dto.componentProductId) throw new BadRequestException('componentProductId est requis.');
+    const component = await this.findOneForStore(dto.componentProductId, storeId); // tenant + existence
+    const qty = dto.quantityPerParent;
+    if (!Number.isInteger(qty) || qty <= 0) {
+      throw new BadRequestException('quantityPerParent doit être un entier strictement positif.');
+    }
+    const existing = await this.componentRepo.findOne({
+      where: { parentProductId: parent.id, componentProductId: component.id, storeId },
+    });
+    if (existing) {
+      throw new BusinessError(
+        'COMPONENT_ALREADY_EXISTS',
+        `« ${component.name} » est déjà un composant de ce pack — modifiez sa quantité au lieu de le rajouter.`,
+        HttpStatus.CONFLICT,
+      );
+    }
+    await this.assertNoComponentCycle(parent.id, component.id, storeId);
+    const row = this.componentRepo.create({
+      storeId,
+      parentProductId: parent.id,
+      componentProductId: component.id,
+      quantityPerParent: qty,
+      isActive: true,
+    });
+    return this.componentRepo.save(row);
+  }
+
+  /** Met à jour quantité et/ou statut actif d'un composant. */
+  async updateComponent(
+    parentId: string,
+    componentRowId: string,
+    storeId: string,
+    dto: { quantityPerParent?: number; isActive?: boolean },
+  ) {
+    await this.findOneForStore(parentId, storeId); // tenant guard
+    const row = await this.componentRepo.findOne({
+      where: { id: componentRowId, parentProductId: parentId, storeId },
+    });
+    if (!row) throw new NotFoundException('Composant introuvable pour ce produit.');
+    if (dto.quantityPerParent !== undefined) {
+      if (!Number.isInteger(dto.quantityPerParent) || dto.quantityPerParent <= 0) {
+        throw new BadRequestException('quantityPerParent doit être un entier strictement positif.');
+      }
+      row.quantityPerParent = dto.quantityPerParent;
+    }
+    if (dto.isActive !== undefined) row.isActive = !!dto.isActive;
+    return this.componentRepo.save(row);
+  }
+
+  /**
+   * Retire un composant de la composition COURANTE. Sans danger pour
+   * l'historique : les ventes passées gardent leur snapshot dans
+   * sale_component_movements (jamais modifié ni supprimé ici).
+   */
+  async removeComponent(parentId: string, componentRowId: string, storeId: string) {
+    await this.findOneForStore(parentId, storeId); // tenant guard
+    const row = await this.componentRepo.findOne({
+      where: { id: componentRowId, parentProductId: parentId, storeId },
+    });
+    if (!row) throw new NotFoundException('Composant introuvable pour ce produit.');
+    await this.componentRepo.delete(row.id);
+    return { message: 'Composant retiré de la composition (historique des ventes intact).' };
   }
 }

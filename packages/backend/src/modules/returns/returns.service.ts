@@ -261,6 +261,39 @@ export class ReturnsService {
           );
         }
 
+        // ── Product Packs (GO owner 2026-07-09) : restauration des composants
+        // selon le SNAPSHOT de la vente (sale_component_movements), jamais selon
+        // la composition courante — une composition modifiée après la vente ne
+        // change rien aux retours des ventes passées. Retour partiel : ratio
+        // figé (quantity_per_parent) × quantité retournée. Même transaction que
+        // l'avoir + le journal : tout échec → rollback complet.
+        const componentsRestored: Array<{
+          parentProductId: string; componentProductId: string; quantity: number;
+        }> = [];
+        for (const l of returnLines) {
+          if (!l.originalLineItemId) continue;
+          const movements = await qr.query(
+            `SELECT component_product_id AS component_product_id,
+                    quantity_per_parent AS quantity_per_parent
+               FROM sale_component_movements
+              WHERE sale_line_item_id = $1 AND store_id = $2`,
+            [l.originalLineItemId, storeId],
+          );
+          for (const m of Array.isArray(movements) ? movements : []) {
+            const restoreQty = Number(m.quantity_per_parent) * Number(l.quantity ?? 0);
+            if (restoreQty <= 0) continue;
+            await qr.query(
+              `UPDATE products SET stock_quantity = stock_quantity + $1, updated_at = NOW() WHERE id = $2 AND store_id = $3`,
+              [restoreQty, m.component_product_id, storeId],
+            );
+            componentsRestored.push({
+              parentProductId: String(l.productId),
+              componentProductId: m.component_product_id,
+              quantity: restoreQty,
+            });
+          }
+        }
+
         // ── D1.4 (GO owner) — SCELLEMENT fiscal_journal, dans la MÊME transaction.
         // L'avoir est la pièce opposable ; le journal prouve la chronologie et
         // l'intégrité. Quatre maillons chaînés (même mécanique que le void/M4),
@@ -307,10 +340,16 @@ export class ReturnsService {
                 })),
               },
             },
-            // 3. Restauration du stock (atomique avec l'avoir).
+            // 3. Restauration du stock (atomique avec l'avoir). Les composants
+            // de packs restaurés (snapshot) sont scellés dans le même maillon —
+            // clé additive, absente des retours sans pack (payloads historiques
+            // et non-pack inchangés).
             {
               type: 'stock_restored',
-              extra: { restored: returnLines.map((l) => ({ productId: l.productId, quantity: l.quantity })) },
+              extra: {
+                restored: returnLines.map((l) => ({ productId: l.productId, quantity: l.quantity })),
+                ...(componentsRestored.length > 0 ? { componentsRestored } : {}),
+              },
             },
           ];
           // 4. Sortie de caisse : AUCUN mouvement cash négatif sans avoir lié.
