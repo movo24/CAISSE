@@ -1,0 +1,221 @@
+# Déploiement Railway live + smoke — GO owner 2026-07-08 (« GO Railway live — exécution agent si possible »).
+# Chemin autorisé : « CI secret existant si accessible ». Ce workflow ne révèle JAMAIS
+# de valeur : présence du secret par nom, variables Railway par nom (jq keys), JWTs
+# des smoke tests écrits dans des fichiers jamais affichés.
+name: Railway Live Deploy
+
+# Dispatch-only : le SHA est un paramètre OBLIGATOIRE pour empêcher tout
+# redéploiement accidentel d'un ancien commit (le premier jet épinglait 33731ac).
+on:
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: "SHA complet du commit main à déployer"
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency: railway-live
+
+env:
+  URL: https://caisse-backend-production.up.railway.app
+  PROJECT: 2f5e0afc-d6ed-4360-9837-0356e9be0989
+  SERVICE: a7b2748a-6000-4a32-802b-0e9319287f43
+  ENVID: 7ade5bb3-4e17-4460-a6c0-f50995bded67
+  DEPLOY_SHA: ${{ inputs.commit_sha }}
+
+jobs:
+  railway-live:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Présence du secret (nom seulement, valeur jamais affichée)
+        id: probe
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          if [ -n "$RAILWAY_TOKEN" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+            echo "RAILWAY_TOKEN : PRÉSENT dans les secrets du repo"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "RAILWAY_TOKEN : ABSENT des secrets du repo"
+          fi
+
+      # Railway a deux formats de token : compte/équipe (Authorization: Bearer)
+      # et token de PROJET (en-tête Project-Access-Token). gql() essaie Bearer
+      # puis retombe sur Project-Access-Token si « Not Authorized » — sans
+      # jamais imprimer ni le token ni la réponse (le caller décide).
+      - name: Helper GraphQL bi-format (Bearer / Project-Access-Token)
+        if: steps.probe.outputs.present == 'true'
+        run: |
+          cat > /tmp/gql.sh <<'EOF'
+          gql() {
+            local out
+            out=$(curl -sS --max-time 30 -X POST https://backboard.railway.app/graphql/v2 \
+              -H "Authorization: Bearer $RAILWAY_TOKEN" -H "Content-Type: application/json" -d "$1")
+            if printf '%s' "$out" | grep -q 'Not Authorized'; then
+              echo "(Bearer refusé — bascule sur Project-Access-Token)" >&2
+              out=$(curl -sS --max-time 30 -X POST https://backboard.railway.app/graphql/v2 \
+                -H "Project-Access-Token: $RAILWAY_TOKEN" -H "Content-Type: application/json" -d "$1")
+            fi
+            printf '%s' "$out"
+          }
+          EOF
+
+      # Diagnostic de périmètre du token : n'imprime QUE des identifiants de
+      # projet/environnement (déjà documentés dans le RUNBOOK) et un nom de
+      # compte — jamais le token ni aucune valeur de variable.
+      - name: Diagnostic périmètre token (IDs seulement)
+        if: steps.probe.outputs.present == 'true'
+        run: |
+          echo "Attendu : project=$PROJECT env=$ENVID service=$SERVICE"
+          echo "--- Format compte/équipe (Bearer) : query me ---"
+          curl -sS --max-time 30 -X POST https://backboard.railway.app/graphql/v2 \
+            -H "Authorization: Bearer $RAILWAY_TOKEN" -H "Content-Type: application/json" \
+            -d '{"query":"query { me { name } }"}' \
+            | jq -c '{me: .data.me, errors: (.errors // [] | map(.message))}' 2>/dev/null || echo "(réponse non-JSON)"
+          echo "--- Format projet (Project-Access-Token) : query projectToken ---"
+          curl -sS --max-time 30 -X POST https://backboard.railway.app/graphql/v2 \
+            -H "Project-Access-Token: $RAILWAY_TOKEN" -H "Content-Type: application/json" \
+            -d '{"query":"query { projectToken { projectId environmentId } }"}' \
+            | jq -c '{projectToken: .data.projectToken, errors: (.errors // [] | map(.message))}' 2>/dev/null || echo "(réponse non-JSON)"
+          echo "--- Lecture projet attendu (Bearer) ---"
+          curl -sS --max-time 30 -X POST https://backboard.railway.app/graphql/v2 \
+            -H "Authorization: Bearer $RAILWAY_TOKEN" -H "Content-Type: application/json" \
+            -d "{\"query\":\"query { project(id: \\\"$PROJECT\\\") { name } }\"}" \
+            | jq -c '{project: .data.project, errors: (.errors // [] | map(.message))}' 2>/dev/null || echo "(réponse non-JSON)"
+
+      - name: Smoke PRE-deploy (état live actuel de l'URL native)
+        run: |
+          echo "== GET /api/health =="
+          curl -sS --max-time 20 -w "\nHTTP %{http_code}\n" "$URL/api/health" || echo "(health injoignable)"
+          echo "== GET /api/products sans auth =="
+          curl -sS -o /dev/null --max-time 20 -w "HTTP %{http_code}\n" "$URL/api/products" || true
+          echo "== POST /api/auth/login/pin body vide =="
+          curl -sS -o /dev/null --max-time 20 -w "HTTP %{http_code}\n" \
+            -X POST -H "Content-Type: application/json" -d '{}' "$URL/api/auth/login/pin" || true
+
+      - name: Variables Railway — présence PAR NOM uniquement
+        if: steps.probe.outputs.present == 'true'
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          # La query `variables` renvoie les VALEURS : la réponse brute n'est jamais
+          # affichée (fichier temporaire), seuls les noms (jq keys) sortent en log.
+          set -o pipefail
+          source /tmp/gql.sh
+          if ! gql "{\"query\":\"query { variables(projectId: \\\"$PROJECT\\\", environmentId: \\\"$ENVID\\\", serviceId: \\\"$SERVICE\\\") }\"}" > /tmp/vars.json; then
+            echo "Query variables : échec réseau/auth (réponse non affichée)"; exit 0
+          fi
+          if ! jq -r '.data.variables | keys[]?' /tmp/vars.json > /tmp/varnames.txt 2>/dev/null; then
+            echo "Réponse variables non parseable — contenu volontairement non affiché"; exit 0
+          fi
+          echo "Variables présentes (noms) :"; cat /tmp/varnames.txt
+          echo "--- Contrôle des obligatoires (preflight PR #40) ---"
+          for req in DATABASE_URL JWT_SECRET JWT_REFRESH_SECRET NODE_ENV CORS_ORIGIN; do
+            if grep -qx "$req" /tmp/varnames.txt; then echo "OK   $req"; else echo "MISS $req"; fi
+          done
+          if grep -qx "REDIS_URL" /tmp/varnames.txt || grep -qx "ALLOW_INMEMORY_CACHE" /tmp/varnames.txt; then
+            echo "OK   REDIS_URL ou ALLOW_INMEMORY_CACHE"
+          else
+            echo "MISS REDIS_URL / ALLOW_INMEMORY_CACHE (le boot prod refusera)"
+          fi
+
+      # GO owner explicite (2026-07-09) : « GO création variable
+      # ALLOW_INMEMORY_CACHE=true sur caisse-backend production ». Cause : le
+      # deploy d95c8565 (run n°8) a FAILED au healthcheck — le boot prod refuse
+      # sans REDIS_URL ou ALLOW_INMEMORY_CACHE=true (preflight PR #40, confirmé
+      # par le contrôle des variables). numReplicas=1 → opt-out single-pod sûr.
+      # CRÉATION SEULEMENT : si REDIS_URL ou ALLOW_INMEMORY_CACHE existe déjà,
+      # on ne touche à rien. Aucune autre variable n'est lue/modifiée ici.
+      - name: Créer ALLOW_INMEMORY_CACHE=true si absente (GO owner, création seule)
+        if: steps.probe.outputs.present == 'true'
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          source /tmp/gql.sh
+          if [ -f /tmp/varnames.txt ] && { grep -qx "REDIS_URL" /tmp/varnames.txt || grep -qx "ALLOW_INMEMORY_CACHE" /tmp/varnames.txt; }; then
+            echo "REDIS_URL ou ALLOW_INMEMORY_CACHE déjà présent — aucune modification"
+            exit 0
+          fi
+          echo "Création de ALLOW_INMEMORY_CACHE=true (valeur non secrète, opt-out single-pod du RUNBOOK)"
+          RESP=$(gql "{\"query\":\"mutation { variableUpsert(input: {projectId: \\\"$PROJECT\\\", environmentId: \\\"$ENVID\\\", serviceId: \\\"$SERVICE\\\", name: \\\"ALLOW_INMEMORY_CACHE\\\", value: \\\"true\\\"}) }\"}")
+          echo "$RESP" | jq . 2>/dev/null || echo "$RESP"
+          if echo "$RESP" | jq -e '.errors' >/dev/null 2>&1; then
+            echo "ERREUR variableUpsert — le deploy échouera au boot sans cette variable"; exit 1
+          fi
+
+      - name: Déployer le commit main mergé (serviceInstanceDeployV2)
+        if: steps.probe.outputs.present == 'true'
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          source /tmp/gql.sh
+          RESP=$(gql "{\"query\":\"mutation { serviceInstanceDeployV2(serviceId: \\\"$SERVICE\\\", environmentId: \\\"$ENVID\\\", commitSha: \\\"$DEPLOY_SHA\\\") }\"}")
+          echo "$RESP" | jq . 2>/dev/null || echo "$RESP"
+          if echo "$RESP" | jq -e '.errors' >/dev/null 2>&1; then
+            echo "ERREUR mutation deploy — voir ci-dessus."
+            echo "Si « Not Authorized » persiste sous les DEUX formats : le token n'a pas"
+            echo "accès au projet 2f5e0afc (workspace vibrant-freedom) — créer soit un"
+            echo "token de PROJET (Project Settings → Tokens, environnement production),"
+            echo "soit un token de compte ayant ce workspace."
+            exit 1
+          fi
+
+      - name: Attendre le déploiement (poll 15s, max 15 min)
+        if: steps.probe.outputs.present == 'true'
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          source /tmp/gql.sh
+          for i in $(seq 1 60); do
+            sleep 15
+            RESP=$(gql "{\"query\":\"{ deployments(first:1, input:{projectId:\\\"$PROJECT\\\", serviceId:\\\"$SERVICE\\\", environmentId:\\\"$ENVID\\\"}) { edges { node { id status meta } } } }\"}") || { echo "[$i] poll réseau KO"; continue; }
+            STATUS=$(echo "$RESP" | jq -r '.data.deployments.edges[0].node.status // "UNKNOWN"' 2>/dev/null)
+            echo "[$i] status=$STATUS"
+            case "$STATUS" in
+              SUCCESS)
+                echo "$RESP" | jq '.data.deployments.edges[0].node.meta' 2>/dev/null || true
+                exit 0 ;;
+              FAILED|CRASHED)
+                echo "DÉPLOIEMENT $STATUS — node complet :"
+                echo "$RESP" | jq '.data.deployments.edges[0].node' 2>/dev/null || true
+                exit 1 ;;
+            esac
+          done
+          echo "TIMEOUT : déploiement toujours pas SUCCESS après 15 min"; exit 1
+
+      - name: Smoke POST-deploy + E2E Wesley Club (JWT jamais affiché)
+        if: steps.probe.outputs.present == 'true'
+        run: |
+          sleep 10
+          echo "== GET /api/health =="
+          curl -sS --max-time 20 -w "\nHTTP %{http_code}\n" "$URL/api/health"
+          echo "== GET /api/products sans auth =="
+          curl -sS -o /dev/null --max-time 20 -w "HTTP %{http_code}\n" "$URL/api/products"
+          echo "== POST /api/auth/login/pin body vide =="
+          curl -sS -o /dev/null --max-time 20 -w "HTTP %{http_code}\n" \
+            -X POST -H "Content-Type: application/json" -d '{}' "$URL/api/auth/login/pin"
+          RAND="smoke-$(date +%s)@test.example"
+          echo "== POST /api/mobile/auth/register ($RAND) =="
+          curl -sS -o /tmp/reg.json --max-time 20 -w "HTTP %{http_code}\n" \
+            -X POST -H "Content-Type: application/json" \
+            -d "{\"email\":\"$RAND\",\"password\":\"smoketest1234\",\"firstName\":\"Smoke\"}" \
+            "$URL/api/mobile/auth/register"
+          echo -n "réponse register contient un token : "
+          jq 'objects | (has("accessToken") or has("token") or (.tokens? != null))' /tmp/reg.json 2>/dev/null || echo "(réponse non-JSON, non affichée)"
+          echo "== POST /api/mobile/auth/login =="
+          curl -sS -o /tmp/login.json --max-time 20 -w "HTTP %{http_code}\n" \
+            -X POST -H "Content-Type: application/json" \
+            -d "{\"email\":\"$RAND\",\"password\":\"smoketest1234\"}" \
+            "$URL/api/mobile/auth/login"
+          echo -n "réponse login contient un token : "
+          jq 'objects | (has("accessToken") or has("token") or (.tokens? != null))' /tmp/login.json 2>/dev/null || echo "(réponse non-JSON, non affichée)"
+
+      - name: Verdict si aucun chemin (secret absent)
+        if: steps.probe.outputs.present == 'false'
+        run: |
+          echo "VERDICT : RAILWAY_TOKEN absent des secrets GitHub — aucun chemin Railway"
+          echo "autorisé depuis l'agent (env sans token + egress refusé + pas de secret CI)."
+          echo "Le smoke PRE-deploy ci-dessus reflète l'état LIVE ACTUEL (ancien déploiement)."
