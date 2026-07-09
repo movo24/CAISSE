@@ -4,11 +4,15 @@
 # des smoke tests écrits dans des fichiers jamais affichés.
 name: Railway Live Deploy
 
+# Dispatch-only : le SHA est un paramètre OBLIGATOIRE pour empêcher tout
+# redéploiement accidentel d'un ancien commit (le premier jet épinglait 33731ac).
 on:
-  push:
-    branches: ["claude/customer-display-vertical-eolixp"]
-    paths: [".github/workflows/railway-live.yml"]
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: "SHA complet du commit main à déployer"
+        required: true
+        type: string
 
 permissions: {}
 
@@ -19,7 +23,7 @@ env:
   PROJECT: 2f5e0afc-d6ed-4360-9837-0356e9be0989
   SERVICE: a7b2748a-6000-4a32-802b-0e9319287f43
   ENVID: 7ade5bb3-4e17-4460-a6c0-f50995bded67
-  DEPLOY_SHA: 33731acede0f52ef3acf22f6b19dc462dea4a05b
+  DEPLOY_SHA: ${{ inputs.commit_sha }}
 
 jobs:
   railway-live:
