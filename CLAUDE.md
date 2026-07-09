@@ -120,7 +120,7 @@ or the dashboard. See `packages/backend/RUNBOOK.md` for exact curl commands.
 
 ---
 
-## TypeORM Entities (53)
+## TypeORM Entities (55)
 
 Located in `packages/backend/src/database/entities/`. Key ones:
 
@@ -192,6 +192,7 @@ Current migrations (run in order):
 1751000000000-AddCreditNoteSessionBinding
 1752000000000-AddPosSessionOpeningCashTrace
 1753000000000-AddCreditNoteFiscalFields
+1754000000000-CreateProductComponents
 ```
 > Saut de numérotation 1719→1735 volontaire (réservation d'une plage pour les blocs POS).
 

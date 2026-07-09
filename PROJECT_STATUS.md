@@ -169,6 +169,10 @@ NF525 Z-seal · Comptamax export comptable · porte offline-sale · onboarding/p
 - **#3** diagnostic fork audit prod : besoin accès prod (requête read-only fournie).
 - **M310/M509** Stripe billing = PARQUÉ + env absent.
 
+## Blocs GO livrés depuis (2026-07-08 → 2026-07-09)
+- ✅ **GO WisePad3/Stripe prod** (PR #37) · **GO TEST_DATABASE_URL** (PR #38, +2 bugs prod prouvés/corrigés) · **GO D1.4** (PR #39, scellement fiscal des avoirs) · **GO Railway preflight** (PR #40) · **GO Railway live** (PR #41 + workflow CI) : **le commit main tourne EN PROD live** (deployment `a23cfe97`, health 200, smoke 401/400/201/200, migrations OK, `ALLOW_INMEMORY_CACHE=true` créé sur GO explicite). Prochain verrou : **GO DNS** (prod vivante = condition remplie).
+- ✅ **GO Product Packs** (2026-07-09) : produits composés — composition `product_components` (anti-boucle BFS), décrément composants race-safe dans la tx de vente, snapshot figé `sale_component_movements` (retours au prorata selon le snapshot, jamais la composition courante), maillon `stock_restored` enrichi, section Pack fiche produit backoffice, 12 specs pg-mem + 2 specs vrai-PG (deltas exacts, concurrence 5/10, atomicité).
+
 ## Prochaine action automatique (continuité)
 **L'espace « safe » est épuisé (2026-07-08, post PR #24→#34).** Tout le restant est Tier-2 /
 owner-gated / matériel : validation WisePad 3 + clé Stripe prod (GO owner), DNS cutover + déploiement

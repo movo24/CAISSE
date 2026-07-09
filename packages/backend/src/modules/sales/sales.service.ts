@@ -21,6 +21,7 @@ import { IdempotencyKeyEntity } from '../../database/entities/idempotency-key.en
 import { ProductEntity } from '../../database/entities/product.entity';
 import { FiscalJournalEntity } from '../../database/entities/fiscal-journal.entity';
 import { PosSessionEntity } from '../../database/entities/pos-session.entity';
+import { SaleComponentMovementEntity } from '../../database/entities/sale-component-movement.entity';
 import { ProductsService } from '../products/products.service';
 import { CustomersService } from '../customers/customers.service';
 import { PromotionsService, CartItem } from '../promotions/promotions.service';
@@ -373,6 +374,44 @@ export class SalesService {
           `Insufficient stock for ${product.name} (${ean}): ` +
             `${qty} requested, ${product.stockQuantity} available`,
         );
+      }
+    }
+
+    // --- Pre-transaction: validate PACK COMPONENT stock (advisory, Product
+    // Packs). Comme le check parent ci-dessus, cette lecture peut être périmée
+    // sous concurrence — la garde AUTORITAIRE reste le décrément conditionnel
+    // dans la transaction. Ici on refuse tôt (message clair) au lieu d'ouvrir
+    // une transaction vouée au rollback. ---
+    {
+      const neededByComponent = new Map<string, number>();
+      for (const [ean, qty] of requestedQty) {
+        const product = resolvedProducts.get(ean)!;
+        const comps = await this.dataSource.query(
+          `SELECT component_product_id AS component_product_id,
+                  quantity_per_parent AS quantity_per_parent
+             FROM product_components
+            WHERE parent_product_id = $1 AND store_id = $2 AND is_active = true`,
+          [product.id, storeId],
+        );
+        for (const c of Array.isArray(comps) ? comps : []) {
+          neededByComponent.set(
+            c.component_product_id,
+            (neededByComponent.get(c.component_product_id) || 0) + Number(c.quantity_per_parent) * qty,
+          );
+        }
+      }
+      for (const [componentId, needed] of neededByComponent) {
+        const rows = await this.dataSource.query(
+          `SELECT name AS name, stock_quantity AS stock_quantity FROM products WHERE id = $1 AND store_id = $2`,
+          [componentId, storeId],
+        );
+        const comp = Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
+        if (!comp || Number(comp.stock_quantity) < needed) {
+          throw new BadRequestException(
+            `Stock insuffisant pour le composant « ${comp?.name ?? componentId} » du pack : ` +
+              `${needed} requis, ${comp ? Number(comp.stock_quantity) : 0} disponible — vente refusée.`,
+          );
+        }
       }
     }
 
@@ -749,6 +788,56 @@ export class SalesService {
             `Insufficient stock for ${product.name} (${item.ean}): ` +
               `${item.quantity} requested, stock épuisé au moment de la validation`,
           );
+        }
+      }
+
+      // --- Product Packs (GO owner 2026-07-09) : composants dans la MÊME tx ---
+      // Le parent reste la seule ligne commerciale (CA/ticket inchangés). Chaque
+      // composant ACTIF sort du stock avec le même décrément conditionnel
+      // race-safe : 0 ligne touchée = stock composant insuffisant → la vente
+      // ENTIÈRE est rejetée (rollback — aucun mouvement partiel, aucun stock
+      // fantôme). La composition consommée est FIGÉE dans
+      // sale_component_movements (snapshot + traçabilité : vente, ligne,
+      // parent, composant, quantités, session, employé) — HORS hash fiscal,
+      // comme session_id/terminal_id ci-dessus.
+      for (const li of lineItems) {
+        const components = await queryRunner.query(
+          `SELECT pc.component_product_id AS component_product_id,
+                  pc.quantity_per_parent AS quantity_per_parent,
+                  p.name AS component_name
+             FROM product_components pc
+             JOIN products p ON p.id = pc.component_product_id
+            WHERE pc.parent_product_id = $1 AND pc.store_id = $2 AND pc.is_active = true`,
+          [li.productId, storeId],
+        );
+        for (const comp of Array.isArray(components) ? components : []) {
+          const consumed = Number(comp.quantity_per_parent) * li.quantity;
+          const compDec = await queryRunner.query(
+            `UPDATE products
+             SET stock_quantity = stock_quantity - $1,
+                 updated_at = NOW()
+             WHERE id = $2 AND store_id = $3 AND stock_quantity >= $1
+             RETURNING stock_quantity`,
+            [consumed, comp.component_product_id, storeId],
+          );
+          if (returningRows(compDec).length === 0) {
+            throw new BadRequestException(
+              `Stock insuffisant pour le composant « ${comp.component_name} » ` +
+                `(inclus dans ${li.productName}) : ${consumed} requis — vente refusée, aucun mouvement partiel.`,
+            );
+          }
+          await queryRunner.manager.insert(SaleComponentMovementEntity, {
+            storeId,
+            saleId: saved.id,
+            saleLineItemId: li.id,
+            parentProductId: li.productId,
+            componentProductId: comp.component_product_id,
+            quantityPerParent: Number(comp.quantity_per_parent),
+            quantityConsumed: consumed,
+            employeeId,
+            sessionId: registerBinding.sessionId,
+            terminalId: registerBinding.terminalId,
+          });
         }
       }
 
