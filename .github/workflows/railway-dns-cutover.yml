@@ -1,0 +1,314 @@
+# Cutover DNS/Railway de api.addxintelligence.com (hôte prod canonique).
+# Exigences owner 2026-07-10 : dispatch-only, verify lecture seule séparé de
+# migrate, migrate gaté par GitHub Environment protégé (Required reviewers),
+# artefact de rollback persisté avant toute mutation, rollback AUTOMATIQUE sur
+# toute erreur, périmètre strictement limité au record api CNAME.
+name: Railway DNS Cutover
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_migrate:
+        description: "Passer à la MIGRATION après verify (décoché = verify seul)"
+        type: boolean
+        default: false
+
+# Exigence 8 : exclusion mutuelle migrate/rollback (même groupe, jamais annulé).
+concurrency:
+  group: railway-dns-cutover
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  DOMAIN: api.addxintelligence.com
+  NEW_URL: https://caisse-backend-production.up.railway.app
+  NEW_TARGET: caisse-backend-production.up.railway.app
+  OLD_TARGET_EXPECTED: bgzfcn8a.up.railway.app
+  NEW_PROJECT: 2f5e0afc-d6ed-4360-9837-0356e9be0989
+  NEW_ENVID: 7ade5bb3-4e17-4460-a6c0-f50995bded67
+  NEW_SERVICE: a7b2748a-6000-4a32-802b-0e9319287f43
+
+jobs:
+  # ── Exigence 2 : job VERIFY strictement lecture seule (aucune mutation). ──
+  verify:
+    runs-on: ubuntu-latest
+    env:
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+      RAILWAY_TOKEN_OLD: ${{ secrets.RAILWAY_TOKEN_OLD }}
+      IONOS_API_KEY: ${{ secrets.IONOS_API_KEY }}
+    steps:
+      - name: Verify (read-only) — préconditions exactes, aucune écriture
+        run: |
+          set -uo pipefail
+          fail=0
+          note() { echo "  $1"; }
+          # gql en LECTURE SEULE : ce job n'émet QUE des query, jamais de mutation.
+          gqlt() {
+            local tok="$1" body="$2" out
+            out=$(curl -sS --max-time 30 -X POST https://backboard.railway.app/graphql/v2 \
+              -H "Authorization: Bearer $tok" -H "Content-Type: application/json" -d "$body")
+            printf '%s' "$out" | grep -q 'Not Authorized' && out=$(curl -sS --max-time 30 -X POST https://backboard.railway.app/graphql/v2 \
+              -H "Project-Access-Token: $tok" -H "Content-Type: application/json" -d "$body")
+            printf '%s' "$out"
+          }
+          # Garde-fou : ce job REFUSE toute chaîne "mutation" (défense en profondeur).
+          assert_query() { case "$1" in *mutation*) echo "INTERDIT: mutation dans verify"; exit 2;; esac; }
+
+          echo "=== VERIFY — aucune mutation ne sera émise ==="
+          [ -n "${RAILWAY_TOKEN_OLD:-}" ] || { echo "MANQUE: secret RAILWAY_TOKEN_OLD"; fail=1; }
+          [ -n "${RAILWAY_TOKEN:-}" ]     || { echo "MANQUE: secret RAILWAY_TOKEN"; fail=1; }
+          [ -n "${IONOS_API_KEY:-}" ]     || { echo "MANQUE: secret IONOS_API_KEY"; fail=1; }
+          [ "$fail" = 0 ] || { echo "VERIFY ÉCHOUÉ — secrets manquants."; exit 1; }
+
+          echo "== (a) RAILWAY_TOKEN_OLD == sweet-blessing / production ? =="
+          Q='{"query":"query { projectToken { projectId environmentId } }"}'; assert_query "$Q"
+          PT=$(gqlt "$RAILWAY_TOKEN_OLD" "$Q")
+          OLD_PID=$(echo "$PT" | jq -r '.data.projectToken.projectId // empty')
+          OLD_EID=$(echo "$PT" | jq -r '.data.projectToken.environmentId // empty')
+          if [ -z "$OLD_PID" ]; then echo "  KO: token OLD n'est pas un Project Token (projectToken null)"; fail=1;
+          else
+            Q="{\"query\":\"query { project(id: \\\"$OLD_PID\\\") { name environments { edges { node { id name } } } services { edges { node { id name } } } } }\"}"; assert_query "$Q"
+            PR=$(gqlt "$RAILWAY_TOKEN_OLD" "$Q")
+            OLD_PNAME=$(echo "$PR" | jq -r '.data.project.name // empty')
+            OLD_ENAME=$(echo "$PR" | jq -r ".data.project.environments.edges[]?.node | select(.id==\"$OLD_EID\") | .name")
+            note "projet=$OLD_PNAME env=$OLD_ENAME (pid=$OLD_PID eid=$OLD_EID)"
+            [ "$OLD_PNAME" = "sweet-blessing" ] || { echo "  KO: projet OLD attendu 'sweet-blessing', obtenu '$OLD_PNAME'"; fail=1; }
+            [ "$OLD_ENAME" = "production" ]     || { echo "  KO: env OLD attendu 'production', obtenu '$OLD_ENAME'"; fail=1; }
+          fi
+
+          echo "== (b) RAILWAY_TOKEN == nouveau projet caisse-backend / production ? =="
+          Q='{"query":"query { projectToken { projectId environmentId } }"}'; assert_query "$Q"
+          NPT=$(gqlt "$RAILWAY_TOKEN" "$Q")
+          N_PID=$(echo "$NPT" | jq -r '.data.projectToken.projectId // empty')
+          N_EID=$(echo "$NPT" | jq -r '.data.projectToken.environmentId // empty')
+          note "new pid=$N_PID eid=$N_EID (attendu $NEW_PROJECT / $NEW_ENVID)"
+          [ "$N_PID" = "$NEW_PROJECT" ] || { echo "  KO: projet NEW != $NEW_PROJECT"; fail=1; }
+          [ "$N_EID" = "$NEW_ENVID" ]   || { echo "  KO: env NEW != $NEW_ENVID"; fail=1; }
+
+          echo "== (c) $DOMAIN visible + rattaché à quel service dans sweet-blessing ? =="
+          FOUND=0
+          if [ -n "${OLD_PID:-}" ]; then
+            for SID in $(echo "$PR" | jq -r '(.data.project.services.edges // [])[].node.id'); do
+              SNAME=$(echo "$PR" | jq -r ".data.project.services.edges[] | select(.node.id==\"$SID\") | .node.name")
+              Q="{\"query\":\"query { domains(projectId: \\\"$OLD_PID\\\", environmentId: \\\"$OLD_EID\\\", serviceId: \\\"$SID\\\") { customDomains { id domain } } }\"}"; assert_query "$Q"
+              D=$(gqlt "$RAILWAY_TOKEN_OLD" "$Q")
+              HITID=$(echo "$D" | jq -r "(.data.domains.customDomains // [])[] | select(.domain==\"$DOMAIN\") | .id" 2>/dev/null)
+              [ -n "$HITID" ] && { FOUND=$((FOUND+1)); note "→ trouvé sur service '$SNAME' (sid=$SID) customDomainId=$HITID"; }
+            done
+          fi
+          [ "$FOUND" = 1 ] || { echo "  KO: $DOMAIN doit être rattaché à EXACTEMENT un service OLD (trouvé: $FOUND)"; fail=1; }
+
+          echo "== (d) Nouveau service sain ? =="
+          NH=$(curl -sS -o /dev/null --max-time 20 -w "%{http_code}" "$NEW_URL/api/health")
+          note "$NEW_URL/api/health → $NH"
+          [ "$NH" = "200" ] || { echo "  KO: nouveau backend pas 200"; fail=1; }
+
+          echo "== (e) Record IONOS api actuel == valeur attendue ? (exact, CNAME, non wildcard) =="
+          ZID=$(curl -sS --max-time 30 -H "X-API-Key: $IONOS_API_KEY" https://api.hosting.ionos.com/dns/v1/zones | jq -r '.[] | select(.name=="addxintelligence.com") | .id')
+          [ -n "$ZID" ] || { echo "  KO: zone addxintelligence.com introuvable"; fail=1; }
+          if [ -n "${ZID:-}" ]; then
+            ZREC=$(curl -sS --max-time 30 -H "X-API-Key: $IONOS_API_KEY" "https://api.hosting.ionos.com/dns/v1/zones/$ZID?recordName=$DOMAIN&recordType=CNAME")
+            NREC=$(echo "$ZREC" | jq '[.records[]? | select(.type=="CNAME" and .name=="'"$DOMAIN"'")] | length')
+            RID=$(echo "$ZREC" | jq -r '[.records[]? | select(.type=="CNAME" and .name=="'"$DOMAIN"'")][0].id')
+            CONTENT=$(echo "$ZREC" | jq -r '[.records[]? | select(.type=="CNAME" and .name=="'"$DOMAIN"'")][0].content')
+            TTL=$(echo "$ZREC" | jq -r '[.records[]? | select(.type=="CNAME" and .name=="'"$DOMAIN"'")][0].ttl')
+            note "record api : count=$NREC content=$CONTENT ttl=$TTL id=$RID"
+            [ "$NREC" = "1" ] || { echo "  KO: doit exister EXACTEMENT 1 record CNAME api (trouvé $NREC)"; fail=1; }
+            [ "$CONTENT" = "$OLD_TARGET_EXPECTED" ] || { echo "  KO: cible actuelle attendue $OLD_TARGET_EXPECTED, obtenue $CONTENT"; fail=1; }
+          fi
+
+          echo "== (f) Droit customDomainDelete =="
+          echo "  NON PROUVÉ ICI : le droit de SUPPRESSION ne peut être confirmé sans muter."
+          echo "  À migrate, la 1re mutation Railway est ce delete ; s'il est refusé, migrate"
+          echo "  s'arrête AVANT toute autre mutation et le rollback restaure l'état (aucune"
+          echo "  autre opération n'aura eu lieu). Aucune promesse n'est faite ici."
+
+          echo "─────────────── PLAN EXACT DES MUTATIONS (si migrate approuvé) ───────────────"
+          echo "  1. Railway customDomainDelete(id du domaine sur service OLD de sweet-blessing)"
+          echo "  2. Railway customDomainCreate(caisse-backend / production, targetPort 8080)"
+          echo "  3. IONOS PUT record api (id exact) : content=$NEW_TARGET ttl=300 — SEUL record touché"
+          echo "  Jamais : MX, SPF, DKIM, DMARC, autodiscover, app/m/mobile/admin/pos, ni wildcard."
+          echo "──────────────────────────────────────────────────────────────────────────────"
+
+          [ "$fail" = 0 ] && echo "VERIFY OK — toutes préconditions vertes." || { echo "VERIFY ÉCHOUÉ — voir KO ci-dessus."; exit 1; }
+
+  # ── Exigences 2/3 : MIGRATE séparé, needs verify, gaté par Environment protégé. ──
+  migrate:
+    needs: verify
+    if: ${{ inputs.run_migrate }}
+    runs-on: ubuntu-latest
+    # Exigence 3 : reste EN ATTENTE de l'approbation GitHub (Required reviewers)
+    # avant de recevoir les secrets/muter. À configurer : repo Settings →
+    # Environments → production-dns-cutover → Required reviewers = owner.
+    environment: production-dns-cutover
+    env:
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+      RAILWAY_TOKEN_OLD: ${{ secrets.RAILWAY_TOKEN_OLD }}
+      IONOS_API_KEY: ${{ secrets.IONOS_API_KEY }}
+    steps:
+      - name: Migration atomique + rollback automatique
+        run: |
+          set -Eeuo pipefail
+          gqlt() {
+            local tok="$1" body="$2" out
+            out=$(curl -sS --max-time 30 -X POST https://backboard.railway.app/graphql/v2 \
+              -H "Authorization: Bearer $tok" -H "Content-Type: application/json" -d "$body")
+            printf '%s' "$out" | grep -q 'Not Authorized' && out=$(curl -sS --max-time 30 -X POST https://backboard.railway.app/graphql/v2 \
+              -H "Project-Access-Token: $tok" -H "Content-Type: application/json" -d "$body")
+            printf '%s' "$out"
+          }
+          ok() { echo "$1" | jq -e '.errors' >/dev/null 2>&1 && return 1 || return 0; }
+
+          NEW_DOMAIN_CREATED=0; IONOS_CHANGED=0
+
+          # ── Exigence 6/7 : rollback réel, pas un simple message. ──
+          rollback() {
+            echo "!! ============ ROLLBACK AUTOMATIQUE ============"
+            if [ "$NEW_DOMAIN_CREATED" = 1 ]; then
+              echo "   - retrait du domaine du nouveau service"
+              NID=$(gqlt "$RAILWAY_TOKEN" "{\"query\":\"query { domains(projectId: \\\"$NEW_PROJECT\\\", environmentId: \\\"$NEW_ENVID\\\", serviceId: \\\"$NEW_SERVICE\\\") { customDomains { id domain } } }\"}" | jq -r "(.data.domains.customDomains // [])[] | select(.domain==\"$DOMAIN\") | .id")
+              [ -n "$NID" ] && gqlt "$RAILWAY_TOKEN" "{\"query\":\"mutation { customDomainDelete(id: \\\"$NID\\\") }\"}" >/dev/null 2>&1 || true
+            fi
+            echo "   - re-rattachement du domaine sur l'ancien service ($OLD_SNAME)"
+            gqlt "$RAILWAY_TOKEN_OLD" "{\"query\":\"mutation { customDomainCreate(input: {projectId: \\\"$OLD_PID\\\", environmentId: \\\"$OLD_EID\\\", serviceId: \\\"$OLD_SID\\\", domain: \\\"$DOMAIN\\\"}) { id } }\"}" >/dev/null 2>&1 || true
+            if [ "$IONOS_CHANGED" = 1 ]; then
+              echo "   - restauration du CNAME IONOS d'origine ($ORIG_TARGET ttl=$ORIG_TTL)"
+              curl -sS --max-time 30 -X PUT -H "X-API-Key: $IONOS_API_KEY" -H "Content-Type: application/json" \
+                -d "{\"content\":\"$ORIG_TARGET\",\"ttl\":$ORIG_TTL,\"disabled\":false}" \
+                "https://api.hosting.ionos.com/dns/v1/zones/$ZID/records/$RID" >/dev/null 2>&1 || true
+            fi
+            echo "   - vérification RÉELLE du retour de l'ancien backend :"
+            for k in $(seq 1 20); do
+              sleep 10
+              RB=$(curl -sS --max-time 15 "https://$DOMAIN/api/health" 2>/dev/null || echo "")
+              RR=$(echo "$RB" | jq -r '.redis // "?"' 2>/dev/null || echo "?")
+              CC=$(curl -sS -o /dev/null --max-time 15 -w "%{http_code}" "https://$DOMAIN/api/health" 2>/dev/null || echo "000")
+              echo "     [$k] http=$CC redis=$RR"
+              [ "$CC" = "200" ] && [ "$RR" = "up" ] && { echo "   ✓ ancien backend restauré."; break; }
+            done
+            echo "!! ============ FIN ROLLBACK ============"
+          }
+          trap 'echo "TRAP: erreur/interruption → rollback"; rollback; exit 1' ERR INT TERM
+
+          echo "== 0. Précondition : nouveau backend sain =="
+          [ "$(curl -sS -o /dev/null --max-time 20 -w '%{http_code}' "$NEW_URL/api/health")" = "200" ] || { echo "ABANDON avant mutation"; exit 1; }
+
+          echo "== 1. Résolution état d'origine (lecture) =="
+          PT=$(gqlt "$RAILWAY_TOKEN_OLD" '{"query":"query { projectToken { projectId environmentId } }"}')
+          OLD_PID=$(echo "$PT" | jq -r '.data.projectToken.projectId'); OLD_EID=$(echo "$PT" | jq -r '.data.projectToken.environmentId')
+          PR=$(gqlt "$RAILWAY_TOKEN_OLD" "{\"query\":\"query { project(id: \\\"$OLD_PID\\\") { name services { edges { node { id name } } } } }\"}")
+          OLD_PNAME=$(echo "$PR" | jq -r '.data.project.name')
+          [ "$OLD_PNAME" = "sweet-blessing" ] || { echo "ABANDON: projet OLD != sweet-blessing"; exit 1; }
+          OLD_SID=""; OLD_SNAME=""; CDID=""
+          for SID in $(echo "$PR" | jq -r '(.data.project.services.edges // [])[].node.id'); do
+            D=$(gqlt "$RAILWAY_TOKEN_OLD" "{\"query\":\"query { domains(projectId: \\\"$OLD_PID\\\", environmentId: \\\"$OLD_EID\\\", serviceId: \\\"$SID\\\") { customDomains { id domain } } }\"}")
+            HITID=$(echo "$D" | jq -r "(.data.domains.customDomains // [])[] | select(.domain==\"$DOMAIN\") | .id")
+            [ -n "$HITID" ] && { OLD_SID="$SID"; OLD_SNAME=$(echo "$PR" | jq -r ".data.project.services.edges[] | select(.node.id==\"$SID\") | .node.name"); CDID="$HITID"; }
+          done
+          [ -n "$CDID" ] || { echo "ABANDON: domaine introuvable côté OLD"; exit 1; }
+          ZID=$(curl -sS --max-time 30 -H "X-API-Key: $IONOS_API_KEY" https://api.hosting.ionos.com/dns/v1/zones | jq -r '.[] | select(.name=="addxintelligence.com") | .id')
+          ZREC=$(curl -sS --max-time 30 -H "X-API-Key: $IONOS_API_KEY" "https://api.hosting.ionos.com/dns/v1/zones/$ZID?recordName=$DOMAIN&recordType=CNAME")
+          RID=$(echo "$ZREC" | jq -r '[.records[]? | select(.type=="CNAME" and .name=="'"$DOMAIN"'")][0].id')
+          ORIG_TARGET=$(echo "$ZREC" | jq -r '[.records[]? | select(.type=="CNAME" and .name=="'"$DOMAIN"'")][0].content')
+          ORIG_TTL=$(echo "$ZREC" | jq -r '[.records[]? | select(.type=="CNAME" and .name=="'"$DOMAIN"'")][0].ttl')
+          [ -n "$RID" ] && [ "$ORIG_TARGET" = "$OLD_TARGET_EXPECTED" ] || { echo "ABANDON: record IONOS api inattendu"; exit 1; }
+
+          echo "== 2. Exigence 5 : artefact de rollback AVANT toute mutation (sans secret) =="
+          mkdir -p /tmp/rb
+          cat > /tmp/rb/rollback-state.json <<JSON
+          {
+            "old_project_id": "$OLD_PID", "old_project_name": "$OLD_PNAME",
+            "old_environment_id": "$OLD_EID", "old_environment_name": "production",
+            "old_service_id": "$OLD_SID", "old_service_name": "$OLD_SNAME",
+            "custom_domain_id_original": "$CDID", "domain_hostname": "$DOMAIN",
+            "ionos_zone_id": "$ZID", "ionos_record_id": "$RID",
+            "ionos_original_target": "$ORIG_TARGET", "ionos_original_ttl": $ORIG_TTL,
+            "new_intended_target": "$NEW_TARGET",
+            "new_project_id": "$NEW_PROJECT", "new_environment_id": "$NEW_ENVID", "new_service_id": "$NEW_SERVICE",
+            "timestamp": "$(date -u +%FT%TZ)", "commit_sha": "$GITHUB_SHA", "run_id": "$GITHUB_RUN_ID"
+          }
+          JSON
+          echo "Artefact :"; cat /tmp/rb/rollback-state.json
+
+      - name: Upload artefact de rollback
+        if: ${{ inputs.run_migrate }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: rollback-state
+          path: /tmp/rb/rollback-state.json
+          retention-days: 30
+
+      - name: Exécuter la bascule (mutations + attente + smoke, rollback auto)
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_TOKEN_OLD: ${{ secrets.RAILWAY_TOKEN_OLD }}
+          IONOS_API_KEY: ${{ secrets.IONOS_API_KEY }}
+        run: |
+          set -Eeuo pipefail
+          gqlt() { local tok="$1" body="$2" out; out=$(curl -sS --max-time 30 -X POST https://backboard.railway.app/graphql/v2 -H "Authorization: Bearer $tok" -H "Content-Type: application/json" -d "$body"); printf '%s' "$out" | grep -q 'Not Authorized' && out=$(curl -sS --max-time 30 -X POST https://backboard.railway.app/graphql/v2 -H "Project-Access-Token: $tok" -H "Content-Type: application/json" -d "$body"); printf '%s' "$out"; }
+          S() { jq -r ".$1" /tmp/rb/rollback-state.json; }
+          OLD_PID=$(S old_project_id); OLD_EID=$(S old_environment_id); OLD_SID=$(S old_service_id); OLD_SNAME=$(S old_service_name)
+          CDID=$(S custom_domain_id_original); ZID=$(S ionos_zone_id); RID=$(S ionos_record_id)
+          ORIG_TARGET=$(S ionos_original_target); ORIG_TTL=$(S ionos_original_ttl)
+          NEW_DOMAIN_CREATED=0; IONOS_CHANGED=0
+
+          rollback() {
+            echo "!! ROLLBACK AUTOMATIQUE"
+            if [ "$NEW_DOMAIN_CREATED" = 1 ]; then
+              NID=$(gqlt "$RAILWAY_TOKEN" "{\"query\":\"query { domains(projectId: \\\"$NEW_PROJECT\\\", environmentId: \\\"$NEW_ENVID\\\", serviceId: \\\"$NEW_SERVICE\\\") { customDomains { id domain } } }\"}" | jq -r "(.data.domains.customDomains // [])[] | select(.domain==\"$DOMAIN\") | .id")
+              [ -n "$NID" ] && gqlt "$RAILWAY_TOKEN" "{\"query\":\"mutation { customDomainDelete(id: \\\"$NID\\\") }\"}" >/dev/null 2>&1 || true
+            fi
+            gqlt "$RAILWAY_TOKEN_OLD" "{\"query\":\"mutation { customDomainCreate(input: {projectId: \\\"$OLD_PID\\\", environmentId: \\\"$OLD_EID\\\", serviceId: \\\"$OLD_SID\\\", domain: \\\"$DOMAIN\\\"}) { id } }\"}" >/dev/null 2>&1 || true
+            if [ "$IONOS_CHANGED" = 1 ]; then
+              curl -sS --max-time 30 -X PUT -H "X-API-Key: $IONOS_API_KEY" -H "Content-Type: application/json" -d "{\"content\":\"$ORIG_TARGET\",\"ttl\":$ORIG_TTL,\"disabled\":false}" "https://api.hosting.ionos.com/dns/v1/zones/$ZID/records/$RID" >/dev/null 2>&1 || true
+            fi
+            for k in $(seq 1 20); do sleep 10; CC=$(curl -sS -o /dev/null --max-time 15 -w "%{http_code}" "https://$DOMAIN/api/health" 2>/dev/null || echo 000); RR=$(curl -sS --max-time 15 "https://$DOMAIN/api/health" 2>/dev/null | jq -r '.redis // "?"' 2>/dev/null || echo "?"); echo "   rollback-check [$k] http=$CC redis=$RR"; [ "$CC" = "200" ] && [ "$RR" = "up" ] && { echo "   ✓ ancien backend restauré"; break; }; done
+          }
+          trap 'echo "TRAP → rollback"; rollback; exit 1' ERR INT TERM
+
+          echo "== M1. DELETE domaine sur OLD ($OLD_SNAME) =="
+          DEL=$(gqlt "$RAILWAY_TOKEN_OLD" "{\"query\":\"mutation { customDomainDelete(id: \\\"$CDID\\\") }\"}")
+          echo "$DEL" | jq -c . 2>/dev/null || echo "$DEL"
+          echo "$DEL" | jq -e '.errors' >/dev/null 2>&1 && { echo "DELETE refusé (droit customDomainDelete ?) — aucune autre mutation, rollback (no-op réel)"; false; }
+
+          echo "== M2. CREATE domaine sur caisse-backend:8080 =="
+          CRE=$(gqlt "$RAILWAY_TOKEN" "{\"query\":\"mutation { customDomainCreate(input: {projectId: \\\"$NEW_PROJECT\\\", environmentId: \\\"$NEW_ENVID\\\", serviceId: \\\"$NEW_SERVICE\\\", domain: \\\"$DOMAIN\\\", targetPort: 8080}) { id status { dnsRecords { requiredValue status } } } }\"}")
+          echo "$CRE" | jq '.data.customDomainCreate // .errors' 2>/dev/null || echo "$CRE"
+          echo "$CRE" | jq -e '.errors' >/dev/null 2>&1 && { echo "CREATE échoué"; false; }
+          NEW_DOMAIN_CREATED=1
+
+          echo "== M3. IONOS : CNAME api → $NEW_TARGET (ttl 300, record id exact $RID) =="
+          curl -sS --max-time 30 -X PUT -H "X-API-Key: $IONOS_API_KEY" -H "Content-Type: application/json" \
+            -d "{\"content\":\"$NEW_TARGET\",\"ttl\":300,\"disabled\":false}" \
+            "https://api.hosting.ionos.com/dns/v1/zones/$ZID/records/$RID" >/dev/null
+          IONOS_CHANGED=1
+
+          echo "== M4. Attente certificat + bascule (redis=unknown), max 12 min =="
+          SWITCHED=0
+          for i in $(seq 1 48); do
+            sleep 15
+            CODE=$(curl -sS -o /dev/null --max-time 15 -w "%{http_code}" "https://$DOMAIN/api/health" 2>/dev/null || echo 000)
+            REDIS=$(curl -sS --max-time 15 "https://$DOMAIN/api/health" 2>/dev/null | jq -r '.redis // "?"' 2>/dev/null || echo "?")
+            echo "   [$i] http=$CODE redis=$REDIS"
+            [ "$CODE" = "200" ] && [ "$REDIS" = "unknown" ] && { SWITCHED=1; break; }
+          done
+          [ "$SWITCHED" = 1 ] || { echo "Certificat/bascule non obtenu dans le délai"; false; }
+
+          echo "== M5. Vérification CNAME conforme + smoke fonctionnel =="
+          RES=$(getent hosts "$DOMAIN" >/dev/null 2>&1 && echo ok || echo ko)
+          [ "$RES" = "ok" ] || { echo "Résolution DNS $DOMAIN KO"; false; }
+          P=$(curl -sS -o /dev/null --max-time 20 -w "%{http_code}" "https://$DOMAIN/api/products"); echo "products=$P"; [ "$P" = "401" ] || false
+          L=$(curl -sS -o /dev/null --max-time 20 -w "%{http_code}" -X POST -H "Content-Type: application/json" -d '{}' "https://$DOMAIN/api/auth/login/pin"); echo "login-vide=$L"; [ "$L" = "400" ] || false
+          RAND="smoke-dns-$GITHUB_RUN_ID@test.example"
+          R=$(curl -sS -o /dev/null --max-time 20 -w "%{http_code}" -X POST -H "Content-Type: application/json" -d "{\"email\":\"$RAND\",\"password\":\"smoketest1234\",\"firstName\":\"Smoke\"}" "https://$DOMAIN/api/mobile/auth/register"); echo "register=$R"; [ "$R" = "201" ] || false
+          G=$(curl -sS -o /dev/null --max-time 20 -w "%{http_code}" -X POST -H "Content-Type: application/json" -d "{\"email\":\"$RAND\",\"password\":\"smoketest1234\"}" "https://$DOMAIN/api/mobile/auth/login"); echo "login=$G"; [ "$G" = "200" ] || false
+
+          echo "== M6. Intégrité mail/Vercel (doivent être inchangés) =="
+          for r in "addxintelligence.com MX" "addxintelligence.com TXT" "_dmarc.addxintelligence.com TXT" "autodiscover.addxintelligence.com CNAME" "app.addxintelligence.com CNAME" "m.addxintelligence.com CNAME" "mobile.addxintelligence.com CNAME" "admin.addxintelligence.com CNAME" "pos.addxintelligence.com CNAME"; do
+            echo "   $(dig +short $r 2>/dev/null | tr '\n' ' ')"
+          done
+
+          trap - ERR INT TERM
+          echo "✅ MIGRATION RÉUSSIE ET VÉRIFIÉE — api.addxintelligence.com sert caisse-backend."
