@@ -20,6 +20,7 @@ import { productsApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
 import { useCurrentStoreId } from '../hooks/useCurrentStoreId';
 import { PriceAnalyticsPanel } from '../components/PriceAnalyticsPanel';
+import { validateProductForm, buildCreatePayload, buildUpdatePayload } from './productForm';
 
 type SortKey = 'name' | 'price' | 'stock' | 'category';
 type SortDir = 'asc' | 'desc';
@@ -32,6 +33,9 @@ interface Product {
   stock: number;
   category: string;
   image: string | null;
+  description: string;
+  cost: number | null; // prix d'achat en euros (null si non renseigné)
+  taxRate: number | null; // % TVA
 }
 
 const avatarColors = [
@@ -72,7 +76,8 @@ export function ProductsPage() {
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ name: '', ean: '', price: '', stock: '', category: '' });
+  const [form, setForm] = useState({ name: '', ean: '', price: '', stock: '', category: '', description: '', cost: '', taxRate: '' });
+  const [formError, setFormError] = useState<string | null>(null);
 
   // Price analytics panel
   const [analyticsProductId, setAnalyticsProductId] = useState<string | null>(null);
@@ -91,6 +96,9 @@ export function ProductsPage() {
           stock: p.stockQuantity ?? 0,
           category: typeof p.categoryId === 'string' ? p.categoryId : (typeof p.category === 'string' ? p.category : 'Non classe'),
           image: p.imageUrl || null,
+          description: typeof p.description === 'string' ? p.description : '',
+          cost: typeof p.costMinorUnits === 'number' ? p.costMinorUnits / 100 : null,
+          taxRate: typeof p.taxRate === 'number' ? p.taxRate : (p.taxRate != null ? Number(p.taxRate) : null),
         })),
       );
       setError(null);
@@ -200,8 +208,9 @@ export function ProductsPage() {
   };
 
   const resetForm = () => {
-    setForm({ name: '', ean: '', price: '', stock: '', category: '' });
+    setForm({ name: '', ean: '', price: '', stock: '', category: '', description: '', cost: '', taxRate: '' });
     setEditingId(null);
+    setFormError(null);
   };
 
   const openAdd = () => { resetForm(); setShowModal(true); };
@@ -215,17 +224,27 @@ export function ProductsPage() {
       ean: p.ean,
       price: String(p.price),
       stock: String(p.stock),
-      category: p.category,
+      category: p.category === 'Non classe' ? '' : p.category,
+      description: p.description,
+      cost: p.cost != null ? String(p.cost) : '',
+      taxRate: p.taxRate != null ? String(p.taxRate) : '',
     });
     setOriginalPrice(p.price);
     setEditingId(p.id);
+    setFormError(null);
     setShowModal(true);
   };
 
   const handleSave = async () => {
-    if (!form.name.trim()) return;
+    // Validation client alignée sur les DTO (name + ean-si-création + prix).
+    const validationError = validateProductForm(form, editingId !== null);
+    if (validationError) {
+      setFormError(validationError);
+      return;
+    }
+    setFormError(null);
 
-    // Price change confirmation for edits
+    // Confirmation de changement de prix en modification.
     const newPrice = Math.round(parseFloat(form.price || '0') * 100);
     if (editingId && originalPrice !== null) {
       const oldPriceCents = Math.round(originalPrice * 100);
@@ -238,18 +257,16 @@ export function ProductsPage() {
 
     try {
       setSaving(true);
-      const payload = {
-        name: form.name,
-        ean: form.ean,
-        price: newPrice,
-        stock: parseInt(form.stock || '0', 10),
-        category: form.category,
-        storeId,
-      };
       if (editingId) {
-        await productsApi.update(editingId, payload);
+        // UpdateProductDto : jamais `ean` ni `storeId`. `reason` trace le changement de prix.
+        const changedPrice = originalPrice !== null && Math.round(originalPrice * 100) !== newPrice;
+        await productsApi.update(
+          editingId,
+          buildUpdatePayload(form, changedPrice ? 'Modification via backoffice' : undefined),
+        );
       } else {
-        await productsApi.create(payload);
+        // CreateProductDto : ean+name+priceMinorUnits obligatoires ; storeId forcé serveur.
+        await productsApi.create(buildCreatePayload(form));
       }
       setShowModal(false);
       setOriginalPrice(null);
@@ -258,7 +275,7 @@ export function ProductsPage() {
     } catch (err: any) {
       const rawMsg = err.response?.data?.message;
       const msg = typeof rawMsg === 'string' ? rawMsg : Array.isArray(rawMsg) ? rawMsg.join(', ') : 'Erreur lors de la sauvegarde';
-      alert(typeof msg === 'string' ? msg : JSON.stringify(msg));
+      setFormError(typeof msg === 'string' ? msg : JSON.stringify(msg));
     } finally {
       setSaving(false);
     }
@@ -567,14 +584,18 @@ export function ProductsPage() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1.5">Code EAN</label>
+                  <label className="block text-xs font-medium text-gray-500 mb-1.5">
+                    Code EAN {editingId ? '' : '*'}
+                  </label>
                   <input
                     type="text"
-                    className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-bo-accent/30 focus:border-bo-accent"
+                    disabled={editingId !== null}
+                    className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-bo-accent/30 focus:border-bo-accent disabled:bg-gray-50 disabled:text-gray-400"
                     placeholder="3760001000001"
                     value={form.ean}
                     onChange={(e) => setForm({ ...form, ean: e.target.value })}
                   />
+                  {editingId && <p className="mt-1 text-[11px] text-gray-400">Le code EAN n'est pas modifiable.</p>}
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1.5">Categorie</label>
@@ -612,6 +633,50 @@ export function ProductsPage() {
                   />
                 </div>
               </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1.5">Prix d'achat (EUR)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-bo-accent/30 focus:border-bo-accent"
+                    placeholder="12.50"
+                    value={form.cost}
+                    onChange={(e) => setForm({ ...form, cost: e.target.value })}
+                  />
+                  <p className="mt-1 text-[11px] text-gray-400">Nécessaire au calcul de la marge.</p>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1.5">TVA (%)</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-bo-accent/30 focus:border-bo-accent"
+                    placeholder="20"
+                    value={form.taxRate}
+                    onChange={(e) => setForm({ ...form, taxRate: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1.5">Description</label>
+                <textarea
+                  rows={2}
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-bo-accent/30 focus:border-bo-accent resize-none"
+                  placeholder="Description courte (optionnelle)"
+                  value={form.description}
+                  onChange={(e) => setForm({ ...form, description: e.target.value })}
+                />
+              </div>
+
+              {formError && (
+                <div className="px-3 py-2.5 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-start gap-2">
+                  <XCircle size={14} className="mt-0.5 shrink-0" />
+                  <span>{formError}</span>
+                </div>
+              )}
 
               {/* Pack / produit composé (GO owner 2026-07-09) — édition seulement :
                   le produit doit exister pour porter une composition. */}
