@@ -1,0 +1,121 @@
+# Rollback manuel INDÉPENDANT (exigence 7) — au cas où le runner de migration
+# serait interrompu brutalement. Alimenté par l'artefact rollback-state du run
+# de migration (ou par des inputs manuels de secours). Dispatch-only, MÊME
+# Environment protégé (approbation obligatoire) et MÊME groupe de concurrence
+# que le cutover (exigence 8 : jamais en parallèle d'un migrate).
+name: Railway DNS Rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      migration_run_id:
+        description: "Run ID de la migration dont télécharger l'artefact rollback-state (prioritaire)"
+        type: string
+        required: false
+      old_service_id:
+        description: "(secours) ID du service Railway d'origine (sweet-blessing)"
+        type: string
+        required: false
+      old_project_id:
+        description: "(secours) ID projet Railway d'origine"
+        type: string
+        required: false
+      old_environment_id:
+        description: "(secours) ID environnement Railway d'origine"
+        type: string
+        required: false
+      ionos_record_id:
+        description: "(secours) ID du record IONOS api CNAME"
+        type: string
+        required: false
+      ionos_zone_id:
+        description: "(secours) ID de la zone IONOS"
+        type: string
+        required: false
+      original_cname_target:
+        description: "(secours) cible CNAME d'origine (ex: bgzfcn8a.up.railway.app)"
+        type: string
+        required: false
+      original_ttl:
+        description: "(secours) TTL d'origine"
+        type: string
+        default: "3600"
+
+concurrency:
+  group: railway-dns-cutover
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  DOMAIN: api.addxintelligence.com
+
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    environment: production-dns-cutover
+    env:
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+      RAILWAY_TOKEN_OLD: ${{ secrets.RAILWAY_TOKEN_OLD }}
+      IONOS_API_KEY: ${{ secrets.IONOS_API_KEY }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Récupérer l'état de rollback (artefact du run, ou inputs de secours)
+        run: |
+          set -uo pipefail
+          mkdir -p /tmp/rb
+          if [ -n "${{ inputs.migration_run_id }}" ]; then
+            echo "Téléchargement de l'artefact rollback-state du run ${{ inputs.migration_run_id }}"
+            gh run download "${{ inputs.migration_run_id }}" -n rollback-state -D /tmp/rb -R "$GITHUB_REPOSITORY" || { echo "Artefact introuvable → bascule sur inputs manuels"; }
+          fi
+          if [ ! -f /tmp/rb/rollback-state.json ]; then
+            echo "Construction de l'état depuis les inputs de secours"
+            cat > /tmp/rb/rollback-state.json <<JSON
+          {
+            "old_project_id": "${{ inputs.old_project_id }}",
+            "old_environment_id": "${{ inputs.old_environment_id }}",
+            "old_service_id": "${{ inputs.old_service_id }}",
+            "domain_hostname": "$DOMAIN",
+            "ionos_zone_id": "${{ inputs.ionos_zone_id }}",
+            "ionos_record_id": "${{ inputs.ionos_record_id }}",
+            "ionos_original_target": "${{ inputs.original_cname_target }}",
+            "ionos_original_ttl": ${{ inputs.original_ttl }}
+          }
+          JSON
+          fi
+          echo "État de rollback (sans secret) :"; cat /tmp/rb/rollback-state.json
+          jq -e '.old_service_id != "" and .ionos_record_id != "" and .ionos_original_target != ""' /tmp/rb/rollback-state.json >/dev/null \
+            || { echo "ABANDON : état incomplet (fournir migration_run_id ou tous les inputs de secours)"; exit 1; }
+
+      - name: Restaurer l'ancien domaine Railway + le CNAME IONOS, puis vérifier
+        run: |
+          set -uo pipefail
+          gqlt() { local tok="$1" body="$2" out; out=$(curl -sS --max-time 30 -X POST https://backboard.railway.app/graphql/v2 -H "Authorization: Bearer $tok" -H "Content-Type: application/json" -d "$body"); printf '%s' "$out" | grep -q 'Not Authorized' && out=$(curl -sS --max-time 30 -X POST https://backboard.railway.app/graphql/v2 -H "Project-Access-Token: $tok" -H "Content-Type: application/json" -d "$body"); printf '%s' "$out"; }
+          S() { jq -r ".$1" /tmp/rb/rollback-state.json; }
+          OLD_PID=$(S old_project_id); OLD_EID=$(S old_environment_id); OLD_SID=$(S old_service_id)
+          ZID=$(S ionos_zone_id); RID=$(S ionos_record_id); OT=$(S ionos_original_target); TTL=$(S ionos_original_ttl)
+
+          echo "== 1. Retirer $DOMAIN du nouveau service (s'il y est) =="
+          NEWPROJ=2f5e0afc-d6ed-4360-9837-0356e9be0989; NEWENV=7ade5bb3-4e17-4460-a6c0-f50995bded67; NEWSVC=a7b2748a-6000-4a32-802b-0e9319287f43
+          NID=$(gqlt "$RAILWAY_TOKEN" "{\"query\":\"query { domains(projectId: \\\"$NEWPROJ\\\", environmentId: \\\"$NEWENV\\\", serviceId: \\\"$NEWSVC\\\") { customDomains { id domain } } }\"}" | jq -r "(.data.domains.customDomains // [])[] | select(.domain==\"$DOMAIN\") | .id")
+          [ -n "$NID" ] && { echo "  suppression id=$NID"; gqlt "$RAILWAY_TOKEN" "{\"query\":\"mutation { customDomainDelete(id: \\\"$NID\\\") }\"}" | jq -c . ; } || echo "  (absent du nouveau service)"
+
+          echo "== 2. Re-rattacher $DOMAIN sur l'ancien service =="
+          gqlt "$RAILWAY_TOKEN_OLD" "{\"query\":\"mutation { customDomainCreate(input: {projectId: \\\"$OLD_PID\\\", environmentId: \\\"$OLD_EID\\\", serviceId: \\\"$OLD_SID\\\", domain: \\\"$DOMAIN\\\"}) { id domain } }\"}" | jq -c '.data // .errors'
+
+          echo "== 3. Restaurer le CNAME IONOS d'origine ($OT ttl=$TTL) — record id exact =="
+          curl -sS --max-time 30 -X PUT -H "X-API-Key: $IONOS_API_KEY" -H "Content-Type: application/json" \
+            -d "{\"content\":\"$OT\",\"ttl\":$TTL,\"disabled\":false}" \
+            "https://api.hosting.ionos.com/dns/v1/zones/$ZID/records/$RID" >/dev/null && echo "  CNAME restauré"
+
+          echo "== 4. Vérification RÉELLE du retour de l'ancien backend (redis=up) =="
+          for k in $(seq 1 30); do
+            sleep 10
+            CC=$(curl -sS -o /dev/null --max-time 15 -w "%{http_code}" "https://$DOMAIN/api/health" 2>/dev/null || echo 000)
+            RR=$(curl -sS --max-time 15 "https://$DOMAIN/api/health" 2>/dev/null | jq -r '.redis // "?"' 2>/dev/null || echo "?")
+            echo "   [$k] http=$CC redis=$RR"
+            [ "$CC" = "200" ] && [ "$RR" = "up" ] && { echo "✅ ROLLBACK VÉRIFIÉ — ancien backend restauré."; exit 0; }
+          done
+          echo "⚠️ Rollback appliqué mais l'ancien backend n'a pas confirmé (redis=up) dans le délai — inspection manuelle requise."; exit 1
