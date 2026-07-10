@@ -146,8 +146,34 @@ export const productsApi = {
   list: (params?: { storeId?: string; brandId?: string; supplierId?: string; search?: string; page?: number; limit?: number }) =>
     api.get('/products', { params }),
   get: (id: string) => api.get(`/products/${id}`),
-  create: (data: any) => api.post('/products', data),
-  update: (id: string, data: any) => api.put(`/products/${id}`, data),
+  // Aligné sur CreateProductDto : ean+name+priceMinorUnits obligatoires, le
+  // storeId est forcé serveur depuis le JWT (jamais envoyé par le client).
+  create: (data: {
+    ean: string;
+    name: string;
+    priceMinorUnits: number;
+    stockQuantity?: number;
+    categoryId?: string;
+    description?: string;
+    costMinorUnits?: number;
+    taxRate?: number;
+  }) => api.post('/products', data),
+  // Aligné sur UpdateProductDto : PAS de `ean` (immuable, absent du DTO →
+  // rejeté par forbidNonWhitelisted), PAS de `storeId`.
+  update: (
+    id: string,
+    data: {
+      name?: string;
+      priceMinorUnits?: number;
+      stockQuantity?: number;
+      categoryId?: string;
+      description?: string;
+      costMinorUnits?: number;
+      taxRate?: number;
+      reason?: string;
+      isActive?: boolean;
+    },
+  ) => api.put(`/products/${id}`, data),
   delete: (id: string) => api.delete(`/products/${id}`),
   scan: (ean: string) => api.get(`/products/scan/${ean}`),
   stockAlerts: () => api.get('/products/stock-alerts'),
