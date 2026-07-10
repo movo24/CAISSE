@@ -2,8 +2,16 @@ import React, { useEffect, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Star, CheckCircle2, CreditCard, Loader2, MonitorSmartphone, Heart, Candy, CupSoda, Sparkles } from 'lucide-react';
 import { useCustomerDisplay } from '../hooks/useCustomerDisplay';
+import { useAttractPlaylist } from '../hooks/useAttractPlaylist';
 import { formatPrice, type DisplaySnapshot } from '../services/customerDisplay/snapshot';
 import { terminalLabel, type CustomerDisplaySettings } from '../services/customerDisplay/settings';
+import {
+  advance,
+  preloadUrl,
+  imageDurationMs,
+  type AttractPlaylist,
+  type AttractMediaItem,
+} from '../services/customerDisplay/attractPlaylist';
 import type { PaymentInfo } from '../hooks/useCustomerDisplay';
 import { WesleysWordmark } from '../components/WesleysWordmark';
 
@@ -41,12 +49,153 @@ function qrLabel(settings: CustomerDisplaySettings): string {
   }
 }
 
-/** ── IDLE / ATTRACT ── vidéo promo plein écran, sinon branding lumineux. */
-function IdleScreen({ settings, videoUrl }: { settings: CustomerDisplaySettings; videoUrl: string | null }) {
+/**
+ * Chrome de surimpression commun aux modes plein écran (vidéo unique + playlist
+ * attract) : scrims haut/bas, marque, tagline, invite. Factorisé pour cohérence.
+ */
+function AttractOverlayChrome() {
+  return (
+    <>
+      {/* Scrims haut/bas pour lisibilité de la marque et de l'invite */}
+      <div className="absolute inset-x-0 top-0 h-[26%] bg-gradient-to-b from-black/55 to-transparent" />
+      <div className="absolute inset-x-0 bottom-0 h-[30%] bg-gradient-to-t from-black/70 to-transparent" />
+      <div className="absolute inset-0 flex flex-col items-center justify-between py-[7%] px-[8%] text-white">
+        <div className="cd-drift-slow flex flex-col items-center gap-[1.4vh]">
+          <WesleysWordmark tone="light" style={{ fontSize: '7vh' }} />
+          <div className="flex items-center gap-[1.4vh] text-[2vh] font-bold uppercase tracking-[0.2em] text-white/85">
+            <span className="h-px w-[3vh] bg-white/50" />
+            <Heart style={{ width: '2vh', height: '2vh', fill: 'currentColor' }} />
+            Bonbons &amp; Good Vibes
+            <span className="h-px w-[3vh] bg-white/50" />
+          </div>
+        </div>
+        <div className="flex flex-col items-center gap-[1.6vh]">
+          <span className="rounded-full bg-[#E5117A] px-[3.4vh] py-[1.4vh] text-[2.4vh] font-black uppercase tracking-wide shadow-[0_10px_30px_rgba(229,17,122,0.5)]">
+            Offres du moment
+          </span>
+          <p className="cd-pulse text-[2.2vh] font-semibold text-white/80">Touchez l'écran pour commencer</p>
+        </div>
+      </div>
+    </>
+  );
+}
+
+/**
+ * ── ATTRACT PLAYLIST ── lecture séquentielle des médias résolus par le
+ * backend (Bloc 4). Vidéo → passe au suivant à la fin ; image → temporisée ;
+ * média en échec → sauté ; boucle en fin de liste. Précharge le média suivant.
+ * Si TOUS les médias échouent, appelle `onExhausted` pour laisser l'écran
+ * retomber sur son comportement de repli (vidéo unique / branding).
+ */
+function AttractPlaylistScreen({
+  playlist,
+  onExhausted,
+}: {
+  playlist: AttractPlaylist;
+  onExhausted: () => void;
+}) {
+  const { media, loop } = playlist;
+  const [index, setIndex] = useState(0);
+  // Compteur d'échecs consécutifs (ref : ne pilote pas le rendu).
+  const failuresRef = React.useRef(0);
+
+  // Repart de zéro quand la playlist change (nouvelle campagne).
+  useEffect(() => {
+    setIndex(0);
+    failuresRef.current = 0;
+  }, [playlist]);
+
+  const current: AttractMediaItem | undefined = media[index];
+
+  const goNext = React.useCallback(() => {
+    const next = advance(index, media.length, loop);
+    if (next === null) {
+      // fin de playlist sans boucle → on la relance depuis le début.
+      setIndex(0);
+    } else {
+      setIndex(next);
+    }
+  }, [index, media.length, loop]);
+
+  const handleFailure = React.useCallback(() => {
+    // eslint-disable-next-line no-console
+    console.warn('[customer-display] attract media failed:', current?.url);
+    failuresRef.current += 1;
+    if (failuresRef.current >= media.length) onExhausted(); // tout est cassé → repli
+    goNext();
+  }, [current, media.length, goNext, onExhausted]);
+
+  // Image : temporisation puis média suivant. (La vidéo avance sur `onEnded`.)
+  useEffect(() => {
+    if (!current || current.type !== 'image') return;
+    const t = setTimeout(goNext, imageDurationMs(current));
+    return () => clearTimeout(t);
+  }, [current, goNext]);
+
+  // Réinitialise le compteur d'échecs dès qu'un média joue correctement.
+  const onPlaying = React.useCallback(() => {
+    failuresRef.current = 0;
+  }, []);
+
+  if (!current) {
+    onExhausted();
+    return null;
+  }
+
+  const nextPreload = preloadUrl(media, index, loop);
+
+  return (
+    <div className="absolute inset-0 overflow-hidden bg-black cd-fade-in">
+      {current.type === 'video' ? (
+        <video
+          key={`${index}-${current.url}`}
+          className="absolute inset-0 h-full w-full object-cover"
+          src={current.url}
+          autoPlay
+          muted
+          playsInline
+          onEnded={goNext}
+          onPlaying={onPlaying}
+          onError={handleFailure}
+        />
+      ) : (
+        <img
+          key={`${index}-${current.url}`}
+          className="absolute inset-0 h-full w-full object-cover"
+          src={current.url}
+          alt=""
+          onLoad={onPlaying}
+          onError={handleFailure}
+        />
+      )}
+      {/* Préchargement discret du média suivant (hors écran). */}
+      {nextPreload && nextPreload !== current.url ? (
+        <img src={nextPreload} alt="" aria-hidden className="hidden" />
+      ) : null}
+      <AttractOverlayChrome />
+    </div>
+  );
+}
+
+/** ── IDLE / ATTRACT ── playlist serveur, sinon vidéo unique, sinon branding. */
+function IdleScreen({
+  settings,
+  videoUrl,
+  playlist,
+}: {
+  settings: CustomerDisplaySettings;
+  videoUrl: string | null;
+  playlist: AttractPlaylist | null;
+}) {
   const [slide, setSlide] = useState(0);
   const [videoFailed, setVideoFailed] = useState(false);
+  const [playlistDead, setPlaylistDead] = useState(false);
   useEffect(() => setVideoFailed(false), [videoUrl]);
-  const showVideo = settings.mode !== 'branding' && !!videoUrl && !videoFailed;
+  useEffect(() => setPlaylistDead(false), [playlist]);
+
+  const attractOn = settings.mode !== 'branding';
+  const showPlaylist = attractOn && !!playlist && !playlistDead;
+  const showVideo = attractOn && !showPlaylist && !!videoUrl && !videoFailed;
   const slogans = settings.slogans.length ? settings.slogans : ["The Wesley's"];
 
   useEffect(() => {
@@ -57,7 +206,12 @@ function IdleScreen({ settings, videoUrl }: { settings: CustomerDisplaySettings;
     return () => clearInterval(iv);
   }, [slogans.length, settings.idleTimeoutSeconds]);
 
-  // ── Mode vidéo : la promo prend tout l'écran, marque + invite en surimpression.
+  // ── Mode playlist attract (backoffice) : prioritaire sur la vidéo unique.
+  if (showPlaylist) {
+    return <AttractPlaylistScreen playlist={playlist!} onExhausted={() => setPlaylistDead(true)} />;
+  }
+
+  // ── Mode vidéo unique (IndexedDB) : la promo prend tout l'écran.
   if (showVideo) {
     return (
       <div className="absolute inset-0 overflow-hidden bg-black cd-fade-in">
@@ -75,26 +229,7 @@ function IdleScreen({ settings, videoUrl }: { settings: CustomerDisplaySettings;
             setVideoFailed(true);
           }}
         />
-        {/* Scrims haut/bas pour lisibilité de la marque et de l'invite */}
-        <div className="absolute inset-x-0 top-0 h-[26%] bg-gradient-to-b from-black/55 to-transparent" />
-        <div className="absolute inset-x-0 bottom-0 h-[30%] bg-gradient-to-t from-black/70 to-transparent" />
-        <div className="absolute inset-0 flex flex-col items-center justify-between py-[7%] px-[8%] text-white">
-          <div className="cd-drift-slow flex flex-col items-center gap-[1.4vh]">
-            <WesleysWordmark tone="light" style={{ fontSize: '7vh' }} />
-            <div className="flex items-center gap-[1.4vh] text-[2vh] font-bold uppercase tracking-[0.2em] text-white/85">
-              <span className="h-px w-[3vh] bg-white/50" />
-              <Heart style={{ width: '2vh', height: '2vh', fill: 'currentColor' }} />
-              Bonbons &amp; Good Vibes
-              <span className="h-px w-[3vh] bg-white/50" />
-            </div>
-          </div>
-          <div className="flex flex-col items-center gap-[1.6vh]">
-            <span className="rounded-full bg-[#E5117A] px-[3.4vh] py-[1.4vh] text-[2.4vh] font-black uppercase tracking-wide shadow-[0_10px_30px_rgba(229,17,122,0.5)]">
-              Offres du moment
-            </span>
-            <p className="cd-pulse text-[2.2vh] font-semibold text-white/80">Touchez l'écran pour commencer</p>
-          </div>
-        </div>
+        <AttractOverlayChrome />
       </div>
     );
   }
@@ -370,13 +505,15 @@ function TestPatternOverlay() {
 
 export function ClientDisplayPage() {
   const { settings, snapshot, payment, state, overlay, videoUrl } = useCustomerDisplay();
+  // Playlist attract résolue par le backend (Bloc 4) ; null si indisponible.
+  const playlist = useAttractPlaylist(settings.terminalId, settings.mode !== 'branding');
 
   const renderState = () => {
     switch (state) {
       case 'off':
         return <div className="absolute inset-0 bg-black" />;
       case 'idle':
-        return <IdleScreen settings={settings} videoUrl={videoUrl} />;
+        return <IdleScreen settings={settings} videoUrl={videoUrl} playlist={playlist} />;
       case 'cart_active':
         return <CartScreen snapshot={snapshot} settings={settings} />;
       case 'payment_pending':
