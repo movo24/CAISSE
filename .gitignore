@@ -13,3 +13,5 @@ coverage/
 .playwright-mcp/
 *.png
 !public/
+# Asset de marque officiel importé par Vite (hashé au build) — doit être versionné.
+!packages/pos-desktop/src/renderer/assets/wesleys-logo.png
