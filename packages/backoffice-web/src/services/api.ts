@@ -637,4 +637,36 @@ export const employeeScoreApi = {
   employeeDetail: (employeeId: string) => api.get(`/employee-score/employee/${employeeId}/detail`),
 };
 
+// ---------------------------------------------------------------------------
+// Attract campaigns (Bloc 4) — playlists de l'écran client. Manager gère son
+// magasin ; national (storeId NULL) réservé admin. Le résolveur /playlist est
+// consommé par la caisse, pas par le backoffice.
+// ---------------------------------------------------------------------------
+export interface AttractMediaPayload {
+  type: 'video' | 'image';
+  url: string;
+  durationSeconds?: number;
+}
+export interface AttractCampaignPayload {
+  name: string;
+  scope?: 'store' | 'national';
+  isActive?: boolean;
+  loop?: boolean;
+  startsAt?: string | null;
+  endsAt?: string | null;
+  priority?: number;
+  terminalIds?: string[] | null;
+  media?: AttractMediaPayload[];
+}
+export const attractApi = {
+  list: () => api.get('/attract/campaigns'),
+  get: (id: string) => api.get(`/attract/campaigns/${id}`),
+  create: (data: AttractCampaignPayload) => api.post('/attract/campaigns', data),
+  update: (id: string, data: Partial<AttractCampaignPayload>) =>
+    api.put(`/attract/campaigns/${id}`, data),
+  setMedia: (id: string, media: AttractMediaPayload[]) =>
+    api.put(`/attract/campaigns/${id}/media`, { media }),
+  remove: (id: string) => api.delete(`/attract/campaigns/${id}`),
+};
+
 export default api;
