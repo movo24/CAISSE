@@ -62,3 +62,7 @@ export { EmployeeScoreDailyEntity } from './employee-score-daily.entity';
 // ── Product Packs (produits composés — GO owner 2026-07-09) ────────
 export { ProductComponentEntity } from './product-component.entity';
 export { SaleComponentMovementEntity } from './sale-component-movement.entity';
+
+// ── Attract (mode veille écran client : campagnes + playlists) ─────
+export { AttractCampaignEntity } from './attract-campaign.entity';
+export { AttractMediaEntity } from './attract-media.entity';

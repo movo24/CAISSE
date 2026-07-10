@@ -53,6 +53,7 @@ import { PosIntegrationModule } from './modules/pos-integration/pos-integration.
 import { LoyaltyAdminModule } from './modules/loyalty-admin/loyalty-admin.module';
 import { AirtableOpsModule } from './modules/airtable-ops/airtable-ops.module';
 import { SalesGuardsModule } from './modules/sales-guards/sales-guards.module';
+import { AttractModule } from './modules/attract/attract.module';
 // ── RH MODULES (employees re-activated for local fallback) ──
 // PointageModule, PayrollModule, PlanningModule, StaffingModule → still in TimeWin24
 
@@ -123,6 +124,7 @@ const isProd = process.env.NODE_ENV === 'production';
     StockLocationsModule,
     StockReconciliationModule,
     PromoCodesModule,
+    AttractModule,
     DocumentsModule,
     StripeModule,
     StripeTerminalModule,
