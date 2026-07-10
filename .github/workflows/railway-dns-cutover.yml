@@ -45,12 +45,20 @@ jobs:
           fail=0
           note() { echo "  $1"; }
           # gql en LECTURE SEULE : ce job n'émet QUE des query, jamais de mutation.
+          # Un Railway *Project Access Token* ne s'authentifie PAS via Bearer : la
+          # requête renvoie alors soit "Not Authorized", soit un `data` entièrement
+          # null (ex. projectToken:null). On rejoue donc via l'en-tête
+          # Project-Access-Token dès que Bearer ne rend aucune donnée exploitable.
           gqlt() {
-            local tok="$1" body="$2" out
+            local tok="$1" body="$2" out alt
+            local u='if (.data//null)==null then "n" elif ([.data[]?]|map(select(.!=null))|length)==0 then "n" else "y" end'
             out=$(curl -sS --max-time 30 -X POST https://backboard.railway.app/graphql/v2 \
               -H "Authorization: Bearer $tok" -H "Content-Type: application/json" -d "$body")
-            printf '%s' "$out" | grep -q 'Not Authorized' && out=$(curl -sS --max-time 30 -X POST https://backboard.railway.app/graphql/v2 \
-              -H "Project-Access-Token: $tok" -H "Content-Type: application/json" -d "$body")
+            if printf '%s' "$out" | grep -q 'Not Authorized' || [ "$(printf '%s' "$out" | jq -r "$u" 2>/dev/null || echo n)" = "n" ]; then
+              alt=$(curl -sS --max-time 30 -X POST https://backboard.railway.app/graphql/v2 \
+                -H "Project-Access-Token: $tok" -H "Content-Type: application/json" -d "$body")
+              [ "$(printf '%s' "$alt" | jq -r "$u" 2>/dev/null || echo n)" = "y" ] && out="$alt"
+            fi
             printf '%s' "$out"
           }
           # Garde-fou : ce job REFUSE toute chaîne "mutation" (défense en profondeur).
@@ -106,16 +114,24 @@ jobs:
           [ "$NH" = "200" ] || { echo "  KO: nouveau backend pas 200"; fail=1; }
 
           echo "== (e) Record IONOS api actuel == valeur attendue ? (exact, CNAME, non wildcard) =="
-          ZID=$(curl -sS --max-time 30 -H "X-API-Key: $IONOS_API_KEY" https://api.hosting.ionos.com/dns/v1/zones | jq -r '.[] | select(.name=="addxintelligence.com") | .id')
-          [ -n "$ZID" ] || { echo "  KO: zone addxintelligence.com introuvable"; fail=1; }
-          if [ -n "${ZID:-}" ]; then
+          # Parsing tolérant à la forme (récursif : ne suppose pas la structure exacte
+          # de la réponse IONOS) — un `.[] | select(.name==…)` cassait si la racine
+          # n'était pas un tableau d'objets ("Cannot index string with string name").
+          ZRAW=$(curl -sS --max-time 30 -H "X-API-Key: $IONOS_API_KEY" https://api.hosting.ionos.com/dns/v1/zones)
+          ZID=$(printf '%s' "$ZRAW" | jq -r --arg z addxintelligence.com '[.. | objects | select(.name?==$z) | .id?] | map(select(. != null)) | .[0] // empty' 2>/dev/null)
+          if [ -z "${ZID:-}" ]; then
+            echo "  KO: zone addxintelligence.com introuvable — réponse IONOS (extrait, sans secret) :"
+            printf '%s' "$ZRAW" | head -c 400; echo
+            fail=1
+          else
             ZREC=$(curl -sS --max-time 30 -H "X-API-Key: $IONOS_API_KEY" "https://api.hosting.ionos.com/dns/v1/zones/$ZID?recordName=$DOMAIN&recordType=CNAME")
-            NREC=$(echo "$ZREC" | jq '[.records[]? | select(.type=="CNAME" and .name=="'"$DOMAIN"'")] | length')
-            RID=$(echo "$ZREC" | jq -r '[.records[]? | select(.type=="CNAME" and .name=="'"$DOMAIN"'")][0].id')
-            CONTENT=$(echo "$ZREC" | jq -r '[.records[]? | select(.type=="CNAME" and .name=="'"$DOMAIN"'")][0].content')
-            TTL=$(echo "$ZREC" | jq -r '[.records[]? | select(.type=="CNAME" and .name=="'"$DOMAIN"'")][0].ttl')
+            RECS=$(printf '%s' "$ZREC" | jq -c --arg d "$DOMAIN" '[.. | objects | select(.type?=="CNAME" and .name?==$d)]' 2>/dev/null || echo '[]')
+            NREC=$(printf '%s' "$RECS" | jq 'length' 2>/dev/null || echo 0)
+            RID=$(printf '%s' "$RECS" | jq -r '.[0].id // empty')
+            CONTENT=$(printf '%s' "$RECS" | jq -r '.[0].content // empty')
+            TTL=$(printf '%s' "$RECS" | jq -r '.[0].ttl // empty')
             note "record api : count=$NREC content=$CONTENT ttl=$TTL id=$RID"
-            [ "$NREC" = "1" ] || { echo "  KO: doit exister EXACTEMENT 1 record CNAME api (trouvé $NREC)"; fail=1; }
+            [ "$NREC" = "1" ] || { echo "  KO: doit exister EXACTEMENT 1 record CNAME api (trouvé $NREC)"; printf '%s' "$ZREC" | head -c 400; echo; fail=1; }
             [ "$CONTENT" = "$OLD_TARGET_EXPECTED" ] || { echo "  KO: cible actuelle attendue $OLD_TARGET_EXPECTED, obtenue $CONTENT"; fail=1; }
           fi
 
@@ -152,11 +168,15 @@ jobs:
         run: |
           set -Eeuo pipefail
           gqlt() {
-            local tok="$1" body="$2" out
+            local tok="$1" body="$2" out alt
+            local u='if (.data//null)==null then "n" elif ([.data[]?]|map(select(.!=null))|length)==0 then "n" else "y" end'
             out=$(curl -sS --max-time 30 -X POST https://backboard.railway.app/graphql/v2 \
               -H "Authorization: Bearer $tok" -H "Content-Type: application/json" -d "$body")
-            printf '%s' "$out" | grep -q 'Not Authorized' && out=$(curl -sS --max-time 30 -X POST https://backboard.railway.app/graphql/v2 \
-              -H "Project-Access-Token: $tok" -H "Content-Type: application/json" -d "$body")
+            if printf '%s' "$out" | grep -q 'Not Authorized' || [ "$(printf '%s' "$out" | jq -r "$u" 2>/dev/null || echo n)" = "n" ]; then
+              alt=$(curl -sS --max-time 30 -X POST https://backboard.railway.app/graphql/v2 \
+                -H "Project-Access-Token: $tok" -H "Content-Type: application/json" -d "$body")
+              [ "$(printf '%s' "$alt" | jq -r "$u" 2>/dev/null || echo n)" = "y" ] && out="$alt"
+            fi
             printf '%s' "$out"
           }
           ok() { echo "$1" | jq -e '.errors' >/dev/null 2>&1 && return 1 || return 0; }
@@ -208,11 +228,14 @@ jobs:
             [ -n "$HITID" ] && { OLD_SID="$SID"; OLD_SNAME=$(echo "$PR" | jq -r ".data.project.services.edges[] | select(.node.id==\"$SID\") | .node.name"); CDID="$HITID"; }
           done
           [ -n "$CDID" ] || { echo "ABANDON: domaine introuvable côté OLD"; exit 1; }
-          ZID=$(curl -sS --max-time 30 -H "X-API-Key: $IONOS_API_KEY" https://api.hosting.ionos.com/dns/v1/zones | jq -r '.[] | select(.name=="addxintelligence.com") | .id')
+          ZRAW=$(curl -sS --max-time 30 -H "X-API-Key: $IONOS_API_KEY" https://api.hosting.ionos.com/dns/v1/zones)
+          ZID=$(printf '%s' "$ZRAW" | jq -r --arg z addxintelligence.com '[.. | objects | select(.name?==$z) | .id?] | map(select(. != null)) | .[0] // empty' 2>/dev/null)
+          [ -n "$ZID" ] || { echo "ABANDON: zone IONOS addxintelligence.com introuvable"; exit 1; }
           ZREC=$(curl -sS --max-time 30 -H "X-API-Key: $IONOS_API_KEY" "https://api.hosting.ionos.com/dns/v1/zones/$ZID?recordName=$DOMAIN&recordType=CNAME")
-          RID=$(echo "$ZREC" | jq -r '[.records[]? | select(.type=="CNAME" and .name=="'"$DOMAIN"'")][0].id')
-          ORIG_TARGET=$(echo "$ZREC" | jq -r '[.records[]? | select(.type=="CNAME" and .name=="'"$DOMAIN"'")][0].content')
-          ORIG_TTL=$(echo "$ZREC" | jq -r '[.records[]? | select(.type=="CNAME" and .name=="'"$DOMAIN"'")][0].ttl')
+          RECS=$(printf '%s' "$ZREC" | jq -c --arg d "$DOMAIN" '[.. | objects | select(.type?=="CNAME" and .name?==$d)]' 2>/dev/null || echo '[]')
+          RID=$(printf '%s' "$RECS" | jq -r '.[0].id // empty')
+          ORIG_TARGET=$(printf '%s' "$RECS" | jq -r '.[0].content // empty')
+          ORIG_TTL=$(printf '%s' "$RECS" | jq -r '.[0].ttl // empty')
           [ -n "$RID" ] && [ "$ORIG_TARGET" = "$OLD_TARGET_EXPECTED" ] || { echo "ABANDON: record IONOS api inattendu"; exit 1; }
 
           echo "== 2. Exigence 5 : artefact de rollback AVANT toute mutation (sans secret) =="
@@ -247,7 +270,7 @@ jobs:
           IONOS_API_KEY: ${{ secrets.IONOS_API_KEY }}
         run: |
           set -Eeuo pipefail
-          gqlt() { local tok="$1" body="$2" out; out=$(curl -sS --max-time 30 -X POST https://backboard.railway.app/graphql/v2 -H "Authorization: Bearer $tok" -H "Content-Type: application/json" -d "$body"); printf '%s' "$out" | grep -q 'Not Authorized' && out=$(curl -sS --max-time 30 -X POST https://backboard.railway.app/graphql/v2 -H "Project-Access-Token: $tok" -H "Content-Type: application/json" -d "$body"); printf '%s' "$out"; }
+          gqlt() { local tok="$1" body="$2" out alt u='if (.data//null)==null then "n" elif ([.data[]?]|map(select(.!=null))|length)==0 then "n" else "y" end'; out=$(curl -sS --max-time 30 -X POST https://backboard.railway.app/graphql/v2 -H "Authorization: Bearer $tok" -H "Content-Type: application/json" -d "$body"); if printf '%s' "$out" | grep -q 'Not Authorized' || [ "$(printf '%s' "$out" | jq -r "$u" 2>/dev/null || echo n)" = "n" ]; then alt=$(curl -sS --max-time 30 -X POST https://backboard.railway.app/graphql/v2 -H "Project-Access-Token: $tok" -H "Content-Type: application/json" -d "$body"); [ "$(printf '%s' "$alt" | jq -r "$u" 2>/dev/null || echo n)" = "y" ] && out="$alt"; fi; printf '%s' "$out"; }
           S() { jq -r ".$1" /tmp/rb/rollback-state.json; }
           OLD_PID=$(S old_project_id); OLD_EID=$(S old_environment_id); OLD_SID=$(S old_service_id); OLD_SNAME=$(S old_service_name)
           CDID=$(S custom_domain_id_original); ZID=$(S ionos_zone_id); RID=$(S ionos_record_id)

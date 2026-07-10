@@ -92,7 +92,7 @@ jobs:
       - name: Restaurer l'ancien domaine Railway + le CNAME IONOS, puis vérifier
         run: |
           set -uo pipefail
-          gqlt() { local tok="$1" body="$2" out; out=$(curl -sS --max-time 30 -X POST https://backboard.railway.app/graphql/v2 -H "Authorization: Bearer $tok" -H "Content-Type: application/json" -d "$body"); printf '%s' "$out" | grep -q 'Not Authorized' && out=$(curl -sS --max-time 30 -X POST https://backboard.railway.app/graphql/v2 -H "Project-Access-Token: $tok" -H "Content-Type: application/json" -d "$body"); printf '%s' "$out"; }
+          gqlt() { local tok="$1" body="$2" out alt u='if (.data//null)==null then "n" elif ([.data[]?]|map(select(.!=null))|length)==0 then "n" else "y" end'; out=$(curl -sS --max-time 30 -X POST https://backboard.railway.app/graphql/v2 -H "Authorization: Bearer $tok" -H "Content-Type: application/json" -d "$body"); if printf '%s' "$out" | grep -q 'Not Authorized' || [ "$(printf '%s' "$out" | jq -r "$u" 2>/dev/null || echo n)" = "n" ]; then alt=$(curl -sS --max-time 30 -X POST https://backboard.railway.app/graphql/v2 -H "Project-Access-Token: $tok" -H "Content-Type: application/json" -d "$body"); [ "$(printf '%s' "$alt" | jq -r "$u" 2>/dev/null || echo n)" = "y" ] && out="$alt"; fi; printf '%s' "$out"; }
           S() { jq -r ".$1" /tmp/rb/rollback-state.json; }
           OLD_PID=$(S old_project_id); OLD_EID=$(S old_environment_id); OLD_SID=$(S old_service_id)
           ZID=$(S ionos_zone_id); RID=$(S ionos_record_id); OT=$(S ionos_original_target); TTL=$(S ionos_original_ttl)
