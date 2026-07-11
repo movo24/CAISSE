@@ -5,6 +5,7 @@ import { Repository } from 'typeorm';
 import { createHmac, randomUUID } from 'crypto';
 import { AlertService } from '../../common/alert/alert.service';
 import { TimewinEventEntity } from '../../database/entities/timewin-event.entity';
+import { StoreEntity } from '../../database/entities/store.entity';
 
 /* ── Types ── */
 
@@ -108,7 +109,26 @@ export class TimewinService implements OnModuleInit {
     @Optional()
     @InjectRepository(TimewinEventEntity)
     private readonly eventRepo?: Repository<TimewinEventEntity>,
+    // Toggle TW24 par magasin (Partie C). @Optional → si absent (tests hérités),
+    // le gate est INERTE et le push conserve son comportement d'origine.
+    @Optional()
+    @InjectRepository(StoreEntity)
+    private readonly storeRepo?: Repository<StoreEntity>,
   ) {}
+
+  /**
+   * Ce magasin autorise-t-il la remontée d'événements TW24 ? (Partie C)
+   * Inerte (→ true, comportement d'origine) si le repo magasin n'est pas
+   * injecté. Sinon, ne remonte QUE si `store.tw24Enabled === true`.
+   */
+  private async isStorePushEnabled(storeId: string): Promise<boolean> {
+    if (!this.storeRepo) return true; // gate inerte (tests / repo absent)
+    const store = await this.storeRepo.findOne({
+      where: { id: storeId },
+      select: ['id', 'tw24Enabled'],
+    });
+    return !!store?.tw24Enabled;
+  }
 
   onModuleInit() {
     this.baseUrl = this.config.get('TIMEWIN24_URL', 'http://localhost:3000');
@@ -263,7 +283,14 @@ export class TimewinService implements OnModuleInit {
     employeeId?: string,
     data?: Record<string, unknown>,
     idempotencyKey?: string,
-  ): Promise<{ received: boolean; eventId: string; deduped?: boolean }> {
+  ): Promise<{ received: boolean; eventId: string; deduped?: boolean; skipped?: boolean }> {
+    // ── Toggle TW24 par magasin (Partie C) ──
+    // Si le magasin n'a pas activé la synchro TW24, on ne remonte RIEN (ni
+    // insertion d'outbox, ni appel réseau). Silencieux et sans effet de bord.
+    if (!(await this.isStorePushEnabled(storeId))) {
+      return { received: false, eventId: '', skipped: true };
+    }
+
     // ── Idempotency (decision: NO duplicate TimeWin24 events) ──
     // Claim-before-send on a UNIQUE idempotency_key: an already-SENT event is
     // never re-sent (deduped); a pending/failed one is retried; a concurrent

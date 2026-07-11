@@ -132,6 +132,17 @@ export class StoreEntity {
   isPilotStore: boolean;
 
   /**
+   * Synchronisation TimeWin24 activée pour CE magasin (Partie C). **Défaut
+   * `false`** : rien n'est natif, tout est optionnel — un magasin active la
+   * remontée d'événements vers TW24 (ventes, sessions, pointage, stock) via un
+   * simple interrupteur. Le push global reste par ailleurs conditionné à la
+   * configuration d'environnement TW24 ; cet indicateur est un gate additionnel
+   * par magasin.
+   */
+  @Column({ name: 'tw24_enabled', type: 'boolean', default: false })
+  tw24Enabled: boolean;
+
+  /**
    * Enrôlement machine appliqué (Partie B). Quand `true`, une vente n'est
    * acceptée que si la machine émettrice (`X-Machine-Id`) est `approved` pour
    * ce magasin. **Défaut `false`** : déployer le code ne bloque AUCUNE caisse
