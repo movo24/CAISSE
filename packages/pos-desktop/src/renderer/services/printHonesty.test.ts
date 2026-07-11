@@ -75,3 +75,63 @@ describe('confirmation overlays — the cashier is TOLD when no ticket printed',
     expect(posPage).toMatch(/Aucune imprimante connectée — ticket NON imprimé/);
   });
 });
+
+/**
+ * PR #57 — câblage impression + tiroir dans le flux de vente DESKTOP, durci
+ * contre les 4 règles owner (ordre caisse strict, impression jamais bloquante,
+ * pas de double exécution, statuts distincts).
+ */
+const history = readFileSync(join(__dirname, '..', 'components', 'pos', 'TicketHistoryModal.tsx'), 'utf8');
+
+describe('desktop sale flow — hardening PR #57 (source guards)', () => {
+  it('règle 3 : garde SYNCHRONE de ré-entrée sur finalizePayment (avant tout effet)', () => {
+    expect(posPage).toMatch(/if \(finalizingRef\.current\) return;/);
+    expect(posPage).toMatch(/finalizingRef\.current = true;/);
+  });
+
+  it('règle 3 : la garde d’idempotence est le SINGLETON de module persisté (survit remontage/redémarrage)', () => {
+    expect(posPage).toMatch(/salePeripheralGuard,/);
+    expect(posPage).toMatch(/guard: salePeripheralGuard,/);
+    expect(posPage).not.toMatch(/new SalePeripheralGuard\(\)/);
+  });
+
+  it('clé d’idempotence = saleId (idempotency key UUID), JAMAIS ticketNumber', () => {
+    // La vente est identifiée par la clé d'idempotence stable, pas par le numéro
+    // fiscal séquentiel par magasin.
+    expect(posPage).toMatch(/saleId: idempotencyKey/);
+  });
+
+  it('règle 1 : le tiroir ne s’ouvre qu’APRÈS la vente validée (saleValidated: true), jamais avant', () => {
+    expect(posPage).toMatch(/finalizeSalePeripherals\(\{[\s\S]{0,400}saleValidated: true/);
+  });
+
+  it('règle : le panier est vidé APRÈS la capture du ticketData (buildTicketData avant clearCart)', () => {
+    const buildIdx = posPage.indexOf('const ticketData = buildTicketData(');
+    expect(buildIdx).toBeGreaterThan(-1);
+    // Le clearCart du flux de vente est celui qui SUIT la construction du ticket.
+    const clearIdx = posPage.indexOf('store.clearCart();', buildIdx);
+    expect(clearIdx).toBeGreaterThan(buildIdx); // ticket construit avant que le panier disparaisse
+  });
+
+  it('règle 2 : trois statuts DISTINCTS affichés (vente / impression / tiroir), jamais fusionnés', () => {
+    expect(posPage).toMatch(/lastDrawerStatus === 'opened'/);
+    expect(posPage).toMatch(/lastDrawerStatus === 'open_failed'/);
+    expect(posPage).toMatch(/setLastPrintStatus\(r\.printStatus\)/);
+    expect(posPage).toMatch(/setLastDrawerStatus\(r\.drawerStatus\)/);
+  });
+
+  it('règle 2 : le message d’échec impression affirme que la vente reste validée', () => {
+    expect(posPage).toMatch(/Vente validée|Vente validee/);
+    expect(posPage).toMatch(/Réimpression possible depuis l'historique|Réimpression possible/);
+  });
+
+  it('règle 3 : la RÉIMPRESSION (duplicata) imprime mais N’OUVRE JAMAIS le tiroir', () => {
+    // Le duplicata passe par printTicket direct, jamais par openCashDrawer,
+    // finalizeSalePeripherals, ni la clé AUTO_DRAWER_OPEN, et ne recrée aucune vente.
+    expect(history).toMatch(/peripheralBridge\.printTicket\(/);
+    expect(history).not.toMatch(/openCashDrawer/);
+    expect(history).not.toMatch(/finalizeSalePeripherals/);
+    expect(history).not.toMatch(/AUTO_DRAWER_OPEN/);
+    expect(history).not.toMatch(/salesApi\.create/);
+  });
+});

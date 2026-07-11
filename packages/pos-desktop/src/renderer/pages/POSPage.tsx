@@ -10,6 +10,13 @@ import {
 } from 'lucide-react';
 import { usePOSStore } from '../stores/posStore';
 import { productsApi, productIntegrationApi, salesApi, customersApi, occupancyApi, receiptsApi } from '../services/api';
+import {
+  finalizeSalePeripherals,
+  buildTicketData,
+  salePeripheralGuard,
+  type PrintStatus,
+  type DrawerStatus,
+} from '../services/salePeripherals';
 import { newIdempotencyKey } from '../services/idempotency';
 import { toWirePayments, toSaleDiscountFields } from '../services/salePayload';
 import { validateManualDiscount } from '../services/discount-policy';
@@ -163,6 +170,19 @@ export function POSPage() {
   // Fullscreen confirmation overlay
   const [confirmation, setConfirmation] = useState<ConfirmationData | null>(null);
   const confirmationRef = useRef<ConfirmationData | null>(null); // mirror to avoid stale closures
+  // Impression + tiroir du flux de vente desktop : trois statuts DISTINCTS
+  // affichés à la caisse — jamais fusionnés (règle owner) :
+  //  - la vente (overlay de confirmation) ;
+  //  - l'impression du ticket (lastPrintStatus) ;
+  //  - l'ouverture du tiroir (lastDrawerStatus).
+  // La garde d'idempotence est un SINGLETON de module (clé stable = ticketNumber),
+  // hors du cycle de vie React : elle survit à un re-render / remontage / retour
+  // d'écran, donc jamais 2 tickets ni 2 ouvertures tiroir pour une même vente.
+  const [lastPrintStatus, setLastPrintStatus] = useState<PrintStatus | null>(null);
+  const [lastDrawerStatus, setLastDrawerStatus] = useState<DrawerStatus | null>(null);
+  // Garde SYNCHRONE de ré-entrée sur finalizePayment : bloque un 2ᵉ appel
+  // (double-clic, retour d'écran, re-render) AVANT même le setProcessing async.
+  const finalizingRef = useRef(false);
 
   // Email-receipt modal (shown from the confirmation overlay when a server saleId exists)
   const [emailModal, setEmailModal] = useState(false);
@@ -771,6 +791,12 @@ export function POSPage() {
   };
 
   const finalizePayment = async (payments: PartialPayment[], changeMinor: number) => {
+    // Garde SYNCHRONE de ré-entrée : un 2ᵉ appel concurrent (double-clic, retry,
+    // retour d'écran, re-render) est refusé net, avant tout effet réseau ou état.
+    // Complète — sans les remplacer — la clé d'idempotence backend (saleIdemKeyRef)
+    // et la garde par ticketNumber : une seule vente, un seul ticket, un seul tiroir.
+    if (finalizingRef.current) return;
+    finalizingRef.current = true;
     // Decision 5 mirror: refuse an impossible manual discount before the network.
     const discCheck = validateManualDiscount({
       subtotalMinor: store.subtotal(),
@@ -779,6 +805,7 @@ export function POSPage() {
     });
     if (!discCheck.ok) {
       setError(discCheck.reason || 'Remise refusée');
+      finalizingRef.current = false;
       return;
     }
     setProcessing(true);
@@ -852,6 +879,7 @@ export function POSPage() {
         // Continue to confirmation — the sale was honestly accepted locally
       } else {
         setProcessing(false);
+        finalizingRef.current = false; // vente échouée → un retry est légitime
         const message =
           err?.response?.data?.message ||
           err?.response?.data?.details?.[0] ||
@@ -927,11 +955,59 @@ export function POSPage() {
     confirmationRef.current = confirmData; // sync ref BEFORE state
     setConfirmation(confirmData);
 
+    // ── Impression ticket + tiroir-caisse (flux de vente RÉEL, desktop) ──
+    // La vente est validée (acceptée en ligne, ou honnêtement mise en file
+    // offline). On construit le ticket AVANT de vider le panier, puis on
+    // imprime / ouvre le tiroir SANS bloquer l'overlay ni conditionner la
+    // vente. Idempotent par `saleId` (idempotency key) ET par action, persisté :
+    // ni double ticket ni double tiroir sur double-clic / retry / remontage /
+    // redémarrage. (`ticketNumber` reste la référence FISCALE affichée.)
+    const ticketData = buildTicketData({
+      storeName: store.storeInfo?.storeName,
+      storeAddress: store.storeInfo?.address,
+      siret: store.storeInfo?.siret,
+      tvaIntracom: store.storeInfo?.tvaIntracom,
+      nifCaisse: store.storeInfo?.nifCaisse,
+      ticketNumber,
+      date: timestamp,
+      cashierName,
+      items: store.cartItems.map((i) => ({
+        name: i.name,
+        quantity: i.quantity,
+        unitPriceMinorUnits: i.unitPriceMinorUnits,
+        discountMinorUnits: i.discountMinorUnits,
+      })),
+      subtotalMinorUnits: store.subtotal(),
+      discountMinorUnits: store.totalDiscount(),
+      totalMinorUnits: totalAmount,
+      payments: payments.map((p) => ({ method: p.method, amountMinorUnits: p.amountMinorUnits })),
+      changeMinorUnits: changeMinor,
+    });
+    setLastPrintStatus(null);
+    setLastDrawerStatus(null);
+    void finalizeSalePeripherals({
+      // Identité STABLE de la vente = idempotency key (sale-<uuid>), jamais le
+      // ticketNumber (séquentiel par magasin côté serveur, instable côté client).
+      saleId: idempotencyKey,
+      ticketData,
+      payments: payments.map((p) => ({ method: p.method, amountMinorUnits: p.amountMinorUnits })),
+      saleValidated: true,
+      guard: salePeripheralGuard,
+    }).then((r) => {
+      // Trois statuts distincts, jamais fusionnés (règle owner).
+      setLastPrintStatus(r.printStatus);
+      setLastDrawerStatus(r.drawerStatus);
+    });
+
     store.clearCart();
     setPartialPayments([]);
     setSplitAmountInput('');
     setProcessing(false);
     store.setPaymentModalOpen(false);
+    // Vente terminée : la garde de ré-entrée est relâchée pour la vente SUIVANTE.
+    // L'idempotence de CETTE vente reste protégée par la garde-ticket (singleton)
+    // et par la clé d'idempotence backend — pas par ce booléen.
+    finalizingRef.current = false;
   };
 
   // Quick full payment (no split needed)
@@ -1972,13 +2048,34 @@ export function POSPage() {
                 </p>
               )}
 
-              {/* Honest print status: this desktop path has no real printer wired —
-                  the platform must SAY it cannot print (décision produit, PR #27). */}
-              {(!peripheralBridge.status.printer.connected ||
-                peripheralBridge.status.printer.type === 'none' ||
-                peripheralBridge.status.printer.type === 'browser_print') && (
-                <p className="mt-2 text-xs font-black text-amber-300">
-                  Aucune imprimante connectée — ticket NON imprimé (QR / email disponibles).
+              {/* Statut d'impression HONNÊTE (résultat réel du spooler, pas la
+                  simple connectivité). La vente reste valide quoi qu'il arrive. */}
+              {lastPrintStatus === 'printed' && (
+                <p className="mt-2 text-xs font-bold text-emerald-300">Ticket imprimé.</p>
+              )}
+              {lastPrintStatus === 'print_failed' && (
+                <p className="mt-2 text-xs font-black text-red-300">
+                  Ticket NON imprimé — échec imprimante. Vente validée. Réimpression possible depuis l'historique.
+                </p>
+              )}
+              {(lastPrintStatus === 'no_printer' || lastPrintStatus === null) &&
+                (!peripheralBridge.status.printer.connected ||
+                  peripheralBridge.status.printer.type === 'none' ||
+                  peripheralBridge.status.printer.type === 'browser_print') && (
+                  <p className="mt-2 text-xs font-black text-amber-300">
+                    Aucune imprimante connectée — ticket NON imprimé (QR / email disponibles).
+                  </p>
+                )}
+
+              {/* Statut TIROIR — DISTINCT de la vente et de l'impression (jamais
+                  fusionnés). Le tiroir ne s'affiche que pour une vente espèces
+                  (`not_requested` = CB pure → silencieux). */}
+              {lastDrawerStatus === 'opened' && (
+                <p className="mt-1 text-xs font-bold text-emerald-300">Tiroir-caisse ouvert.</p>
+              )}
+              {lastDrawerStatus === 'open_failed' && (
+                <p className="mt-1 text-xs font-black text-amber-300">
+                  Tiroir NON ouvert — vérifier le branchement. Vente validée, ouverture manuelle possible.
                 </p>
               )}
             </div>
