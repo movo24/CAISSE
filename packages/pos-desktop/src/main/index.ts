@@ -77,7 +77,7 @@ function createPOSWindow(): void {
     height: 800,
     minWidth: 1024,
     minHeight: 700,
-    title: 'POS Caisse',
+    title: "The Wesley's POS",
     backgroundColor: '#0f0f19',
     show: false,
     webPreferences: {
