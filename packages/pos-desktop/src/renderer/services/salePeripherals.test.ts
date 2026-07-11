@@ -15,6 +15,7 @@ import {
   shouldOpenDrawer,
   hasRealPrinter,
   SaleFinalizationGuard,
+  saleFinalizationGuard as moduleGuard,
   buildTicketData,
   finalizeSalePeripherals,
   type SalePaymentLite,
@@ -80,26 +81,27 @@ describe('salePeripherals — orchestrateur finalizeSalePeripherals', () => {
     payments: cash, changeMinorUnits: 0,
   });
 
-  it('vente espèces réussie → imprime + ouvre le tiroir', async () => {
+  it('vente espèces réussie → imprime + ouvre le tiroir (3 statuts distincts)', async () => {
     mockBridge.printTicket.mockResolvedValue(true);
     mockBridge.openCashDrawer.mockResolvedValue(true);
     const r = await finalizeSalePeripherals({ ticketData: td, payments: cash, saleValidated: true, guard: new SaleFinalizationGuard() });
-    expect(r).toEqual({ printStatus: 'printed', drawerOpened: true });
+    expect(r).toEqual({ printStatus: 'printed', drawerStatus: 'opened', drawerOpened: true });
     expect(mockBridge.printTicket).toHaveBeenCalledOnce();
     expect(mockBridge.openCashDrawer).toHaveBeenCalledOnce();
   });
 
-  it('vente CB réussie → imprime mais N’ouvre PAS le tiroir', async () => {
+  it('vente CB réussie → imprime mais N’ouvre PAS le tiroir (drawerStatus not_requested)', async () => {
     mockBridge.printTicket.mockResolvedValue(true);
     const r = await finalizeSalePeripherals({ ticketData: { ...td, ticketNumber: 'T-CB' }, payments: card, saleValidated: true, guard: new SaleFinalizationGuard() });
     expect(r.printStatus).toBe('printed');
+    expect(r.drawerStatus).toBe('not_requested');
     expect(r.drawerOpened).toBe(false);
     expect(mockBridge.openCashDrawer).not.toHaveBeenCalled();
   });
 
-  it('vente non validée (échouée/en attente) → rien : ni impression ni tiroir', async () => {
+  it('vente non validée (échouée/en attente/annulée) → rien : ni impression ni tiroir', async () => {
     const r = await finalizeSalePeripherals({ ticketData: td, payments: cash, saleValidated: false, guard: new SaleFinalizationGuard() });
-    expect(r).toEqual({ printStatus: 'skipped', drawerOpened: false });
+    expect(r).toEqual({ printStatus: 'skipped', drawerStatus: 'skipped', drawerOpened: false });
     expect(mockBridge.printTicket).not.toHaveBeenCalled();
     expect(mockBridge.openCashDrawer).not.toHaveBeenCalled();
   });
@@ -110,21 +112,23 @@ describe('salePeripherals — orchestrateur finalizeSalePeripherals', () => {
     const r = await finalizeSalePeripherals({ ticketData: { ...td, ticketNumber: 'T-NOPRINT' }, payments: cash, saleValidated: true, guard: new SaleFinalizationGuard() });
     expect(r.printStatus).toBe('no_printer');
     expect(mockBridge.printTicket).not.toHaveBeenCalled();
-    expect(r.drawerOpened).toBe(true); // le tiroir espèces s'ouvre indépendamment
+    expect(r.drawerStatus).toBe('opened'); // le tiroir espèces s'ouvre indépendamment de l'impression
+    expect(r.drawerOpened).toBe(true);
   });
 
-  it('échec d’impression → print_failed, la vente reste valide (pas d’exception)', async () => {
+  it('échec d’impression → print_failed, la vente reste valide (pas d’exception), tiroir OK', async () => {
     mockBridge.printTicket.mockResolvedValue(false);
     mockBridge.openCashDrawer.mockResolvedValue(true);
     const r = await finalizeSalePeripherals({ ticketData: { ...td, ticketNumber: 'T-FAIL' }, payments: cash, saleValidated: true, guard: new SaleFinalizationGuard() });
     expect(r.printStatus).toBe('print_failed');
-    expect(r.drawerOpened).toBe(true);
+    expect(r.drawerStatus).toBe('opened'); // impression et tiroir sont indépendants
   });
 
   it('impression qui throw → print_failed, jamais d’exception propagée', async () => {
     mockBridge.printTicket.mockRejectedValue(new Error('spooler down'));
     const r = await finalizeSalePeripherals({ ticketData: { ...td, ticketNumber: 'T-THROW' }, payments: card, saleValidated: true, guard: new SaleFinalizationGuard() });
     expect(r.printStatus).toBe('print_failed');
+    expect(r.drawerStatus).toBe('not_requested'); // CB : le tiroir ne devait pas s'ouvrir
   });
 
   it('double-clic / retry → 2ᵉ appel idempotent : pas de 2ᵉ ticket ni 2ᵉ tiroir', async () => {
@@ -134,15 +138,39 @@ describe('salePeripherals — orchestrateur finalizeSalePeripherals', () => {
     const a = await finalizeSalePeripherals({ ticketData: { ...td, ticketNumber: 'T-DUP' }, payments: cash, saleValidated: true, guard });
     const b = await finalizeSalePeripherals({ ticketData: { ...td, ticketNumber: 'T-DUP' }, payments: cash, saleValidated: true, guard });
     expect(a.printStatus).toBe('printed');
-    expect(b).toEqual({ printStatus: 'skipped', drawerOpened: false });
+    expect(b).toEqual({ printStatus: 'skipped', drawerStatus: 'skipped', drawerOpened: false });
     expect(mockBridge.printTicket).toHaveBeenCalledOnce();
     expect(mockBridge.openCashDrawer).toHaveBeenCalledOnce();
   });
 
-  it('tiroir non configuré (openCashDrawer=false) → drawerOpened false, honnête', async () => {
+  it('tiroir demandé mais matériel absent (openCashDrawer=false) → open_failed, vente OK', async () => {
     mockBridge.printTicket.mockResolvedValue(true);
     mockBridge.openCashDrawer.mockResolvedValue(false);
     const r = await finalizeSalePeripherals({ ticketData: { ...td, ticketNumber: 'T-NODRAWER' }, payments: cash, saleValidated: true, guard: new SaleFinalizationGuard() });
+    expect(r.drawerStatus).toBe('open_failed');
     expect(r.drawerOpened).toBe(false);
+    expect(r.printStatus).toBe('printed'); // impression réussie malgré l'échec tiroir
+  });
+
+  it('ouverture tiroir qui throw → open_failed, vente + impression intactes', async () => {
+    mockBridge.printTicket.mockResolvedValue(true);
+    mockBridge.openCashDrawer.mockRejectedValue(new Error('drawer offline'));
+    const r = await finalizeSalePeripherals({ ticketData: { ...td, ticketNumber: 'T-DRAWERTHROW' }, payments: cash, saleValidated: true, guard: new SaleFinalizationGuard() });
+    expect(r.drawerStatus).toBe('open_failed');
+    expect(r.drawerOpened).toBe(false);
+    expect(r.printStatus).toBe('printed');
+  });
+
+  it('garde SINGLETON de module : partagée entre appels, survit à un remontage simulé', async () => {
+    mockBridge.printTicket.mockResolvedValue(true);
+    mockBridge.openCashDrawer.mockResolvedValue(true);
+    // Le singleton exporté (utilisé par POSPage) refuse un 2ᵉ traitement du même ticket,
+    // même si un nouvel appelant (remontage React) réutilise le même ticketNumber.
+    const first = await finalizeSalePeripherals({ ticketData: { ...td, ticketNumber: 'T-SINGLETON' }, payments: cash, saleValidated: true, guard: moduleGuard });
+    const second = await finalizeSalePeripherals({ ticketData: { ...td, ticketNumber: 'T-SINGLETON' }, payments: cash, saleValidated: true, guard: moduleGuard });
+    expect(first.printStatus).toBe('printed');
+    expect(second.printStatus).toBe('skipped');
+    expect(second.drawerStatus).toBe('skipped');
+    expect(mockBridge.printTicket).toHaveBeenCalledOnce();
   });
 });

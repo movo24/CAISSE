@@ -19,6 +19,16 @@ import { peripheralBridge, type TicketData } from './peripheralBridge';
 
 export type PrintStatus = 'printed' | 'print_failed' | 'no_printer' | 'skipped';
 
+/**
+ * Statut du tiroir, DISTINCT du statut de vente et du statut d'impression
+ * (règle owner : ne jamais fusionner ces trois états) :
+ *  - `opened`         : tiroir ouvert avec succès (vente espèces validée) ;
+ *  - `open_failed`    : ouverture demandée mais échouée (matériel absent/erreur) ;
+ *  - `not_requested`  : aucune espèce → le tiroir NE DOIT PAS s'ouvrir (CB pure) ;
+ *  - `skipped`        : vente non validée ou ticket déjà traité (idempotence).
+ */
+export type DrawerStatus = 'opened' | 'open_failed' | 'not_requested' | 'skipped';
+
 export interface SalePaymentLite {
   method: string;
   amountMinorUnits: number;
@@ -58,6 +68,16 @@ export class SaleFinalizationGuard {
     return this.done.has(ticketNumber);
   }
 }
+
+/**
+ * Garde PARTAGÉE au niveau module (singleton) : la clé stable = `ticketNumber`
+ * de la vente. Étant hors du cycle de vie React, elle survit à un re-render,
+ * à une navigation aller-retour sur l'écran POS, et à un remontage du
+ * composant → impossible de ré-imprimer/ré-ouvrir le tiroir automatiquement
+ * pour une vente DÉJÀ finalisée. (Un redémarrage d'app ne rejoue de toute
+ * façon jamais `finalizePayment`, donc aucun re-déclenchement au boot.)
+ */
+export const saleFinalizationGuard = new SaleFinalizationGuard();
 
 /** Construit le TicketData depuis des entrées simples (testable, sans store). */
 export function buildTicketData(input: {
@@ -106,7 +126,11 @@ export function buildTicketData(input: {
 }
 
 export interface FinalizeResult {
+  /** Succès/échec de l'IMPRESSION — indépendant de la vente. */
   printStatus: PrintStatus;
+  /** Succès/échec de l'OUVERTURE DU TIROIR — indépendant de la vente et de l'impression. */
+  drawerStatus: DrawerStatus;
+  /** Raccourci booléen (tiroir physiquement ouvert). */
   drawerOpened: boolean;
 }
 
@@ -123,10 +147,11 @@ export async function finalizeSalePeripherals(params: {
 }): Promise<FinalizeResult> {
   const { ticketData, payments, saleValidated, guard } = params;
 
-  if (!saleValidated) return { printStatus: 'skipped', drawerOpened: false };
-  // Idempotence : une seule fois par ticket.
+  // Vente non validée (échec / en attente / annulée) → on ne touche à RIEN.
+  if (!saleValidated) return { printStatus: 'skipped', drawerStatus: 'skipped', drawerOpened: false };
+  // Idempotence : une seule fois par ticket (double-clic / retry / re-render).
   if (!guard.claim(ticketData.ticketNumber)) {
-    return { printStatus: 'skipped', drawerOpened: false };
+    return { printStatus: 'skipped', drawerStatus: 'skipped', drawerOpened: false };
   }
 
   // ── Impression (jamais une condition de réussite de la vente) ──
@@ -147,16 +172,21 @@ export async function finalizeSalePeripherals(params: {
   }
 
   // ── Tiroir : uniquement pour une vente espèces validée ──
+  // Statut distinct de l'impression : le tiroir ne s'ouvre JAMAIS pour une CB
+  // pure (`not_requested`), et un échec matériel ne remet pas la vente en cause.
+  let drawerStatus: DrawerStatus = 'not_requested';
   let drawerOpened = false;
   if (shouldOpenDrawer(saleValidated, payments)) {
     try {
       drawerOpened = await peripheralBridge.openCashDrawer();
+      drawerStatus = drawerOpened ? 'opened' : 'open_failed';
     } catch (e) {
       // eslint-disable-next-line no-console
       console.warn('[POS] Ouverture tiroir échouée:', e);
       drawerOpened = false;
+      drawerStatus = 'open_failed';
     }
   }
 
-  return { printStatus, drawerOpened };
+  return { printStatus, drawerStatus, drawerOpened };
 }
