@@ -175,14 +175,24 @@ const emptyAiInsights = {
   objectifDynamique: { jourSuggere: 0, semaineSuggere: 0, moisSuggere: 0, justification: '' },
 };
 
-/* ── Date helpers ── */
-function todayStr() {
-  return new Date().toISOString().slice(0, 10);
+/* ── Date helpers (dates LOCALES, alignées sur l'affichage magasin) ── */
+function ymdLocal(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
-function yesterdayStr() {
-  const d = new Date();
-  d.setDate(d.getDate() - 1);
-  return d.toISOString().slice(0, 10);
+function startOfWeek(d: Date): Date {
+  const x = new Date(d);
+  const dow = (x.getDay() + 6) % 7; // lundi = 0
+  x.setDate(x.getDate() - dow);
+  return x;
+}
+function startOfMonth(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), 1);
+}
+function startOfYear(d: Date): Date {
+  return new Date(d.getFullYear(), 0, 1);
 }
 
 /* ── Hook ── */
@@ -221,8 +231,14 @@ export function useDashboardData(): DashboardData {
     setLoading(true);
 
     try {
-      // Fetch in parallel — use daily-summary for STORE-scoped KPIs (not networkSummary which is global)
-      const today = new Date().toISOString().split('T')[0];
+      // Fetch in parallel — toutes les données du dashboard proviennent de VRAIS
+      // endpoints (ventes réelles). Rien d'inventé : ce qui n'a pas de source
+      // reste à zéro/vide honnêtement.
+      const now = new Date();
+      const today = ymdLocal(now);
+      const wkStart = ymdLocal(startOfWeek(now));
+      const moStart = ymdLocal(startOfMonth(now));
+      const yrStart = ymdLocal(startOfYear(now));
       const [
         productsRes,
         stockAlertsRes,
@@ -230,13 +246,21 @@ export function useDashboardData(): DashboardData {
         networkRes,
         storesRes,
         analyticsRes,
+        weekRes,
+        monthRes,
+        yearRes,
+        trendRes,
       ] = await Promise.allSettled([
         productsApi.list({ storeId }),
         notificationsApi.stockAlerts(storeId),
-        reportsApi.storeKpi(storeId, today),  // STORE-scoped KPIs (CA jour, tickets, panier moyen)
-        storesApi.networkSummary(),  // aggregated network KPIs (for comparison only)
+        reportsApi.storeKpi(storeId, today),  // KPIs jour (CA, tickets, panier)
+        storesApi.networkSummary(),  // agrégat réseau (comparaison uniquement)
         storesApi.list(),
-        reportsApi.productAnalytics(storeId),  // top/flop/dormant + réassort (dérivé des ventes)
+        reportsApi.productAnalytics(storeId),  // top/flop/dormant + réassort
+        reportsApi.periodSummary(storeId, wkStart, today),   // CA + paiements semaine
+        reportsApi.periodSummary(storeId, moStart, today),   // CA + paiements mois
+        reportsApi.periodSummary(storeId, yrStart, today),   // CA année + série mensuelle
+        reportsApi.salesTrend(storeId),                      // comparaisons J-1/S-1/M-1/N-1
       ]);
 
       // ── Products ── (la réponse peut être un tableau OU {data:[...]})
@@ -284,6 +308,66 @@ export function useDashboardData(): DashboardData {
           caTotal: net.totalRevenue || 0,
           ticketsTotal: net.totalSales || 0,
         }));
+      }
+
+      // ── CA semaine / mois / année + séries (periodSummary, ventes réelles) ──
+      const week = weekRes.status === 'fulfilled' ? weekRes.value.data : null;
+      const month = monthRes.status === 'fulfilled' ? monthRes.value.data : null;
+      const year = yearRes.status === 'fulfilled' ? yearRes.value.data : null;
+      const trend = trendRes.status === 'fulfilled' ? trendRes.value.data : null;
+
+      // Série mensuelle (12 mois) agrégée depuis les jours de l'année en cours.
+      const monthlyCA = Array(12).fill(0);
+      if (year?.days) {
+        for (const d of year.days as any[]) {
+          const m = new Date(d.date + 'T00:00:00').getMonth();
+          if (m >= 0 && m < 12) monthlyCA[m] += d.totalRevenueMinorUnits || 0;
+        }
+      }
+      // Série de la semaine (lun→dim) en euros par jour.
+      const weekActual = Array(7).fill(0);
+      if (week?.days) {
+        (week.days as any[]).forEach((d, i) => {
+          if (i < 7) weekActual[i] = d.totalRevenueMinorUnits || 0;
+        });
+      }
+
+      setPerfData((prev) => ({
+        ...prev,
+        caSemaine: week?.totalRevenueMinorUnits ?? prev.caSemaine,
+        ticketsSemaine: week?.transactionCount ?? prev.ticketsSemaine,
+        caMois: month?.totalRevenueMinorUnits ?? prev.caMois,
+        ticketsMois: month?.transactionCount ?? prev.ticketsMois,
+        caAnnee: year?.totalRevenueMinorUnits ?? prev.caAnnee,
+        // Comparaisons N-1 au niveau JOUR (les seules réellement disponibles) :
+        // today vs même jour l'an dernier, etc. null → pas de comparaison affichée.
+        caJourN1: trend?.comparisons?.nMinus1?.caMinorUnits ?? 0,
+        // Séries réelles pour les graphiques.
+        weekActual,
+        monthlyCA,
+      }));
+
+      // ── Paiements réels (répartition CB / espèces / autres, TVA, remises) ──
+      if (month) {
+        const card = month.cardTotalMinorUnits || 0;
+        const cash = month.cashTotalMinorUnits || 0;
+        const other = month.otherPaymentsMinorUnits || 0;
+        const totalPaid = card + cash + other;
+        const pct = (n: number) => (totalPaid > 0 ? Math.round((n / totalPaid) * 100) : 0);
+        setPaymentData((prev) => ({
+          ...prev,
+          cb: { montant: card, pct: pct(card), count: 0 },
+          especes: { montant: cash, pct: pct(cash), count: 0 },
+          mixte: { montant: other, pct: pct(other), count: 0 },
+          reductionsTotales: month.discountTotalMinorUnits || 0,
+          pctReductions:
+            month.totalRevenueMinorUnits > 0
+              ? Math.round(((month.discountTotalMinorUnits || 0) / month.totalRevenueMinorUnits) * 100)
+              : 0,
+          tvaCollectee: month.totalTaxMinorUnits || 0,
+        }));
+        // Annulations réelles du mois (voidCount) pour la section caisse.
+        setCaisseStats((prev) => ({ ...prev, ticketsAnnules: month.voidCount || 0 }));
       }
 
       // ── Employees — migrated to TimeWin24, skip ──
