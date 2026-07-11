@@ -15,6 +15,7 @@ import { pathToFileURL } from 'url';
 import { CustomerDisplayController } from './customerDisplay';
 import { registerPosPrintingIpc } from './posPrinting';
 import { UpdateController } from './updater';
+import { registerPosRawPrintIpc } from './posRawPrint';
 
 let posWindow: BrowserWindow | null = null;
 let customerDisplay: CustomerDisplayController | null = null;
@@ -161,6 +162,8 @@ if (!gotLock) {
 
     // Impression ticket via le spooler OS (PR #33) — honest-fail, IPC borné.
     registerPosPrintingIpc();
+    // Impression RAW ESC/POS (tiroir-caisse + coupe) via le spooler Windows.
+    registerPosRawPrintIpc();
 
     // Managed customer display (screen 2): screen selection, on/off, reload,
     // fullscreen/kiosk, crash watchdog, persistence, IPC control.

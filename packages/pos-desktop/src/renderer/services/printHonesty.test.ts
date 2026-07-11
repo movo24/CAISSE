@@ -42,17 +42,24 @@ describe('usePayment — the print outcome is tracked and truthful', () => {
   });
 });
 
-describe('cash drawer — honest kick (PR #34)', () => {
-  it('no invented drawer: an Electron install does NOT claim a connected printer_kick drawer', () => {
+describe('cash drawer — honest kick (PR #34 + kick spooler desktop)', () => {
+  it('no invented drawer: le tiroir n’est « printer_kick » que si une imprimante thermique OS + le canal RAW existent', () => {
+    // Pas de « printer_kick » posé par simple optimisme (isElectron seul).
     expect(bridge).not.toMatch(/type: this\.isElectron\(\) \? 'printer_kick' : 'none'/);
+    // Le desktop pose printer_kick UNIQUEMENT sous garde (imprimante thermique + API RAW).
+    expect(bridge).toMatch(/this\._status\.printer\.type === 'thermal_usb' && this\.isElectron\(\) && \(window as any\)\.electronAPI\?\.openCashDrawer/);
+    // Repli honnête « none » conservé.
     expect(bridge).toMatch(/this\._status\.cashDrawer = \{ type: 'none', connected: false \};\s*\n\s*\}/);
   });
 
-  it('the fake "kick pulse sent" success is gone — only a REAL BT kick returns true', () => {
+  it('la fausse « kick pulse sent » n’existe pas — seul un VRAI kick (BT ou spooler RAW) renvoie true', () => {
     expect(bridge).not.toMatch(/kick pulse sent/);
-    expect(bridge).not.toMatch(/electronAPI\?\.openCashDrawer/);
     expect(bridge).toMatch(/kick refused \(honest\)/);
     expect(bridge).toMatch(/return false; \/\/ real kick attempted and failed — say so/);
+    // Kick desktop réel via spooler RAW, honnête : true seulement si res.ok.
+    expect(bridge).toMatch(/electronAPI\?\.openCashDrawer/);
+    expect(bridge).toMatch(/if \(res\?\.ok\)/);
+    expect(bridge).toMatch(/vrai kick tenté et échoué/);
   });
 });
 
