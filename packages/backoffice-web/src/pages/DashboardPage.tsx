@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
+import { Tw24SyncToggle } from '../components/Tw24SyncToggle';
 import {
   TrendingUp, TrendingDown, ShoppingCart, Target, AlertTriangle,
   ArrowUpRight, ArrowDownRight, CreditCard, Banknote, Clock,
@@ -186,6 +187,8 @@ export function DashboardPage() {
           <p className="text-gray-400 text-sm mt-1">Pilotage temps reel — Reseau multi-magasins</p>
         </div>
         <div className="flex items-center gap-3">
+          {/* Synchro TimeWin24 par magasin (Partie C) — optionnelle, admin. */}
+          <Tw24SyncToggle />
           {/* Date filter */}
           <div className="flex bg-gray-100 rounded-xl p-1">
             {[
