@@ -20,6 +20,11 @@ on:
         description: "VITE_API_URL to bake into the build (blank = production default)"
         required: false
         default: ""
+      publish:
+        description: "Publier une GitHub Release v<version> (electron-builder --publish always). Utile quand la création de tag est bloquée."
+        required: false
+        type: boolean
+        default: false
   push:
     tags:
       - "v*"
@@ -100,13 +105,17 @@ jobs:
       #   beta.yml + .blockmap) que les caisses consomment via electron-updater.
       #   Le canal (latest/beta) suit le nom de la release ; une pré-release GitHub
       #   alimente le canal pilote.
-      - name: Package Windows (.exe, x64) — dispatch (no publish)
-        if: github.event_name == 'workflow_dispatch'
+      - name: Package Windows (.exe, x64) — dispatch sans publication
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.publish != 'true'
         working-directory: packages/pos-desktop
         run: npx electron-builder --config electron-builder.yml --win --x64 --publish never
 
-      - name: Package + publish Windows (.exe + latest.yml) — tag v* / desktop-v*
-        if: startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/tags/desktop-v')
+      # Publie une Release GitHub v<version> avec l'.exe + latest.yml + .blockmap.
+      # Déclenché soit par un tag v*/desktop-v*, soit par un dispatch avec
+      # publish=true (contournement quand la création de tag est bloquée :
+      # electron-builder crée la release `v${version}` depuis package.json).
+      - name: Package + publish Windows (.exe + latest.yml)
+        if: startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/tags/desktop-v') || (github.event_name == 'workflow_dispatch' && github.event.inputs.publish == 'true')
         working-directory: packages/pos-desktop
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
