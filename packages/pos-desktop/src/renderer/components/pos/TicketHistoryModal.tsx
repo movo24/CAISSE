@@ -6,6 +6,8 @@ import {
 } from 'lucide-react';
 import { usePOSStore, TicketHistoryEntry } from '../../stores/posStore';
 import { useRights } from '../../hooks/useRights';
+import { peripheralBridge } from '../../services/peripheralBridge';
+import { buildTicketData } from '../../services/salePeripherals';
 
 /* ── Helpers ── */
 
@@ -418,8 +420,37 @@ export function TicketHistoryModal({
                   Fermer
                 </button>
                 <button
-                  onClick={() => {
-                    console.log(`[PRINT] Printing DUPLICATA for ${duplicatePreview.ticketNumber}`);
+                  onClick={async () => {
+                    // Réimpression RÉELLE d'un duplicata (traçabilité déjà loggée
+                    // à l'ouverture). Marqué DUPLICATA, sans valeur comptable.
+                    const td = buildTicketData({
+                      storeName: si?.storeName,
+                      storeAddress: (si as any)?.address,
+                      siret: (si as any)?.siret,
+                      tvaIntracom: (si as any)?.tvaIntracom,
+                      nifCaisse: (si as any)?.nifCaisse,
+                      ticketNumber: duplicatePreview.ticketNumber,
+                      date: new Date(duplicatePreview.timestamp),
+                      cashierName: duplicatePreview.cashierName,
+                      items: duplicatePreview.items.map((it: any) => ({
+                        name: it.name,
+                        quantity: it.quantity,
+                        unitPriceMinorUnits: it.unitPriceMinorUnits,
+                        discountMinorUnits: it.discountMinorUnits,
+                      })),
+                      subtotalMinorUnits: duplicatePreview.subtotalMinorUnits,
+                      discountMinorUnits: duplicatePreview.discountMinorUnits,
+                      totalMinorUnits: duplicatePreview.totalMinorUnits,
+                      payments: duplicatePreview.payments.map((p: any) => ({ method: p.method, amountMinorUnits: p.amountMinorUnits })),
+                      changeMinorUnits: duplicatePreview.changeMinorUnits,
+                      footer: "DUPLICATA — Ce document n'a aucune valeur comptable",
+                    });
+                    try {
+                      const ok = await peripheralBridge.printTicket(td, { allowBrowserFallback: false });
+                      if (!ok) console.warn('[PRINT] Duplicata NON imprimé — échec imprimante');
+                    } catch (e) {
+                      console.warn('[PRINT] Duplicata échec:', e);
+                    }
                     onDuplicatePreview(null);
                   }}
                   className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-indigo-600 text-white font-semibold text-sm hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-600/25 product-card-touch"
