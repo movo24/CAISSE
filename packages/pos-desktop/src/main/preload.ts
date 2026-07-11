@@ -28,6 +28,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getPrinters: () => ipcRenderer.invoke('pos-print:getPrinters'),
   printTicketHtml: (html: string, deviceName?: string) =>
     ipcRenderer.invoke('pos-print:printHtml', html, deviceName),
+  // Tiroir-caisse + coupe via job RAW ESC/POS au spooler Windows (honest-fail).
+  openCashDrawer: (deviceName?: string) => ipcRenderer.invoke('pos-print:openDrawer', deviceName),
+  cutPaper: (deviceName?: string) => ipcRenderer.invoke('pos-print:cut', deviceName),
+  rawEscpos: (deviceName: string | undefined, bytes: number[]) =>
+    ipcRenderer.invoke('pos-print:rawEscpos', deviceName, bytes),
 });
 
 /**

@@ -1171,6 +1171,15 @@ export function POSPage() {
                   <Monitor size={14} /> Écran client
                 </button>
                 <button
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-pos-text rounded-xl hover:bg-pos-subtle transition-colors mb-1"
+                  onClick={() => {
+                    setProfileOpen(false);
+                    navigate('/peripherals');
+                  }}
+                >
+                  <Printer size={14} /> Imprimante &amp; tiroir
+                </button>
+                <button
                   className="w-full flex items-center gap-2 px-3 py-2 text-sm text-pos-danger rounded-xl hover:bg-pos-danger/5 transition-colors"
                   onClick={() => {
                     // Flush performance metrics before logout

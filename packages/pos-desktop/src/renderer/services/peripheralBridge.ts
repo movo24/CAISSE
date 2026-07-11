@@ -113,7 +113,11 @@ class PeripheralBridge {
       try {
         const electronPrinters = await this.getElectronPrinters();
         if (electronPrinters.length > 0) {
-          this._status.printer = { type: 'thermal_usb', connected: true, name: electronPrinters[0] };
+          // Respecte l'imprimante choisie par l'opérateur (persistée) si elle
+          // est toujours présente ; sinon la 1ʳᵉ de l'OS.
+          const saved = this.getSelectedOsPrinter();
+          const name = saved && electronPrinters.includes(saved) ? saved : electronPrinters[0];
+          this._status.printer = { type: 'thermal_usb', connected: true, name };
           return;
         }
       } catch (e) {
@@ -194,7 +198,9 @@ class PeripheralBridge {
       // résout { ok:false } côté main → false honnête ici, jamais de faux succès.
       if (this.isElectron() && (window as any).electronAPI?.printTicketHtml) {
         const html = this.buildReceiptHtml(data);
-        const result = await (window as any).electronAPI.printTicketHtml(html);
+        // Cible l'imprimante sélectionnée (sinon défaut OS).
+        const device = this._status.printer.name ?? undefined;
+        const result = await (window as any).electronAPI.printTicketHtml(html, device);
         if (result?.ok) {
           console.log('[PERIPH] Desktop OS print success');
           return true;
@@ -558,10 +564,15 @@ class PeripheralBridge {
       this._status.cashDrawer = { type: 'bluetooth', connected: this._status.printer.connected };
       return;
     }
-    // HONESTY (PR #34, même règle que l'impression) : aucun kick tiroir réel
-    // n'existe hors du chemin Bluetooth (RJ11 via imprimante BT). Un poste
-    // Electron ne « possède » pas un tiroir par optimisme — le statut dit la
-    // vérité et le chantier kick USB/spooler reste documenté.
+    // Desktop Windows : le tiroir est branché sur l'imprimante thermique USB.
+    // On envoie le kick ESC/POS via un job RAW au spooler (posRawPrint). Le
+    // statut est « prêt » dès qu'une imprimante OS est détectée ; le succès
+    // réel du kick reste honnête (résultat du job RAW), jamais optimiste.
+    if (this._status.printer.type === 'thermal_usb' && this.isElectron() && (window as any).electronAPI?.openCashDrawer) {
+      this._status.cashDrawer = { type: 'printer_kick', connected: true };
+      return;
+    }
+    // Sinon : pas de tiroir réel — le statut dit la vérité.
     this._status.cashDrawer = { type: 'none', connected: false };
   }
 
@@ -585,8 +596,44 @@ class PeripheralBridge {
       return false; // real kick attempted and failed — say so
     }
 
+    // Desktop Windows : kick ESC/POS via job RAW au spooler, vers l'imprimante
+    // thermique sélectionnée. Résultat honnête (job RAW réellement accepté).
+    if (this._status.cashDrawer.type === 'printer_kick' && (window as any).electronAPI?.openCashDrawer) {
+      try {
+        const device = this._status.printer.name ?? undefined;
+        const res = await (window as any).electronAPI.openCashDrawer(device);
+        if (res?.ok) {
+          console.log('[PERIPH] Cash drawer opened via spooler RAW');
+          return true;
+        }
+        console.warn('[PERIPH] Spooler drawer kick failed:', res?.error);
+      } catch (e) {
+        console.warn('[PERIPH] Spooler drawer kick error:', e);
+      }
+      return false; // vrai kick tenté et échoué — on le dit
+    }
+
     console.warn('[PERIPH] No cash drawer connected — kick refused (honest)');
     return false;
+  }
+
+  /** Imprimante OS choisie par l'opérateur (persistée), ou null. */
+  getSelectedOsPrinter(): string | null {
+    try {
+      return localStorage.getItem('caisse_os_printer');
+    } catch {
+      return null;
+    }
+  }
+
+  /** Mémorise l'imprimante OS choisie puis redétecte (nom + tiroir). */
+  async setSelectedOsPrinter(name: string | null): Promise<void> {
+    try {
+      if (name) localStorage.setItem('caisse_os_printer', name);
+      else localStorage.removeItem('caisse_os_printer');
+    } catch { /* ignore */ }
+    await this.detectPrinter();
+    this.detectCashDrawer();
   }
 
   /* ── Helpers ── */

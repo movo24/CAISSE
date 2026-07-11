@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { POSPage } from './pages/POSPage';
 import { ClientDisplayPage } from './pages/ClientDisplayPage';
 import { CustomerDisplaySettingsPage } from './pages/CustomerDisplaySettingsPage';
+import { PrinterDiagnosticsPage } from './pages/PrinterDiagnosticsPage';
 import { LoginPage } from './pages/LoginPage';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -20,6 +21,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         <Route element={<ProtectedRoute />}>
           <Route path="/pos" element={<POSPage />} />
           <Route path="/display-settings" element={<CustomerDisplaySettingsPage />} />
+          <Route path="/peripherals" element={<PrinterDiagnosticsPage />} />
         </Route>
         {/* Client display is public (customer-facing screen) */}
         <Route path="/client-display" element={<ClientDisplayPage />} />
