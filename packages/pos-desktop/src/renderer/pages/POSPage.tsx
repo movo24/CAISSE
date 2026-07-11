@@ -10,6 +10,12 @@ import {
 } from 'lucide-react';
 import { usePOSStore } from '../stores/posStore';
 import { productsApi, productIntegrationApi, salesApi, customersApi, occupancyApi, receiptsApi } from '../services/api';
+import {
+  finalizeSalePeripherals,
+  buildTicketData,
+  SaleFinalizationGuard,
+  type PrintStatus,
+} from '../services/salePeripherals';
 import { newIdempotencyKey } from '../services/idempotency';
 import { toWirePayments, toSaleDiscountFields } from '../services/salePayload';
 import { validateManualDiscount } from '../services/discount-policy';
@@ -162,6 +168,10 @@ export function POSPage() {
   // Fullscreen confirmation overlay
   const [confirmation, setConfirmation] = useState<ConfirmationData | null>(null);
   const confirmationRef = useRef<ConfirmationData | null>(null); // mirror to avoid stale closures
+  // Impression + tiroir du flux de vente desktop : statut honnête affiché à
+  // la caisse, et garde d'idempotence (jamais 2 tickets / 2 ouvertures tiroir).
+  const [lastPrintStatus, setLastPrintStatus] = useState<PrintStatus | null>(null);
+  const saleFinalizationGuard = useRef(new SaleFinalizationGuard());
 
   // Email-receipt modal (shown from the confirmation overlay when a server saleId exists)
   const [emailModal, setEmailModal] = useState(false);
@@ -925,6 +935,40 @@ export function POSPage() {
     };
     confirmationRef.current = confirmData; // sync ref BEFORE state
     setConfirmation(confirmData);
+
+    // ── Impression ticket + tiroir-caisse (flux de vente RÉEL, desktop) ──
+    // La vente est validée (acceptée en ligne, ou honnêtement mise en file
+    // offline). On construit le ticket AVANT de vider le panier, puis on
+    // imprime / ouvre le tiroir SANS bloquer l'overlay ni conditionner la
+    // vente. Idempotent (garde par ticketNumber) : double-clic/retry sûrs.
+    const ticketData = buildTicketData({
+      storeName: store.storeInfo?.storeName,
+      storeAddress: store.storeInfo?.address,
+      siret: store.storeInfo?.siret,
+      tvaIntracom: store.storeInfo?.tvaIntracom,
+      nifCaisse: store.storeInfo?.nifCaisse,
+      ticketNumber,
+      date: timestamp,
+      cashierName,
+      items: store.cartItems.map((i) => ({
+        name: i.name,
+        quantity: i.quantity,
+        unitPriceMinorUnits: i.unitPriceMinorUnits,
+        discountMinorUnits: i.discountMinorUnits,
+      })),
+      subtotalMinorUnits: store.subtotal(),
+      discountMinorUnits: store.totalDiscount(),
+      totalMinorUnits: totalAmount,
+      payments: payments.map((p) => ({ method: p.method, amountMinorUnits: p.amountMinorUnits })),
+      changeMinorUnits: changeMinor,
+    });
+    setLastPrintStatus(null);
+    void finalizeSalePeripherals({
+      ticketData,
+      payments: payments.map((p) => ({ method: p.method, amountMinorUnits: p.amountMinorUnits })),
+      saleValidated: true,
+      guard: saleFinalizationGuard.current,
+    }).then((r) => setLastPrintStatus(r.printStatus));
 
     store.clearCart();
     setPartialPayments([]);
@@ -1969,15 +2013,24 @@ export function POSPage() {
                 </p>
               )}
 
-              {/* Honest print status: this desktop path has no real printer wired —
-                  the platform must SAY it cannot print (décision produit, PR #27). */}
-              {(!peripheralBridge.status.printer.connected ||
-                peripheralBridge.status.printer.type === 'none' ||
-                peripheralBridge.status.printer.type === 'browser_print') && (
-                <p className="mt-2 text-xs font-black text-amber-300">
-                  Aucune imprimante connectée — ticket NON imprimé (QR / email disponibles).
+              {/* Statut d'impression HONNÊTE (résultat réel du spooler, pas la
+                  simple connectivité). La vente reste valide quoi qu'il arrive. */}
+              {lastPrintStatus === 'printed' && (
+                <p className="mt-2 text-xs font-bold text-emerald-300">Ticket imprimé.</p>
+              )}
+              {lastPrintStatus === 'print_failed' && (
+                <p className="mt-2 text-xs font-black text-red-300">
+                  Ticket NON imprimé — échec imprimante. Vente validée. Réimpression possible depuis l'historique.
                 </p>
               )}
+              {(lastPrintStatus === 'no_printer' || lastPrintStatus === null) &&
+                (!peripheralBridge.status.printer.connected ||
+                  peripheralBridge.status.printer.type === 'none' ||
+                  peripheralBridge.status.printer.type === 'browser_print') && (
+                  <p className="mt-2 text-xs font-black text-amber-300">
+                    Aucune imprimante connectée — ticket NON imprimé (QR / email disponibles).
+                  </p>
+                )}
             </div>
 
             {/* ── Ticket choice buttons ── */}
