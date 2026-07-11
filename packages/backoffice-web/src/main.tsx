@@ -16,6 +16,7 @@ import { ProductPerformancePage } from './pages/ProductPerformancePage';
 import { OrganizationsPage } from './pages/OrganizationsPage';
 import { UnitsPage } from './pages/UnitsPage';
 import { StoresManagementPage } from './pages/StoresManagementPage';
+import { PosEnrollmentPage } from './pages/PosEnrollmentPage';
 import { EmployeesPage } from './pages/EmployeesPage';
 import { PayrollPage } from './pages/PayrollPage';
 import { PlanningPage } from './pages/PlanningPage';
@@ -109,6 +110,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             <Route path="/organizations" element={<OrganizationsPage />} />
             <Route path="/units" element={<UnitsPage />} />
             <Route path="/stores" element={<StoresManagementPage />} />
+            <Route path="/pos-enrollment" element={<PosEnrollmentPage />} />
             <Route path="/connected-apps" element={<ConnectedAppsPage />} />
             <Route path="/airtable-ops" element={<AirtableOpsPage />} />
 
