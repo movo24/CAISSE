@@ -28,6 +28,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getPrinters: () => ipcRenderer.invoke('pos-print:getPrinters'),
   printTicketHtml: (html: string, deviceName?: string) =>
     ipcRenderer.invoke('pos-print:printHtml', html, deviceName),
+  // Identité machine stable (Partie B — enrôlement) : UUID persistant en userData.
+  getMachineId: () => ipcRenderer.invoke('machine:getId') as Promise<string>,
 });
 
 /**

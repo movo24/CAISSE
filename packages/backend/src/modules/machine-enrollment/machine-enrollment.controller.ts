@@ -49,12 +49,17 @@ export class MachineEnrollmentController {
 
   @Get('status')
   @ApiOperation({ summary: "Statut d'enrôlement d'une machine (polling caisse)" })
-  async status(@Query('machineId') machineId: string) {
+  async status(@Query('machineId') machineId: string, @Request() req: any) {
+    // `enforced` = le magasin connecté exige-t-il l'enrôlement ? Permet à la
+    // caisse de décider d'afficher (ou non) l'écran d'attente sans jamais
+    // bloquer une caisse d'un magasin qui n'applique pas l'enrôlement.
+    const enforced = await this.service.isStoreEnforced(req.user.storeId);
     const m = machineId ? await this.service.getByMachineId(machineId) : null;
-    if (!m) return { enrolled: false, status: null };
+    if (!m) return { enrolled: false, status: null, enforced };
     return {
       enrolled: m.status === 'approved',
       status: m.status,
+      enforced,
       storeId: m.storeId,
       terminalLabel: m.terminalLabel,
       decidedAt: m.decidedAt,

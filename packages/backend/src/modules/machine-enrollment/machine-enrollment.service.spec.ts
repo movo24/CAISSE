@@ -5,6 +5,7 @@ import {
   evaluateEnrollmentGate,
 } from './machine-enrollment.service';
 import { PosMachineEntity } from '../../database/entities/pos-machine.entity';
+import { StoreEntity } from '../../database/entities/store.entity';
 
 const STORE = 'store-1';
 const OTHER_STORE = 'store-2';
@@ -87,10 +88,15 @@ describe('MachineEnrollmentService', () => {
       }),
     };
 
+    const storeRepo = {
+      findOne: jest.fn().mockResolvedValue({ id: STORE, enrollmentEnforced: false }),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         MachineEnrollmentService,
         { provide: getRepositoryToken(PosMachineEntity), useValue: repo },
+        { provide: getRepositoryToken(StoreEntity), useValue: storeRepo },
       ],
     }).compile();
 

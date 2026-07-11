@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { PosMachineEntity } from '../../database/entities/pos-machine.entity';
+import { StoreEntity } from '../../database/entities/store.entity';
 import { MachineEnrollmentService } from './machine-enrollment.service';
 import { MachineEnrollmentController } from './machine-enrollment.controller';
 
@@ -10,7 +11,7 @@ import { MachineEnrollmentController } from './machine-enrollment.controller';
  * moteur de vente puisse évaluer la barrière d'enrôlement.
  */
 @Module({
-  imports: [TypeOrmModule.forFeature([PosMachineEntity])],
+  imports: [TypeOrmModule.forFeature([PosMachineEntity, StoreEntity])],
   controllers: [MachineEnrollmentController],
   providers: [MachineEnrollmentService],
   exports: [MachineEnrollmentService],

@@ -5,6 +5,7 @@ import {
   PosMachineEntity,
   PosMachineStatus,
 } from '../../database/entities/pos-machine.entity';
+import { StoreEntity } from '../../database/entities/store.entity';
 import { RequestEnrollmentDto } from './dto/machine-enrollment.dto';
 
 /**
@@ -42,7 +43,18 @@ export class MachineEnrollmentService {
   constructor(
     @InjectRepository(PosMachineEntity)
     private readonly machineRepo: Repository<PosMachineEntity>,
+    @InjectRepository(StoreEntity)
+    private readonly storeRepo: Repository<StoreEntity>,
   ) {}
+
+  /** Le magasin applique-t-il l'enrôlement ? (pour le polling de la caisse) */
+  async isStoreEnforced(storeId: string): Promise<boolean> {
+    const store = await this.storeRepo.findOne({
+      where: { id: storeId },
+      select: ['id', 'enrollmentEnforced'],
+    });
+    return !!store?.enrollmentEnforced;
+  }
 
   /**
    * Déclaration d'identité par la caisse. Idempotent par `machineId` :

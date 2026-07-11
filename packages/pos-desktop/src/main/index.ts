@@ -14,6 +14,7 @@ import * as path from 'path';
 import { pathToFileURL } from 'url';
 import { CustomerDisplayController } from './customerDisplay';
 import { registerPosPrintingIpc } from './posPrinting';
+import { registerMachineIdIpc } from './machineId';
 
 let posWindow: BrowserWindow | null = null;
 let customerDisplay: CustomerDisplayController | null = null;
@@ -153,6 +154,9 @@ if (!gotLock) {
 
     // Impression ticket via le spooler OS (PR #33) — honest-fail, IPC borné.
     registerPosPrintingIpc();
+
+    // Identité machine stable (Partie B — enrôlement). IPC borné, renvoie un UUID.
+    registerMachineIdIpc();
 
     // Managed customer display (screen 2): screen selection, on/off, reload,
     // fullscreen/kiosk, crash watchdog, persistence, IPC control.
