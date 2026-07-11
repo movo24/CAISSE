@@ -23,6 +23,7 @@ export { InventoryScanEntity } from './inventory-scan.entity';
 export { JackpotConfigEntity } from './jackpot-config.entity';
 export { JackpotWinEntity } from './jackpot-win.entity';
 export { PaymentTerminalEntity } from './payment-terminal.entity';
+export { PosMachineEntity } from './pos-machine.entity';
 export { StoreContextEntity } from './store-context.entity';
 export { AiRecommendationLogEntity } from './ai-recommendation-log.entity';
 export { StockLocationEntity } from './stock-location.entity';
