@@ -11,11 +11,39 @@
  */
 import { contextBridge, ipcRenderer } from 'electron';
 
+// Version réelle de l'app, lue depuis le main (app.getVersion → package.json
+// packagé). Synchrone au chargement du preload ; repli 'dev' hors desktop.
+let appVersion = 'dev';
+try {
+  appVersion = (ipcRenderer.sendSync('app:getVersion') as string) || 'dev';
+} catch {
+  appVersion = 'dev';
+}
+
 contextBridge.exposeInMainWorld('posDesktop', {
   isDesktop: true,
   platform: process.platform,
-  // App version is injected at build time via env; falls back to 'dev'.
-  version: process.env?.POS_APP_VERSION || 'dev',
+  version: appVersion,
+});
+
+/**
+ * Pont mise à jour automatique (electron-updater). Le renderer peut : lire
+ * l'état, forcer une vérification, changer de canal, déclencher l'installation
+ * (gardée côté main : refusée si vente/paiement/impression/sync en cours), et
+ * remonter l'état d'activité de la caisse pour que le main sache si c'est sûr.
+ */
+contextBridge.exposeInMainWorld('posUpdater', {
+  getState: () => ipcRenderer.invoke('pos-update:getState'),
+  check: () => ipcRenderer.invoke('pos-update:check'),
+  installNow: () => ipcRenderer.invoke('pos-update:installNow'),
+  setChannel: (channel: 'stable' | 'pilot') => ipcRenderer.invoke('pos-update:setChannel', channel),
+  setActivity: (activity: { saleInProgress?: boolean; paymentInProgress?: boolean; printing?: boolean; syncing?: boolean }) =>
+    ipcRenderer.send('pos-update:setActivity', activity),
+  onEvent: (cb: (state: unknown) => void) => {
+    const listener = (_e: unknown, state: unknown) => cb(state);
+    ipcRenderer.on('pos-update:event', listener);
+    return () => ipcRenderer.removeListener('pos-update:event', listener);
+  },
 });
 
 /**

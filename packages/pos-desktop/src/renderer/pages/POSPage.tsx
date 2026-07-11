@@ -46,6 +46,7 @@ import { StockAlertToast } from '../components/StockAlertToast';
 import { SaleGuardsGate } from '../components/SaleGuardsGate';
 import { SalesCockpit } from '../components/SalesCockpit';
 import { CustomerDisplayPublisher } from '../components/CustomerDisplayPublisher';
+import { UpdateBanner } from '../components/UpdateBanner';
 import { ActiveCashierBanner } from '../components/ActiveCashierBanner';
 import { ScoreDetailModal } from '../components/ScoreDetailModal';
 
@@ -992,6 +993,8 @@ export function POSPage() {
     <div className={`h-screen flex flex-col bg-pos-bg safe-area-top safe-area-bottom overflow-x-hidden ${platformClasses(device)}`}>
       {/* Inert bridge: mirrors cart/payment to the customer display (screen 2). */}
       <CustomerDisplayPublisher />
+      {/* Mise à jour auto (desktop) : bandeau discret + remontée d'activité. */}
+      <UpdateBanner />
       {/* ═══════ OFFLINE BANNER ═══════ */}
       {offlineMode.isOffline && (
         <div className="bg-gradient-to-r from-red-600 via-red-500 to-rose-500 px-4 py-2 flex items-center justify-between relative z-50 shadow-lg animate-slide-down">

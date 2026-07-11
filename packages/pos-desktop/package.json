@@ -1,6 +1,6 @@
 {
   "name": "@caisse/pos-desktop",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "description": "POS Caisse — application de caisse desktop",
   "author": "AddX Intelligence",
@@ -35,6 +35,7 @@
     "@zxing/browser": "^0.1.5",
     "@zxing/library": "^0.21.3",
     "axios": "^1.6.5",
+    "electron-updater": "^6.3.9",
     "lucide-react": "^0.570.0",
     "qrcode.react": "^3.2.0",
     "react": "^18.2.0",
