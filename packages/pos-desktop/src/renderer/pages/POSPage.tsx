@@ -13,7 +13,7 @@ import { productsApi, productIntegrationApi, salesApi, customersApi, occupancyAp
 import {
   finalizeSalePeripherals,
   buildTicketData,
-  saleFinalizationGuard,
+  salePeripheralGuard,
   type PrintStatus,
   type DrawerStatus,
 } from '../services/salePeripherals';
@@ -958,7 +958,9 @@ export function POSPage() {
     // La vente est validée (acceptée en ligne, ou honnêtement mise en file
     // offline). On construit le ticket AVANT de vider le panier, puis on
     // imprime / ouvre le tiroir SANS bloquer l'overlay ni conditionner la
-    // vente. Idempotent (garde par ticketNumber) : double-clic/retry sûrs.
+    // vente. Idempotent par `saleId` (idempotency key) ET par action, persisté :
+    // ni double ticket ni double tiroir sur double-clic / retry / remontage /
+    // redémarrage. (`ticketNumber` reste la référence FISCALE affichée.)
     const ticketData = buildTicketData({
       storeName: store.storeInfo?.storeName,
       storeAddress: store.storeInfo?.address,
@@ -983,10 +985,13 @@ export function POSPage() {
     setLastPrintStatus(null);
     setLastDrawerStatus(null);
     void finalizeSalePeripherals({
+      // Identité STABLE de la vente = idempotency key (sale-<uuid>), jamais le
+      // ticketNumber (séquentiel par magasin côté serveur, instable côté client).
+      saleId: idempotencyKey,
       ticketData,
       payments: payments.map((p) => ({ method: p.method, amountMinorUnits: p.amountMinorUnits })),
       saleValidated: true,
-      guard: saleFinalizationGuard,
+      guard: salePeripheralGuard,
     }).then((r) => {
       // Trois statuts distincts, jamais fusionnés (règle owner).
       setLastPrintStatus(r.printStatus);

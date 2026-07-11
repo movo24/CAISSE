@@ -10,7 +10,22 @@
  *  - échec d'impression → vente valide, erreur claire, réimpression possible,
  *    journalisé, pas de seconde vente ;
  *  - idempotent : pas de double ticket ni de double ouverture tiroir sur
- *    double-clic / retry / retour d'écran.
+ *    double-clic / retry / retour d'écran / remontage / redémarrage.
+ *
+ * ── Identité de vente (clé d'idempotence des périphériques) ──
+ * On NE se sert PAS de `ticketNumber` : côté serveur il est SÉQUENTIEL PAR
+ * MAGASIN (`T-000001`…, jamais globalement unique — deux magasins produisent le
+ * même), et côté client le repli est `T-<6 derniers ms>` / `OFF-…` (collisionnable
+ * et instable après synchronisation). La clé stable est le `saleId` =
+ * `sale-<uuid>` (idempotency key) généré UNE fois avant la création de vente,
+ * identique en ligne / hors-ligne / au retry, globalement unique et immuable.
+ *
+ * Deux protections DISTINCTES, jamais confondues :
+ *  1. verrou d'exécution en cours (`finalizingRef` dans POSPage) — bloque le
+ *     double-clic immédiat, réinitialisé en fin de traitement ;
+ *  2. registre PERSISTANT des actions périphériques déjà déclenchées
+ *     (`SalePeripheralGuard`) — clé par action (`AUTO_PRINT`,
+ *     `AUTO_DRAWER_OPEN`), JAMAIS effacé par la réinitialisation du verrou (1).
  *
  * La logique de DÉCISION (pure) est testée ; l'orchestrateur applique ces
  * décisions à `peripheralBridge`.
@@ -52,32 +67,152 @@ export function hasRealPrinter(printer: { connected: boolean; type: string }): b
   return printer.connected && printer.type !== 'none' && printer.type !== 'browser_print';
 }
 
+/** Actions périphériques idempotentes, chacune sa propre clé (jamais fusionnées). */
+export type PeripheralAction = 'AUTO_PRINT' | 'AUTO_DRAWER_OPEN';
+
 /**
- * Garde d'idempotence : garantit qu'un même ticket ne déclenche l'impression
- * et le tiroir qu'UNE fois (double-clic, retry, re-render de l'overlay).
+ * Statut d'une action périphérique :
+ *  - `dispatching` : commande envoyée au périphérique, résultat PAS ENCORE
+ *    confirmé (si l'app plante ici → INCERTAIN, ne jamais rejouer le tiroir) ;
+ *  - `completed`   : action terminée avec succès ;
+ *  - `failed`      : action tentée et échouée (pas de rejeu auto ; réimpression
+ *    manuelle explicite possible pour le ticket) ;
+ *  - `unknown`     : état indéterminé.
  */
-export class SaleFinalizationGuard {
-  private readonly done = new Set<string>();
-  /** Réserve le ticket ; renvoie true la 1ʳᵉ fois, false ensuite (déjà traité). */
-  claim(ticketNumber: string): boolean {
-    if (!ticketNumber || this.done.has(ticketNumber)) return false;
-    this.done.add(ticketNumber);
+export type PeripheralActionStatus = 'dispatching' | 'completed' | 'failed' | 'unknown';
+
+export interface PeripheralActionRecord {
+  saleId: string;
+  action: PeripheralAction;
+  status: PeripheralActionStatus;
+  timestamp: number;
+  error?: string;
+}
+
+/** Stockage clé/valeur minimal (localStorage en prod ; injectable pour les tests). */
+export interface KeyValueStore {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+}
+
+const STORAGE_KEY = 'pos_peripheral_actions';
+const MAX_RECORDS = 500;
+
+function defaultStore(): KeyValueStore | null {
+  try {
+    if (typeof localStorage !== 'undefined') return localStorage;
+  } catch {
+    /* localStorage indisponible */
+  }
+  return null;
+}
+
+/**
+ * Registre PERSISTANT des actions périphériques déjà déclenchées, par
+ * (`saleId`, action). Persisté dans localStorage → survit à un remontage React,
+ * un reload complet du renderer et un redémarrage/crash Electron. C'est la
+ * preuve « déjà imprimé / tiroir déjà ouvert », TOTALEMENT distincte du verrou
+ * temporaire d'exécution (qui, lui, peut être réinitialisé).
+ *
+ * `beginAction` ne renvoie `true` (→ on peut déclencher) QUE si aucune trace
+ * n'existe pour ce (saleId, action). Une trace `dispatching` laissée par un
+ * crash reste `dispatching` → l'action n'est JAMAIS rejouée automatiquement
+ * (cas incertain : le tiroir a peut-être déjà été ouvert physiquement).
+ */
+export class SalePeripheralGuard {
+  private readonly mem = new Map<string, PeripheralActionRecord>();
+  private readonly store: KeyValueStore | null;
+
+  constructor(store?: KeyValueStore | null) {
+    this.store = store === undefined ? defaultStore() : store;
+    this.load();
+  }
+
+  private keyOf(saleId: string, action: PeripheralAction): string {
+    return `${saleId}:${action}`;
+  }
+
+  private load(): void {
+    if (!this.store) return;
+    try {
+      const raw = this.store.getItem(STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as Record<string, PeripheralActionRecord>;
+      for (const [k, v] of Object.entries(parsed)) {
+        if (v && typeof v.status === 'string') this.mem.set(k, v);
+      }
+    } catch {
+      /* données corrompues → on repart d'un registre vide en mémoire */
+    }
+  }
+
+  private persist(): void {
+    if (!this.store) return;
+    try {
+      // Bornage : on garde les MAX_RECORDS entrées les plus récentes.
+      if (this.mem.size > MAX_RECORDS) {
+        const sorted = [...this.mem.entries()].sort((a, b) => b[1].timestamp - a[1].timestamp);
+        this.mem.clear();
+        for (const [k, v] of sorted.slice(0, MAX_RECORDS)) this.mem.set(k, v);
+      }
+      const obj: Record<string, PeripheralActionRecord> = {};
+      for (const [k, v] of this.mem) obj[k] = v;
+      this.store.setItem(STORAGE_KEY, JSON.stringify(obj));
+    } catch {
+      /* écriture impossible → le registre mémoire reste la source pour la session */
+    }
+  }
+
+  getRecord(saleId: string, action: PeripheralAction): PeripheralActionRecord | null {
+    return this.mem.get(this.keyOf(saleId, action)) ?? null;
+  }
+
+  /**
+   * Réserve une action pour un `saleId`. Renvoie `true` (→ déclencher) UNIQUEMENT
+   * s'il n'existe aucune trace ; écrit alors `dispatching` de façon SYNCHRONE et
+   * persistée AVANT tout appel au périphérique. Renvoie `false` si une action a
+   * déjà été déclenchée (completed / failed / dispatching) → jamais de rejeu auto.
+   * Sans `saleId` (ne devrait pas arriver), on autorise une seule tentative sans
+   * persistance plutôt que de priver une vente réelle de son ticket.
+   */
+  beginAction(saleId: string, action: PeripheralAction): boolean {
+    if (!saleId) return true; // dégradé : pas d'identité → au moins imprimer une fois
+    const key = this.keyOf(saleId, action);
+    if (this.mem.has(key)) return false; // déjà déclenchée (ou incertaine) → ne pas rejouer
+    this.mem.set(key, { saleId, action, status: 'dispatching', timestamp: Date.now() });
+    this.persist();
     return true;
   }
-  has(ticketNumber: string): boolean {
-    return this.done.has(ticketNumber);
+
+  /** Enregistre le résultat d'une action déclenchée (completed / failed). */
+  settleAction(saleId: string, action: PeripheralAction, ok: boolean, error?: string): void {
+    if (!saleId) return;
+    const key = this.keyOf(saleId, action);
+    const rec = this.mem.get(key);
+    if (!rec) return;
+    rec.status = ok ? 'completed' : 'failed';
+    rec.timestamp = Date.now();
+    if (error) rec.error = error;
+    this.persist();
+  }
+
+  /**
+   * Actions restées `dispatching` (incertaines) : l'app a probablement planté
+   * après l'envoi de la commande mais avant l'enregistrement du succès. À
+   * exposer pour vérification MANUELLE — ne JAMAIS rejouer automatiquement
+   * (surtout le tiroir).
+   */
+  listUncertain(): PeripheralActionRecord[] {
+    return [...this.mem.values()].filter((r) => r.status === 'dispatching');
   }
 }
 
 /**
- * Garde PARTAGÉE au niveau module (singleton) : la clé stable = `ticketNumber`
- * de la vente. Étant hors du cycle de vie React, elle survit à un re-render,
- * à une navigation aller-retour sur l'écran POS, et à un remontage du
- * composant → impossible de ré-imprimer/ré-ouvrir le tiroir automatiquement
- * pour une vente DÉJÀ finalisée. (Un redémarrage d'app ne rejoue de toute
- * façon jamais `finalizePayment`, donc aucun re-déclenchement au boot.)
+ * Registre PARTAGÉ au niveau module (singleton), persisté. La clé stable est le
+ * `saleId` (`sale-<uuid>`), hors du cycle de vie React → survit re-render,
+ * remontage, reload et redémarrage Electron.
  */
-export const saleFinalizationGuard = new SaleFinalizationGuard();
+export const salePeripheralGuard = new SalePeripheralGuard();
 
 /** Construit le TicketData depuis des entrées simples (testable, sans store). */
 export function buildTicketData(input: {
@@ -134,40 +269,66 @@ export interface FinalizeResult {
   drawerOpened: boolean;
 }
 
+/** Statut d'impression rejoué depuis une trace déjà enregistrée (2ᵉ appel). */
+function printStatusFromRecord(rec: PeripheralActionRecord | null): PrintStatus {
+  if (rec?.status === 'completed') return 'printed';
+  if (rec?.status === 'failed') return 'print_failed';
+  return 'skipped'; // dispatching (incertain) / absent → aucune 2ᵉ impression
+}
+
+/** Statut tiroir rejoué depuis une trace déjà enregistrée (2ᵉ appel). */
+function drawerStatusFromRecord(rec: PeripheralActionRecord | null): DrawerStatus {
+  if (rec?.status === 'completed') return 'opened';
+  if (rec?.status === 'failed') return 'open_failed';
+  return 'skipped'; // dispatching (incertain) / absent → aucune 2ᵉ ouverture
+}
+
 /**
  * Orchestrateur : imprime (si imprimante réelle) et ouvre le tiroir (si
- * espèces), APRÈS une vente validée, une seule fois par ticket. Ne throw
- * jamais ; l'impression n'affecte pas la validité de la vente.
+ * espèces), APRÈS une vente validée, au plus UNE fois par `saleId` ET par
+ * action. Ne throw jamais ; l'impression/le tiroir n'affectent pas la validité
+ * de la vente.
+ *
+ * `saleId` = identité STABLE de la vente (`sale-<uuid>`), pas `ticketNumber`.
+ * Impression et tiroir ont chacun leur clé d'idempotence persistée
+ * (`AUTO_PRINT`, `AUTO_DRAWER_OPEN`) : ni double ticket, ni double tiroir, même
+ * après double-clic / retry / remontage / redémarrage. Une action déjà tentée
+ * (y compris restée `dispatching` après un crash) n'est JAMAIS rejouée
+ * automatiquement.
  */
 export async function finalizeSalePeripherals(params: {
+  saleId: string;
   ticketData: TicketData;
   payments: SalePaymentLite[];
   saleValidated: boolean;
-  guard: SaleFinalizationGuard;
+  guard: SalePeripheralGuard;
 }): Promise<FinalizeResult> {
-  const { ticketData, payments, saleValidated, guard } = params;
+  const { saleId, ticketData, payments, saleValidated, guard } = params;
 
   // Vente non validée (échec / en attente / annulée) → on ne touche à RIEN.
   if (!saleValidated) return { printStatus: 'skipped', drawerStatus: 'skipped', drawerOpened: false };
-  // Idempotence : une seule fois par ticket (double-clic / retry / re-render).
-  if (!guard.claim(ticketData.ticketNumber)) {
-    return { printStatus: 'skipped', drawerStatus: 'skipped', drawerOpened: false };
-  }
 
   // ── Impression (jamais une condition de réussite de la vente) ──
   let printStatus: PrintStatus = 'no_printer';
   if (hasRealPrinter(peripheralBridge.status.printer)) {
-    try {
-      const ok = await peripheralBridge.printTicket(ticketData, { allowBrowserFallback: false });
-      printStatus = ok ? 'printed' : 'print_failed';
-      if (!ok) {
+    if (guard.beginAction(saleId, 'AUTO_PRINT')) {
+      try {
+        const ok = await peripheralBridge.printTicket(ticketData, { allowBrowserFallback: false });
+        printStatus = ok ? 'printed' : 'print_failed';
+        guard.settleAction(saleId, 'AUTO_PRINT', ok, ok ? undefined : 'printTicket returned false');
+        if (!ok) {
+          // eslint-disable-next-line no-console
+          console.warn('[POS] Ticket NON imprimé — échec imprimante (réimpression possible depuis l’historique)');
+        }
+      } catch (e) {
+        printStatus = 'print_failed';
+        guard.settleAction(saleId, 'AUTO_PRINT', false, String(e));
         // eslint-disable-next-line no-console
-        console.warn('[POS] Ticket NON imprimé — échec imprimante (réimpression possible depuis l’historique)');
+        console.warn('[POS] Impression ticket échouée:', e);
       }
-    } catch (e) {
-      printStatus = 'print_failed';
-      // eslint-disable-next-line no-console
-      console.warn('[POS] Impression ticket échouée:', e);
+    } else {
+      // Déjà déclenchée pour cette vente → aucune 2ᵉ impression auto.
+      printStatus = printStatusFromRecord(guard.getRecord(saleId, 'AUTO_PRINT'));
     }
   }
 
@@ -177,14 +338,22 @@ export async function finalizeSalePeripherals(params: {
   let drawerStatus: DrawerStatus = 'not_requested';
   let drawerOpened = false;
   if (shouldOpenDrawer(saleValidated, payments)) {
-    try {
-      drawerOpened = await peripheralBridge.openCashDrawer();
-      drawerStatus = drawerOpened ? 'opened' : 'open_failed';
-    } catch (e) {
-      // eslint-disable-next-line no-console
-      console.warn('[POS] Ouverture tiroir échouée:', e);
-      drawerOpened = false;
-      drawerStatus = 'open_failed';
+    if (guard.beginAction(saleId, 'AUTO_DRAWER_OPEN')) {
+      try {
+        drawerOpened = await peripheralBridge.openCashDrawer();
+        drawerStatus = drawerOpened ? 'opened' : 'open_failed';
+        guard.settleAction(saleId, 'AUTO_DRAWER_OPEN', drawerOpened, drawerOpened ? undefined : 'openCashDrawer returned false');
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.warn('[POS] Ouverture tiroir échouée:', e);
+        drawerOpened = false;
+        drawerStatus = 'open_failed';
+        guard.settleAction(saleId, 'AUTO_DRAWER_OPEN', false, String(e));
+      }
+    } else {
+      // Déjà déclenchée pour cette vente → aucune 2ᵉ ouverture auto.
+      drawerStatus = drawerStatusFromRecord(guard.getRecord(saleId, 'AUTO_DRAWER_OPEN'));
+      drawerOpened = drawerStatus === 'opened';
     }
   }
 

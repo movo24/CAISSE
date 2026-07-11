@@ -89,11 +89,16 @@ describe('desktop sale flow — hardening PR #57 (source guards)', () => {
     expect(posPage).toMatch(/finalizingRef\.current = true;/);
   });
 
-  it('règle 3 : la garde d’idempotence-ticket est le SINGLETON de module (survit au remontage)', () => {
-    // Import du singleton, pas d’instance locale par-composant (qui se perdrait au remontage).
-    expect(posPage).toMatch(/saleFinalizationGuard,/);
-    expect(posPage).toMatch(/guard: saleFinalizationGuard,/);
-    expect(posPage).not.toMatch(/new SaleFinalizationGuard\(\)/);
+  it('règle 3 : la garde d’idempotence est le SINGLETON de module persisté (survit remontage/redémarrage)', () => {
+    expect(posPage).toMatch(/salePeripheralGuard,/);
+    expect(posPage).toMatch(/guard: salePeripheralGuard,/);
+    expect(posPage).not.toMatch(/new SalePeripheralGuard\(\)/);
+  });
+
+  it('clé d’idempotence = saleId (idempotency key UUID), JAMAIS ticketNumber', () => {
+    // La vente est identifiée par la clé d'idempotence stable, pas par le numéro
+    // fiscal séquentiel par magasin.
+    expect(posPage).toMatch(/saleId: idempotencyKey/);
   });
 
   it('règle 1 : le tiroir ne s’ouvre qu’APRÈS la vente validée (saleValidated: true), jamais avant', () => {
@@ -121,9 +126,12 @@ describe('desktop sale flow — hardening PR #57 (source guards)', () => {
   });
 
   it('règle 3 : la RÉIMPRESSION (duplicata) imprime mais N’OUVRE JAMAIS le tiroir', () => {
-    // Le duplicata passe par printTicket direct, jamais par openCashDrawer ni finalizeSalePeripherals.
+    // Le duplicata passe par printTicket direct, jamais par openCashDrawer,
+    // finalizeSalePeripherals, ni la clé AUTO_DRAWER_OPEN, et ne recrée aucune vente.
     expect(history).toMatch(/peripheralBridge\.printTicket\(/);
     expect(history).not.toMatch(/openCashDrawer/);
     expect(history).not.toMatch(/finalizeSalePeripherals/);
+    expect(history).not.toMatch(/AUTO_DRAWER_OPEN/);
+    expect(history).not.toMatch(/salesApi\.create/);
   });
 });
