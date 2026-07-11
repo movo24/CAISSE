@@ -23,9 +23,9 @@ Statuts : OPEN · IN PROGRESS · BLOCKED (owner/accès) · CLOSED (PR retire l'e
 
 ---
 
-## D2 — connected-apps expose `api_key` + pas de scoping org  (M406)
-**Status:** OPEN · **P1 SÉCU.** `GET /connected-apps` (findAll/findOne) renvoie `api_key` en clair et n'est pas scopé à `req.user.organizationId` ⇒ un caissier lit les credentials tiers de n'importe quelle organisation.
-**Ferme :** `@Exclude` sur la colonne (ou DTO de réponse sans `api_key`) + `@Roles` + scoping org ; à terme colonne chiffrée (pattern airtable-ops). Confirmé par be-platform + xcut.
+## D2 — connected-apps expose `api_key` + pas de scoping org  (M406) — ✅ P1 CLOSED (vérif code 2026-07-11)
+**Status:** ✅ **CLOSED pour le P1 SÉCU** (exposition `api_key` + accès caissier). `connected-apps.controller.ts` : `@UseGuards(JwtAuthGuard, RolesGuard)` + `@Roles('admin')` sur TOUS les endpoints, et `api_key` **retiré de chaque réponse** (destructuring `{ apiKey, ...rest }` sur findAll/findOne/create/update/deactivate) ⇒ un non-admin n'accède pas, l'admin ne reçoit jamais la clé sur HTTP. Scoping org = sans objet (admin-only ; les admins accèdent à toutes les orgs par design).
+**Résiduel P2 (non bloquant) :** la colonne `api_key` reste **en clair au repos** en base — chiffrement à terme (pattern airtable-ops). Distinct du P1 fermé.
 
 ## D3 — audit `verifyChain` ne recalcule pas le hash  (M402) — ✅ CLOSED (commit 4355922)
 **Fermé** : la v1 hachait `details` comme `{}` (bug de replacer-array) ⇒ tamper indétectable, et le timestamp haché n'était pas persisté. M402 : `computeAuditHashV2` (canonicalisation récursive) + `hashed_at` persisté ⇒ `verifyChain` recompute les lignes v2 et détecte le tamper de `details` ; v1 = linkage-only (pas de faux positif) ; index unique `(store_id, previous_hash)` anti-fork + retry dans doLog ; migration 1744. Spec `test/audit-chain-verify.spec.ts`.
@@ -33,8 +33,8 @@ Statuts : OPEN · IN PROGRESS · BLOCKED (owner/accès) · CLOSED (PR retire l'e
 ## D4 — fiscal `verifyChain` (fiscal_journal)  (M006) — recompute autoritatif ✅ ; anti-fork fiscal = LOT OUVERT
 **Recompute `fiscal_journal` AUTORITATIF** (payload verbatim) + détection fork/linkage : déjà en place (`FiscalVerifyService`), prouvé par `test/fiscal-verify.spec.ts`. **LOT OUVERT explicite (PAS « couvert »)** — *asymétrie audit/fiscal* : l'anti-fork est par **construction** côté audit (index unique + retry) mais seulement par **détection** côté fiscal (la chaîne la plus réglementée). L'index unique `fiscal_journal (store_id, hash_chain_prev)` n'est PAS ajouté car il ferait rollback la **transaction de void** sur un fork concurrent **sans stratégie de retry** dans ce chemin → nécessite un **design concurrence du void** dédié (retry/relecture de tête dans la tx) + validation prod. **Différé, à nommer comme lot, pas comme fait.** (b) recompute autoritatif `sales`/`credit_notes` = **NF525-adjacent, PARQUÉ**.
 
-## D5 — sync `POST /push` fait confiance à `payload.storeId`  (M403)
-**Status:** OPEN · **P1 AUTHZ.** L'endpoint déjà livré ne confronte pas `payload.storeId` à `req.user` (pull/status le font via resolveStoreId) ⇒ un device peut écrire dans un autre magasin. **Ferme :** scoper/valider storeId contre l'utilisateur. (Distinct de la porte offline-sale PARQUÉE.)
+## D5 — sync `POST /push` fait confiance à `payload.storeId`  (M403) — ✅ CLOSED (vérif code 2026-07-11)
+**Status:** ✅ **CLOSED.** `sync.controller.ts` : `push` résout le magasin via `resolveStoreId(req, payload.storeId)` (non-admin ⇒ magasin du JWT, **Forbidden** si `payload.storeId` diffère ; admin peut cibler explicitement) puis appelle `syncService.push({ ...payload, storeId })` ; le service **force `storeId` sur chaque ligne insérée** (`s.storeId = payload.storeId`, ~L133) ⇒ aucun device ne peut écrire dans un autre magasin en spoofant `payload.storeId`. Aligné avec pull/status. (Distinct de la porte offline-sale PARQUÉE.)
 
 ## D6 — token Railway en clair dans `MONITORING-PLAYBOOK.md`  (M802)
 **Status:** IN PROGRESS (repo) / BLOCKED (rotation owner). Token `TOKEN=4714644a-…` ligne 168. **Rédaction dans le fichier = faite cette campagne** (stoppe la propagation), MAIS il reste dans l'historique git et **doit être ROTÉ** côté Railway. **Ferme :** rotation du token par l'owner (accès Railway) + purge historique si jugé nécessaire.
