@@ -58,14 +58,16 @@ jobs:
         run: npx tsc -p tsconfig.main.json --noEmit
 
       # ── Packaging build ───────────────────────────────────────────
-      # Bake the API URL (optional). Empty -> apiConfig falls back to prod default.
-      # The untrusted input is passed via env (never interpolated into the shell).
+      # Bake the API URL. Blank input (dispatch) or tag push -> Backend B Railway
+      # (le backend de prod où le code courant est déployé — décision owner 2026-07-11).
+      # Overridable via the workflow_dispatch input. The untrusted input is passed
+      # via env (never interpolated into the shell).
       - name: Write .env
         working-directory: packages/pos-desktop
         shell: bash
         env:
           API_URL: ${{ github.event.inputs.api_url }}
-        run: echo "VITE_API_URL=${API_URL}" > .env
+        run: echo "VITE_API_URL=${API_URL:-https://caisse-backend-production.up.railway.app}" > .env
 
       # Renderer MUST build with POS_TARGET=desktop so assets use a relative
       # base (./) for the app:// packaging — plain `build:pos` would bake `/`.
@@ -90,14 +92,24 @@ jobs:
           if ($leaked) { $leaked | ForEach-Object { Write-Host "LEAKED: $($_.FullName)" }; exit 1 }
           Write-Host "dist/main clean"
 
-      # Package the Windows NSIS installer + portable, x64 only.
-      # --publish never: this app has no auto-update/publish target; without it
-      # electron-builder auto-detects CI + a token and tries to resolve a GitHub
-      # publish config, failing with "Cannot detect repository by .git/config".
-      # No GH_TOKEN here on purpose (the tag Release step below handles uploads).
-      - name: Package Windows (.exe, x64)
+      # Package the Windows NSIS installer + portable, x64.
+      # - Dispatch (no tag): --publish never → artifacts seulement (test/QA).
+      # - Tag desktop-v*    : --publish always → electron-builder crée/complète la
+      #   Release GitHub avec l'.exe + le MANIFESTE de mise à jour (latest.yml /
+      #   beta.yml + .blockmap) que les caisses consomment via electron-updater.
+      #   Le canal (latest/beta) suit le nom de la release ; une pré-release GitHub
+      #   alimente le canal pilote.
+      - name: Package Windows (.exe, x64) — dispatch (no publish)
+        if: github.event_name == 'workflow_dispatch'
         working-directory: packages/pos-desktop
         run: npx electron-builder --config electron-builder.yml --win --x64 --publish never
+
+      - name: Package + publish Windows (.exe + latest.yml) — tag desktop-v*
+        if: startsWith(github.ref, 'refs/tags/desktop-v')
+        working-directory: packages/pos-desktop
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-builder --config electron-builder.yml --win --x64 --publish always
 
       # Print the exact artifact names + sizes into the log for verification.
       - name: List artifacts
@@ -117,9 +129,7 @@ jobs:
             packages/pos-desktop/release/*.exe
           if-no-files-found: error
 
-      # When triggered by a desktop-v* tag, attach the .exe files to a Release.
-      - name: Publish release (tag only)
-        if: startsWith(github.ref, 'refs/tags/desktop-v')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: packages/pos-desktop/release/*.exe
+      # NB : sur tag desktop-v*, la Release GitHub (avec l'.exe ET latest.yml/
+      # beta.yml + .blockmap pour l'auto-update) est créée par electron-builder
+      # `--publish always` ci-dessus. Pas d'étape softprops séparée : elle
+      # n'uploaderait pas le manifeste de mise à jour et entrerait en conflit.

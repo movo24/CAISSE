@@ -14,6 +14,17 @@ directories:
   output: release
   buildResources: build
 
+# Auto-update feed (electron-updater). GitHub Releases : le build génère
+# latest.yml (canal stable) / beta.yml (canal pilote, pré-releases) et les
+# publie sur la Release quand `--publish` est actif (tag desktop-v* en CI).
+# app-update.yml est embarqué dans l'app → la caisse consomme des RELEASES
+# publiées, jamais un git pull sur les sources.
+publish:
+  - provider: github
+    owner: movo24
+    repo: CAISSE
+    releaseType: release
+
 # What goes inside the app bundle. Renderer is the Vite `dist/` output.
 files:
   - dist/**/*

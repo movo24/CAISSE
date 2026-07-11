@@ -9,14 +9,22 @@
  * Dev mode loads the Vite dev server. Production loads the bundled renderer.
  */
 
-import { app, BrowserWindow, protocol, net, shell } from 'electron';
+import { app, BrowserWindow, protocol, net, shell, ipcMain } from 'electron';
 import * as path from 'path';
 import { pathToFileURL } from 'url';
 import { CustomerDisplayController } from './customerDisplay';
 import { registerPosPrintingIpc } from './posPrinting';
+import { UpdateController } from './updater';
 
 let posWindow: BrowserWindow | null = null;
 let customerDisplay: CustomerDisplayController | null = null;
+let updateController: UpdateController | null = null;
+
+// Version de l'app (depuis package.json packagé) — lue synchroniquement par le
+// preload pour l'afficher dans le POS. Toujours exacte, jamais 'dev' en build.
+ipcMain.on('app:getVersion', (e) => {
+  e.returnValue = app.getVersion();
+});
 
 const isDev = !app.isPackaged && process.env.NODE_ENV !== 'production';
 const DEV_URL = process.env.POS_DEV_URL || 'http://localhost:5175';
@@ -163,6 +171,11 @@ if (!gotLock) {
     });
     customerDisplay.registerIpc();
     customerDisplay.open();
+
+    // Mise à jour automatique (electron-updater + GitHub Releases). Ne bloque
+    // jamais la caisse ; désactivée en dev/non-packagé ; installe hors vente.
+    updateController = new UpdateController();
+    updateController.start();
 
     app.on('activate', () => {
       if (!posWindow) createPOSWindow();
