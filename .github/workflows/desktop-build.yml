@@ -22,6 +22,7 @@ on:
         default: ""
   push:
     tags:
+      - "v*"
       - "desktop-v*"
 
 permissions:
@@ -104,8 +105,8 @@ jobs:
         working-directory: packages/pos-desktop
         run: npx electron-builder --config electron-builder.yml --win --x64 --publish never
 
-      - name: Package + publish Windows (.exe + latest.yml) — tag desktop-v*
-        if: startsWith(github.ref, 'refs/tags/desktop-v')
+      - name: Package + publish Windows (.exe + latest.yml) — tag v* / desktop-v*
+        if: startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/tags/desktop-v')
         working-directory: packages/pos-desktop
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
