@@ -6,7 +6,7 @@ import {
   AlertTriangle, Building2, Network, Plug, CreditCard, Tag, Warehouse,
   BarChart3, Users, ShieldAlert, Database, Wallet, CalendarClock, Undo2,
   Boxes, Coins, Ticket, ClipboardCheck, Factory, ScanBarcode, Banknote,
-  ReceiptText, MonitorPlay,
+  ReceiptText, MonitorPlay, MonitorSmartphone,
 } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 import { useAppScope } from '../hooks/useAppScope';
@@ -71,6 +71,7 @@ const navItems: NavItem[] = [
   // Couche 5 — Analyse
   { path: '/sales', label: 'Ventes', icon: ReceiptText, minRole: 'manager', scope: 'store' },
   { path: '/cash-sessions', label: 'Sessions & Écarts caisse', icon: Banknote, minRole: 'manager', scope: 'store' },
+  { path: '/pos-enrollment', label: 'Enrôlement caisses', icon: MonitorSmartphone, minRole: 'manager', scope: 'store' },
   { path: '/employee-scores', label: 'Scores équipe', icon: Users, minRole: 'manager', scope: 'store' },
   { path: '/reports', label: 'Rapports', icon: FileBarChart, minRole: 'manager', scope: 'store' },
   { path: '/sales-guards', label: 'Garde-fous', icon: ShieldAlert, minRole: 'manager', scope: 'store' },

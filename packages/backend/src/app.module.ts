@@ -31,6 +31,7 @@ import { UnitsModule } from './modules/units/units.module';
 import { ConnectedAppsModule } from './modules/connected-apps/connected-apps.module';
 import { InventoryScanModule } from './modules/inventory-scan/inventory-scan.module';
 import { ProductIntegrationModule } from './modules/product-integration/product-integration.module';
+import { MachineEnrollmentModule } from './modules/machine-enrollment/machine-enrollment.module';
 import { EmployeeScoreModule } from './modules/employee-score/employee-score.module';
 import { StockLocationsModule } from './modules/stock-locations/stock-locations.module';
 import { StockReconciliationModule } from './modules/stock-reconciliation/stock-reconciliation.module';
@@ -120,6 +121,7 @@ const isProd = process.env.NODE_ENV === 'production';
     ConnectedAppsModule,
     InventoryScanModule,
     ProductIntegrationModule,
+    MachineEnrollmentModule,
     EmployeeScoreModule,
     StockLocationsModule,
     StockReconciliationModule,

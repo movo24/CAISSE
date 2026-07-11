@@ -880,11 +880,17 @@ export function POSPage() {
       } else {
         setProcessing(false);
         finalizingRef.current = false; // vente échouée → un retry est légitime
-        const message =
-          err?.response?.data?.message ||
-          err?.response?.data?.details?.[0] ||
-          err?.message ||
-          'Erreur lors de la vente';
+        // Vente bloquée par l'enrôlement (Partie B) : caisse non validée par le
+        // back-office. Message explicite, jamais un simple « erreur de vente ».
+        const isEnrollmentBlock =
+          err?.response?.status === 403 &&
+          err?.response?.data?.code === 'MACHINE_NOT_ENROLLED';
+        const message = isEnrollmentBlock
+          ? 'Caisse non validée par le back-office — vente bloquée. Demandez l’approbation de cette caisse.'
+          : err?.response?.data?.message ||
+            err?.response?.data?.details?.[0] ||
+            err?.message ||
+            'Erreur lors de la vente';
         setError(message);
         posEventBus.emit('SALE_ERROR', { message });
         console.error('[POS] Sale failed:', message);

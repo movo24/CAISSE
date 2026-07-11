@@ -669,4 +669,28 @@ export const attractApi = {
   remove: (id: string) => api.delete(`/attract/campaigns/${id}`),
 };
 
+// ── Enrôlement machine POS (Partie B) ──
+export interface PosMachine {
+  id: string;
+  machineId: string;
+  storeId: string;
+  terminalLabel: string;
+  machineName: string | null;
+  platform: string | null;
+  appVersion: string | null;
+  status: 'pending' | 'approved' | 'rejected' | 'revoked';
+  requestedBy: string | null;
+  decidedBy: string | null;
+  decidedAt: string | null;
+  decisionReason: string | null;
+  lastSeenAt: string | null;
+  createdAt: string;
+}
+export const enrollmentApi = {
+  list: (status?: string) => api.get('/pos/enrollment', { params: status ? { status } : {} }),
+  approve: (id: string) => api.post(`/pos/enrollment/${id}/approve`, {}),
+  reject: (id: string, reason: string) => api.post(`/pos/enrollment/${id}/reject`, { reason }),
+  revoke: (id: string, reason: string) => api.post(`/pos/enrollment/${id}/revoke`, { reason }),
+};
+
 export default api;

@@ -1,6 +1,7 @@
 import axios from 'axios';
 
 import { API_URL } from '../utils/apiConfig';
+import { currentMachineId } from './machineIdentity';
 
 const api = axios.create({
   baseURL: `${API_URL}/api`,
@@ -242,6 +243,9 @@ export const salesApi = {
     api.post('/sales', data, {
       headers: {
         'X-Terminal-Id': currentTerminalId(),
+        // Identité machine (Partie B) : le serveur bloque la vente si le magasin
+        // exige l'enrôlement et que cette machine n'est pas approuvée.
+        ...(currentMachineId() ? { 'X-Machine-Id': currentMachineId() } : {}),
         ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
       },
     }),
@@ -254,6 +258,29 @@ export const salesApi = {
         ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
       },
     }),
+};
+
+// Enrôlement machine (Partie B) — la caisse déclare son identité et interroge
+// son statut. Le magasin est déduit du JWT côté serveur (jamais envoyé ici).
+export interface EnrollmentStatus {
+  enrolled: boolean;
+  status: 'pending' | 'approved' | 'rejected' | 'revoked' | null;
+  enforced: boolean;
+  storeId?: string;
+  terminalLabel?: string;
+  decidedAt?: string | null;
+  decisionReason?: string | null;
+}
+export const enrollmentApi = {
+  request: (data: {
+    machineId: string;
+    terminalLabel: string;
+    machineName?: string;
+    platform?: string;
+    appVersion?: string;
+  }) => api.post('/pos/enrollment/request', data),
+  status: (machineId: string) =>
+    api.get<EnrollmentStatus>('/pos/enrollment/status', { params: { machineId } }),
 };
 
 // Promo codes (decision 6) — at-sale entry. validate() is read-only feedback; the

@@ -16,6 +16,7 @@ import { CustomerDisplayController } from './customerDisplay';
 import { registerPosPrintingIpc } from './posPrinting';
 import { UpdateController } from './updater';
 import { registerPosRawPrintIpc } from './posRawPrint';
+import { registerMachineIdIpc } from './machineId';
 
 let posWindow: BrowserWindow | null = null;
 let customerDisplay: CustomerDisplayController | null = null;
@@ -164,6 +165,9 @@ if (!gotLock) {
     registerPosPrintingIpc();
     // Impression RAW ESC/POS (tiroir-caisse + coupe) via le spooler Windows.
     registerPosRawPrintIpc();
+
+    // Identité machine stable (Partie B — enrôlement). IPC borné, renvoie un UUID.
+    registerMachineIdIpc();
 
     // Managed customer display (screen 2): screen selection, on/off, reload,
     // fullscreen/kiosk, crash watchdog, persistence, IPC control.

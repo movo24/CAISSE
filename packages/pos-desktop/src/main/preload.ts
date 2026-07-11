@@ -61,6 +61,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   cutPaper: (deviceName?: string) => ipcRenderer.invoke('pos-print:cut', deviceName),
   rawEscpos: (deviceName: string | undefined, bytes: number[]) =>
     ipcRenderer.invoke('pos-print:rawEscpos', deviceName, bytes),
+  // Identité machine stable (Partie B — enrôlement) : UUID persistant en userData.
+  getMachineId: () => ipcRenderer.invoke('machine:getId') as Promise<string>,
 });
 
 /**
