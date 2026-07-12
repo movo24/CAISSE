@@ -41,8 +41,8 @@
 ### P1 — Build / front
 - [x] **M703** mobile : tsc réparé (commit 6ce722c) — vite-env.d.ts, vitest 5/5
 - [~] **M704** customer-app : **fix vérifié** (installer `@capacitor/preferences@^6` → tsc vert) mais **NON applicable depuis ce worktree** : `node_modules` est un symlink partagé avec le checkout principal ; `npm install` ici casse le store partagé (testé + recovery effectué). Le manifeste déclare déjà la dep → résolu par `npm install` dans un checkout normal. Pas de bug code.
-- [ ] **M601** POS : câbler branche succès TPE (ou bouton confirm) + test
-- [ ] **M603** POS : inclure `creditNoteCode` dans l'enqueue offline + tests finalize
+- [x] **M601** POS : branche succès TPE câblée (`startTpeWaiting` / `handleTpeResponse('success'|'refused'|'timeout')`, POSPage) — chemin desktop **étiqueté DÉMO** (carte réelle = pipeline iPad/WisePad 3, PR #25/#37).
+- [x] **M603** POS : `creditNoteCode` porté par `toWirePayments` et inclus dans l'enqueue offline (`salePayload.ts`) — une vente `store_credit` hors-ligne se synchronise correctement.
 - [~] **M607** POS : vérifié → couche HMAC sync **morte** (token jamais provisionné, header non posé, backend ne vérifie pas) ; commentaires trompeurs corrigés (6a05c0b, D19) ; sync authentifié par JWT. Câblage end-to-end = gated (chemin écriture sync).
 
 ## Employee System Score — score employé 100 % factuel (2026-07-07, PR #14)
@@ -173,10 +173,26 @@ NF525 Z-seal · Comptamax export comptable · porte offline-sale · onboarding/p
 - ✅ **GO WisePad3/Stripe prod** (PR #37) · **GO TEST_DATABASE_URL** (PR #38, +2 bugs prod prouvés/corrigés) · **GO D1.4** (PR #39, scellement fiscal des avoirs) · **GO Railway preflight** (PR #40) · **GO Railway live** (PR #41 + workflow CI) : **le commit main tourne EN PROD live** (deployment `a23cfe97`, health 200, smoke 401/400/201/200, migrations OK, `ALLOW_INMEMORY_CACHE=true` créé sur GO explicite). Prochain verrou : **GO DNS** (prod vivante = condition remplie).
 - ✅ **GO Product Packs** (2026-07-09) : produits composés — composition `product_components` (anti-boucle BFS), décrément composants race-safe dans la tx de vente, snapshot figé `sale_component_movements` (retours au prorata selon le snapshot, jamais la composition courante), maillon `stock_restored` enrichi, section Pack fiche produit backoffice, 12 specs pg-mem + 2 specs vrai-PG (deltas exacts, concurrence 5/10, atomicité).
 
+## Campagne 2026-07-11 — écran client, enrôlement, TW24 par magasin, distribution Windows
+
+> Salve livrée + mergée dans `main` + déployée (Backend B live, smoke + E2E verts).
+
+- ✅ **Bloc 4 — écran client attract** (PR #48→#52, mergées) : identité The Wesley's, backend campagnes/playlists, consommation playlist, backoffice de gestion. Migration `1755` déployée.
+- ✅ **Windows field mission** (PR #53→#57, mergées) : audit terrain (#53), **mise à jour automatique** electron-updater + GitHub Releases (#54), **tiroir-caisse RAW ESC/POS + diagnostic imprimante** (#55), **Dashboard opérationnel vrais chiffres** (#56), **impression ticket + tiroir dans le flux de vente réel, durci P0** (#57).
+- ✅ **P0 — clé d'idempotence périphériques auditée** (#57) : `ticketNumber` **rejeté** (séquentiel par magasin, repli client collisionnable) → identité stable = `saleId` (`sale-<uuid>`), gardes **par action** persistées (`AUTO_PRINT` / `AUTO_DRAWER_OPEN`, statuts dispatching/completed/failed), verrou d'exécution séparé du registre d'actions, cas incertain (crash) jamais rejoué.
+- ✅ **Partie B — enrôlement machine** (PR #58, mergée) : entité `pos_machines`, migration `1756` **exécutée** (déploiement), module `machine-enrollment` (request/status/approve/reject/revoke), barrière de vente `assertMachineEnrolled` (feature-flag `stores.enrollment_enforced`, **défaut false**), back-office de validation, POS desktop (machineId stable, écran d'attente, header `X-Machine-Id`).
+- ✅ **Partie C — toggle TW24 par magasin** (PR #60, mergée) : `stores.tw24_enabled` (**défaut false — opt-in**, migration `1757` **exécutée**), gate en tête de `pushEvent` (skip silencieux si désactivé), bouton Dashboard admin. TW24 **OFF partout par défaut** → aucun événement avant activation explicite.
+- ✅ **Distribution Windows** (PR #59, mergée) : `electron-builder` **The Wesley's POS** (appId `com.thewesleys.pos`, `The-Wesleys-POS-Setup-x64.exe`), **Release GitHub `v1.0.0` publiée** (installeur + `latest.yml` + `.blockmap` + portable).
+- 🔄 **Auto-update R2** (PR #61, draft) : feed sur stockage dédié (dépôt privé sans token embarqué) — **prêt, en attente des 5 valeurs R2 owner** (`POS_UPDATE_URL` + 4 secrets). Voir `packages/pos-desktop/AUTO_UPDATE_DISTRIBUTION.md`.
+- ✅ **M9 — douchette wedge globale** (PR #62) : `startBarcodeListener` (code mort) câblé dans POSPage → scan capté hors focus, garde pure `shouldAcceptWedgeScan`.
+
+### Réconciliation registre de dette (2026-07-11)
+Audit code : **D2** (connected-apps `api_key`) et **D5** (sync `push` storeId) étaient marqués OPEN mais sont **corrigés dans le code** → passés CLOSED (D2 garde un résiduel P2 = chiffrement au repos). **M601/M603** vérifiés livrés. Les cases ci-dessus reflètent l'état réel.
+
 ## Prochaine action automatique (continuité)
-**L'espace « safe » est épuisé (2026-07-08, post PR #24→#34).** Tout le restant est Tier-2 /
-owner-gated / matériel : validation WisePad 3 + clé Stripe prod (GO owner), DNS cutover + déploiement
-Railway (GO owner explicite), `TEST_DATABASE_URL` pour les specs pg/e2e en CI (décision infra),
-rotations de secrets D6/D8, réconciliation stock one-shot (écrit le stock réel — validation prod),
-signature du `.exe` / distribution. Chaque action attend son GO nommé — aucune ne s'ouvre sur un
-« continue » générique (charte §0).
+**L'espace « safe » est de nouveau épuisé (2026-07-11, post campagne écran client / Parties B-C / distribution).**
+Tout le restant est Tier-2 / owner-gated / matériel : **5 valeurs R2** pour l'auto-update (PR #61),
+validation WisePad 3 + clé Stripe prod (GO owner), DNS cutover + déploiement Railway (GO owner explicite),
+`TEST_DATABASE_URL` pour les specs pg/e2e en CI (décision infra), rotations de secrets D6/D8,
+réconciliation stock one-shot (écrit le stock réel — validation prod), **certificat de signature `.exe`**.
+Chaque action attend son GO nommé — aucune ne s'ouvre sur un « continue » générique (charte §0).
