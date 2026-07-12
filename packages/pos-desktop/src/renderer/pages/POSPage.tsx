@@ -53,6 +53,7 @@ import { IPadPOSLayout } from '../components/ipad/IPadPOSLayout';
 import { StockAlertToast } from '../components/StockAlertToast';
 import { SaleGuardsGate } from '../components/SaleGuardsGate';
 import { SalesCockpit } from '../components/SalesCockpit';
+import { AddxWordmark } from '../components/AddxWordmark';
 import { CustomerDisplayPublisher } from '../components/CustomerDisplayPublisher';
 import { UpdateBanner } from '../components/UpdateBanner';
 import { ActiveCashierBanner } from '../components/ActiveCashierBanner';
@@ -1189,11 +1190,12 @@ export function POSPage() {
       <ShiftWarning />
 
       {/* ── Header ── */}
-      <header className={`bg-white/80 backdrop-blur-xl border-b border-pos-border/30 flex items-center justify-between gap-3 relative z-30 ${device.isCompact ? 'px-3 py-2' : 'px-5 py-2.5'}`}>
+      <header className={`bg-pos-text border-b border-white/10 flex items-center justify-between gap-3 relative z-30 ${device.isCompact ? 'px-3 py-2' : 'px-5 py-2.5'}`}>
         <div className="flex items-center gap-2 tablet:gap-4 min-w-0 flex-1">
-          <div className={`flex items-center justify-center rounded-xl bg-pos-text flex-shrink-0 ${device.isCompact ? 'w-8 h-8' : 'w-9 h-9'}`}>
-            <span className={`text-white font-black ${device.isCompact ? 'text-xs' : 'text-sm'}`}>C</span>
-          </div>
+          <AddxWordmark
+            className="text-white flex-shrink-0"
+            style={{ fontSize: device.isCompact ? 20 : 26 }}
+          />
           {/* Caissier actif — bloc VISIBLE EN PERMANENCE */}
           <ActiveCashierBanner onScoreClick={() => setScoreDetailOpen(true)} />
           <FluxWidget occupancy={store.occupancy} weather={store.weather} />
@@ -1265,11 +1267,11 @@ export function POSPage() {
 
         <div className="relative">
           <button className="profile-trigger" onClick={() => setProfileOpen(!profileOpen)}>
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-pos-accent/20 to-pos-accent-alt/20 flex items-center justify-center">
-              <UserCircle size={18} className="text-pos-text" />
+            <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center">
+              <UserCircle size={18} className="text-white" />
             </div>
-            <span className="text-sm font-medium text-pos-text hidden lg:block">{store.employee?.firstName}</span>
-            <ChevronDown size={14} className="text-pos-muted" />
+            <span className="text-sm font-medium text-white/90 hidden lg:block">{store.employee?.firstName}</span>
+            <ChevronDown size={14} className="text-white/60" />
           </button>
           {profileOpen && (
             <>
@@ -1332,8 +1334,8 @@ export function POSPage() {
       <div className="pos-main-layout">
         <div className={`flex-1 flex flex-col gap-3 tablet:gap-4 ${device.isCompact ? 'p-3' : 'p-5'}`}>
 
-          {/* ── Smart search bar ── */}
-          <div className="relative max-w-2xl mx-auto w-full" ref={searchContainerRef}>
+          {/* ── Smart search bar (pleine largeur — zone de travail) ── */}
+          <div className="relative w-full" ref={searchContainerRef}>
             <Search size={20} className="absolute left-5 top-1/2 -translate-y-1/2 text-pos-muted/40 z-10" />
             <input
               ref={scanRef}
@@ -1395,43 +1397,66 @@ export function POSPage() {
           </div>
 
           {error && (
-            <div className="max-w-2xl mx-auto w-full bg-pos-danger/5 text-pos-danger rounded-2xl px-4 py-2.5 text-sm font-medium animate-slide-up">{error}</div>
+            <div className="w-full bg-pos-danger/5 text-pos-danger rounded-2xl px-4 py-2.5 text-sm font-medium animate-slide-up">{error}</div>
           )}
 
-          {/* ── Sales Cockpit (shift performance) ── */}
-          <div className="max-w-2xl mx-auto w-full mb-3">
-            <SalesCockpit />
-          </div>
+          {/* ── Panier — tableau produits pleine largeur (zone de travail) ── */}
+          <div className="flex-1 min-h-0 w-full flex flex-col bg-white rounded-2xl shadow-soft border border-pos-border/30 overflow-hidden">
+            {/* En-tête de colonnes */}
+            <div className="grid grid-cols-[1fr_auto_112px_128px_36px] gap-4 px-5 py-3 border-b border-pos-border/30 bg-pos-subtle/40 text-[11px] font-bold uppercase tracking-wider text-pos-muted">
+              <span>Produit</span>
+              <span className="text-center">Qté</span>
+              <span className="text-right">Prix unit.</span>
+              <span className="text-right">Total</span>
+              <span />
+            </div>
 
-          {/* ── Cart items ── */}
-          <div className="flex-1 overflow-auto space-y-2 max-w-2xl mx-auto w-full">
-            {store.cartItems.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full text-pos-muted gap-3">
-                <ShoppingBag size={48} strokeWidth={1} className="opacity-20" />
-                <p className="text-base font-medium opacity-60">Tapez le nom d'un produit ou scannez un code-barre</p>
-                <p className="text-xs opacity-40">Produits au poids disponibles (bonbons, the, cafe...)</p>
-              </div>
-            ) : (
-              store.cartItems.map((item, idx) => (
-                <div key={item.productId} className={`bg-white rounded-2xl shadow-soft border border-pos-border/20 flex items-center animate-slide-up ${device.isTouch ? 'gap-3 p-3 tablet:gap-4 tablet:p-4' : 'gap-4 p-4'}`} style={{ animationDelay: `${idx * 30}ms` }}>
-                  <div className={`product-avatar bg-gradient-to-br ${avatarColor(item.name)}`}>{initials(item.name)}</div>
-                  <div className="flex-1 min-w-0">
-                    <p className={`font-semibold truncate ${device.isTouch ? 'text-base' : 'text-sm'}`}>{item.name}</p>
-                    <p className="text-xs text-pos-muted font-mono mt-0.5 hidden tablet:block">{item.ean}</p>
+            {/* Corps : liste (défilante) ou état vide élégant — même structure */}
+            <div className="flex-1 overflow-auto">
+              {store.cartItems.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full text-center px-6 py-10 gap-4">
+                  <div className="w-20 h-20 rounded-3xl bg-pos-subtle flex items-center justify-center">
+                    <ShoppingBag size={40} strokeWidth={1.5} className="text-pos-muted/50" />
                   </div>
-                  <div className={`flex items-center gap-1 bg-pos-subtle rounded-full ${device.isTouch ? 'p-1' : 'p-0.5'}`}>
-                    <button className={`rounded-full hover:bg-white hover:shadow-soft flex items-center justify-center transition-all ${device.isTouch ? 'w-10 h-10' : 'w-7 h-7'}`} onClick={() => store.updateQuantity(item.productId, item.quantity - 1)}><Minus size={device.isTouch ? 18 : 14} /></button>
-                    <span className={`text-center font-semibold ${device.isTouch ? 'w-10 text-lg' : 'w-8 text-sm'}`}>{item.quantity}</span>
-                    <button className={`rounded-full hover:bg-white hover:shadow-soft flex items-center justify-center transition-all ${device.isTouch ? 'w-10 h-10' : 'w-7 h-7'}`} onClick={() => store.updateQuantity(item.productId, item.quantity + 1)}><Plus size={device.isTouch ? 18 : 14} /></button>
+                  <div>
+                    <p className="text-lg font-bold text-pos-text">Aucun produit scanné</p>
+                    <p className="text-sm text-pos-muted mt-1">Scannez un produit ou recherchez pour commencer</p>
                   </div>
-                  <div className={`text-right ${device.isTouch ? 'w-20' : 'w-24'}`}>
-                    <p className={`font-bold ${device.isTouch ? 'text-base' : 'text-sm'}`}>{formatPrice(item.unitPriceMinorUnits * item.quantity)}</p>
-                    {item.discountMinorUnits > 0 && <p className="text-xs text-pos-success font-medium">-{formatPrice(item.discountMinorUnits)}</p>}
-                  </div>
-                  <button className={`rounded-full hover:bg-pos-danger/10 flex items-center justify-center text-pos-muted hover:text-pos-danger transition-colors ${device.isTouch ? 'w-10 h-10' : 'w-7 h-7'}`} onClick={() => store.removeFromCart(item.productId)}><X size={device.isTouch ? 18 : 14} /></button>
                 </div>
-              ))
-            )}
+              ) : (
+                store.cartItems.map((item, idx) => (
+                  <div
+                    key={item.productId}
+                    className={`grid grid-cols-[1fr_auto_112px_128px_36px] gap-4 items-center px-5 border-b border-pos-border/10 last:border-b-0 hover:bg-pos-subtle/30 transition-colors animate-slide-up ${device.isTouch ? 'py-3.5' : 'py-3'}`}
+                    style={{ animationDelay: `${idx * 30}ms` }}
+                  >
+                    {/* Produit */}
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className={`product-avatar bg-gradient-to-br ${avatarColor(item.name)} flex-shrink-0`}>{initials(item.name)}</div>
+                      <div className="min-w-0">
+                        <p className={`font-semibold truncate text-pos-text ${device.isTouch ? 'text-base' : 'text-sm'}`}>{item.name}</p>
+                        <p className="text-xs text-pos-muted font-mono mt-0.5 truncate">{item.ean}</p>
+                      </div>
+                    </div>
+                    {/* Qté */}
+                    <div className={`flex items-center gap-1 bg-pos-subtle rounded-full justify-self-center ${device.isTouch ? 'p-1' : 'p-0.5'}`}>
+                      <button className={`rounded-full hover:bg-white hover:shadow-soft flex items-center justify-center transition-all ${device.isTouch ? 'w-10 h-10' : 'w-7 h-7'}`} onClick={() => store.updateQuantity(item.productId, item.quantity - 1)}><Minus size={device.isTouch ? 18 : 14} /></button>
+                      <span className={`text-center font-semibold tabular-nums ${device.isTouch ? 'w-10 text-lg' : 'w-8 text-sm'}`}>{item.quantity}</span>
+                      <button className={`rounded-full hover:bg-white hover:shadow-soft flex items-center justify-center transition-all ${device.isTouch ? 'w-10 h-10' : 'w-7 h-7'}`} onClick={() => store.updateQuantity(item.productId, item.quantity + 1)}><Plus size={device.isTouch ? 18 : 14} /></button>
+                    </div>
+                    {/* Prix unitaire */}
+                    <div className="text-right text-sm text-pos-muted font-medium tabular-nums">{formatPrice(item.unitPriceMinorUnits)}</div>
+                    {/* Total ligne */}
+                    <div className="text-right">
+                      <p className={`font-bold text-pos-text tabular-nums ${device.isTouch ? 'text-base' : 'text-sm'}`}>{formatPrice(item.unitPriceMinorUnits * item.quantity)}</p>
+                      {item.discountMinorUnits > 0 && <p className="text-xs text-pos-success font-medium">-{formatPrice(item.discountMinorUnits)}</p>}
+                    </div>
+                    {/* Supprimer */}
+                    <button className={`rounded-full hover:bg-pos-danger/10 flex items-center justify-center text-pos-muted hover:text-pos-danger transition-colors ${device.isTouch ? 'w-9 h-9' : 'w-7 h-7'}`} onClick={() => store.removeFromCart(item.productId)}><X size={device.isTouch ? 18 : 14} /></button>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         </div>
 
@@ -1454,8 +1479,11 @@ export function POSPage() {
               </div>
             </div>
           )}
-          <div className="flex-1" />
-          <div className="p-5 space-y-3">
+          {/* Objectif Shift — valorisé, en haut de la colonne (résumé de perf) */}
+          <div className="flex-1 min-h-0 overflow-y-auto p-4">
+            <SalesCockpit />
+          </div>
+          <div className="p-5 space-y-3 border-t border-pos-border/30">
             <div className="flex justify-between text-sm text-pos-muted">
               <span>Sous-total</span><span className="font-medium">{formatPrice(store.subtotal())}</span>
             </div>
