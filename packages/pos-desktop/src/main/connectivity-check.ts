@@ -69,7 +69,14 @@ app.whenReady().then(async () => {
     catch (e) { out.healthErr = String(e && e.message || e); }
     try {
       const r = await fetch(out.api + '/api/auth/login/pin', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+        // Mêmes en-têtes que l'axios réel du POS (services/api.ts) : Content-Type
+        // + Cache-Control + Pragma → même préflight CORS que l'appli en production.
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+        },
         body: JSON.stringify({ storeId: ${JSON.stringify(STORE)}, pin: ${JSON.stringify(PIN)} }),
       });
       out.login = r.status;
