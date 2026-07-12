@@ -17,7 +17,8 @@
     "migration:revert": "npm run typeorm -- migration:revert -d src/database/typeorm.config.ts",
     "fiscal:verify": "ts-node -r tsconfig-paths/register src/scripts/fiscal-verify.ts",
     "admin:create": "ts-node -r tsconfig-paths/register src/scripts/admin-cli.ts create",
-    "admin:reset": "ts-node -r tsconfig-paths/register src/scripts/admin-cli.ts reset"
+    "admin:reset": "ts-node -r tsconfig-paths/register src/scripts/admin-cli.ts reset",
+    "pos:access": "ts-node -r tsconfig-paths/register src/scripts/pos-access.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.3.0",
