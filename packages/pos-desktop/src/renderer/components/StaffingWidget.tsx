@@ -44,19 +44,21 @@ export function StaffingWidget() {
       {/* ── Badge compact ── */}
       <button
         onClick={() => setOpen(!open)}
-        className={`flex items-center gap-1.5 text-[10px] font-semibold px-2 py-1 rounded-full transition-colors ring-1 ${cfg.bg} ${cfg.color} ${cfg.ring} hover:brightness-95`}
+        className={`flex items-center gap-1.5 text-[10px] font-semibold px-2 py-1 rounded-full transition-colors ring-1 min-w-0 ${cfg.bg} ${cfg.color} ${cfg.ring} hover:brightness-95`}
         title="Staffing IA — cliquer pour details"
       >
         {cfg.icon === 'alert' ? (
-          <AlertTriangle size={10} className="animate-pulse" />
+          <AlertTriangle size={10} className="animate-pulse flex-shrink-0" />
         ) : cfg.icon === 'warn' ? (
-          <AlertTriangle size={10} />
+          <AlertTriangle size={10} className="flex-shrink-0" />
         ) : (
-          <Users size={10} />
+          <Users size={10} className="flex-shrink-0" />
         )}
-        <span>{cfg.label}</span>
+        {/* Seul libellé à largeur variable de la barre : tronqué en ellipsis si
+            l'espace manque (jamais de chevauchement sur les actions voisines). */}
+        <span className="truncate">{cfg.label}</span>
         {staffing.activeCashiers.length > 0 && (
-          <span className="opacity-60">{staffing.activeCashiers.length}</span>
+          <span className="opacity-60 flex-shrink-0">{staffing.activeCashiers.length}</span>
         )}
       </button>
 
