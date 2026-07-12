@@ -9,7 +9,7 @@
  * Dev mode loads the Vite dev server. Production loads the bundled renderer.
  */
 
-import { app, BrowserWindow, protocol, net, shell, ipcMain, screen } from 'electron';
+import { app, BrowserWindow, protocol, net, shell, ipcMain, screen, session } from 'electron';
 import * as path from 'path';
 import { pathToFileURL } from 'url';
 import { CustomerDisplayController } from './customerDisplay';
@@ -60,6 +60,39 @@ function registerAppProtocol(): void {
       return new Response('Forbidden', { status: 403 });
     }
     return net.fetch(pathToFileURL(filePath).toString());
+  });
+}
+
+/**
+ * CORS shim for the packaged register (fix bug terrain v1.0.2 → v1.0.3).
+ *
+ * The renderer runs from the `app://app` origin, so EVERY call to the HTTPS
+ * backend is cross-origin and subject to CORS. The backend uses a strict,
+ * credentialed CORS allowlist that (correctly) does not include `app://` — so
+ * Chromium blocks the response and the login screen shows
+ * « Connexion impossible. Backend non disponible ? » even though the API is up
+ * (a plain Node/CI request has no CORS and returns 200 — hence the mismatch).
+ *
+ * The app talks ONLY to its own backend, with Bearer tokens in the
+ * `Authorization` header (axios `withCredentials` is false → no cookies), so
+ * relaxing CORS on the RESPONSE, client-side, for our own HTTPS backend is safe
+ * and changes nothing on the backend. `webSecurity` stays ON. Toggle off with
+ * `POS_CORS_SHIM=off` (used by the connectivity check to prove the cause).
+ */
+export function installApiCorsShim(targetSession = session.defaultSession): void {
+  if (process.env.POS_CORS_SHIM === 'off') return;
+  targetSession.webRequest.onHeadersReceived({ urls: ['https://*/*'] }, (details, callback) => {
+    const headers = { ...(details.responseHeaders || {}) };
+    for (const key of Object.keys(headers)) {
+      if (/^access-control-allow-(origin|methods|headers|credentials)$/i.test(key)) {
+        delete headers[key];
+      }
+    }
+    // Non-credentialed requests → a permissive ACAO is valid and sufficient.
+    headers['Access-Control-Allow-Origin'] = ['*'];
+    headers['Access-Control-Allow-Methods'] = ['GET,POST,PUT,PATCH,DELETE,OPTIONS'];
+    headers['Access-Control-Allow-Headers'] = ['*'];
+    callback({ responseHeaders: headers });
   });
 }
 
@@ -173,6 +206,9 @@ if (!gotLock) {
 
   app.whenReady().then(() => {
     if (!isDev) registerAppProtocol();
+    // Autoriser le renderer (origine app://) à joindre le backend HTTPS malgré
+    // le CORS credentialed strict — sinon « Backend non disponible » (bug v1.0.2).
+    installApiCorsShim();
     createPOSWindow();
 
     // Impression ticket via le spooler OS (PR #33) — honest-fail, IPC borné.
