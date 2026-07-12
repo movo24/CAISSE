@@ -189,23 +189,23 @@ export function SalesCockpit() {
         </div>
       )}
 
-      {/* Main cockpit banner */}
-      <div className={`${colors.light} ${colors.border} border rounded-2xl p-4 mb-4 transition-colors duration-500`}>
+      {/* Main cockpit banner — carte Objectif Shift valorisée */}
+      <div className={`${colors.light} ${colors.border} border rounded-2xl p-5 transition-colors duration-500`}>
         {/* Row 1: Main KPI */}
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-3">
-            <div className={`w-10 h-10 rounded-xl ${colors.bg} flex items-center justify-center`}>
-              <Target size={20} className="text-white" />
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className={`w-11 h-11 rounded-xl ${colors.bg} flex items-center justify-center flex-shrink-0`}>
+              <Target size={22} className="text-white" />
             </div>
-            <div>
-              <p className="text-[10px] text-gray-500 font-semibold uppercase tracking-wide">
+            <div className="min-w-0">
+              <p className="text-[11px] text-gray-500 font-bold uppercase tracking-wider">
                 Objectif shift
               </p>
               <div className="flex items-baseline gap-2">
-                <span className={`text-2xl font-black tabular-nums ${colors.text}`}>
+                <span className={`text-3xl font-black tabular-nums ${colors.text}`}>
                   {formatEuros(data.currentCA)} €
                 </span>
-                <span className="text-sm text-gray-400 font-semibold">
+                <span className="text-sm text-gray-400 font-semibold whitespace-nowrap">
                   / {formatEuros(data.target)} €
                 </span>
               </div>
@@ -213,43 +213,51 @@ export function SalesCockpit() {
           </div>
 
           {/* Percentage badge */}
-          <div className={`px-4 py-2 rounded-xl ${colors.bg} text-white`}>
-            <span className="text-xl font-black tabular-nums">{pct}%</span>
+          <div className={`px-4 py-2.5 rounded-2xl ${colors.bg} text-white flex-shrink-0`}>
+            <span className="text-2xl font-black tabular-nums">{pct}%</span>
           </div>
         </div>
 
         {/* Progress bar */}
-        <div className="w-full h-2 bg-gray-200 rounded-full mb-3 overflow-hidden">
+        <div className="w-full h-2.5 bg-gray-200 rounded-full mb-4 overflow-hidden">
           <div
             className={`h-full ${colors.bg} rounded-full transition-all duration-1000`}
             style={{ width: `${Math.min(100, pct)}%` }}
           />
         </div>
 
-        {/* Row 2: Details */}
-        <div className="grid grid-cols-3 gap-2 mb-3">
-          <div className="text-center p-2 rounded-xl bg-white/60">
-            <p className="text-[9px] text-gray-500 font-semibold flex items-center justify-center gap-1">
-              <Zap size={9} /> RESTANT
+        {/* Row 2: Details — 2×2, plus d'air et de lisibilité */}
+        <div className="grid grid-cols-2 gap-2.5 mb-3">
+          <div className="p-3 rounded-xl bg-white/70">
+            <p className="text-[10px] text-gray-500 font-bold flex items-center gap-1.5">
+              <Zap size={11} /> RESTANT
             </p>
-            <p className="text-sm font-bold text-gray-700 tabular-nums">
+            <p className="text-lg font-black text-gray-800 tabular-nums mt-0.5">
               {formatEuros(data.remaining)} €
             </p>
           </div>
-          <div className="text-center p-2 rounded-xl bg-white/60">
-            <p className="text-[9px] text-gray-500 font-semibold flex items-center justify-center gap-1">
-              <Clock size={9} /> TEMPS
+          <div className="p-3 rounded-xl bg-white/70">
+            <p className="text-[10px] text-gray-500 font-bold flex items-center gap-1.5">
+              <Clock size={11} /> TEMPS RESTANT
             </p>
-            <p className="text-sm font-bold text-gray-700 tabular-nums">
+            <p className="text-lg font-black text-gray-800 tabular-nums mt-0.5">
               {formatTime(data.timeRemainingMs)}
             </p>
           </div>
-          <div className="text-center p-2 rounded-xl bg-white/60">
-            <p className="text-[9px] text-gray-500 font-semibold flex items-center justify-center gap-1">
-              <TrendingUp size={9} /> RYTHME
+          <div className="p-3 rounded-xl bg-white/70">
+            <p className="text-[10px] text-gray-500 font-bold flex items-center gap-1.5">
+              <TrendingUp size={11} /> RYTHME ACTUEL
             </p>
-            <p className="text-sm font-bold text-gray-700 tabular-nums">
+            <p className="text-lg font-black text-gray-800 tabular-nums mt-0.5">
               {formatEuros(data.requiredPerHour)} €/h
+            </p>
+          </div>
+          <div className="p-3 rounded-xl bg-white/70">
+            <p className="text-[10px] text-gray-500 font-bold flex items-center gap-1.5">
+              <Target size={11} /> CA RÉALISÉ
+            </p>
+            <p className="text-lg font-black text-gray-800 tabular-nums mt-0.5">
+              {formatEuros(data.currentCA)} €
             </p>
           </div>
         </div>
