@@ -1,0 +1,35 @@
+{
+  "expo": {
+    "name": "The Wesley Control",
+    "slug": "wesley-control",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "wesleycontrol",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "cover",
+      "backgroundColor": "#0B1220"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "bundleIdentifier": "com.addxintelligence.wesleycontrol",
+      "supportsTablet": false,
+      "infoPlist": {
+        "NSFaceIDUsageDescription": "Déverrouillage rapide et sécurisé de l'application avec Face ID."
+      }
+    },
+    "android": {
+      "package": "com.addxintelligence.wesleycontrol",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#0B1220"
+      },
+      "permissions": ["android.permission.USE_BIOMETRIC"]
+    },
+    "extra": {
+      "apiUrl": null
+    }
+  }
+}

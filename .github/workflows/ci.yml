@@ -53,6 +53,11 @@ jobs:
       - name: Front unit tests (mobile — vitest)
         run: npm run test:mobile
 
+      - name: Wesley Control app (typecheck + vitest)
+        run: |
+          npm run typecheck:control
+          npm run test:control
+
       - name: E2E spec collectable (playwright --list, no browser/DB)
         run: npm run test:e2e:list
 
