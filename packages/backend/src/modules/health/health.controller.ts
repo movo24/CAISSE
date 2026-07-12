@@ -39,7 +39,7 @@ export class HealthController {
   async check(@Res({ passthrough: true }) res: Response) {
     const mem = process.memoryUsage();
 
-    // ── DB ping (CRITICAL) — strict 2s timeout ────────────────
+    // ── DB ping (CRITICAL) — strict 5s timeout (HEALTH_DB_TIMEOUT_MS) ────────────────
     let dbState: 'up' | 'down' = 'down';
     let dbError: string | null = null;
     let dbLatencyMs: number | null = null;
