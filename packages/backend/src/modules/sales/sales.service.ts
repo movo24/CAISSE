@@ -38,6 +38,7 @@ import { PaginatedResult } from '../../common/dto/pagination.dto';
 import { logBusinessEvent } from '../../common/business-logger';
 import { RealtimeService } from '../../common/realtime/realtime.service';
 import { returningRows } from '../../common/utils/returning-rows';
+import { stockCrossingBand } from './stock-alert-crossing.util';
 
 function sha256(data: string): string {
   return createHash('sha256').update(data).digest('hex');
@@ -1200,9 +1201,22 @@ export class SalesService {
     for (const item of items) {
       const product = products.get(item.ean);
       if (!product) continue;
-      const newQty = Math.max(0, product.stockQuantity - item.quantity);
+      const oldQty = product.stockQuantity;
+      const newQty = Math.max(0, oldQty - item.quantity);
 
-      if (newQty <= 0) {
+      // Edge-triggered: alert ONLY when this sale moves the product into a MORE
+      // severe band (out_of_stock > critical > alert). A product already below a
+      // threshold no longer re-alerts on every subsequent sale (was: audit noise
+      // + repeated TW24 pushes to managers). Aligned with StockService.decrementStock.
+      const band = stockCrossingBand(
+        oldQty,
+        newQty,
+        product.stockAlertThreshold,
+        product.stockCriticalThreshold,
+      );
+      if (!band) continue;
+
+      if (band === 'out_of_stock') {
         alerts.push({
           productId: product.id,
           productName: product.name,
@@ -1211,7 +1225,7 @@ export class SalesService {
           level: 'out_of_stock',
           message: `${product.name} est en rupture de stock !`,
         });
-      } else if (newQty <= product.stockCriticalThreshold) {
+      } else if (band === 'critical') {
         alerts.push({
           productId: product.id,
           productName: product.name,
@@ -1220,7 +1234,7 @@ export class SalesService {
           level: 'critical',
           message: `${product.name}: stock critique (${newQty} restant${newQty > 1 ? 's' : ''})`,
         });
-      } else if (newQty <= product.stockAlertThreshold) {
+      } else {
         alerts.push({
           productId: product.id,
           productName: product.name,
