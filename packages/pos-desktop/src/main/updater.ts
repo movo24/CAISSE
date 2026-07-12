@@ -186,9 +186,10 @@ export class UpdateController {
       if (!isSafeToInstall(this.activity)) {
         return { ok: false, reason: busyReason(this.activity) };
       }
-      this.log('installNow — quitAndInstall (caisse au repos)');
-      // isSilent=false, isForceRunAfter=true : relance l'app après install.
-      setImmediate(() => autoUpdater.quitAndInstall(false, true));
+      this.log('installNow — quitAndInstall silencieux (caisse au repos)');
+      // isSilent=true : installe sans assistant NSIS (aucun clic employé).
+      // isForceRunAfter=true : relance le POS automatiquement après install.
+      setImmediate(() => autoUpdater.quitAndInstall(true, true));
       return { ok: true };
     });
     ipcMain.handle('pos-update:setChannel', (_e, raw) => {

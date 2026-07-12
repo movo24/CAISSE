@@ -45,11 +45,19 @@ win:
       arch: [x64]
 
 nsis:
-  oneClick: false
-  # Assisted installer, per-user (no domain-admin needed on a shop PC). Appears
-  # in Windows "Apps & features", clean uninstall, upgrades in place.
+  # Silent one-click installer: NO wizard, NO "all users / just me" page, NO
+  # Next/Finish buttons. Combined with perMachine:false the install ALWAYS lands
+  # per-user in %LOCALAPPDATA%\Programs — no elevation, hence no UAC prompt on
+  # update. A cashier never sees or clicks the installer.
+  oneClick: true
   perMachine: false
-  allowToChangeInstallationDirectory: true
+  # Never request elevation: a per-user install never needs it, and a UAC prompt
+  # must never reach a cashier on a production till.
+  allowElevation: false
+  # One-click installs to the fixed per-user location; no directory chooser.
+  allowToChangeInstallationDirectory: false
+  # Relaunch the POS automatically once the silent update has been applied.
+  runAfterFinish: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
   shortcutName: The Wesley's POS
