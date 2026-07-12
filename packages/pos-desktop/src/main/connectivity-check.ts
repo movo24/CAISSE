@@ -16,6 +16,13 @@
  */
 import { app, protocol, BrowserWindow, session } from 'electron';
 
+// Runner Linux headless : le binaire chrome-sandbox n'est pas setuid root, donc
+// Electron refuse de démarrer (« SUID sandbox helper … mode 4755 »). On désactive
+// le sandbox OS UNIQUEMENT pour ce harness de test. Sans effet sur `webSecurity`
+// ni sur l'application du CORS (ce qu'on teste) ; sans effet en prod : ce fichier
+// n'est jamais embarqué dans l'.exe et Windows n'utilise pas ce sandbox SUID.
+app.commandLine.appendSwitch('no-sandbox');
+
 const API = process.env.POS_API_URL || 'https://caisse-backend-production.up.railway.app';
 const STORE = process.env.STORE_CODE || 'WESLEY01';
 const PIN = process.env.CASHIER_PIN || '5678';
@@ -50,7 +57,9 @@ app.whenReady().then(async () => {
 
   const win = new BrowserWindow({
     show: false,
-    webPreferences: { contextIsolation: true, sandbox: true },
+    // sandbox renderer désactivé en cohérence avec --no-sandbox ci-dessus (CI
+    // headless). webSecurity reste actif → le CORS est bien appliqué/testé.
+    webPreferences: { contextIsolation: true, sandbox: false },
   });
   await win.loadURL('app://app/');
 
