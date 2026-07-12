@@ -78,14 +78,19 @@ jobs:
         working-directory: packages/pos-desktop
         env:
           POS_CORS_SHIM: off
-        run: xvfb-run -a npx electron dist/main/connectivity-check.js | tee off.log || true
+          # Runner Linux : chrome-sandbox n'est pas setuid root → le process
+          # navigateur avorte (SIGTRAP). L'env est lu au lancement (le switch JS,
+          # lui, arrive trop tard). Sans effet sur webSecurity / CORS.
+          ELECTRON_DISABLE_SANDBOX: "1"
+        run: xvfb-run -a npx electron --no-sandbox dist/main/connectivity-check.js | tee off.log || true
 
       # ── Sonde 2 : shim ON → prouve le correctif (login packagé = HTTP 200) ──
       - name: Sonde CORS ON (prouve le correctif)
         working-directory: packages/pos-desktop
         env:
           POS_CORS_SHIM: on
-        run: xvfb-run -a npx electron dist/main/connectivity-check.js | tee on.log || true
+          ELECTRON_DISABLE_SANDBOX: "1"
+        run: xvfb-run -a npx electron --no-sandbox dist/main/connectivity-check.js | tee on.log || true
 
       - name: Verdict
         working-directory: packages/pos-desktop
