@@ -38,6 +38,7 @@ import { PaginatedResult } from '../../common/dto/pagination.dto';
 import { logBusinessEvent } from '../../common/business-logger';
 import { RealtimeService } from '../../common/realtime/realtime.service';
 import { returningRows } from '../../common/utils/returning-rows';
+import { detectStockThresholdCrossing } from './stock-threshold.util';
 
 function sha256(data: string): string {
   return createHash('sha256').update(data).digest('hex');
@@ -328,6 +329,68 @@ export class SalesService {
     const d = new Date();
     d.setDate(d.getDate() + 7);
     return d;
+  }
+
+  /**
+   * Emit low/critical stock threshold-crossing alerts AFTER a sale commits.
+   *
+   * The sale decrements stock via inline conditional SQL (race-safe) that does NOT
+   * route through StockService.decrementStock, so the edge-triggered low/critical
+   * alert that method emits was never fired at sale time — only the polling views
+   * (notifications / low-stock report) reflected it. This restores the at-sale-time
+   * alert, edge-triggered exactly like StockService (fires only on the decrement that
+   * CROSSES the threshold), out-of-band and best-effort: an alert failure can never
+   * roll back or fail a sale that already committed. Same audit shape as
+   * StockService (`action: 'stock_adjustment'`, `details.level`), plus
+   * `source: 'pos_sale'` to distinguish the origin. Non-fiscal.
+   */
+  private async emitStockThresholdCrossings(
+    storeId: string,
+    employeeId: string,
+    crossings: Array<{
+      productId: string;
+      productName: string;
+      ean: string;
+      newStock: number;
+      qty: number;
+      alertThreshold: number;
+      criticalThreshold: number;
+    }>,
+  ): Promise<void> {
+    for (const c of crossings) {
+      const level = detectStockThresholdCrossing({
+        oldStock: c.newStock + c.qty,
+        newStock: c.newStock,
+        alertThreshold: c.alertThreshold,
+        criticalThreshold: c.criticalThreshold,
+      });
+      if (!level) continue;
+
+      const threshold =
+        level === 'critical' ? c.criticalThreshold : c.alertThreshold;
+      this.logger.warn(
+        `${level === 'critical' ? 'CRITICAL' : 'LOW'} STOCK (sale): ${c.productName} (${c.ean}) = ${c.newStock} units (threshold: ${threshold})`,
+      );
+      try {
+        await this.auditService.log({
+          storeId,
+          employeeId,
+          action: 'stock_adjustment',
+          entityType: 'product',
+          entityId: c.productId,
+          details: {
+            level,
+            productName: c.productName,
+            ean: c.ean,
+            stockQuantity: c.newStock,
+            threshold,
+            source: 'pos_sale',
+          },
+        });
+      } catch (auditErr: any) {
+        this.logger.warn(`Audit (stock ${level}) failed: ${auditErr?.message}`);
+      }
+    }
   }
 
   /**
@@ -827,6 +890,21 @@ export class SalesService {
       // par sales-stock-concurrency.pg.spec). Le décrément devient CONDITIONNEL
       // (même patron race-safe que le cap promo) : 0 ligne touchée = stock
       // insuffisant AU MOMENT du commit → la vente entière est rejetée/rollback.
+      // Low/critical threshold-crossing FACTS are collected here (new stock +
+      // thresholds, from RETURNING) and the alert is emitted POST-COMMIT. The
+      // inline decrement bypasses StockService.decrementStock, so a sale that
+      // pushed a product below its low/critical threshold produced NO alert
+      // (only polling reflected it). Fixed without touching the tx/hash/fiscal.
+      const stockCrossings: Array<{
+        productId: string;
+        productName: string;
+        ean: string;
+        newStock: number;
+        qty: number;
+        alertThreshold: number;
+        criticalThreshold: number;
+      }> = [];
+
       for (const item of dto.items) {
         const product = resolvedProducts.get(item.ean)!;
         const decRes = await queryRunner.query(
@@ -834,15 +912,25 @@ export class SalesService {
            SET stock_quantity = stock_quantity - $1,
                updated_at = NOW()
            WHERE id = $2 AND store_id = $3 AND stock_quantity >= $1
-           RETURNING stock_quantity`,
+           RETURNING stock_quantity, stock_alert_threshold, stock_critical_threshold, name, ean`,
           [item.quantity, product.id, storeId],
         );
-        if (returningRows(decRes).length === 0) {
+        const decRows = returningRows(decRes) as Array<Record<string, any>>;
+        if (decRows.length === 0) {
           throw new BadRequestException(
             `Insufficient stock for ${product.name} (${item.ean}): ` +
               `${item.quantity} requested, stock épuisé au moment de la validation`,
           );
         }
+        stockCrossings.push({
+          productId: product.id,
+          productName: decRows[0].name,
+          ean: decRows[0].ean,
+          newStock: Number(decRows[0].stock_quantity),
+          qty: item.quantity,
+          alertThreshold: Number(decRows[0].stock_alert_threshold),
+          criticalThreshold: Number(decRows[0].stock_critical_threshold),
+        });
       }
 
       // --- Product Packs (GO owner 2026-07-09) : composants dans la MÊME tx ---
@@ -871,15 +959,25 @@ export class SalesService {
              SET stock_quantity = stock_quantity - $1,
                  updated_at = NOW()
              WHERE id = $2 AND store_id = $3 AND stock_quantity >= $1
-             RETURNING stock_quantity`,
+             RETURNING stock_quantity, stock_alert_threshold, stock_critical_threshold, name, ean`,
             [consumed, comp.component_product_id, storeId],
           );
-          if (returningRows(compDec).length === 0) {
+          const compRows = returningRows(compDec) as Array<Record<string, any>>;
+          if (compRows.length === 0) {
             throw new BadRequestException(
               `Stock insuffisant pour le composant « ${comp.component_name} » ` +
                 `(inclus dans ${li.productName}) : ${consumed} requis — vente refusée, aucun mouvement partiel.`,
             );
           }
+          stockCrossings.push({
+            productId: comp.component_product_id,
+            productName: compRows[0].name,
+            ean: compRows[0].ean,
+            newStock: Number(compRows[0].stock_quantity),
+            qty: consumed,
+            alertThreshold: Number(compRows[0].stock_alert_threshold),
+            criticalThreshold: Number(compRows[0].stock_critical_threshold),
+          });
           await queryRunner.manager.insert(SaleComponentMovementEntity, {
             storeId,
             saleId: saved.id,
@@ -977,6 +1075,12 @@ export class SalesService {
       } catch (auditErr: any) {
         this.logger.warn(`Audit log failed: ${auditErr?.message}`);
       }
+
+      // ── Low/critical stock threshold-crossing alerts (best-effort, post-commit) ──
+      // Restores the at-sale-time alert that StockService.decrementStock emits but
+      // the inline sale decrement bypassed. Edge-triggered (fires only on the sale
+      // that crosses the threshold). Never blocks or rolls back the committed sale.
+      await this.emitStockThresholdCrossings(storeId, employeeId, stockCrossings);
 
       // ── Sensitive-action audit: discount applied (only when a discount exists) ──
       // Non-blocking — never fails the sale. No sensitive data, metadata only.
