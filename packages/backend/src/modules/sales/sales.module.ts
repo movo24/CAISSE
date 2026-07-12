@@ -9,6 +9,8 @@ import { IdempotencyKeyEntity } from '../../database/entities/idempotency-key.en
 import { FiscalJournalEntity } from '../../database/entities/fiscal-journal.entity';
 import { EmployeeEntity } from '../../database/entities/employee.entity';
 import { PosSessionEntity } from '../../database/entities/pos-session.entity';
+import { StoreEntity } from '../../database/entities/store.entity';
+import { PosMachineEntity } from '../../database/entities/pos-machine.entity';
 import { ProductsModule } from '../products/products.module';
 import { CustomersModule } from '../customers/customers.module';
 import { PromotionsModule } from '../promotions/promotions.module';
@@ -27,6 +29,8 @@ import { JackpotModule } from '../jackpot/jackpot.module';
       FiscalJournalEntity,
       EmployeeEntity,
       PosSessionEntity,
+      StoreEntity,
+      PosMachineEntity,
     ]),
     ProductsModule,
     CustomersModule,

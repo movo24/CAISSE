@@ -146,8 +146,34 @@ export const productsApi = {
   list: (params?: { storeId?: string; brandId?: string; supplierId?: string; search?: string; page?: number; limit?: number }) =>
     api.get('/products', { params }),
   get: (id: string) => api.get(`/products/${id}`),
-  create: (data: any) => api.post('/products', data),
-  update: (id: string, data: any) => api.put(`/products/${id}`, data),
+  // Aligné sur CreateProductDto : ean+name+priceMinorUnits obligatoires, le
+  // storeId est forcé serveur depuis le JWT (jamais envoyé par le client).
+  create: (data: {
+    ean: string;
+    name: string;
+    priceMinorUnits: number;
+    stockQuantity?: number;
+    categoryId?: string;
+    description?: string;
+    costMinorUnits?: number;
+    taxRate?: number;
+  }) => api.post('/products', data),
+  // Aligné sur UpdateProductDto : PAS de `ean` (immuable, absent du DTO →
+  // rejeté par forbidNonWhitelisted), PAS de `storeId`.
+  update: (
+    id: string,
+    data: {
+      name?: string;
+      priceMinorUnits?: number;
+      stockQuantity?: number;
+      categoryId?: string;
+      description?: string;
+      costMinorUnits?: number;
+      taxRate?: number;
+      reason?: string;
+      isActive?: boolean;
+    },
+  ) => api.put(`/products/${id}`, data),
   delete: (id: string) => api.delete(`/products/${id}`),
   scan: (ean: string) => api.get(`/products/scan/${ean}`),
   stockAlerts: () => api.get('/products/stock-alerts'),
@@ -609,6 +635,62 @@ export const employeeScoreApi = {
   employee: (employeeId: string, period: 'day' | 'week' | 'year' = 'day') =>
     api.get(`/employee-score/employee/${employeeId}`, { params: { period } }),
   employeeDetail: (employeeId: string) => api.get(`/employee-score/employee/${employeeId}/detail`),
+};
+
+// ---------------------------------------------------------------------------
+// Attract campaigns (Bloc 4) — playlists de l'écran client. Manager gère son
+// magasin ; national (storeId NULL) réservé admin. Le résolveur /playlist est
+// consommé par la caisse, pas par le backoffice.
+// ---------------------------------------------------------------------------
+export interface AttractMediaPayload {
+  type: 'video' | 'image';
+  url: string;
+  durationSeconds?: number;
+}
+export interface AttractCampaignPayload {
+  name: string;
+  scope?: 'store' | 'national';
+  isActive?: boolean;
+  loop?: boolean;
+  startsAt?: string | null;
+  endsAt?: string | null;
+  priority?: number;
+  terminalIds?: string[] | null;
+  media?: AttractMediaPayload[];
+}
+export const attractApi = {
+  list: () => api.get('/attract/campaigns'),
+  get: (id: string) => api.get(`/attract/campaigns/${id}`),
+  create: (data: AttractCampaignPayload) => api.post('/attract/campaigns', data),
+  update: (id: string, data: Partial<AttractCampaignPayload>) =>
+    api.put(`/attract/campaigns/${id}`, data),
+  setMedia: (id: string, media: AttractMediaPayload[]) =>
+    api.put(`/attract/campaigns/${id}/media`, { media }),
+  remove: (id: string) => api.delete(`/attract/campaigns/${id}`),
+};
+
+// ── Enrôlement machine POS (Partie B) ──
+export interface PosMachine {
+  id: string;
+  machineId: string;
+  storeId: string;
+  terminalLabel: string;
+  machineName: string | null;
+  platform: string | null;
+  appVersion: string | null;
+  status: 'pending' | 'approved' | 'rejected' | 'revoked';
+  requestedBy: string | null;
+  decidedBy: string | null;
+  decidedAt: string | null;
+  decisionReason: string | null;
+  lastSeenAt: string | null;
+  createdAt: string;
+}
+export const enrollmentApi = {
+  list: (status?: string) => api.get('/pos/enrollment', { params: status ? { status } : {} }),
+  approve: (id: string) => api.post(`/pos/enrollment/${id}/approve`, {}),
+  reject: (id: string, reason: string) => api.post(`/pos/enrollment/${id}/reject`, { reason }),
+  revoke: (id: string, reason: string) => api.post(`/pos/enrollment/${id}/revoke`, { reason }),
 };
 
 export default api;

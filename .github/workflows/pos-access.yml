@@ -1,0 +1,83 @@
+# Exécute la commande admin `pos:access` contre Backend B DEPUIS un runner
+# GitHub Actions — le seul chemin qui atteint la base Neon de Backend B et
+# l'URL native sans que l'owner manipule un secret : le `DATABASE_URL` est lu
+# via l'API Railway avec le secret `RAILWAY_TOKEN` déjà présent dans le repo,
+# masqué (::add-mask::) et JAMAIS imprimé. Crée (idempotent) un magasin de test
+# + un caissier, puis teste le login HTTP réel contre Backend B.
+name: POS access (Backend B) — create test store + cashier
+
+on:
+  workflow_dispatch:
+    inputs:
+      store_code:
+        description: "Code magasin"
+        required: false
+        default: "WESLEY01"
+      store_name:
+        description: "Nom magasin"
+        required: false
+        default: "The Wesley Test"
+      cashier_pin:
+        description: "PIN caissier"
+        required: false
+        default: "5678"
+
+permissions:
+  contents: read
+
+concurrency: pos-access
+
+env:
+  URL: https://caisse-backend-production.up.railway.app
+  PROJECT: 2f5e0afc-d6ed-4360-9837-0356e9be0989
+  SERVICE: a7b2748a-6000-4a32-802b-0e9319287f43
+  ENVID: 7ade5bb3-4e17-4460-a6c0-f50995bded67
+
+jobs:
+  pos-access:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - name: Install
+        run: npm ci
+
+      - name: Résoudre DATABASE_URL via l'API Railway (valeur jamais affichée)
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -o pipefail
+          if [ -z "$RAILWAY_TOKEN" ]; then echo "RAILWAY_TOKEN absent des secrets"; exit 1; fi
+          # gql bi-format (Bearer puis Project-Access-Token), aucune sortie brute.
+          gql() {
+            local out
+            out=$(curl -sS --max-time 30 -X POST https://backboard.railway.app/graphql/v2 \
+              -H "Authorization: Bearer $RAILWAY_TOKEN" -H "Content-Type: application/json" -d "$1")
+            if printf '%s' "$out" | grep -q 'Not Authorized'; then
+              out=$(curl -sS --max-time 30 -X POST https://backboard.railway.app/graphql/v2 \
+                -H "Project-Access-Token: $RAILWAY_TOKEN" -H "Content-Type: application/json" -d "$1")
+            fi
+            printf '%s' "$out"
+          }
+          gql "{\"query\":\"query { variables(projectId: \\\"$PROJECT\\\", environmentId: \\\"$ENVID\\\", serviceId: \\\"$SERVICE\\\") }\"}" > /tmp/vars.json
+          DBURL="$(jq -r '.data.variables.DATABASE_URL // empty' /tmp/vars.json)"
+          rm -f /tmp/vars.json
+          if [ -z "$DBURL" ]; then echo "DATABASE_URL introuvable via l'API Railway (réponse non affichée)"; exit 1; fi
+          # Masque la valeur dans TOUS les logs, puis la passe à l'étape suivante.
+          echo "::add-mask::$DBURL"
+          echo "DATABASE_URL=$DBURL" >> "$GITHUB_ENV"
+          echo "DATABASE_URL résolu depuis Railway (valeur masquée)."
+
+      - name: pos:access (création idempotente + test login HTTP réel Backend B)
+        env:
+          POS_ACCESS_CONFIRM: I_UNDERSTAND
+          POS_ACCESS_ALLOW_PROD: "YES"
+          NODE_ENV: production
+          STORE_CODE: ${{ github.event.inputs.store_code }}
+          STORE_NAME: ${{ github.event.inputs.store_name }}
+          CASHIER_PIN: ${{ github.event.inputs.cashier_pin }}
+          POS_API_URL: https://caisse-backend-production.up.railway.app
+        run: npm run pos:access --workspace=@caisse/backend

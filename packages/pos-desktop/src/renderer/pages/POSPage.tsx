@@ -10,6 +10,13 @@ import {
 } from 'lucide-react';
 import { usePOSStore } from '../stores/posStore';
 import { productsApi, productIntegrationApi, salesApi, customersApi, occupancyApi, receiptsApi } from '../services/api';
+import {
+  finalizeSalePeripherals,
+  buildTicketData,
+  salePeripheralGuard,
+  type PrintStatus,
+  type DrawerStatus,
+} from '../services/salePeripherals';
 import { newIdempotencyKey } from '../services/idempotency';
 import { toWirePayments, toSaleDiscountFields } from '../services/salePayload';
 import { validateManualDiscount } from '../services/discount-policy';
@@ -39,6 +46,7 @@ import { TicketHistoryModal } from '../components/pos/TicketHistoryModal';
 import { ReturnModal } from '../components/pos/ReturnModal';
 import { AvoirTenderModal } from '../components/pos/AvoirTenderModal';
 import { peripheralBridge } from '../services/peripheralBridge';
+import { shouldAcceptWedgeScan } from '../services/wedgeScanGate';
 import { useCloudSyncStore } from '../services/cloudSyncIdentity';
 import { Wifi, WifiOff, CloudOff, Cloud, RefreshCw as SyncIcon, ShieldAlert, Upload, Lock as LockIcon } from 'lucide-react';
 import { IPadPOSLayout } from '../components/ipad/IPadPOSLayout';
@@ -46,6 +54,7 @@ import { StockAlertToast } from '../components/StockAlertToast';
 import { SaleGuardsGate } from '../components/SaleGuardsGate';
 import { SalesCockpit } from '../components/SalesCockpit';
 import { CustomerDisplayPublisher } from '../components/CustomerDisplayPublisher';
+import { UpdateBanner } from '../components/UpdateBanner';
 import { ActiveCashierBanner } from '../components/ActiveCashierBanner';
 import { ScoreDetailModal } from '../components/ScoreDetailModal';
 
@@ -131,6 +140,9 @@ export function POSPage() {
   const device = useDeviceProfile();
   const cloudSync = useCloudSyncStore();
   const scanRef = useRef<HTMLInputElement>(null);
+  // Dernière fonction de traitement d'un scan wedge global (mise à jour à chaque
+  // rendu ; l'abonnement au listener est fait une seule fois au montage).
+  const wedgeScanRef = useRef<(code: string) => void>(() => {});
   const cameraVideoRef = useRef<HTMLVideoElement>(null);
   // One idempotency key per checkout (reused on double-click / retry, reset on success).
   const saleIdemKeyRef = useRef<string | null>(null);
@@ -162,6 +174,19 @@ export function POSPage() {
   // Fullscreen confirmation overlay
   const [confirmation, setConfirmation] = useState<ConfirmationData | null>(null);
   const confirmationRef = useRef<ConfirmationData | null>(null); // mirror to avoid stale closures
+  // Impression + tiroir du flux de vente desktop : trois statuts DISTINCTS
+  // affichés à la caisse — jamais fusionnés (règle owner) :
+  //  - la vente (overlay de confirmation) ;
+  //  - l'impression du ticket (lastPrintStatus) ;
+  //  - l'ouverture du tiroir (lastDrawerStatus).
+  // La garde d'idempotence est un SINGLETON de module (clé stable = ticketNumber),
+  // hors du cycle de vie React : elle survit à un re-render / remontage / retour
+  // d'écran, donc jamais 2 tickets ni 2 ouvertures tiroir pour une même vente.
+  const [lastPrintStatus, setLastPrintStatus] = useState<PrintStatus | null>(null);
+  const [lastDrawerStatus, setLastDrawerStatus] = useState<DrawerStatus | null>(null);
+  // Garde SYNCHRONE de ré-entrée sur finalizePayment : bloque un 2ᵉ appel
+  // (double-clic, retour d'écran, re-render) AVANT même le setProcessing async.
+  const finalizingRef = useRef(false);
 
   // Email-receipt modal (shown from the confirmation overlay when a server saleId exists)
   const [emailModal, setEmailModal] = useState(false);
@@ -271,6 +296,16 @@ export function POSPage() {
       peripheralBridge.destroy();
       cloudSync.endSession();
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Abonnement UNIQUE à la douchette wedge globale (au montage). Le callback
+  // délègue à `wedgeScanRef` (toujours à jour) ; `startBarcodeListener` n'attache
+  // le handler clavier que si le scanner est de type keyboard_wedge (poste
+  // desktop/Windows), et ignore les scans tapés dans un champ de saisie.
+  useEffect(() => {
+    const off = peripheralBridge.startBarcodeListener((r) => wedgeScanRef.current(r.code));
+    return off;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -568,6 +603,23 @@ export function POSPage() {
     scanRef.current?.focus();
   };
 
+  // Douchette wedge GLOBALE (mini-PC Windows) : capte les scans même quand le
+  // champ de recherche n'a pas le focus. La ref porte toujours le dernier
+  // `handleScan` + le dernier état UI ; l'abonnement (ci-dessous) est fait une
+  // seule fois au montage. Le listener bas-niveau ignore déjà les scans tapés
+  // DANS un input → aucun double ajout avec le champ de recherche.
+  wedgeScanRef.current = (code: string) => {
+    const accept = shouldAcceptWedgeScan({
+      hasActiveCashier: !!store.employee,
+      paymentModalOpen: store.paymentModalOpen,
+      confirmationOpen: confirmation !== null,
+      unknownProductOpen: unknownProduct !== null,
+      weightModalOpen: weightModal !== null,
+      emailModalOpen: emailModal,
+    });
+    if (accept) void handleScan(code);
+  };
+
   /* ── Produit inconnu (aucune création depuis la caisse) ── */
 
   const openUnknownProduct = (barcode: string) => {
@@ -770,6 +822,12 @@ export function POSPage() {
   };
 
   const finalizePayment = async (payments: PartialPayment[], changeMinor: number) => {
+    // Garde SYNCHRONE de ré-entrée : un 2ᵉ appel concurrent (double-clic, retry,
+    // retour d'écran, re-render) est refusé net, avant tout effet réseau ou état.
+    // Complète — sans les remplacer — la clé d'idempotence backend (saleIdemKeyRef)
+    // et la garde par ticketNumber : une seule vente, un seul ticket, un seul tiroir.
+    if (finalizingRef.current) return;
+    finalizingRef.current = true;
     // Decision 5 mirror: refuse an impossible manual discount before the network.
     const discCheck = validateManualDiscount({
       subtotalMinor: store.subtotal(),
@@ -778,6 +836,7 @@ export function POSPage() {
     });
     if (!discCheck.ok) {
       setError(discCheck.reason || 'Remise refusée');
+      finalizingRef.current = false;
       return;
     }
     setProcessing(true);
@@ -851,11 +910,18 @@ export function POSPage() {
         // Continue to confirmation — the sale was honestly accepted locally
       } else {
         setProcessing(false);
-        const message =
-          err?.response?.data?.message ||
-          err?.response?.data?.details?.[0] ||
-          err?.message ||
-          'Erreur lors de la vente';
+        finalizingRef.current = false; // vente échouée → un retry est légitime
+        // Vente bloquée par l'enrôlement (Partie B) : caisse non validée par le
+        // back-office. Message explicite, jamais un simple « erreur de vente ».
+        const isEnrollmentBlock =
+          err?.response?.status === 403 &&
+          err?.response?.data?.code === 'MACHINE_NOT_ENROLLED';
+        const message = isEnrollmentBlock
+          ? 'Caisse non validée par le back-office — vente bloquée. Demandez l’approbation de cette caisse.'
+          : err?.response?.data?.message ||
+            err?.response?.data?.details?.[0] ||
+            err?.message ||
+            'Erreur lors de la vente';
         setError(message);
         posEventBus.emit('SALE_ERROR', { message });
         console.error('[POS] Sale failed:', message);
@@ -926,11 +992,59 @@ export function POSPage() {
     confirmationRef.current = confirmData; // sync ref BEFORE state
     setConfirmation(confirmData);
 
+    // ── Impression ticket + tiroir-caisse (flux de vente RÉEL, desktop) ──
+    // La vente est validée (acceptée en ligne, ou honnêtement mise en file
+    // offline). On construit le ticket AVANT de vider le panier, puis on
+    // imprime / ouvre le tiroir SANS bloquer l'overlay ni conditionner la
+    // vente. Idempotent par `saleId` (idempotency key) ET par action, persisté :
+    // ni double ticket ni double tiroir sur double-clic / retry / remontage /
+    // redémarrage. (`ticketNumber` reste la référence FISCALE affichée.)
+    const ticketData = buildTicketData({
+      storeName: store.storeInfo?.storeName,
+      storeAddress: store.storeInfo?.address,
+      siret: store.storeInfo?.siret,
+      tvaIntracom: store.storeInfo?.tvaIntracom,
+      nifCaisse: store.storeInfo?.nifCaisse,
+      ticketNumber,
+      date: timestamp,
+      cashierName,
+      items: store.cartItems.map((i) => ({
+        name: i.name,
+        quantity: i.quantity,
+        unitPriceMinorUnits: i.unitPriceMinorUnits,
+        discountMinorUnits: i.discountMinorUnits,
+      })),
+      subtotalMinorUnits: store.subtotal(),
+      discountMinorUnits: store.totalDiscount(),
+      totalMinorUnits: totalAmount,
+      payments: payments.map((p) => ({ method: p.method, amountMinorUnits: p.amountMinorUnits })),
+      changeMinorUnits: changeMinor,
+    });
+    setLastPrintStatus(null);
+    setLastDrawerStatus(null);
+    void finalizeSalePeripherals({
+      // Identité STABLE de la vente = idempotency key (sale-<uuid>), jamais le
+      // ticketNumber (séquentiel par magasin côté serveur, instable côté client).
+      saleId: idempotencyKey,
+      ticketData,
+      payments: payments.map((p) => ({ method: p.method, amountMinorUnits: p.amountMinorUnits })),
+      saleValidated: true,
+      guard: salePeripheralGuard,
+    }).then((r) => {
+      // Trois statuts distincts, jamais fusionnés (règle owner).
+      setLastPrintStatus(r.printStatus);
+      setLastDrawerStatus(r.drawerStatus);
+    });
+
     store.clearCart();
     setPartialPayments([]);
     setSplitAmountInput('');
     setProcessing(false);
     store.setPaymentModalOpen(false);
+    // Vente terminée : la garde de ré-entrée est relâchée pour la vente SUIVANTE.
+    // L'idempotence de CETTE vente reste protégée par la garde-ticket (singleton)
+    // et par la clé d'idempotence backend — pas par ce booléen.
+    finalizingRef.current = false;
   };
 
   // Quick full payment (no split needed)
@@ -992,6 +1106,8 @@ export function POSPage() {
     <div className={`h-screen flex flex-col bg-pos-bg safe-area-top safe-area-bottom overflow-x-hidden ${platformClasses(device)}`}>
       {/* Inert bridge: mirrors cart/payment to the customer display (screen 2). */}
       <CustomerDisplayPublisher />
+      {/* Mise à jour auto (desktop) : bandeau discret + remontée d'activité. */}
+      <UpdateBanner />
       {/* ═══════ OFFLINE BANNER ═══════ */}
       {offlineMode.isOffline && (
         <div className="bg-gradient-to-r from-red-600 via-red-500 to-rose-500 px-4 py-2 flex items-center justify-between relative z-50 shadow-lg animate-slide-down">
@@ -1169,6 +1285,15 @@ export function POSPage() {
                   }}
                 >
                   <Monitor size={14} /> Écran client
+                </button>
+                <button
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-pos-text rounded-xl hover:bg-pos-subtle transition-colors mb-1"
+                  onClick={() => {
+                    setProfileOpen(false);
+                    navigate('/peripherals');
+                  }}
+                >
+                  <Printer size={14} /> Imprimante &amp; tiroir
                 </button>
                 <button
                   className="w-full flex items-center gap-2 px-3 py-2 text-sm text-pos-danger rounded-xl hover:bg-pos-danger/5 transition-colors"
@@ -1960,13 +2085,34 @@ export function POSPage() {
                 </p>
               )}
 
-              {/* Honest print status: this desktop path has no real printer wired —
-                  the platform must SAY it cannot print (décision produit, PR #27). */}
-              {(!peripheralBridge.status.printer.connected ||
-                peripheralBridge.status.printer.type === 'none' ||
-                peripheralBridge.status.printer.type === 'browser_print') && (
-                <p className="mt-2 text-xs font-black text-amber-300">
-                  Aucune imprimante connectée — ticket NON imprimé (QR / email disponibles).
+              {/* Statut d'impression HONNÊTE (résultat réel du spooler, pas la
+                  simple connectivité). La vente reste valide quoi qu'il arrive. */}
+              {lastPrintStatus === 'printed' && (
+                <p className="mt-2 text-xs font-bold text-emerald-300">Ticket imprimé.</p>
+              )}
+              {lastPrintStatus === 'print_failed' && (
+                <p className="mt-2 text-xs font-black text-red-300">
+                  Ticket NON imprimé — échec imprimante. Vente validée. Réimpression possible depuis l'historique.
+                </p>
+              )}
+              {(lastPrintStatus === 'no_printer' || lastPrintStatus === null) &&
+                (!peripheralBridge.status.printer.connected ||
+                  peripheralBridge.status.printer.type === 'none' ||
+                  peripheralBridge.status.printer.type === 'browser_print') && (
+                  <p className="mt-2 text-xs font-black text-amber-300">
+                    Aucune imprimante connectée — ticket NON imprimé (QR / email disponibles).
+                  </p>
+                )}
+
+              {/* Statut TIROIR — DISTINCT de la vente et de l'impression (jamais
+                  fusionnés). Le tiroir ne s'affiche que pour une vente espèces
+                  (`not_requested` = CB pure → silencieux). */}
+              {lastDrawerStatus === 'opened' && (
+                <p className="mt-1 text-xs font-bold text-emerald-300">Tiroir-caisse ouvert.</p>
+              )}
+              {lastDrawerStatus === 'open_failed' && (
+                <p className="mt-1 text-xs font-black text-amber-300">
+                  Tiroir NON ouvert — vérifier le branchement. Vente validée, ouverture manuelle possible.
                 </p>
               )}
             </div>

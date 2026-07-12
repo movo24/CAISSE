@@ -208,6 +208,48 @@ export class StockLocationsService {
   // ─── MOVEMENTS (the core) ─────────────────────────────────────
 
   /**
+   * D20 — audit a committed stock movement, OUT-OF-BAND and BEST-EFFORT.
+   *
+   * The 4 movement methods below wrote the operational stock journal
+   * (`stock_movements`) but left NO audit trail — `AuditService` was injected
+   * yet never called (dead injection). This restores traceability of who moved
+   * what, where and by how much (supplier receipt / transfer / loss / dispatch).
+   *
+   * Per the ratified D16/D17 model, `AuditService` is the APPLICATIVE audit
+   * chain: out-of-band, post-commit, best-effort. A failure here must NEVER roll
+   * back or fail a movement that already committed — it only warns. This is the
+   * operational stock journal, NOT the fiscal chain (`fiscal_journal`).
+   *
+   * `storeId` is resolved from the moved product (products always carry a
+   * concrete storeId), so the audit is correctly tenant-scoped even for admin
+   * actors whose JWT store may differ from the product's store.
+   */
+  private async auditMovement(params: {
+    productId: string;
+    entityId: string;
+    action: string;
+    employeeId: string;
+    details: Record<string, unknown>;
+  }): Promise<void> {
+    try {
+      const product = await this.productRepo.findOne({
+        where: { id: params.productId },
+        select: { id: true, storeId: true },
+      });
+      await this.auditService.log({
+        storeId: product?.storeId ?? '',
+        employeeId: params.employeeId,
+        action: params.action,
+        entityType: 'stock_movement',
+        entityId: params.entityId,
+        details: params.details,
+      });
+    } catch (auditErr: any) {
+      this.logger.warn(`Audit (${params.action}) failed: ${auditErr?.message}`);
+    }
+  }
+
+  /**
    * Receive stock from supplier into a location (usually central).
    */
   async receiveFromSupplier(data: {
@@ -224,46 +266,68 @@ export class StockLocationsService {
     if (data.quantity <= 0) throw new BadRequestException('Quantity must be positive');
     await this.assertProductOwned(data.productId, data.actorStoreId, data.actorRole);
 
-    return this.dataSource.transaction(async (manager) => {
-      // Update or create balance
-      let balance = await manager.findOne(StockBalanceEntity, {
-        where: { productId: data.productId, locationId: data.locationId },
-        lock: { mode: 'pessimistic_write' },
-      });
-
-      if (!balance) {
-        balance = Object.assign(new StockBalanceEntity(), {
-          productId: data.productId,
-          locationId: data.locationId,
-          quantity: 0,
+    const { saved, oldBalance, newBalance } = await this.dataSource.transaction(
+      async (manager) => {
+        // Update or create balance
+        let balance = await manager.findOne(StockBalanceEntity, {
+          where: { productId: data.productId, locationId: data.locationId },
+          lock: { mode: 'pessimistic_write' },
         });
-      }
 
-      balance.quantity += data.quantity;
-      await manager.save(balance);
+        if (!balance) {
+          balance = Object.assign(new StockBalanceEntity(), {
+            productId: data.productId,
+            locationId: data.locationId,
+            quantity: 0,
+          });
+        }
 
-      // Create movement
-      const movement = Object.assign(new StockMovementEntity(), {
-        productId: data.productId,
+        const oldBalance = balance.quantity;
+        balance.quantity += data.quantity;
+        await manager.save(balance);
+
+        // Create movement
+        const movement = Object.assign(new StockMovementEntity(), {
+          productId: data.productId,
+          movementType: 'supplier_receipt',
+          fromLocationId: null,
+          toLocationId: data.locationId,
+          quantity: data.quantity,
+          reference: data.reference || null,
+          reason: data.reason || 'Réception fournisseur',
+          employeeId: data.employeeId,
+          employeeName: data.employeeName,
+        });
+        const saved = await manager.save(movement);
+
+        // Also update legacy product.stockQuantity for backward compatibility
+        await this.syncLegacyStock(manager, data.productId);
+
+        this.logger.log(
+          `Received ${data.quantity}x product ${data.productId} at location ${data.locationId}`,
+        );
+        return { saved, oldBalance, newBalance: balance.quantity };
+      },
+    );
+
+    await this.auditMovement({
+      productId: data.productId,
+      entityId: saved.id,
+      action: 'stock_supplier_receipt',
+      employeeId: data.employeeId,
+      details: {
         movementType: 'supplier_receipt',
-        fromLocationId: null,
         toLocationId: data.locationId,
         quantity: data.quantity,
-        reference: data.reference || null,
-        reason: data.reason || 'Réception fournisseur',
-        employeeId: data.employeeId,
+        oldBalance,
+        newBalance,
+        reference: data.reference ?? null,
+        reason: data.reason ?? 'Réception fournisseur',
         employeeName: data.employeeName,
-      });
-      const saved = await manager.save(movement);
-
-      // Also update legacy product.stockQuantity for backward compatibility
-      await this.syncLegacyStock(manager, data.productId);
-
-      this.logger.log(
-        `Received ${data.quantity}x product ${data.productId} at location ${data.locationId}`,
-      );
-      return saved;
+      },
     });
+
+    return saved;
   }
 
   /**
@@ -287,60 +351,91 @@ export class StockLocationsService {
     }
     await this.assertProductOwned(data.productId, data.actorStoreId, data.actorRole);
 
-    return this.dataSource.transaction(async (manager) => {
-      // Lock source balance
-      const fromBalance = await manager.findOne(StockBalanceEntity, {
-        where: { productId: data.productId, locationId: data.fromLocationId },
-        lock: { mode: 'pessimistic_write' },
-      });
-
-      if (!fromBalance || fromBalance.quantity < data.quantity) {
-        const available = fromBalance?.quantity ?? 0;
-        throw new BadRequestException(
-          `Insufficient stock: ${available} available, ${data.quantity} requested`,
-        );
-      }
-
-      // Lock or create destination balance
-      let toBalance = await manager.findOne(StockBalanceEntity, {
-        where: { productId: data.productId, locationId: data.toLocationId },
-        lock: { mode: 'pessimistic_write' },
-      });
-
-      if (!toBalance) {
-        toBalance = Object.assign(new StockBalanceEntity(), {
-          productId: data.productId,
-          locationId: data.toLocationId,
-          quantity: 0,
+    const { saved, fromOldBalance, fromNewBalance, toOldBalance, toNewBalance } =
+      await this.dataSource.transaction(async (manager) => {
+        // Lock source balance
+        const fromBalance = await manager.findOne(StockBalanceEntity, {
+          where: { productId: data.productId, locationId: data.fromLocationId },
+          lock: { mode: 'pessimistic_write' },
         });
-      }
 
-      fromBalance.quantity -= data.quantity;
-      toBalance.quantity += data.quantity;
-      await manager.save([fromBalance, toBalance]);
+        if (!fromBalance || fromBalance.quantity < data.quantity) {
+          const available = fromBalance?.quantity ?? 0;
+          throw new BadRequestException(
+            `Insufficient stock: ${available} available, ${data.quantity} requested`,
+          );
+        }
 
-      // Create movement
-      const movement = Object.assign(new StockMovementEntity(), {
-        productId: data.productId,
+        // Lock or create destination balance
+        let toBalance = await manager.findOne(StockBalanceEntity, {
+          where: { productId: data.productId, locationId: data.toLocationId },
+          lock: { mode: 'pessimistic_write' },
+        });
+
+        if (!toBalance) {
+          toBalance = Object.assign(new StockBalanceEntity(), {
+            productId: data.productId,
+            locationId: data.toLocationId,
+            quantity: 0,
+          });
+        }
+
+        const fromOldBalance = fromBalance.quantity;
+        const toOldBalance = toBalance.quantity;
+        fromBalance.quantity -= data.quantity;
+        toBalance.quantity += data.quantity;
+        await manager.save([fromBalance, toBalance]);
+
+        // Create movement
+        const movement = Object.assign(new StockMovementEntity(), {
+          productId: data.productId,
+          movementType: 'transfer',
+          fromLocationId: data.fromLocationId,
+          toLocationId: data.toLocationId,
+          quantity: data.quantity,
+          reference: data.reference || null,
+          reason: data.reason || 'Transfert',
+          employeeId: data.employeeId,
+          employeeName: data.employeeName,
+        });
+        const saved = await manager.save(movement);
+
+        // Sync legacy stock
+        await this.syncLegacyStock(manager, data.productId);
+
+        this.logger.log(
+          `Transferred ${data.quantity}x product ${data.productId}: ${data.fromLocationId} → ${data.toLocationId}`,
+        );
+        return {
+          saved,
+          fromOldBalance,
+          fromNewBalance: fromBalance.quantity,
+          toOldBalance,
+          toNewBalance: toBalance.quantity,
+        };
+      });
+
+    await this.auditMovement({
+      productId: data.productId,
+      entityId: saved.id,
+      action: 'stock_transfer',
+      employeeId: data.employeeId,
+      details: {
         movementType: 'transfer',
         fromLocationId: data.fromLocationId,
         toLocationId: data.toLocationId,
         quantity: data.quantity,
-        reference: data.reference || null,
-        reason: data.reason || 'Transfert',
-        employeeId: data.employeeId,
+        fromOldBalance,
+        fromNewBalance,
+        toOldBalance,
+        toNewBalance,
+        reference: data.reference ?? null,
+        reason: data.reason ?? 'Transfert',
         employeeName: data.employeeName,
-      });
-      const saved = await manager.save(movement);
-
-      // Sync legacy stock
-      await this.syncLegacyStock(manager, data.productId);
-
-      this.logger.log(
-        `Transferred ${data.quantity}x product ${data.productId}: ${data.fromLocationId} → ${data.toLocationId}`,
-      );
-      return saved;
+      },
     });
+
+    return saved;
   }
 
   /**
@@ -371,40 +466,62 @@ export class StockLocationsService {
     }
     await this.assertProductOwned(data.productId, data.actorStoreId, data.actorRole);
 
-    return this.dataSource.transaction(async (manager) => {
-      const balance = await manager.findOne(StockBalanceEntity, {
-        where: { productId: data.productId, locationId: data.locationId },
-        lock: { mode: 'pessimistic_write' },
-      });
-      if (!balance || balance.quantity < data.quantity) {
-        const available = balance?.quantity ?? 0;
-        throw new BadRequestException(
-          `Insufficient stock to write off: ${available} available, ${data.quantity} requested`,
+    const { saved, oldBalance, newBalance } = await this.dataSource.transaction(
+      async (manager) => {
+        const balance = await manager.findOne(StockBalanceEntity, {
+          where: { productId: data.productId, locationId: data.locationId },
+          lock: { mode: 'pessimistic_write' },
+        });
+        if (!balance || balance.quantity < data.quantity) {
+          const available = balance?.quantity ?? 0;
+          throw new BadRequestException(
+            `Insufficient stock to write off: ${available} available, ${data.quantity} requested`,
+          );
+        }
+
+        const oldBalance = balance.quantity;
+        balance.quantity -= data.quantity;
+        await manager.save(balance);
+
+        const movement = Object.assign(new StockMovementEntity(), {
+          productId: data.productId,
+          movementType: data.lossType,
+          fromLocationId: data.locationId,
+          toLocationId: null,
+          quantity: data.quantity,
+          reason: data.reason.trim(),
+          employeeId: data.employeeId,
+          employeeName: data.employeeName,
+        });
+        const saved = await manager.save(movement);
+
+        await this.syncLegacyStock(manager, data.productId);
+
+        this.logger.log(
+          `Loss ${data.lossType} ${data.quantity}x product ${data.productId} at ${data.locationId}: ${data.reason}`,
         );
-      }
+        return { saved, oldBalance, newBalance: balance.quantity };
+      },
+    );
 
-      balance.quantity -= data.quantity;
-      await manager.save(balance);
-
-      const movement = Object.assign(new StockMovementEntity(), {
-        productId: data.productId,
+    await this.auditMovement({
+      productId: data.productId,
+      entityId: saved.id,
+      action: 'stock_loss',
+      employeeId: data.employeeId,
+      details: {
         movementType: data.lossType,
         fromLocationId: data.locationId,
-        toLocationId: null,
         quantity: data.quantity,
+        oldBalance,
+        newBalance,
+        lossType: data.lossType,
         reason: data.reason.trim(),
-        employeeId: data.employeeId,
         employeeName: data.employeeName,
-      });
-      const saved = await manager.save(movement);
-
-      await this.syncLegacyStock(manager, data.productId);
-
-      this.logger.log(
-        `Loss ${data.lossType} ${data.quantity}x product ${data.productId} at ${data.locationId}: ${data.reason}`,
-      );
-      return saved;
+      },
     });
+
+    return saved;
   }
 
   /**
@@ -424,64 +541,93 @@ export class StockLocationsService {
     if (totalQty <= 0) throw new BadRequestException('Total dispatch quantity must be positive');
     await this.assertProductOwned(data.productId, data.actorStoreId, data.actorRole);
 
-    return this.dataSource.transaction(async (manager) => {
-      // Lock source
-      const fromBalance = await manager.findOne(StockBalanceEntity, {
-        where: { productId: data.productId, locationId: data.fromLocationId },
-        lock: { mode: 'pessimistic_write' },
-      });
-
-      if (!fromBalance || fromBalance.quantity < totalQty) {
-        throw new BadRequestException(
-          `Insufficient stock: ${fromBalance?.quantity ?? 0} available, ${totalQty} requested for dispatch`,
-        );
-      }
-
-      const movements: StockMovementEntity[] = [];
-
-      for (const d of data.dispatches) {
-        if (d.quantity <= 0) continue;
-
-        // Update or create destination
-        let toBalance = await manager.findOne(StockBalanceEntity, {
-          where: { productId: data.productId, locationId: d.toLocationId },
+    const { movements, fromOldBalance, fromNewBalance, applied } =
+      await this.dataSource.transaction(async (manager) => {
+        // Lock source
+        const fromBalance = await manager.findOne(StockBalanceEntity, {
+          where: { productId: data.productId, locationId: data.fromLocationId },
           lock: { mode: 'pessimistic_write' },
         });
 
-        if (!toBalance) {
-          toBalance = Object.assign(new StockBalanceEntity(), {
-            productId: data.productId,
-            locationId: d.toLocationId,
-            quantity: 0,
-          });
+        if (!fromBalance || fromBalance.quantity < totalQty) {
+          throw new BadRequestException(
+            `Insufficient stock: ${fromBalance?.quantity ?? 0} available, ${totalQty} requested for dispatch`,
+          );
         }
 
-        fromBalance.quantity -= d.quantity;
-        toBalance.quantity += d.quantity;
-        await manager.save(toBalance);
+        const fromOldBalance = fromBalance.quantity;
+        const movements: StockMovementEntity[] = [];
+        const applied: { toLocationId: string; quantity: number }[] = [];
 
-        const movement = Object.assign(new StockMovementEntity(), {
-          productId: data.productId,
-          movementType: 'transfer',
-          fromLocationId: data.fromLocationId,
-          toLocationId: d.toLocationId,
-          quantity: d.quantity,
-          reference: data.reference || null,
-          reason: 'Dispatch réseau',
-          employeeId: data.employeeId,
-          employeeName: data.employeeName,
-        });
-        movements.push(await manager.save(movement));
-      }
+        for (const d of data.dispatches) {
+          if (d.quantity <= 0) continue;
 
-      await manager.save(fromBalance);
-      await this.syncLegacyStock(manager, data.productId);
+          // Update or create destination
+          let toBalance = await manager.findOne(StockBalanceEntity, {
+            where: { productId: data.productId, locationId: d.toLocationId },
+            lock: { mode: 'pessimistic_write' },
+          });
 
-      this.logger.log(
-        `Dispatched ${totalQty}x product ${data.productId} to ${data.dispatches.length} locations`,
-      );
-      return movements;
+          if (!toBalance) {
+            toBalance = Object.assign(new StockBalanceEntity(), {
+              productId: data.productId,
+              locationId: d.toLocationId,
+              quantity: 0,
+            });
+          }
+
+          fromBalance.quantity -= d.quantity;
+          toBalance.quantity += d.quantity;
+          await manager.save(toBalance);
+
+          const movement = Object.assign(new StockMovementEntity(), {
+            productId: data.productId,
+            movementType: 'transfer',
+            fromLocationId: data.fromLocationId,
+            toLocationId: d.toLocationId,
+            quantity: d.quantity,
+            reference: data.reference || null,
+            reason: 'Dispatch réseau',
+            employeeId: data.employeeId,
+            employeeName: data.employeeName,
+          });
+          movements.push(await manager.save(movement));
+          applied.push({ toLocationId: d.toLocationId, quantity: d.quantity });
+        }
+
+        await manager.save(fromBalance);
+        await this.syncLegacyStock(manager, data.productId);
+
+        this.logger.log(
+          `Dispatched ${totalQty}x product ${data.productId} to ${data.dispatches.length} locations`,
+        );
+        return {
+          movements,
+          fromOldBalance,
+          fromNewBalance: fromBalance.quantity,
+          applied,
+        };
+      });
+
+    await this.auditMovement({
+      productId: data.productId,
+      entityId: data.productId,
+      action: 'stock_dispatch',
+      employeeId: data.employeeId,
+      details: {
+        movementType: 'dispatch',
+        fromLocationId: data.fromLocationId,
+        totalQuantity: applied.reduce((s, a) => s + a.quantity, 0),
+        dispatches: applied,
+        movementIds: movements.map((m) => m.id),
+        fromOldBalance,
+        fromNewBalance,
+        reference: data.reference ?? null,
+        employeeName: data.employeeName,
+      },
     });
+
+    return movements;
   }
 
   /**

@@ -31,6 +31,7 @@ import { UnitsModule } from './modules/units/units.module';
 import { ConnectedAppsModule } from './modules/connected-apps/connected-apps.module';
 import { InventoryScanModule } from './modules/inventory-scan/inventory-scan.module';
 import { ProductIntegrationModule } from './modules/product-integration/product-integration.module';
+import { MachineEnrollmentModule } from './modules/machine-enrollment/machine-enrollment.module';
 import { EmployeeScoreModule } from './modules/employee-score/employee-score.module';
 import { StockLocationsModule } from './modules/stock-locations/stock-locations.module';
 import { StockReconciliationModule } from './modules/stock-reconciliation/stock-reconciliation.module';
@@ -53,6 +54,7 @@ import { PosIntegrationModule } from './modules/pos-integration/pos-integration.
 import { LoyaltyAdminModule } from './modules/loyalty-admin/loyalty-admin.module';
 import { AirtableOpsModule } from './modules/airtable-ops/airtable-ops.module';
 import { SalesGuardsModule } from './modules/sales-guards/sales-guards.module';
+import { AttractModule } from './modules/attract/attract.module';
 // ── RH MODULES (employees re-activated for local fallback) ──
 // PointageModule, PayrollModule, PlanningModule, StaffingModule → still in TimeWin24
 
@@ -119,10 +121,12 @@ const isProd = process.env.NODE_ENV === 'production';
     ConnectedAppsModule,
     InventoryScanModule,
     ProductIntegrationModule,
+    MachineEnrollmentModule,
     EmployeeScoreModule,
     StockLocationsModule,
     StockReconciliationModule,
     PromoCodesModule,
+    AttractModule,
     DocumentsModule,
     StripeModule,
     StripeTerminalModule,

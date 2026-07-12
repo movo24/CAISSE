@@ -16,6 +16,7 @@ import { ProductPerformancePage } from './pages/ProductPerformancePage';
 import { OrganizationsPage } from './pages/OrganizationsPage';
 import { UnitsPage } from './pages/UnitsPage';
 import { StoresManagementPage } from './pages/StoresManagementPage';
+import { PosEnrollmentPage } from './pages/PosEnrollmentPage';
 import { EmployeesPage } from './pages/EmployeesPage';
 import { PayrollPage } from './pages/PayrollPage';
 import { PlanningPage } from './pages/PlanningPage';
@@ -30,6 +31,7 @@ import { ProductVariantsPage } from './pages/ProductVariantsPage';
 import { StorePricesPage } from './pages/StorePricesPage';
 import { BrandsSuppliersPage } from './pages/BrandsSuppliersPage';
 import { PromoCodesPage } from './pages/PromoCodesPage';
+import { CampaignsPage } from './pages/CampaignsPage';
 import { PendingPaymentsPage } from './pages/PendingPaymentsPage';
 import { InventoryVariancePage } from './pages/InventoryVariancePage';
 import { CashSessionsPage } from './pages/CashSessionsPage';
@@ -85,6 +87,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             <Route path="/catalog/store-prices" element={<StorePricesPage />} />
             <Route path="/catalog/brands-suppliers" element={<BrandsSuppliersPage />} />
             <Route path="/promo-codes" element={<PromoCodesPage />} />
+            <Route path="/campaigns" element={<CampaignsPage />} />
             <Route path="/pending-payments" element={<PendingPaymentsPage />} />
             <Route path="/inventory-variance" element={<InventoryVariancePage />} />
             <Route path="/product-integration" element={<ProductIntegrationPage />} />
@@ -107,6 +110,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             <Route path="/organizations" element={<OrganizationsPage />} />
             <Route path="/units" element={<UnitsPage />} />
             <Route path="/stores" element={<StoresManagementPage />} />
+            <Route path="/pos-enrollment" element={<PosEnrollmentPage />} />
             <Route path="/connected-apps" element={<ConnectedAppsPage />} />
             <Route path="/airtable-ops" element={<AirtableOpsPage />} />
 

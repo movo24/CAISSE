@@ -22,7 +22,7 @@ npm run docker:down      # Stop local PostgreSQL
 
 # Testing (always run before committing)
 npm run test             # All workspaces
-npm run test:backend     # Backend only (543 tests, 81 spec suites; 3 gated-PG skipped)
+npm run test:backend     # Backend only (~961 passing / 972 total, 116 spec files; gated-PG *.pg.spec skipped without TEST_DATABASE_URL)
 
 # Code quality
 npm run lint             # ESLint (all workspaces)
@@ -183,6 +183,7 @@ Current migrations (run in order):
 1741000000000-CreatePromoCodes
 1742000000000-AddSaleDiscountApprover
 1743000000000-AddPaymentCapture
+1744000000000-HardenAuditChain
 1745000000000-AddStoreLegalIdentity
 1746000000000-AddProductStatusAndIntegrationRequests
 1747000000000-AddEmployeeSystemScore
@@ -193,6 +194,9 @@ Current migrations (run in order):
 1752000000000-AddPosSessionOpeningCashTrace
 1753000000000-AddCreditNoteFiscalFields
 1754000000000-CreateProductComponents
+1755000000000-CreateAttractCampaigns
+1756000000000-AddPosMachineEnrollment
+1757000000000-AddStoreTw24Enabled
 ```
 > Saut de numérotation 1719→1735 volontaire (réservation d'une plage pour les blocs POS).
 
@@ -323,7 +327,7 @@ Validated at boot in `main.ts`. Missing required vars crash the server with a cl
 
 ## Tests
 
-543 tests across 81 spec suites (`packages/backend/test/` + colocated `*.spec.ts`; 3 gated-PG `*.pg.spec.ts` skipped without `TEST_DATABASE_URL`). Key suites:
+~961 passing / 972 total across 116 spec files (`packages/backend/test/` + colocated `*.spec.ts`; gated-PG `*.pg.spec.ts` skipped without `TEST_DATABASE_URL`). Key suites:
 
 | File | Coverage |
 |------|----------|
@@ -362,8 +366,8 @@ packages/backend/
   src/main.ts                                   Bootstrap, env validation, Swagger, global pipes
   src/app.module.ts                             Module registry, TypeORM, rate-limit tiers
   src/database/typeorm.config.ts                Migration CLI config
-  src/database/entities/                        45 TypeORM entities
-  src/database/migrations/                      11 versioned migrations
+  src/database/entities/                        62 TypeORM entities
+  src/database/migrations/                      38 versioned migrations (→ 1757)
   src/common/guards/roles.guard.ts              Role hierarchy (admin > manager > cashier)
   src/common/guards/jwt-auth.guard.ts           JWT authentication guard
   src/common/interceptors/tenant.interceptor.ts Multi-tenant storeId enforcement

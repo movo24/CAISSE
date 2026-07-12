@@ -1,9 +1,12 @@
-# electron-builder configuration — POS Caisse desktop pack.
-# Produces: POS-Caisse-Setup-<version>.exe (NSIS installer) + a portable .exe.
+# electron-builder configuration — The Wesley's POS desktop pack.
+# Produces: The-Wesleys-POS-Setup-x64.exe (NSIS installer) + a portable .exe.
 # Build with: npm run desktop:build  (Windows targets build on Windows/CI).
-appId: com.addxintelligence.poscaisse
-productName: POS Caisse
-copyright: © AddX Intelligence
+#
+# appId is STABLE and must NEVER change after the first published release —
+# electron-updater keys the update identity on it. (First release: v1.0.0.)
+appId: com.thewesleys.pos
+productName: The Wesley's POS
+copyright: © The Wesley's
 # Pinned because electron is hoisted to the monorepo root node_modules and
 # electron-builder (run from the package dir) cannot auto-resolve the version.
 # Keep in sync with devDependencies.electron.
@@ -13,6 +16,17 @@ directories:
   # Compiled main (dist/main) + bundled renderer (dist/) are packaged.
   output: release
   buildResources: build
+
+# Auto-update feed (electron-updater). GitHub Releases : le build génère
+# latest.yml (canal stable) / beta.yml (canal pilote, pré-releases) et les
+# publie sur la Release quand `--publish` est actif (tag desktop-v* en CI).
+# app-update.yml est embarqué dans l'app → la caisse consomme des RELEASES
+# publiées, jamais un git pull sur les sources.
+publish:
+  - provider: github
+    owner: movo24
+    repo: CAISSE
+    releaseType: release
 
 # What goes inside the app bundle. Renderer is the Vite `dist/` output.
 files:
@@ -32,15 +46,22 @@ win:
 
 nsis:
   oneClick: false
+  # Assisted installer, per-user (no domain-admin needed on a shop PC). Appears
+  # in Windows "Apps & features", clean uninstall, upgrades in place.
   perMachine: false
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  shortcutName: POS Caisse
-  artifactName: POS-Caisse-Setup-${version}.${ext}
+  shortcutName: The Wesley's POS
+  # Business data (localStorage: sessions, machine id, peripheral action ledger)
+  # is preserved across updates AND on uninstall — never wipe the terminal state.
+  deleteAppDataOnUninstall: false
+  # Fixed artifact name (no version) so the download link is stable across
+  # versions; electron-updater resolves the exact file from latest.yml.
+  artifactName: The-Wesleys-POS-Setup-${arch}.${ext}
 
 portable:
-  artifactName: POS-Caisse-Portable-${version}.${ext}
+  artifactName: The-Wesleys-POS-Portable-${arch}.${ext}
 
 # macOS target (secondary priority) — lets the chain be proven on a Mac.
 mac:

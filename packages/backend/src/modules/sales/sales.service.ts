@@ -3,6 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Logger,
   Optional,
   Inject,
@@ -22,6 +23,9 @@ import { ProductEntity } from '../../database/entities/product.entity';
 import { FiscalJournalEntity } from '../../database/entities/fiscal-journal.entity';
 import { PosSessionEntity } from '../../database/entities/pos-session.entity';
 import { SaleComponentMovementEntity } from '../../database/entities/sale-component-movement.entity';
+import { StoreEntity } from '../../database/entities/store.entity';
+import { PosMachineEntity } from '../../database/entities/pos-machine.entity';
+import { evaluateEnrollmentGate } from '../machine-enrollment/machine-enrollment.service';
 import { ProductsService } from '../products/products.service';
 import { CustomersService } from '../customers/customers.service';
 import { PromotionsService, CartItem } from '../promotions/promotions.service';
@@ -34,6 +38,7 @@ import { PaginatedResult } from '../../common/dto/pagination.dto';
 import { logBusinessEvent } from '../../common/business-logger';
 import { RealtimeService } from '../../common/realtime/realtime.service';
 import { returningRows } from '../../common/utils/returning-rows';
+import { stockCrossingBand } from './stock-alert-crossing.util';
 
 function sha256(data: string): string {
   return createHash('sha256').update(data).digest('hex');
@@ -106,7 +111,50 @@ export class SalesService {
     @Optional()
     @Inject('STRIPE')
     private readonly stripe?: Stripe,
+    // Optional (Partie B — enrôlement machine). Absent (tests existants) → la
+    // barrière d'enrôlement est inerte : aucune vente n'est bloquée. Présents,
+    // la barrière ne s'applique QUE si le magasin a `enrollmentEnforced = true`.
+    @Optional()
+    @InjectRepository(StoreEntity)
+    private storeRepo?: Repository<StoreEntity>,
+    @Optional()
+    @InjectRepository(PosMachineEntity)
+    private machineRepo?: Repository<PosMachineEntity>,
   ) {}
+
+  /**
+   * Barrière d'enrôlement (Partie B). Bloque la vente UNIQUEMENT quand le
+   * magasin applique l'enrôlement et que la machine émettrice n'est pas
+   * `approved` pour ce magasin. Inerte si les repos ne sont pas injectés
+   * (tests) ou si le magasin n'applique pas l'enrôlement (défaut). La décision
+   * est le helper pur `evaluateEnrollmentGate`.
+   */
+  private async assertMachineEnrolled(
+    storeId: string,
+    machineId?: string | null,
+  ): Promise<void> {
+    if (!this.storeRepo || !this.machineRepo) return; // barrière inerte
+    const store = await this.storeRepo.findOne({
+      where: { id: storeId },
+      select: ['id', 'enrollmentEnforced'],
+    });
+    if (!store?.enrollmentEnforced) return; // magasin sans enrôlement appliqué
+    const machine = machineId
+      ? await this.machineRepo.findOne({ where: { machineId } })
+      : null;
+    const gate = evaluateEnrollmentGate({ enforced: true, storeId, machine });
+    if (!gate.allowed) {
+      this.logger.warn(
+        `[ENROLLMENT] Vente refusée store=${storeId} machine=${machineId ?? 'aucune'} raison=${gate.reason}`,
+      );
+      throw new ForbiddenException({
+        code: 'MACHINE_NOT_ENROLLED',
+        reason: gate.reason,
+        message:
+          'Cette caisse n’est pas encore validée par le back-office. La vente est bloquée tant que la machine n’est pas approuvée.',
+      });
+    }
+  }
 
   /**
    * Resolve the register binding (session + terminal) for a sale, SERVER-SIDE.
@@ -323,10 +371,13 @@ export class SalesService {
     employeeSnapshot?: { employeeName?: string; employeeRole?: string; maxDiscount?: number },
     idempotencyKey?: string,
     terminalId?: string | null,
+    machineId?: string | null,
   ): Promise<SaleEntity> {
     // --- Idempotency (NF525): a replayed offline-sync POST must NEVER create a
     // second sale. Fast path BEFORE validation so a replay does not falsely fail
     // on "insufficient stock" if the catalogue moved on since the original sale.
+    // Runs BEFORE the enrollment gate: un replay d'une vente DÉJÀ acceptée ne
+    // doit pas être rebloqué si l'enrôlement a changé entre-temps.
     const idemKey = this.normalizeIdempotencyKey(idempotencyKey);
     if (idemKey) {
       const cached = await this.idempotencyRepo.findOne({ where: { key: idemKey } });
@@ -335,6 +386,10 @@ export class SalesService {
         return this.replaySaleResponse(cached);
       }
     }
+
+    // --- Enrollment gate (Partie B): bloque une NOUVELLE vente tant que la
+    // machine n'est pas validée, uniquement si le magasin applique l'enrôlement.
+    await this.assertMachineEnrolled(storeId, machineId);
 
     // --- Input validation ---
     if (!dto.items || dto.items.length === 0) {
@@ -1146,9 +1201,22 @@ export class SalesService {
     for (const item of items) {
       const product = products.get(item.ean);
       if (!product) continue;
-      const newQty = Math.max(0, product.stockQuantity - item.quantity);
+      const oldQty = product.stockQuantity;
+      const newQty = Math.max(0, oldQty - item.quantity);
 
-      if (newQty <= 0) {
+      // Edge-triggered: alert ONLY when this sale moves the product into a MORE
+      // severe band (out_of_stock > critical > alert). A product already below a
+      // threshold no longer re-alerts on every subsequent sale (was: audit noise
+      // + repeated TW24 pushes to managers). Aligned with StockService.decrementStock.
+      const band = stockCrossingBand(
+        oldQty,
+        newQty,
+        product.stockAlertThreshold,
+        product.stockCriticalThreshold,
+      );
+      if (!band) continue;
+
+      if (band === 'out_of_stock') {
         alerts.push({
           productId: product.id,
           productName: product.name,
@@ -1157,7 +1225,7 @@ export class SalesService {
           level: 'out_of_stock',
           message: `${product.name} est en rupture de stock !`,
         });
-      } else if (newQty <= product.stockCriticalThreshold) {
+      } else if (band === 'critical') {
         alerts.push({
           productId: product.id,
           productName: product.name,
@@ -1166,7 +1234,7 @@ export class SalesService {
           level: 'critical',
           message: `${product.name}: stock critique (${newQty} restant${newQty > 1 ? 's' : ''})`,
         });
-      } else if (newQty <= product.stockAlertThreshold) {
+      } else {
         alerts.push({
           productId: product.id,
           productName: product.name,

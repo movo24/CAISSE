@@ -134,6 +134,8 @@ export class CreateStoreDto {
   @ApiPropertyOptional() @IsOptional() @IsBoolean() allowStock?: boolean;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() allowReporting?: boolean;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() isPilotStore?: boolean;
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() enrollmentEnforced?: boolean;
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() tw24Enabled?: boolean;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(200) managerName?: string;
   @ApiPropertyOptional() @IsOptional()
   @ValidateIf((_o, v) => v !== null && v !== '') @IsEmail() managerEmail?: string;
@@ -158,6 +160,8 @@ export class UpdateStoreDto {
   @ApiPropertyOptional() @IsOptional() @IsBoolean() allowStock?: boolean;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() allowReporting?: boolean;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() isPilotStore?: boolean;
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() enrollmentEnforced?: boolean;
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() tw24Enabled?: boolean;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(200) managerName?: string;
   @ApiPropertyOptional() @IsOptional() @ValidateIf((_o, v) => v !== null && v !== '') @IsEmail() managerEmail?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(30) managerPhone?: string;

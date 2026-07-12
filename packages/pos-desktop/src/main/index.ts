@@ -9,14 +9,24 @@
  * Dev mode loads the Vite dev server. Production loads the bundled renderer.
  */
 
-import { app, BrowserWindow, protocol, net, shell } from 'electron';
+import { app, BrowserWindow, protocol, net, shell, ipcMain, screen } from 'electron';
 import * as path from 'path';
 import { pathToFileURL } from 'url';
 import { CustomerDisplayController } from './customerDisplay';
 import { registerPosPrintingIpc } from './posPrinting';
+import { UpdateController } from './updater';
+import { registerPosRawPrintIpc } from './posRawPrint';
+import { registerMachineIdIpc } from './machineId';
 
 let posWindow: BrowserWindow | null = null;
 let customerDisplay: CustomerDisplayController | null = null;
+let updateController: UpdateController | null = null;
+
+// Version de l'app (depuis package.json packagé) — lue synchroniquement par le
+// preload pour l'afficher dans le POS. Toujours exacte, jamais 'dev' en build.
+ipcMain.on('app:getVersion', (e) => {
+  e.returnValue = app.getVersion();
+});
 
 const isDev = !app.isPackaged && process.env.NODE_ENV !== 'production';
 const DEV_URL = process.env.POS_DEV_URL || 'http://localhost:5175';
@@ -62,12 +72,26 @@ function loadRoute(win: BrowserWindow, route = ''): void {
 }
 
 function createPOSWindow(): void {
+  // The REGISTER window always opens on the PRIMARY Windows display — pinned
+  // explicitly (centred in its work area), never left to implicit placement,
+  // so the client window (secondary-only) can never trade places with it.
+  const primary = screen.getPrimaryDisplay();
+  const width = Math.min(1280, primary.workArea.width);
+  const height = Math.min(800, primary.workArea.height);
+  const x = primary.workArea.x + Math.max(0, Math.round((primary.workArea.width - width) / 2));
+  const y = primary.workArea.y + Math.max(0, Math.round((primary.workArea.height - height) / 2));
+  // eslint-disable-next-line no-console
+  console.log(
+    `[pos-window] primary display ${primary.id} bounds=${JSON.stringify(primary.bounds)} → POS window at ${JSON.stringify({ x, y, width, height })}`,
+  );
   posWindow = new BrowserWindow({
-    width: 1280,
-    height: 800,
+    x,
+    y,
+    width,
+    height,
     minWidth: 1024,
     minHeight: 700,
-    title: 'POS Caisse',
+    title: "The Wesley's POS",
     backgroundColor: '#0f0f19',
     show: false,
     webPreferences: {
@@ -153,6 +177,11 @@ if (!gotLock) {
 
     // Impression ticket via le spooler OS (PR #33) — honest-fail, IPC borné.
     registerPosPrintingIpc();
+    // Impression RAW ESC/POS (tiroir-caisse + coupe) via le spooler Windows.
+    registerPosRawPrintIpc();
+
+    // Identité machine stable (Partie B — enrôlement). IPC borné, renvoie un UUID.
+    registerMachineIdIpc();
 
     // Managed customer display (screen 2): screen selection, on/off, reload,
     // fullscreen/kiosk, crash watchdog, persistence, IPC control.
@@ -163,6 +192,11 @@ if (!gotLock) {
     });
     customerDisplay.registerIpc();
     customerDisplay.open();
+
+    // Mise à jour automatique (electron-updater + GitHub Releases). Ne bloque
+    // jamais la caisse ; désactivée en dev/non-packagé ; installe hors vente.
+    updateController = new UpdateController();
+    updateController.start();
 
     app.on('activate', () => {
       if (!posWindow) createPOSWindow();

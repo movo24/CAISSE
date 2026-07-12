@@ -41,8 +41,8 @@
 ### P1 — Build / front
 - [x] **M703** mobile : tsc réparé (commit 6ce722c) — vite-env.d.ts, vitest 5/5
 - [~] **M704** customer-app : **fix vérifié** (installer `@capacitor/preferences@^6` → tsc vert) mais **NON applicable depuis ce worktree** : `node_modules` est un symlink partagé avec le checkout principal ; `npm install` ici casse le store partagé (testé + recovery effectué). Le manifeste déclare déjà la dep → résolu par `npm install` dans un checkout normal. Pas de bug code.
-- [ ] **M601** POS : câbler branche succès TPE (ou bouton confirm) + test
-- [ ] **M603** POS : inclure `creditNoteCode` dans l'enqueue offline + tests finalize
+- [x] **M601** POS : branche succès TPE câblée (`startTpeWaiting` / `handleTpeResponse('success'|'refused'|'timeout')`, POSPage) — chemin desktop **étiqueté DÉMO** (carte réelle = pipeline iPad/WisePad 3, PR #25/#37).
+- [x] **M603** POS : `creditNoteCode` porté par `toWirePayments` et inclus dans l'enqueue offline (`salePayload.ts`) — une vente `store_credit` hors-ligne se synchronise correctement.
 - [~] **M607** POS : vérifié → couche HMAC sync **morte** (token jamais provisionné, header non posé, backend ne vérifie pas) ; commentaires trompeurs corrigés (6a05c0b, D19) ; sync authentifié par JWT. Câblage end-to-end = gated (chemin écriture sync).
 
 ## Employee System Score — score employé 100 % factuel (2026-07-07, PR #14)
@@ -107,7 +107,7 @@
 | 3 | Ventes | ✅ | Backend ✅ (hash v2, idempotence, session binding). iPad OK. `Idempotency-Key` sur la vente ONLINE (PR #24). **Faux ticket desktop supprimé (PR #26)** : échec réseau → file offline honnête (`OFF-…`, même clé d'idempotence) ; autre échec → erreur affichée, panier conservé, AUCUN ticket fabriqué, aucune confirmation |
 | 4 | Paiements | 🔄 | Espèces ✅ (rendu `paymentMachine`, tiroir iPad). **Carte réelle câblée (PR #25)** : `useStripeTerminal` (WisePad 3) consommé par `usePayment` — mode `real` (Stripe configuré : PI lié à la clé d'idempotence vente, capture réelle, leg `stripePaymentIntentId`), mode `demo` (build dev sans Stripe : étiqueté DÉMO, leg `pendingCapture=true` → vente `payment_pending`, jamais « payée »), mode `disabled` (prod sans Stripe : bouton carte = erreur claire, fail-closed). Invariant code : un leg carte ne se commit qu'avec des faits de capture (`cardLegRef`). ⚠️ Reste : test matériel WisePad 3 physique (aucun device ici) ; chemin desktop inline (PR #26) |
 | 5 | Retours / remboursements | ✅ | Online + offline, motif obligatoire, idempotence, session-bound serveur, cash déduit de l'attendu (PR #22). **D1.4 ratifiée + implémentée (GO owner)** : avoir = pièce opposable (numéro séquentiel/magasin, HT/TVA/TTC, approbation manager cash) ; **4 maillons `fiscal_journal` scellés dans la même tx** (référence vente / émission / stock / sortie cash) ; **atomicité totale prouvée sur vrai Postgres** ; UI backoffice « Créer un retour / avoir » depuis la vente (lignes éligibles, motif, mode, historique, PDF). Pas de capture TPE pour le remboursement carte (cohérent avec #4) ; bundles = sans objet (aucune nomenclature au catalogue) |
-| 6 | Stock | ✅/⚠️ | Décrément/restore atomiques dans les tx. Réconciliation ≥20 % complète (backend+UI+rôles). ⚠️ Alerte seuil AU MOMENT de la vente dormante (`sales.service.ts:632` SQL inline ne passe pas par `StockService.decrementStock`) — alertes par polling uniquement ; seuils absolus 10/5, pas de « règle 20 % » stock bas |
+| 6 | Stock | ✅/⚠️ | Décrément/restore atomiques dans les tx. Réconciliation ≥20 % complète (backend+UI+rôles). ✅ **Correction doc (2026-07-12)** : l'alerte de seuil AU MOMENT de la vente **existe bien** — `createSale` appelle `computeStockAlerts` + `logStockAlertsAsync` (`sales.service.ts:1081-1084`) → audit `stock_adjustment` (level alert/critical/out_of_stock) **+ push TW24 aux managers**, post-commit fire-and-forget (l'ancienne mention « alertes par polling uniquement » était **fausse**). ⚠️ Résiduel mineur : le calcul n'est **pas edge-triggered** (ré-alerte à chaque vente tant que le stock reste sous le seuil → bruit d'audit + pushs TW24 répétés) et le log n'est pas attendu ; seuils absolus 10/5, pas de « règle 20 % » stock bas. Dédup edge-triggered = décision cadence de notification manager (owner) |
 | 7 | Produits / SKU / variantes | ✅ | CRUD, anti-doublon EAN (index unique DB + 409), variantes complètes, création POS interdite serveur (PIN manager sinon 403, `product-integration.service.ts:247-271`) |
 | 8 | Prix magasin | ✅ | `resolveEffectivePrice` réellement appelé dans le chemin de vente (`sales.service.ts:262`), historisé + audité |
 | 9 | Scanner code-barres | 🔄 | Douchette = input focalisé + Enter (fragile si perte de focus, pas de debounce) ; le listener document dédié existe mais est **mort** (`startBarcodeListener` jamais appelé). Caméra ZXing réelle ; douchette BT réelle (iPad) |
@@ -173,10 +173,28 @@ NF525 Z-seal · Comptamax export comptable · porte offline-sale · onboarding/p
 - ✅ **GO WisePad3/Stripe prod** (PR #37) · **GO TEST_DATABASE_URL** (PR #38, +2 bugs prod prouvés/corrigés) · **GO D1.4** (PR #39, scellement fiscal des avoirs) · **GO Railway preflight** (PR #40) · **GO Railway live** (PR #41 + workflow CI) : **le commit main tourne EN PROD live** (deployment `a23cfe97`, health 200, smoke 401/400/201/200, migrations OK, `ALLOW_INMEMORY_CACHE=true` créé sur GO explicite). Prochain verrou : **GO DNS** (prod vivante = condition remplie).
 - ✅ **GO Product Packs** (2026-07-09) : produits composés — composition `product_components` (anti-boucle BFS), décrément composants race-safe dans la tx de vente, snapshot figé `sale_component_movements` (retours au prorata selon le snapshot, jamais la composition courante), maillon `stock_restored` enrichi, section Pack fiche produit backoffice, 12 specs pg-mem + 2 specs vrai-PG (deltas exacts, concurrence 5/10, atomicité).
 
+## Campagne 2026-07-11 — écran client, enrôlement, TW24 par magasin, distribution Windows
+
+> Salve livrée + mergée dans `main` + déployée (Backend B live, smoke + E2E verts).
+
+- ✅ **Bloc 4 — écran client attract** (PR #48→#52, mergées) : identité The Wesley's, backend campagnes/playlists, consommation playlist, backoffice de gestion. Migration `1755` déployée.
+- ✅ **Windows field mission** (PR #53→#57, mergées) : audit terrain (#53), **mise à jour automatique** electron-updater + GitHub Releases (#54), **tiroir-caisse RAW ESC/POS + diagnostic imprimante** (#55), **Dashboard opérationnel vrais chiffres** (#56), **impression ticket + tiroir dans le flux de vente réel, durci P0** (#57).
+- ✅ **P0 — clé d'idempotence périphériques auditée** (#57) : `ticketNumber` **rejeté** (séquentiel par magasin, repli client collisionnable) → identité stable = `saleId` (`sale-<uuid>`), gardes **par action** persistées (`AUTO_PRINT` / `AUTO_DRAWER_OPEN`, statuts dispatching/completed/failed), verrou d'exécution séparé du registre d'actions, cas incertain (crash) jamais rejoué.
+- ✅ **Partie B — enrôlement machine** (PR #58, mergée) : entité `pos_machines`, migration `1756` **exécutée** (déploiement), module `machine-enrollment` (request/status/approve/reject/revoke), barrière de vente `assertMachineEnrolled` (feature-flag `stores.enrollment_enforced`, **défaut false**), back-office de validation, POS desktop (machineId stable, écran d'attente, header `X-Machine-Id`).
+- ✅ **Partie C — toggle TW24 par magasin** (PR #60, mergée) : `stores.tw24_enabled` (**défaut false — opt-in**, migration `1757` **exécutée**), gate en tête de `pushEvent` (skip silencieux si désactivé), bouton Dashboard admin. TW24 **OFF partout par défaut** → aucun événement avant activation explicite.
+- ✅ **Distribution Windows** (PR #59, mergée) : `electron-builder` **The Wesley's POS** (appId `com.thewesleys.pos`, `The-Wesleys-POS-Setup-x64.exe`), **Release GitHub `v1.0.0` publiée** (installeur + `latest.yml` + `.blockmap` + portable).
+- ✅ **Auto-update R2** (PR #61, **mergée**) : feed sur stockage dédié (dépôt privé sans token embarqué), gating `vars.POS_UPDATE_URL` (absent ⇒ comportement inchangé, Release GitHub seule). **Auto-update R2 : code mergé, activation et test terrain en attente de la configuration infrastructure owner** (5 valeurs : `POS_UPDATE_URL` variable + `R2_ENDPOINT`/`R2_BUCKET`/`R2_ACCESS_KEY_ID`/`R2_SECRET_ACCESS_KEY` secrets). Voir `packages/pos-desktop/AUTO_UPDATE_DISTRIBUTION.md`. Aucune surveillance automatique armée.
+- ✅ **M9 — douchette wedge globale** (PR #62, mergée) : `startBarcodeListener` (code mort) câblé dans POSPage → scan capté hors focus, garde pure `shouldAcceptWedgeScan`.
+- ✅ **D20 — audit mouvements stock-locations** (branche `claude/stock-locations-audit`) : réception/transfert/perte/dispatch écrivent une entrée d'audit applicative post-commit best-effort (injection `AuditService` auparavant morte). +6 specs, suite backend 959 verte.
+- ✅ **Réconciliation dette** : **D12** (`POST /customers` OTP) était OPEN mais **déjà corrigé dans le code** (réponse = `{customer, qrCodeDataUrl}`, OTP log dev-only) → CLOSED. **D20** → CLOSED.
+
+### Réconciliation registre de dette (2026-07-11)
+Audit code : **D2** (connected-apps `api_key`) et **D5** (sync `push` storeId) étaient marqués OPEN mais sont **corrigés dans le code** → passés CLOSED (D2 garde un résiduel P2 = chiffrement au repos). **M601/M603** vérifiés livrés. Les cases ci-dessus reflètent l'état réel.
+
 ## Prochaine action automatique (continuité)
-**L'espace « safe » est épuisé (2026-07-08, post PR #24→#34).** Tout le restant est Tier-2 /
-owner-gated / matériel : validation WisePad 3 + clé Stripe prod (GO owner), DNS cutover + déploiement
-Railway (GO owner explicite), `TEST_DATABASE_URL` pour les specs pg/e2e en CI (décision infra),
-rotations de secrets D6/D8, réconciliation stock one-shot (écrit le stock réel — validation prod),
-signature du `.exe` / distribution. Chaque action attend son GO nommé — aucune ne s'ouvre sur un
-« continue » générique (charte §0).
+**L'espace « safe » est de nouveau épuisé (2026-07-11, post campagne écran client / Parties B-C / distribution).**
+Tout le restant est Tier-2 / owner-gated / matériel : **5 valeurs R2** pour l'auto-update (PR #61),
+validation WisePad 3 + clé Stripe prod (GO owner), DNS cutover + déploiement Railway (GO owner explicite),
+`TEST_DATABASE_URL` pour les specs pg/e2e en CI (décision infra), rotations de secrets D6/D8,
+réconciliation stock one-shot (écrit le stock réel — validation prod), **certificat de signature `.exe`**.
+Chaque action attend son GO nommé — aucune ne s'ouvre sur un « continue » générique (charte §0).

@@ -6,7 +6,7 @@ import {
   AlertTriangle, Building2, Network, Plug, CreditCard, Tag, Warehouse,
   BarChart3, Users, ShieldAlert, Database, Wallet, CalendarClock, Undo2,
   Boxes, Coins, Ticket, ClipboardCheck, Factory, ScanBarcode, Banknote,
-  ReceiptText,
+  ReceiptText, MonitorPlay, MonitorSmartphone,
 } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 import { useAppScope } from '../hooks/useAppScope';
@@ -60,6 +60,7 @@ const navItems: NavItem[] = [
   { path: '/catalog/store-prices', label: 'Prix magasin', icon: Coins, minRole: 'manager', scope: 'store' },
   { path: '/catalog/brands-suppliers', label: 'Marques & Fournisseurs', icon: Factory, minRole: 'manager', scope: 'store' },
   { path: '/promo-codes', label: 'Codes promo', icon: Ticket, minRole: 'manager', scope: 'store' },
+  { path: '/campaigns', label: 'Campagnes écran client', icon: MonitorPlay, minRole: 'manager', scope: 'store' },
   { path: '/pending-payments', label: 'Paiements à régulariser', icon: CreditCard, minRole: 'manager', scope: 'store' },
   { path: '/product-integration', label: 'Intégration produit', icon: ScanBarcode, scope: 'store' },
   { path: '/inventory-variance', label: 'Écarts inventaire', icon: ClipboardCheck, minRole: 'manager', scope: 'store' },
@@ -70,6 +71,7 @@ const navItems: NavItem[] = [
   // Couche 5 — Analyse
   { path: '/sales', label: 'Ventes', icon: ReceiptText, minRole: 'manager', scope: 'store' },
   { path: '/cash-sessions', label: 'Sessions & Écarts caisse', icon: Banknote, minRole: 'manager', scope: 'store' },
+  { path: '/pos-enrollment', label: 'Enrôlement caisses', icon: MonitorSmartphone, minRole: 'manager', scope: 'store' },
   { path: '/employee-scores', label: 'Scores équipe', icon: Users, minRole: 'manager', scope: 'store' },
   { path: '/reports', label: 'Rapports', icon: FileBarChart, minRole: 'manager', scope: 'store' },
   { path: '/sales-guards', label: 'Garde-fous', icon: ShieldAlert, minRole: 'manager', scope: 'store' },

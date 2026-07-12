@@ -197,8 +197,11 @@ Oui, c'est possible et c'est généré automatiquement :
 - **Signature de code** : les `.exe`/`.app` ne sont pas signés. Sur Windows,
   SmartScreen peut avertir ; sur macOS, Gatekeeper aussi. Pour une distribution
   large, ajouter un certificat de signature (Windows EV / Apple Developer ID).
-- **Auto-update** : non configuré (pas de serveur de mise à jour). À ajouter via
-  `electron-updater` si besoin.
+- **Auto-update** : ✅ **configuré** (electron-updater + GitHub Releases). Voir
+  §12. La caisse vérifie au démarrage puis ≤ 24 h, télécharge en arrière-plan,
+  vérifie l'intégrité (sha512 du `latest.yml`) et installe **hors vente** (à la
+  fermeture, ou sur demande quand la caisse est au repos). Reste à ajouter : la
+  **signature de code** (ci-dessus) pour supprimer l'avertissement SmartScreen.
 - **Périphériques** (imprimante ticket, tiroir, scanner USB, TPE) : l'app charge
   le front existant qui gère déjà certains périphériques côté web ; l'intégration
   desktop native (USB/série) n'est pas encore ajoutée.
@@ -248,3 +251,55 @@ Checklist à cocher sur le poste (après installation du `Setup.exe`) :
 10. [ ] **Robustesse** — débrancher/rebrancher le 2ᵉ écran → la caisse continue de fonctionner sans interruption ; fermer manuellement la fenêtre client → le watchdog la relance.
 
 En cas d'échec d'un point, joindre : version de l'`.exe`, modèle des 2 écrans + leur résolution, et le contenu de `%APPDATA%\POS Caisse\customer-display.json`.
+
+---
+
+## 12. Mise à jour automatique (electron-updater + GitHub Releases)
+
+La caisse consomme des **releases publiées** (jamais un `git pull` sur les sources).
+
+### Comportement à l'exécution
+- **Vérification** : au démarrage (après 30 s) puis **périodiquement, ≤ 24 h**.
+- **Téléchargement** en arrière-plan dès qu'une version existe ; **intégrité vérifiée**
+  (sha512 du `latest.yml`, par electron-updater).
+- **Installation à un moment contrôlé** :
+  - automatiquement **à la fermeture** de l'app (`autoInstallOnAppQuit`) → **jamais**
+    pendant une vente, un paiement, une impression ou une sync ;
+  - ou immédiatement via le bandeau **« Redémarrer et installer »** — refusé côté main
+    si une vente / un paiement / une impression / une sync est en cours (garde `updatePolicy`).
+- **En cas d'échec** (GitHub/Internet indisponible, download KO) : simple log dans
+  `%APPDATA%\POS Caisse\updates.log`, la **version installée continue de tourner**. Une
+  caisse ne devient jamais inutilisable.
+- **Version installée visible** dans le POS (menu profil → Écran client → ligne *Version*,
+  alimentée par `app.getVersion()`).
+
+### Canaux
+- **`stable`** (défaut) : consomme les Releases normales (`latest.yml`).
+- **`pilot`** : consomme les **pré-releases** GitHub (`beta.yml`). La **1ʳᵉ caisse physique
+  = caisse pilote** : la basculer en canal `pilot` (`window.posUpdater.setChannel('pilot')`,
+  persisté dans `%APPDATA%\POS Caisse\update-config.json`). Une version testée sur la pilote,
+  puis promue en Release stable, atteint ensuite les autres caisses.
+
+### Publier une nouvelle version (procédure)
+1. Bumper `packages/pos-desktop/package.json` → `version` (semver, ex. `1.0.1`).
+2. Committer, merger sur `main`.
+3. Créer et pousser un tag :
+   ```bash
+   git tag desktop-v1.0.1 && git push origin desktop-v1.0.1
+   ```
+4. Le workflow **« Build POS Caisse Desktop (.exe) »** package en `--publish always` et crée/
+   complète la **Release GitHub** avec `POS-Caisse-Setup-1.0.1.exe`, `latest.yml` et le `.blockmap`.
+5. Les caisses en canal `stable` détectent et téléchargent la MAJ à la prochaine vérification.
+
+> **Canal pilote** : marquer la Release GitHub comme **pre-release** → elle alimente `beta.yml`
+> (canal `pilot`) sans toucher les caisses `stable`. Promotion : décocher « pre-release ».
+>
+> **Retirer une version défectueuse** : supprimer/dépublier la Release fautive (ou sa pré-release)
+> avant qu'elle n'atteigne le canal stable ; les caisses restent sur la version courante.
+
+### Ce qui reste à activer (hors code, décision/secret)
+- **Signature de code Windows** : sans certificat, SmartScreen avertit à la 1ʳᵉ install et
+  electron-updater installe une MAJ non signée. Ajouter `win.certificateFile`/`certificatePassword`
+  (ou signature EV via CI) dans `electron-builder.yml` — **prévu, activable sans refonte**.
+- Le **premier `.exe` installé sur la caisse** doit provenir d'une Release taggée (pour que la
+  version installée soit ≥ celle du feed et que la comparaison de versions fonctionne).

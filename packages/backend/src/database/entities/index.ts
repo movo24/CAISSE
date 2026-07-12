@@ -23,6 +23,7 @@ export { InventoryScanEntity } from './inventory-scan.entity';
 export { JackpotConfigEntity } from './jackpot-config.entity';
 export { JackpotWinEntity } from './jackpot-win.entity';
 export { PaymentTerminalEntity } from './payment-terminal.entity';
+export { PosMachineEntity } from './pos-machine.entity';
 export { StoreContextEntity } from './store-context.entity';
 export { AiRecommendationLogEntity } from './ai-recommendation-log.entity';
 export { StockLocationEntity } from './stock-location.entity';
@@ -62,3 +63,7 @@ export { EmployeeScoreDailyEntity } from './employee-score-daily.entity';
 // ── Product Packs (produits composés — GO owner 2026-07-09) ────────
 export { ProductComponentEntity } from './product-component.entity';
 export { SaleComponentMovementEntity } from './sale-component-movement.entity';
+
+// ── Attract (mode veille écran client : campagnes + playlists) ─────
+export { AttractCampaignEntity } from './attract-campaign.entity';
+export { AttractMediaEntity } from './attract-media.entity';

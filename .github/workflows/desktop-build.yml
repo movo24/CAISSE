@@ -20,8 +20,14 @@ on:
         description: "VITE_API_URL to bake into the build (blank = production default)"
         required: false
         default: ""
+      publish:
+        description: "Publier une GitHub Release v<version> (electron-builder --publish always). Utile quand la création de tag est bloquée."
+        required: false
+        type: boolean
+        default: false
   push:
     tags:
+      - "v*"
       - "desktop-v*"
 
 permissions:
@@ -58,14 +64,16 @@ jobs:
         run: npx tsc -p tsconfig.main.json --noEmit
 
       # ── Packaging build ───────────────────────────────────────────
-      # Bake the API URL (optional). Empty -> apiConfig falls back to prod default.
-      # The untrusted input is passed via env (never interpolated into the shell).
+      # Bake the API URL. Blank input (dispatch) or tag push -> Backend B Railway
+      # (le backend de prod où le code courant est déployé — décision owner 2026-07-11).
+      # Overridable via the workflow_dispatch input. The untrusted input is passed
+      # via env (never interpolated into the shell).
       - name: Write .env
         working-directory: packages/pos-desktop
         shell: bash
         env:
           API_URL: ${{ github.event.inputs.api_url }}
-        run: echo "VITE_API_URL=${API_URL}" > .env
+        run: echo "VITE_API_URL=${API_URL:-https://caisse-backend-production.up.railway.app}" > .env
 
       # Renderer MUST build with POS_TARGET=desktop so assets use a relative
       # base (./) for the app:// packaging — plain `build:pos` would bake `/`.
@@ -90,14 +98,59 @@ jobs:
           if ($leaked) { $leaked | ForEach-Object { Write-Host "LEAKED: $($_.FullName)" }; exit 1 }
           Write-Host "dist/main clean"
 
-      # Package the Windows NSIS installer + portable, x64 only.
-      # --publish never: this app has no auto-update/publish target; without it
-      # electron-builder auto-detects CI + a token and tries to resolve a GitHub
-      # publish config, failing with "Cannot detect repository by .git/config".
-      # No GH_TOKEN here on purpose (the tag Release step below handles uploads).
-      - name: Package Windows (.exe, x64)
+      # Package the Windows NSIS installer + portable, x64.
+      # - Dispatch (no tag): --publish never → artifacts seulement (test/QA).
+      # - Tag desktop-v*    : --publish always → electron-builder crée/complète la
+      #   Release GitHub avec l'.exe + le MANIFESTE de mise à jour (latest.yml /
+      #   beta.yml + .blockmap) que les caisses consomment via electron-updater.
+      #   Le canal (latest/beta) suit le nom de la release ; une pré-release GitHub
+      #   alimente le canal pilote.
+      - name: Package Windows (.exe, x64) — dispatch sans publication
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.publish != 'true'
         working-directory: packages/pos-desktop
         run: npx electron-builder --config electron-builder.yml --win --x64 --publish never
+
+      # ── Distribution A : GitHub Release seule (défaut, tant que R2 non configuré) ──
+      # Feed auto-update = GitHub Releases. Sur dépôt PRIVÉ, l'auto-update
+      # nécessiterait un token embarqué → NON opérationnel (archive/manuel OK).
+      - name: Package + publish Windows — GitHub Release (feed GitHub)
+        if: (startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/tags/desktop-v') || (github.event_name == 'workflow_dispatch' && github.event.inputs.publish == 'true')) && vars.POS_UPDATE_URL == ''
+        working-directory: packages/pos-desktop
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-builder --config electron-builder.yml --win --x64 --publish always
+
+      # ── Distribution B : feed R2 (dépôt privé + auto-update SANS token) ──
+      # Activée dès que la variable POS_UPDATE_URL est définie (voir
+      # AUTO_UPDATE_DISTRIBUTION.md). Le `.exe` ne contient qu'une URL publique.
+      #   1. build avec provider `generic` (app-update.yml → POS_UPDATE_URL) ;
+      #   2. téléverse latest.yml + *.exe + *.blockmap vers R2 (S3-compatible) ;
+      #   3. crée aussi la Release GitHub (archive/manuel).
+      - name: Package + publish Windows — feed R2 (generic)
+        if: (startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/tags/desktop-v') || (github.event_name == 'workflow_dispatch' && github.event.inputs.publish == 'true')) && vars.POS_UPDATE_URL != ''
+        working-directory: packages/pos-desktop
+        shell: bash
+        env:
+          POS_UPDATE_URL: ${{ vars.POS_UPDATE_URL }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+        run: |
+          set -euo pipefail
+          # 1. Feed generic → app-update.yml embarqué pointe vers R2 (aucun token dans l'app).
+          npx electron-builder --config electron-builder.yml --win --x64 --publish never \
+            -c.publish.provider=generic -c.publish.url="$POS_UPDATE_URL"
+          # 2. Téléverse le feed d'auto-update vers R2 (les caisses, sans GitHub).
+          aws s3 cp release/ "s3://$R2_BUCKET/" --recursive --endpoint-url "$R2_ENDPOINT" \
+            --exclude "*" --include "*.exe" --include "*.blockmap" --include "*.yml"
+          # 3. Archive/manuel : Release GitHub v<version> (devs, download direct).
+          VER="$(node -p "require('./package.json').version")"
+          gh release create "v$VER" release/*.exe release/latest.yml \
+            -R "$GITHUB_REPOSITORY" -t "The Wesley's POS v$VER" \
+            -n "Installateur Windows + feed auto-update (R2). Voir AUTO_UPDATE_DISTRIBUTION.md." \
+            || gh release upload "v$VER" release/*.exe release/latest.yml -R "$GITHUB_REPOSITORY" --clobber
 
       # Print the exact artifact names + sizes into the log for verification.
       - name: List artifacts
@@ -117,9 +170,7 @@ jobs:
             packages/pos-desktop/release/*.exe
           if-no-files-found: error
 
-      # When triggered by a desktop-v* tag, attach the .exe files to a Release.
-      - name: Publish release (tag only)
-        if: startsWith(github.ref, 'refs/tags/desktop-v')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: packages/pos-desktop/release/*.exe
+      # NB : sur tag desktop-v*, la Release GitHub (avec l'.exe ET latest.yml/
+      # beta.yml + .blockmap pour l'auto-update) est créée par electron-builder
+      # `--publish always` ci-dessus. Pas d'étape softprops séparée : elle
+      # n'uploaderait pas le manifeste de mise à jour et entrerait en conflit.
