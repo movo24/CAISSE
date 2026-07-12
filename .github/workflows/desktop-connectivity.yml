@@ -12,6 +12,12 @@ name: POS desktop — connectivité backend (contexte Electron packagé)
 # Le job N'EST VERT que si la sonde « shim on » obtient health=200 ET login=200.
 
 on:
+  # Déclenché automatiquement sur la branche du correctif → la preuve packagée
+  # apparaît comme check de la PR sans nécessiter que le workflow soit d'abord
+  # sur `main` (workflow_dispatch, lui, exige la branche par défaut).
+  push:
+    branches:
+      - claude/customer-display-vertical-eolixp
   workflow_dispatch:
     inputs:
       api_url:
@@ -66,26 +72,20 @@ jobs:
             libxfixes3 libxrandr2 libasound2 libgtk-3-0 libnspr4
 
       # ── Sonde 1 : shim OFF → reproduit l'échec terrain (cause = CORS) ──
+      # Ne fait jamais échouer l'étape (l'échec CORS EST le résultat attendu) —
+      # le verdict final est porté uniquement par l'étape « Verdict ».
       - name: Sonde CORS OFF (reproduit le bug v1.0.2)
-        id: off
         working-directory: packages/pos-desktop
-        continue-on-error: true
         env:
           POS_CORS_SHIM: off
-        run: |
-          set -o pipefail
-          xvfb-run -a npx electron dist/main/connectivity-check.js | tee off.log
-          echo "exit=$?"
+        run: xvfb-run -a npx electron dist/main/connectivity-check.js | tee off.log || true
 
       # ── Sonde 2 : shim ON → prouve le correctif (login packagé = HTTP 200) ──
-      - name: Sonde CORS ON (prouve le correctif — GATE)
-        id: on
+      - name: Sonde CORS ON (prouve le correctif)
         working-directory: packages/pos-desktop
         env:
           POS_CORS_SHIM: on
-        run: |
-          set -o pipefail
-          xvfb-run -a npx electron dist/main/connectivity-check.js | tee on.log
+        run: xvfb-run -a npx electron dist/main/connectivity-check.js | tee on.log || true
 
       - name: Verdict
         working-directory: packages/pos-desktop
