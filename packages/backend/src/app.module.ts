@@ -55,6 +55,7 @@ import { LoyaltyAdminModule } from './modules/loyalty-admin/loyalty-admin.module
 import { AirtableOpsModule } from './modules/airtable-ops/airtable-ops.module';
 import { SalesGuardsModule } from './modules/sales-guards/sales-guards.module';
 import { AttractModule } from './modules/attract/attract.module';
+import { MobileDirectionModule } from './modules/mobile-direction/mobile-direction.module';
 // ── RH MODULES (employees re-activated for local fallback) ──
 // PointageModule, PayrollModule, PlanningModule, StaffingModule → still in TimeWin24
 
@@ -148,6 +149,7 @@ const isProd = process.env.NODE_ENV === 'production';
     // Sales Guards (anti-error engine — read-only, separate audit table)
     SalesGuardsModule,
     ReturnsModule,
+    MobileDirectionModule,
   ],
   providers: [
     // Apply rate limiting globally to ALL endpoints
