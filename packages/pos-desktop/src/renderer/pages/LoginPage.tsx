@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Lock, QrCode, Store, ArrowRight, Monitor, Tablet, Smartphone } from 'lucide-react';
 import { authApi, storesApi } from '../services/api';
+import { API_URL } from '../utils/apiConfig';
 import { usePOSStore } from '../stores/posStore';
 import { useRightsStore } from '../stores/rightsStore';
 import { usePointageStore } from '../stores/pointageStore';
@@ -21,11 +22,36 @@ export function LoginPage() {
   const [mode, setMode] = useState<'pin' | 'qr'>('pin');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  // Diagnostic terrain (bug v1.0.2 → v1.0.3) : rend visible, sur l'écran de
+  // login, l'URL backend réellement utilisée, le résultat du healthcheck et le
+  // code d'erreur réseau exact — sans jamais exposer de secret (aucun token,
+  // aucun PIN, aucun identifiant n'est affiché ici).
+  const [diag, setDiag] = useState('');
+  const [probing, setProbing] = useState(false);
+  const [showDiag, setShowDiag] = useState(false);
   const pinRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     pinRef.current?.focus();
   }, [mode]);
+
+  // Sonde de connectivité : GET /api/health depuis le contexte packagé
+  // (mêmes contraintes réseau/CORS que le login réel). Affiche le code HTTP ou
+  // le code d'erreur Chromium exact (ex. Failed to fetch / ERR_CONNECTION_REFUSED).
+  const runHealthProbe = async () => {
+    setProbing(true);
+    setDiag('');
+    setShowDiag(true);
+    const t0 = Date.now();
+    try {
+      const res = await fetch(`${API_URL}/api/health`, { method: 'GET', cache: 'no-store' });
+      setDiag(`Healthcheck : HTTP ${res.status} · ${Date.now() - t0} ms`);
+    } catch (e: any) {
+      setDiag(`Healthcheck : ÉCHEC · ${e?.name || 'Error'}: ${e?.message || e}`);
+    } finally {
+      setProbing(false);
+    }
+  };
 
   const handleLogin = async () => {
     setError('');
@@ -87,7 +113,17 @@ export function LoginPage() {
       }
       navigate('/pos');
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Connexion impossible. Backend non disponible ?');
+      const status: number | undefined = err.response?.status;
+      const code: string | undefined = err.code; // ERR_NETWORK, ECONNABORTED…
+      const backendMsg: string | undefined = err.response?.data?.message;
+      setError(backendMsg || 'Connexion impossible. Backend non disponible ?');
+      // Diagnostic factuel (pas de secret) : URL backend + nature exacte de l'échec.
+      setShowDiag(true);
+      setDiag(
+        status
+          ? `Login : HTTP ${status}${backendMsg ? ` · ${backendMsg}` : ''}`
+          : `Login : échec réseau · ${code || 'inconnu'}${err.message ? ` · ${err.message}` : ''}`,
+      );
     } finally {
       setLoading(false);
     }
@@ -219,6 +255,29 @@ export function LoginPage() {
               Appuyez sur <kbd>Entree</kbd> pour valider
             </p>
           )}
+
+          {/* Diagnostic terrain — URL backend + test de connectivité + code
+              d'erreur exact. Aucun secret affiché (ni token, ni PIN). */}
+          <div className="pt-1 border-t border-pos-border/10 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[10px] font-mono text-pos-muted/60 truncate" title={API_URL}>
+                {API_URL || '(URL backend absente)'}
+              </span>
+              <button
+                type="button"
+                onClick={runHealthProbe}
+                disabled={probing}
+                className="shrink-0 text-[11px] font-medium text-pos-accent hover:underline disabled:opacity-50"
+              >
+                {probing ? 'Test…' : 'Tester la connexion'}
+              </button>
+            </div>
+            {showDiag && diag && (
+              <p className="text-[10px] font-mono text-pos-muted/70 break-words leading-relaxed">
+                {diag}
+              </p>
+            )}
+          </div>
         </div>
 
       </div>

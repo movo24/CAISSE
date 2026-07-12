@@ -1,0 +1,111 @@
+name: POS desktop — connectivité backend (contexte Electron packagé)
+
+# Preuve TERRAIN, pas un test Node : boote un VRAI Electron headless, charge une
+# page depuis l'origine `app://app` (exactement celle du .exe installé) et, DEPUIS
+# ce renderer Chromium, exécute les deux requêtes réelles du login —
+# `GET /api/health` puis `POST /api/auth/login/pin { WESLEY01, 5678 }` — contre
+# Backend B. Un `curl`/Node n'a pas de CORS ; ce runner Chromium en a. On lance
+# la sonde DEUX fois :
+#   • POS_CORS_SHIM=off → reproduit l'échec v1.0.2 (origine app:// bloquée par le
+#     CORS credentialed strict du backend) ;
+#   • POS_CORS_SHIM=on  → prouve le correctif (login = HTTP 200, token présent).
+# Le job N'EST VERT que si la sonde « shim on » obtient health=200 ET login=200.
+
+on:
+  workflow_dispatch:
+    inputs:
+      api_url:
+        description: "URL backend à sonder (défaut = Backend B)"
+        required: false
+        default: "https://caisse-backend-production.up.railway.app"
+      store_code:
+        description: "Code magasin"
+        required: false
+        default: "WESLEY01"
+      cashier_pin:
+        description: "PIN caissier"
+        required: false
+        default: "5678"
+
+permissions:
+  contents: read
+
+concurrency: desktop-connectivity
+
+jobs:
+  connectivity:
+    runs-on: ubuntu-latest
+    env:
+      POS_API_URL: ${{ github.event.inputs.api_url || 'https://caisse-backend-production.up.railway.app' }}
+      STORE_CODE: ${{ github.event.inputs.store_code || 'WESLEY01' }}
+      CASHIER_PIN: ${{ github.event.inputs.cashier_pin || '5678' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install (npm ci)
+        run: npm ci
+
+      # Le harness connectivity-check est dans src/main → compilé par build:main.
+      - name: Build Electron main
+        working-directory: packages/pos-desktop
+        run: npx tsc -p tsconfig.main.json
+
+      # Dépendances système d'Electron + xvfb (Electron a besoin d'un display).
+      - name: Install Electron runtime deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libnss3 libatk1.0-0 libatk-bridge2.0-0 \
+            libcups2 libdrm2 libgbm1 libxkbcommon0 libxcomposite1 libxdamage1 \
+            libxfixes3 libxrandr2 libasound2t64 libgtk-3-0 libnspr4 || \
+          sudo apt-get install -y xvfb libnss3 libatk1.0-0 libatk-bridge2.0-0 \
+            libcups2 libdrm2 libgbm1 libxkbcommon0 libxcomposite1 libxdamage1 \
+            libxfixes3 libxrandr2 libasound2 libgtk-3-0 libnspr4
+
+      # ── Sonde 1 : shim OFF → reproduit l'échec terrain (cause = CORS) ──
+      - name: Sonde CORS OFF (reproduit le bug v1.0.2)
+        id: off
+        working-directory: packages/pos-desktop
+        continue-on-error: true
+        env:
+          POS_CORS_SHIM: off
+        run: |
+          set -o pipefail
+          xvfb-run -a npx electron dist/main/connectivity-check.js | tee off.log
+          echo "exit=$?"
+
+      # ── Sonde 2 : shim ON → prouve le correctif (login packagé = HTTP 200) ──
+      - name: Sonde CORS ON (prouve le correctif — GATE)
+        id: on
+        working-directory: packages/pos-desktop
+        env:
+          POS_CORS_SHIM: on
+        run: |
+          set -o pipefail
+          xvfb-run -a npx electron dist/main/connectivity-check.js | tee on.log
+
+      - name: Verdict
+        working-directory: packages/pos-desktop
+        run: |
+          echo "──────────── CONNECTIVITÉ BACKEND (contexte Electron packagé) ────────────"
+          echo "Backend sondé : $POS_API_URL"
+          echo
+          echo "• Shim OFF (repro bug v1.0.2) :"
+          grep 'CONNECTIVITY_RESULT' off.log || echo "  (aucun résultat — voir log ci-dessus)"
+          echo "• Shim ON  (correctif v1.0.3) :"
+          grep 'CONNECTIVITY_RESULT' on.log || echo "  (aucun résultat)"
+          echo
+          ON_JSON="$(grep 'CONNECTIVITY_RESULT' on.log | tail -1 | sed 's/^.*CONNECTIVITY_RESULT //')"
+          HEALTH="$(node -e "process.stdout.write(String((JSON.parse(process.argv[1]||'{}').health)))" "$ON_JSON")"
+          LOGIN="$(node -e "process.stdout.write(String((JSON.parse(process.argv[1]||'{}').login)))" "$ON_JSON")"
+          TOKEN="$(node -e "process.stdout.write(String((JSON.parse(process.argv[1]||'{}').token)))" "$ON_JSON")"
+          echo "Résumé shim ON → health=$HEALTH login=$LOGIN token=$TOKEN"
+          if [ "$HEALTH" = "200" ] && [ "$LOGIN" = "200" ] && [ "$TOKEN" = "true" ]; then
+            echo "EXE CONNEXION BACKEND : OUI ✅ (health 200 + login 200 + token depuis l'origine app://)"
+          else
+            echo "EXE CONNEXION BACKEND : NON ❌ — le correctif ne prouve pas un login 200 packagé"
+            exit 1
+          fi
