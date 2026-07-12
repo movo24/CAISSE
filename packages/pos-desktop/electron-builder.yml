@@ -45,11 +45,19 @@ win:
       arch: [x64]
 
 nsis:
-  oneClick: false
-  # Assisted installer, per-user (no domain-admin needed on a shop PC). Appears
-  # in Windows "Apps & features", clean uninstall, upgrades in place.
+  # ── Mise à jour SILENCIEUSE en production (caisse) ──────────────────────
+  # oneClick + perMachine:false + allowElevation:false = installateur one-click
+  # PAR UTILISATEUR (%LOCALAPPDATA%\Programs) : aucun assistant, aucun écran
+  # « Tous les utilisateurs / Juste pour moi », AUCUNE fenêtre UAC (une install
+  # per-user n'exige pas de droits admin, donc pas d'élévation). Combiné à
+  # `autoUpdater.quitAndInstall(true, true)` côté main, les MAJ futures se font
+  # sans aucune intervention du caissier : fermeture propre → install silencieuse
+  # → redémarrage automatique.
+  oneClick: true
   perMachine: false
-  allowToChangeInstallationDirectory: true
+  allowElevation: false
+  allowToChangeInstallationDirectory: false
+  runAfterFinish: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
   shortcutName: The Wesley's POS
