@@ -17,6 +17,8 @@ import * as path from 'path';
 import * as fs from 'fs';
 import {
   selectClientDisplay,
+  decideClientPlacement,
+  boundsOverlap,
   displaySignature,
   selectionStatus,
   type DisplayLike,
@@ -98,6 +100,14 @@ export class CustomerDisplayController {
   private intentionalClose = false;
   private respawnTimer: NodeJS.Timeout | null = null;
   private disposed = false;
+  /** Set by the crash watchdog — the ONLY closes that may auto-respawn. */
+  private crashed = false;
+  /**
+   * The operator closed the client window by hand (X button). No automatic
+   * recreation until an explicit re-open (IPC open / setEnabled / setScreen)
+   * or a NEW display is plugged in — never a silent comeback over the register.
+   */
+  private userClosed = false;
 
   constructor(private readonly deps: ControllerDeps) {
     this.state = this.readState();
@@ -187,16 +197,26 @@ export class CustomerDisplayController {
     return result;
   }
 
-  /** The Electron display the client window should target (null if none). */
-  private targetDisplay(): Electron.Display | null {
-    const chosenId = this.resolveTarget().display?.id;
-    if (chosenId == null) return null;
-    return screen.getAllDisplays().find((d) => d.id === chosenId) || null;
-  }
-
   // ── Window lifecycle ─────────────────────────────────────────
 
-  /** Create the client window on the target display, if enabled. */
+  /** Current placement decision (pure logic) — SECONDARY DISPLAY ONLY. */
+  private placement() {
+    const all = screen.getAllDisplays().map(toDisplayLike);
+    const primaryId = screen.getPrimaryDisplay().id;
+    const decision = decideClientPlacement(all, primaryId, {
+      screenId: this.state.screenId,
+      signature: this.state.signature,
+    });
+    this.lastReason = decision.selection.reason;
+    this.lastRequestedMissing = decision.selection.requestedScreenMissing;
+    return decision;
+  }
+
+  /**
+   * Create the client window — ONLY on a really-detected secondary display.
+   * On a single-screen machine the client window is never shown and the
+   * register (primary display) is never covered.
+   */
   open(): void {
     if (this.disposed) return;
     if (!this.state.enabled) {
@@ -206,36 +226,44 @@ export class CustomerDisplayController {
     }
     if (this.window && !this.window.isDestroyed()) {
       this.moveToTargetDisplay();
-      this.window.show();
       return;
     }
 
     this.logDisplays('open');
-    const target = this.targetDisplay();
-    if (!target) {
-      // No display available at all — do NOT block; the register runs headless-of-client.
+    const decision = this.placement();
+    if (!decision.show) {
+      // Hard rule: no secondary display → NO client window. Never block or
+      // cover the register; do not loop — a reopen only happens on an explicit
+      // action or a display-added event.
       // eslint-disable-next-line no-console
-      console.warn(`${LOG} open() aborted: no display available`);
+      console.warn(`${LOG} open() refused: ${decision.log}`);
       this.broadcastStatus();
       return;
     }
-    const onSecondary = target.id !== screen.getPrimaryDisplay().id;
+    const target = decision.display;
+    const primary = screen.getPrimaryDisplay();
     // eslint-disable-next-line no-console
     console.log(
-      `${LOG} opening on display ${target.id} (${target.size.width}x${target.size.height}) reason=${this.lastReason} onPrimary=${!onSecondary}`,
+      `${LOG} opening client window: primary=${primary.id} ${JSON.stringify(primary.bounds)} → secondary=${target.id} ${JSON.stringify(decision.bounds)} reason=${decision.reason}`,
     );
 
     this.intentionalClose = false;
+    this.crashed = false;
     const win = new BrowserWindow({
-      x: target.bounds.x,
-      y: target.bounds.y,
-      width: target.bounds.width || 1080,
-      height: target.bounds.height || 1920,
+      // Exact bounds of the detected secondary display — never hard-coded.
+      x: decision.bounds.x,
+      y: decision.bounds.y,
+      width: decision.bounds.width,
+      height: decision.bounds.height,
       title: 'POS Caisse — Écran Client',
       backgroundColor: this.deps.backgroundColor,
-      // Fullscreen/kiosk only make sense on a dedicated secondary screen.
-      fullscreen: this.state.fullscreen && onSecondary,
-      kiosk: this.state.kiosk && onSecondary,
+      // Never steal focus from the register: created hidden, shown inactive,
+      // and not focusable at all (the client display is watch-only — content
+      // is driven from the POS window over BroadcastChannel).
+      show: false,
+      focusable: false,
+      fullscreen: this.state.fullscreen,
+      kiosk: this.state.kiosk,
       autoHideMenuBar: true,
       webPreferences: {
         nodeIntegration: false,
@@ -249,19 +277,66 @@ export class CustomerDisplayController {
     this.window = win;
     this.deps.loadRoute(win, 'client-display');
 
-    // ── Watchdog: respawn on crash, but not on an intentional close ──
-    win.webContents.on('render-process-gone', () => this.scheduleRespawn());
-    win.on('unresponsive', () => this.scheduleRespawn());
+    // ── Watchdog: respawn ONLY on a crash — never after a manual close ──
+    win.webContents.on('render-process-gone', () => {
+      this.crashed = true;
+      this.scheduleRespawn();
+    });
+    win.on('unresponsive', () => {
+      this.crashed = true;
+      this.scheduleRespawn();
+    });
     win.on('closed', () => {
       this.window = null;
-      if (!this.intentionalClose && this.state.enabled && !this.disposed) {
-        this.scheduleRespawn();
+      if (this.crashed && this.state.enabled && !this.disposed) {
+        // Crash path → the watchdog (already scheduled) re-opens; open()
+        // re-checks that a secondary display still exists before showing.
+      } else if (!this.intentionalClose && !this.disposed) {
+        // Manual close (X) → respect it. No automatic comeback.
+        this.userClosed = true;
+        // eslint-disable-next-line no-console
+        console.log(`${LOG} client window closed by user — will not auto-reopen`);
       }
       this.broadcastStatus();
     });
 
-    win.once('ready-to-show', () => this.broadcastStatus());
+    win.once('ready-to-show', () => {
+      // Final guard (defence in depth): if the window ended up overlapping the
+      // primary (operator) display, do NOT show it.
+      const w = this.window;
+      if (!w || w.isDestroyed()) return;
+      const bounds = w.getBounds();
+      const prim = screen.getPrimaryDisplay();
+      if (boundsOverlap(bounds, prim.bounds)) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          `${LOG} final guard: client window bounds ${JSON.stringify(bounds)} overlap primary ${JSON.stringify(prim.bounds)} — not showing`,
+        );
+        this.closeWindowOnly('overlaps primary after placement');
+        return;
+      }
+      // Show WITHOUT focus — the register keeps the keyboard.
+      w.showInactive();
+      // eslint-disable-next-line no-console
+      console.log(`${LOG} client window shown (inactive) at ${JSON.stringify(bounds)}`);
+      this.broadcastStatus();
+    });
     this.broadcastStatus();
+  }
+
+  /** Close the window without touching persisted state (system-initiated). */
+  private closeWindowOnly(why: string): void {
+    // eslint-disable-next-line no-console
+    console.log(`${LOG} closing client window: ${why}`);
+    this.intentionalClose = true;
+    if (this.window && !this.window.isDestroyed()) {
+      try {
+        this.window.close();
+      } catch {
+        /* ignore */
+      }
+    }
+    this.window = null;
   }
 
   private scheduleRespawn(): void {
@@ -283,6 +358,7 @@ export class CustomerDisplayController {
 
   close(): void {
     this.intentionalClose = true;
+    this.crashed = false;
     if (this.respawnTimer) {
       clearTimeout(this.respawnTimer);
       this.respawnTimer = null;
@@ -303,16 +379,22 @@ export class CustomerDisplayController {
 
   private moveToTargetDisplay(): void {
     if (!this.window || this.window.isDestroyed()) return;
-    const target = this.targetDisplay();
-    if (!target) return;
-    const onSecondary = target.id !== screen.getPrimaryDisplay().id;
-    // Fullscreen/kiosk are applied ONLY on a dedicated secondary screen — never
-    // on the operator (primary) screen, so the cashier UI is never taken over.
+    const decision = this.placement();
+    if (!decision.show) {
+      // The secondary display is gone (or the target now sits on the primary):
+      // close the client window cleanly — NEVER relocate it over the register.
+      this.closeWindowOnly(decision.log);
+      return;
+    }
     this.window.setFullScreen(false);
     this.window.setKiosk(false);
-    this.window.setBounds(target.bounds);
-    if (this.state.fullscreen && onSecondary) this.window.setFullScreen(true);
-    this.window.setKiosk(this.state.kiosk && onSecondary);
+    this.window.setBounds(decision.bounds);
+    if (this.state.fullscreen) this.window.setFullScreen(true);
+    this.window.setKiosk(this.state.kiosk);
+    // eslint-disable-next-line no-console
+    console.log(
+      `${LOG} client window placed on display ${decision.display.id} at ${JSON.stringify(this.window.getBounds())}`,
+    );
   }
 
   // ── Settings mutations from the operator window ──────────────
@@ -320,8 +402,12 @@ export class CustomerDisplayController {
   setEnabled(enabled: boolean): void {
     this.state.enabled = enabled;
     this.writeState();
-    if (enabled) this.open();
-    else this.close();
+    if (enabled) {
+      this.userClosed = false; // explicit operator intent overrides a manual close
+      this.open();
+    } else {
+      this.close();
+    }
     this.broadcastStatus();
   }
 
@@ -338,6 +424,7 @@ export class CustomerDisplayController {
     this.writeState();
     // eslint-disable-next-line no-console
     console.log(`${LOG} setScreen(${screenId}) signature=`, this.state.signature);
+    this.userClosed = false; // explicit operator intent overrides a manual close
     if (this.window && !this.window.isDestroyed()) this.moveToTargetDisplay();
     else this.open();
     this.broadcastStatus();
@@ -406,6 +493,7 @@ export class CustomerDisplayController {
     ipcMain.handle('customer-display:getStatus', () => this.getStatus());
     ipcMain.handle('customer-display:listDisplays', () => this.listDisplays());
     ipcMain.handle('customer-display:open', () => {
+      this.userClosed = false; // explicit operator action
       this.open();
       return this.getStatus();
     });
@@ -441,17 +529,24 @@ export class CustomerDisplayController {
   }
 
   /**
-   * A monitor was plugged, unplugged, or reconfigured. Re-resolve the target
-   * and relocate the window if it is open. Never throws, never blocks the POS.
+   * A monitor was plugged, unplugged, or reconfigured.
+   * - Secondary unplugged → the open window is closed cleanly (never moved
+   *   over the register).
+   * - Secondary (re)plugged → the window is recreated/re-placed on it; a
+   *   NEW display clears a previous manual close (the operator plugging the
+   *   client screen back in clearly wants it).
+   * Never throws, never blocks the POS.
    */
   private onDisplayLayoutChanged(event: string): void {
     try {
       this.logDisplays(event);
+      if (event === 'display-added') this.userClosed = false;
       if (this.window && !this.window.isDestroyed()) {
-        // Window still alive → move it onto the (possibly re-numbered) target.
+        // Window alive → re-place it, or close it if no secondary remains.
         this.moveToTargetDisplay();
-      } else if (this.state.enabled && !this.disposed) {
-        // The client screen may have (re)appeared → (re)open on it.
+      } else if (this.state.enabled && !this.disposed && !this.userClosed) {
+        // The client screen may have (re)appeared → (re)open on it. open()
+        // re-checks that a real secondary display exists before showing.
         this.open();
       }
     } catch (err) {

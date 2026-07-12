@@ -114,3 +114,93 @@ export function selectionStatus(result: SelectionResult): 'connected' | 'absent'
   if (result.requestedScreenMissing) return 'wrong-screen';
   return 'fallback';
 }
+
+// ── Hard placement rule: the client window opens on a SECONDARY display ONLY ──
+//
+// Field bug (Windows mini-PC): on a single-screen register (or before Windows
+// extends the desktop), the old `fallback-primary` path opened the client window
+// ON TOP of the register window and the watchdog kept re-spawning it after every
+// manual close. The placement decision below is the single source of truth used
+// by the controller: no secondary display detected → the client window is NOT
+// shown, ever. Pure and DB/Electron-free so every scenario is unit-testable.
+
+export interface Rect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** True when two rectangles overlap by at least one pixel. */
+export function boundsOverlap(a: Rect, b: Rect): boolean {
+  return (
+    a.x < b.x + b.width &&
+    a.x + a.width > b.x &&
+    a.y < b.y + b.height &&
+    a.y + a.height > b.y
+  );
+}
+
+export type PlacementDecision =
+  | {
+      show: false;
+      /** Greppable field-diagnostic message. */
+      log: string;
+      reason: 'no-display' | 'secondary-unavailable' | 'overlaps-primary';
+      selection: SelectionResult;
+    }
+  | {
+      show: true;
+      display: DisplayLike;
+      /** Exact bounds of the secondary display — never hard-coded coordinates. */
+      bounds: Rect;
+      reason: SelectionReason;
+      selection: SelectionResult;
+    };
+
+/**
+ * Decide where (and whether) the client window may open.
+ *
+ * 1. No display at all → don't show.
+ * 2. Resolved target is the primary (operator) screen — single monitor,
+ *    or an explicit/persisted choice pointing at the primary → don't show:
+ *    the register screen must never be covered.
+ * 3. Final guard: even a non-primary target whose bounds overlap the primary
+ *    display (exotic mirrored/overlapping virtual desktop) → don't show.
+ * 4. Otherwise → show at the exact bounds of the secondary display.
+ */
+export function decideClientPlacement(
+  displays: DisplayLike[],
+  primaryId: number,
+  persisted: PersistedSelection,
+): PlacementDecision {
+  const selection = selectClientDisplay(displays, primaryId, persisted);
+
+  if (!selection.display) {
+    return { show: false, log: 'secondary display unavailable (no display detected)', reason: 'no-display', selection };
+  }
+  if (selection.onPrimary) {
+    return {
+      show: false,
+      log: `secondary display unavailable (only primary display ${primaryId} present or targeted)`,
+      reason: 'secondary-unavailable',
+      selection,
+    };
+  }
+  const primary = displays.find((d) => d.id === primaryId);
+  if (primary && boundsOverlap(selection.display.bounds, primary.bounds)) {
+    return {
+      show: false,
+      log: `client window bounds ${JSON.stringify(selection.display.bounds)} overlap primary display ${primaryId} — refusing to show`,
+      reason: 'overlaps-primary',
+      selection,
+    };
+  }
+  return {
+    show: true,
+    display: selection.display,
+    bounds: { ...selection.display.bounds },
+    reason: selection.reason,
+    selection,
+  };
+}

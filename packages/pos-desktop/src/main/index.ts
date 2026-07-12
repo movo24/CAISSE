@@ -9,7 +9,7 @@
  * Dev mode loads the Vite dev server. Production loads the bundled renderer.
  */
 
-import { app, BrowserWindow, protocol, net, shell, ipcMain } from 'electron';
+import { app, BrowserWindow, protocol, net, shell, ipcMain, screen } from 'electron';
 import * as path from 'path';
 import { pathToFileURL } from 'url';
 import { CustomerDisplayController } from './customerDisplay';
@@ -72,9 +72,23 @@ function loadRoute(win: BrowserWindow, route = ''): void {
 }
 
 function createPOSWindow(): void {
+  // The REGISTER window always opens on the PRIMARY Windows display — pinned
+  // explicitly (centred in its work area), never left to implicit placement,
+  // so the client window (secondary-only) can never trade places with it.
+  const primary = screen.getPrimaryDisplay();
+  const width = Math.min(1280, primary.workArea.width);
+  const height = Math.min(800, primary.workArea.height);
+  const x = primary.workArea.x + Math.max(0, Math.round((primary.workArea.width - width) / 2));
+  const y = primary.workArea.y + Math.max(0, Math.round((primary.workArea.height - height) / 2));
+  // eslint-disable-next-line no-console
+  console.log(
+    `[pos-window] primary display ${primary.id} bounds=${JSON.stringify(primary.bounds)} → POS window at ${JSON.stringify({ x, y, width, height })}`,
+  );
   posWindow = new BrowserWindow({
-    width: 1280,
-    height: 800,
+    x,
+    y,
+    width,
+    height,
     minWidth: 1024,
     minHeight: 700,
     title: "The Wesley's POS",
