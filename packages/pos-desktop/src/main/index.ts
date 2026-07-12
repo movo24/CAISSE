@@ -169,6 +169,11 @@ function createPOSWindow(): void {
     title: "The Wesley's POS",
     backgroundColor: '#0f0f19',
     show: false,
+    // Kiosque opérateur (audit terrain W6) : en build packagé la caisse occupe
+    // tout l'écran principal, sans barre de menu — usage tactile propre. Dev
+    // inchangé (fenêtre normale + devtools). F11 permet toujours de sortir.
+    fullscreen: !isDev,
+    autoHideMenuBar: !isDev,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -181,6 +186,14 @@ function createPOSWindow(): void {
 
   posWindow.once('ready-to-show', () => posWindow?.show());
   if (isDev) posWindow.webContents.openDevTools({ mode: 'detach' });
+
+  // F11 : sortie/retour plein écran pour maintenance terrain (jamais bloqué en
+  // kiosque dur — un technicien doit pouvoir atteindre le bureau Windows).
+  posWindow.webContents.on('before-input-event', (_event, input) => {
+    if (input.type === 'keyDown' && input.key === 'F11' && posWindow) {
+      posWindow.setFullScreen(!posWindow.isFullScreen());
+    }
+  });
 
   // Open external links in the user's browser, never in-app.
   posWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -204,7 +217,7 @@ function createPOSWindow(): void {
 }
 
 /** Inline data-URL error page — no network needed, shown if renderer fails. */
-function errorPage(detail: string, url: string): string {
+function errorPage(detail: string, _url: string): string {
   const html = `<!doctype html><html lang="fr"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>POS Caisse</title>

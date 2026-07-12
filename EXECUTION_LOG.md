@@ -107,3 +107,24 @@ Revue adversariale de TOUS les fixes de la campagne (chaque agent tente de RÉFU
 
 ### Prochaine action automatique (continuité)
 Safe restant : audit read-only des modules ⚠️ (jackpot/loyalty/etc.) → confirmer/infirmer, garde-fous additifs + tests si bug évident. Vrais blocages : M107 réconciliation prod / décision A-B-C, D16-D17 archi, secrets/prod (#3, D6/D8/D7), Stripe parqué.
+
+## 2026-07-12 — Écarts terrain W6/W11/W12 (mission mini-PC, branche claude/execute-vfqmfg)
+
+### Contexte
+- Session cloud (pas le mini-PC) : les preuves machine (login réel, écrans, périphériques) restent à exécuter sur site — checklist fournie dans la PR.
+- P0 « connexion .exe » : déjà en cours ailleurs — **PR #72 (v1.0.4 diagnostic login)**, non touchée (hands-off §5). P0 « double écran » : fixé PR #69, retest sur site.
+
+### W6 — kiosque opérateur (main/index.ts)
+- Build packagé : fenêtre caisse `fullscreen + autoHideMenuBar` sur l'écran principal ; F11 = sortie/retour (maintenance). Dev inchangé.
+
+### W11 — URL reçu en dur (IPadPOSLayout.tsx)
+- `https://api.addxintelligence.com/api/receipts/…` → `${API_URL}/api/receipts/…` (suit VITE_API_URL).
+
+### W12 — état 'degraded' réellement posé
+- `probeNetworkStatus()` tri-état (offline = pas d'internet ; degraded = internet OK, health backend KO) ; watcher/événements/sync mid-run sur transitions.
+- `offlineStore.goDegraded()` : journal antifraude `backend_unreachable` (transition unique), `offlineSince` conservé ; `createdOffline` = tout état ≠ online.
+- `useOfflineMode.isOffline` inclut degraded (comportement caisse identique : bandeau, file locale, retours différés) ; libellés UI distincts (« SERVEUR INJOIGNABLE », bandeau explicite, pastille iPad « SERVEUR KO »).
+
+### Vérifs
+- pos-desktop : tsc renderer+main ✅ · eslint 0 erreur (fichiers touchés 0 warning, `_url` purgé) ✅ · vitest **353** verts (36 fichiers, +9 `syncEngine.probe.test.ts`) ✅ · vite build ✅ · backend jest ✅ (voir PR).
+- **Commit** `77435e0`.

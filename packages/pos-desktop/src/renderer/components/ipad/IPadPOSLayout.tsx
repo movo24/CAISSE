@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { usePOSStore } from '../../stores/posStore';
+import { API_URL } from '../../utils/apiConfig';
 import { useDeviceProfile, platformClasses } from '../../hooks/useDeviceProfile';
 import { useCart, CatalogueProduct } from '../../hooks/useCart';
 import { usePayment, PaymentMethod } from '../../hooks/usePayment';
@@ -227,7 +228,7 @@ export function IPadPOSLayout() {
               }`}
             >
               {offlineMode.isOffline ? <WifiOff size={isLandscape ? 9 : 10} /> : <Wifi size={isLandscape ? 9 : 10} />}
-              {!isLandscape && (offlineMode.isOffline ? 'OFFLINE' : 'ONLINE')}
+              {!isLandscape && (offlineMode.isDegraded ? 'SERVEUR KO' : offlineMode.isOffline ? 'OFFLINE' : 'ONLINE')}
             </button>
 
             {/* Widgets — hide verbose ones in landscape */}
@@ -909,7 +910,7 @@ export function IPadPOSLayout() {
                     // Get the sale ID from the last sale (stored during finalizePayment)
                     const lastSaleId = (store as any).lastSaleId || '';
                     const receiptUrl = lastSaleId
-                      ? `https://api.addxintelligence.com/api/receipts/${lastSaleId}/html`
+                      ? `${API_URL}/api/receipts/${lastSaleId}/html`
                       : '';
                     setDigitalReceipt({
                       ticketNumber: payment.confirmation!.ticketNumber,
