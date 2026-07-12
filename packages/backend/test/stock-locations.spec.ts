@@ -160,3 +160,125 @@ describe('Bloc 6 — multi-location stock (runnable via migration 1735)', () => 
     expect((await pRepo.findOneByOrFail({ id: pDiv.id })).stockQuantity).toBe(100);
   });
 });
+
+/**
+ * D20 — the 4 movement methods used to leave NO audit trail (AuditService was
+ * injected but never called). This proves each committed movement now writes an
+ * applicative audit entry (out-of-band, best-effort, per D16/D17), correctly
+ * tenant-scoped to the product's store, AND that an audit failure never rolls
+ * back or fails a movement that already committed.
+ */
+describe('D20 — stock movements write an applicative audit trail', () => {
+  let ds: DataSource;
+  let svc: StockLocationsService;
+  let auditRepo: ReturnType<DataSource['getRepository']>;
+  const STORE = uuidv4();
+  const P1 = uuidv4();
+  let central: StockLocationEntity;
+  let storeA: StockLocationEntity;
+  let storeB: StockLocationEntity;
+  const actor = { employeeId: uuidv4(), employeeName: 'Bob' };
+
+  const auditsFor = async (action: string) =>
+    (auditRepo as any).find({ where: { storeId: STORE, action }, order: { timestamp: 'ASC' } });
+
+  beforeAll(async () => {
+    const { dataSource } = createPgMemDataSource();
+    ds = dataSource.isInitialized ? dataSource : await dataSource.initialize();
+    auditRepo = ds.getRepository(AuditEntryEntity);
+    await ds.getRepository(StoreEntity).save({ id: STORE, name: 'D20', isActive: true, currencyCode: 'EUR' } as any);
+    await ds.getRepository(ProductEntity).save({
+      id: P1, ean: '3600000009999', name: 'Réglisse', priceMinorUnits: 500, taxRate: 20, storeId: STORE,
+    } as any);
+    svc = new StockLocationsService(
+      ds.getRepository(StockLocationEntity),
+      ds.getRepository(StockBalanceEntity),
+      ds.getRepository(StockMovementEntity),
+      ds.getRepository(ProductEntity),
+      ds,
+      new AuditService(ds.getRepository(AuditEntryEntity), ds),
+    );
+    central = await svc.createLocation({ name: 'Entrepôt D20', code: 'D20-CENTRAL', type: 'central' });
+    storeA = await svc.createLocation({ name: 'D20 A', code: 'D20-A', type: 'store', storeId: STORE });
+    storeB = await svc.createLocation({ name: 'D20 B', code: 'D20-B', type: 'store', storeId: STORE });
+  });
+  afterAll(async () => {
+    await ds?.destroy();
+  });
+
+  it('receiveFromSupplier writes a stock_supplier_receipt audit entry (old/new balance, actor, tenant)', async () => {
+    await svc.receiveFromSupplier({ productId: P1, locationId: central.id, quantity: 100, reference: 'BL-77', ...actor });
+    const entries = await auditsFor('stock_supplier_receipt');
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({ storeId: STORE, employeeId: actor.employeeId, entityType: 'stock_movement' });
+    expect(entries[0].details).toMatchObject({
+      movementType: 'supplier_receipt', toLocationId: central.id, quantity: 100,
+      oldBalance: 0, newBalance: 100, reference: 'BL-77',
+    });
+  });
+
+  it('transfer writes a stock_transfer audit entry with both balances before/after', async () => {
+    await svc.transfer({ productId: P1, fromLocationId: central.id, toLocationId: storeA.id, quantity: 40, ...actor });
+    const entries = await auditsFor('stock_transfer');
+    expect(entries).toHaveLength(1);
+    expect(entries[0].details).toMatchObject({
+      movementType: 'transfer', fromLocationId: central.id, toLocationId: storeA.id, quantity: 40,
+      fromOldBalance: 100, fromNewBalance: 60, toOldBalance: 0, toNewBalance: 40,
+    });
+  });
+
+  it('recordLoss writes a stock_loss audit entry with lossType, reason and balance delta', async () => {
+    await svc.recordLoss({ productId: P1, locationId: storeA.id, quantity: 5, lossType: 'loss_breakage', reason: 'cartons écrasés', ...actor });
+    const entries = await auditsFor('stock_loss');
+    expect(entries).toHaveLength(1);
+    expect(entries[0].details).toMatchObject({
+      movementType: 'loss_breakage', lossType: 'loss_breakage', fromLocationId: storeA.id,
+      quantity: 5, oldBalance: 40, newBalance: 35, reason: 'cartons écrasés',
+    });
+  });
+
+  it('dispatch writes a single stock_dispatch audit entry listing all destinations', async () => {
+    await svc.dispatch({
+      productId: P1, fromLocationId: central.id,
+      dispatches: [{ toLocationId: storeA.id, quantity: 10 }, { toLocationId: storeB.id, quantity: 20 }],
+      reference: 'DISP-1', ...actor,
+    });
+    const entries = await auditsFor('stock_dispatch');
+    expect(entries).toHaveLength(1);
+    expect(entries[0].entityType).toBe('stock_movement');
+    expect(entries[0].details).toMatchObject({
+      movementType: 'dispatch', fromLocationId: central.id, totalQuantity: 30,
+      fromOldBalance: 60, fromNewBalance: 30, reference: 'DISP-1',
+    });
+    expect((entries[0].details as any).dispatches).toEqual([
+      { toLocationId: storeA.id, quantity: 10 }, { toLocationId: storeB.id, quantity: 20 },
+    ]);
+    expect((entries[0].details as any).movementIds).toHaveLength(2);
+  });
+
+  it('ADVERSE — a rejected movement (insufficient stock) writes NO audit entry', async () => {
+    const before = await (auditRepo as any).count({ where: { storeId: STORE } });
+    await expect(
+      svc.recordLoss({ productId: P1, locationId: storeA.id, quantity: 99999, lossType: 'loss_theft', reason: 'vol', ...actor }),
+    ).rejects.toThrow(/Insufficient stock/);
+    expect(await (auditRepo as any).count({ where: { storeId: STORE } })).toBe(before);
+  });
+
+  it('BEST-EFFORT — an audit failure never rolls back or fails a committed movement', async () => {
+    const throwingAudit = { log: jest.fn().mockRejectedValue(new Error('audit down')) } as any;
+    const svc2 = new StockLocationsService(
+      ds.getRepository(StockLocationEntity),
+      ds.getRepository(StockBalanceEntity),
+      ds.getRepository(StockMovementEntity),
+      ds.getRepository(ProductEntity),
+      ds,
+      throwingAudit,
+    );
+    const balBefore = await svc2.getBalance(P1, central.id);
+    // The movement must still succeed and commit despite the audit throwing.
+    const m = await svc2.receiveFromSupplier({ productId: P1, locationId: central.id, quantity: 7, ...actor });
+    expect(m.movementType).toBe('supplier_receipt');
+    expect(await svc2.getBalance(P1, central.id)).toBe(balBefore + 7);
+    expect(throwingAudit.log).toHaveBeenCalledTimes(1);
+  });
+});
