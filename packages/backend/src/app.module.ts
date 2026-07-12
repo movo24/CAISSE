@@ -53,6 +53,7 @@ import { SalesGuardsModule } from './modules/sales-guards/sales-guards.module';
 import { BackofficeDiscountModule } from './modules/backoffice-discounts/backoffice-discount.module';
 import { SuppliersModule } from './modules/suppliers/suppliers.module';
 import { MobileCockpitModule } from './modules/mobile-cockpit/mobile-cockpit.module';
+import { MobileDirectionModule } from './modules/mobile-direction/mobile-direction.module';
 // ── RH MODULES (employees re-activated for local fallback) ──
 // PointageModule, PayrollModule, PlanningModule, StaffingModule → still in TimeWin24
 
@@ -143,6 +144,7 @@ const isProd = process.env.NODE_ENV === 'production';
     BackofficeDiscountModule,
     SuppliersModule,
     MobileCockpitModule,
+    MobileDirectionModule,
     ReturnsModule,
   ],
   providers: [
