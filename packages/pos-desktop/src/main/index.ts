@@ -28,6 +28,48 @@ ipcMain.on('app:getVersion', (e) => {
   e.returnValue = app.getVersion();
 });
 
+/**
+ * Sonde réseau côté MAIN (diagnostic terrain, bug login v1.0.3→v1.0.4).
+ *
+ * `net.request` du process main N'EST PAS soumis au CORS ni au sandbox du
+ * renderer : il dit donc si le backend est *joignable tout court* depuis ce PC,
+ * avec le CODE d'erreur Chromium EXACT (`net::ERR_NAME_NOT_RESOLVED`,
+ * `ERR_CONNECTION_REFUSED`, timeout…) — introuvable côté renderer (fetch n'y
+ * expose que « Failed to fetch »). En comparant cette sonde (sans CORS) avec le
+ * fetch du renderer (avec CORS), on distingue sans ambiguïté un problème RÉSEAU
+ * d'un problème CORS. Lecture seule (GET), aucun secret, borné à 8 s.
+ */
+ipcMain.handle('diag:probe', async (_e, rawUrl: string) => {
+  const started = Date.now();
+  return await new Promise((resolve) => {
+    let settled = false;
+    const done = (r: Record<string, unknown>) => {
+      if (settled) return;
+      settled = true;
+      resolve({ ...r, ms: Date.now() - started });
+    };
+    try {
+      const req = net.request({ method: 'GET', url: rawUrl });
+      const timer = setTimeout(() => {
+        try { req.abort(); } catch { /* noop */ }
+        done({ ok: false, errorCode: 'TIMEOUT_8S' });
+      }, 8000);
+      req.on('response', (res) => {
+        clearTimeout(timer);
+        res.on('data', () => { /* drain */ });
+        res.on('end', () => done({ ok: true, status: res.statusCode }));
+      });
+      req.on('error', (err: Error & { code?: string }) => {
+        clearTimeout(timer);
+        done({ ok: false, errorCode: err.code || err.message || 'ERROR' });
+      });
+      req.end();
+    } catch (err: any) {
+      done({ ok: false, errorCode: String(err?.message || err) });
+    }
+  });
+});
+
 const isDev = !app.isPackaged && process.env.NODE_ENV !== 'production';
 const DEV_URL = process.env.POS_DEV_URL || 'http://localhost:5175';
 

@@ -1189,8 +1189,8 @@ export function POSPage() {
       <ShiftWarning />
 
       {/* ── Header ── */}
-      <header className={`bg-white/80 backdrop-blur-xl border-b border-pos-border/30 flex items-center justify-between relative z-30 ${device.isCompact ? 'px-3 py-2' : 'px-5 py-2.5'}`}>
-        <div className="flex items-center gap-2 tablet:gap-4 min-w-0">
+      <header className={`bg-white/80 backdrop-blur-xl border-b border-pos-border/30 flex items-center justify-between gap-3 relative z-30 ${device.isCompact ? 'px-3 py-2' : 'px-5 py-2.5'}`}>
+        <div className="flex items-center gap-2 tablet:gap-4 min-w-0 flex-1">
           <div className={`flex items-center justify-center rounded-xl bg-pos-text flex-shrink-0 ${device.isCompact ? 'w-8 h-8' : 'w-9 h-9'}`}>
             <span className={`text-white font-black ${device.isCompact ? 'text-xs' : 'text-sm'}`}>C</span>
           </div>
@@ -1229,7 +1229,7 @@ export function POSPage() {
           )}
         </div>
 
-        <div className="flex items-center gap-1.5 tablet:gap-2">
+        <div className="flex items-center gap-1.5 tablet:gap-2 flex-shrink-0">
           {/* Camera scan button — iPad/tablet only */}
           {device.isTouch && device.hasCamera && (
             <button
