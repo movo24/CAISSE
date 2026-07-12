@@ -22,7 +22,8 @@ on:
         required: false
         default: "5678"
 
-permissions: {}
+permissions:
+  contents: read
 
 concurrency: pos-access
 
