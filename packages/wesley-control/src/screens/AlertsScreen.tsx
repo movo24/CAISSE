@@ -107,10 +107,17 @@ export function AlertsStoreScreen() {
 
   if (status === 'loading') return <LoadingState theme={theme} />;
   if (status === 'error' || !data) {
+    const cockpitMissing = (errorMessage ?? '').includes('404');
     return (
       <ErrorState
         theme={theme}
-        message={errorMessage ?? 'Backend indisponible'}
+        message={
+          cockpitMissing
+            ? 'Détail indisponible sur ce backend : le module cockpit POS-110 ' +
+              "n'est pas encore déployé. Les compteurs d'alertes de la liste " +
+              'restent fiables.'
+            : (errorMessage ?? 'Backend indisponible')
+        }
         onRetry={() => void refresh()}
       />
     );

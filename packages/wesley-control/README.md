@@ -28,7 +28,7 @@ aucun changement de prix, de vente ou de stock n'est possible depuis le mobile.
 | `GET /api/mobile/v1/direction/stores` | liste magasins + KPI (nouveau) |
 | `GET /api/mobile/v1/direction/stores/:id` | fiche magasin (nouveau) |
 | `GET /api/mobile/v1/direction/compare` | comparateur (nouveau) |
-| `GET /api/mobile/v1/alerts` | cockpit alertes POS-110 (réutilisé) |
+| `GET /api/mobile/v1/alerts` | cockpit alertes POS-110 (réutilisé — si absent du backend, l'app affiche un message dédié) |
 
 Rôles : `admin` = tout le réseau ; `manager` = son magasin + accès explicites
 (`employee_store_access`). Les cashiers et les clients (JWT `mobile-app`) sont

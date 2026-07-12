@@ -468,7 +468,7 @@ export class MobileDirectionService {
       `SELECT COUNT(*) FILTER (WHERE stock_quantity <= stock_critical_threshold)::bigint AS "critical",
               COUNT(*) FILTER (
                 WHERE stock_quantity > stock_critical_threshold
-                  AND stock_quantity <= COALESCE(CEIL(stock_baseline_quantity * 0.2), stock_alert_threshold)
+                  AND stock_quantity <= stock_alert_threshold
               )::bigint AS "alert"
        FROM products
        WHERE store_id = ANY($1) AND is_active = true`,
@@ -483,7 +483,7 @@ export class MobileDirectionService {
               COUNT(*) FILTER (WHERE stock_quantity <= stock_critical_threshold)::bigint AS "critical",
               COUNT(*) FILTER (
                 WHERE stock_quantity > stock_critical_threshold
-                  AND stock_quantity <= COALESCE(CEIL(stock_baseline_quantity * 0.2), stock_alert_threshold)
+                  AND stock_quantity <= stock_alert_threshold
               )::bigint AS "alert"
        FROM products
        WHERE store_id = ANY($1) AND is_active = true
@@ -586,17 +586,23 @@ export class MobileDirectionService {
     }));
   }
 
+  /**
+   * Écart de caisse du jour = somme des `cash_difference_minor_units` figés à
+   * la clôture (compté − attendu). `varianceMinorUnits` est null (pas 0) quand
+   * aucune session comptée n'existe — l'UI affiche « — », jamais un faux zéro.
+   */
   private async cashVarianceForDay(storeId: string, date: string) {
     const [row] = await this.dataSource.query(
-      `SELECT COUNT(id) FILTER (WHERE cash_variance_minor_units IS NOT NULL)::bigint AS "closedCounted",
-              COALESCE(SUM(cash_variance_minor_units), 0)::bigint AS "variance"
+      `SELECT COUNT(id) FILTER (WHERE cash_difference_minor_units IS NOT NULL)::bigint AS "closedCounted",
+              SUM(cash_difference_minor_units)::bigint AS "variance"
        FROM pos_sessions
        WHERE store_id = $1 AND is_active = false AND DATE(closed_at) = $2`,
       [storeId, date],
     );
+    const counted = toInt(row?.closedCounted);
     return {
-      closedSessionsCounted: toInt(row?.closedCounted),
-      varianceMinorUnits: toInt(row?.variance),
+      closedSessionsCounted: counted,
+      varianceMinorUnits: counted > 0 ? toInt(row?.variance) : null,
     };
   }
 

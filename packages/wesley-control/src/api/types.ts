@@ -96,7 +96,7 @@ export interface DirectionStoreDetail {
   topProducts: TopProduct[];
   refunds: { count: number; totalMinorUnits: number };
   voids: { count: number };
-  cash: { closedSessionsCounted: number; varianceMinorUnits: number };
+  cash: { closedSessionsCounted: number; varianceMinorUnits: number | null };
   sessions: {
     open: {
       id: string;

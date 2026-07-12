@@ -121,15 +121,21 @@ export function StoreDetailScreen() {
       <Row left="Ventes annulées" mid="" right={`${d.voids.count}`} theme={theme} />
       <Row
         left="Écart de caisse (sessions clôturées)"
-        mid={`${d.cash.closedSessionsCounted} session(s)`}
-        right={formatMoneyMinor(d.cash.varianceMinorUnits)}
+        mid={`${d.cash.closedSessionsCounted} session(s) comptée(s)`}
+        right={
+          d.cash.varianceMinorUnits === null
+            ? '—'
+            : formatMoneyMinor(d.cash.varianceMinorUnits)
+        }
         theme={theme}
         rightColor={
-          d.cash.varianceMinorUnits === 0
-            ? theme.positive
-            : d.cash.varianceMinorUnits < 0
-              ? theme.negative
-              : theme.warning
+          d.cash.varianceMinorUnits === null
+            ? theme.muted
+            : d.cash.varianceMinorUnits === 0
+              ? theme.positive
+              : d.cash.varianceMinorUnits < 0
+                ? theme.negative
+                : theme.warning
         }
       />
 
