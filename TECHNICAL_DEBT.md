@@ -100,5 +100,12 @@ Statuts : OPEN · IN PROGRESS · BLOCKED (owner/accès) · CLOSED (PR retire l'e
 **Fait cette passe (sûr, non-fonctionnel)** : commentaires de `hmacSecurity.ts` + `syncEngine.ts` corrigés pour dire « NON CÂBLÉ → D19 ».
 **Ferme (décision/design, chemin d'écriture sync — pas autonome)** : soit câbler end-to-end (provisioning token au login magasin + attach header + **vérif backend** + anti-replay nonce/timestamp + gestion du secret), soit retirer l'échafaudage si la device-signature n'est pas requise (JWT suffit). Toucher la vérif backend = chemin d'écriture sync → owner.
 
-## D15 — Dérive doc CLAUDE.md + nits  (M803)
-**Status:** OPEN · **P3.** Counts stale (37/45/405/mig1715 vs 42/53/543/1743) ; promo-codes & stock-reconciliation non documentés ; barrel `entities/index.ts` omet 11 entités (inoffensif) ; seeds PIN 1234/5678 littéraux ; `migration:run` pointe un chemin typeorm/cli.js inexistant ; health "2s" vs 5s ; Z vs KPI colonnes date différentes. **Ferme :** rafraîchir CLAUDE.md + corriger les nits.
+## D15 — Dérive doc CLAUDE.md + nits  (M803) — 🔄 IN PROGRESS (2026-07-12)
+**Status:** IN PROGRESS · **P3.** Passe de rafraîchissement (2026-07-12) :
+- ✅ **Liste des migrations** complétée dans `CLAUDE.md` (manquaient `1744-HardenAuditChain`, `1755-CreateAttractCampaigns`, `1756-AddPosMachineEnrollment`, `1757-AddStoreTw24Enabled`) → 38 migrations, à jour jusqu'à 1757.
+- ✅ **Compteur de tests** rafraîchi (`543/81` → ~961 passants / 972 total sur 116 fichiers spec) aux 2 emplacements + note gated-PG.
+- ✅ **Key Files** : `45 TypeORM entities` → 62 ; `11 versioned migrations` → 38 (→ 1757).
+- ✅ **health** : commentaire code « strict 2s timeout » corrigé en « 5s » (aligné sur `HEALTH_DB_TIMEOUT_MS = 5000`).
+- ✅ **Déjà résolus (dérive du registre, vérifiés)** : `migration:run` utilise `typeorm-ts-node-commonjs` (plus de `typeorm/cli.js` inexistant) ; `promo-codes` & `stock-reconciliation` **sont** documentés dans la table des modules.
+
+**Résiduel (non fait — évite d'introduire une NOUVELLE incohérence)** : les en-têtes `## Backend Modules (42)` (réel 46) et `## TypeORM Entities (55)` (réel 62) sont suivis de **tables énumérées** ; bumper le seul chiffre sans réconcilier la table crée un écart pire → réconciliation complète des tables = passe dédiée. Restent aussi : barrel `entities/index.ts` (inoffensif), seeds PIN `1234/5678` littéraux, colonnes date Z vs KPI. **Ferme :** réconcilier les 2 tables énumérées + les 3 nits restants.
