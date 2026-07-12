@@ -66,6 +66,11 @@ jobs:
       - name: Backoffice tests (vitest)
         run: npm run test --workspace=@caisse/backoffice-web
 
+      - name: Wesley Control app (typecheck + vitest)
+        run: |
+          npm run typecheck:control
+          npm run test:control
+
       - name: Build backend (tsc + nest)
         run: npm run build:backend
 
