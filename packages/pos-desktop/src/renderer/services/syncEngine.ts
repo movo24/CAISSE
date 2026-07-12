@@ -28,9 +28,15 @@ const SYNC_ORDER: Record<string, number> = {
 let networkCheckInterval: ReturnType<typeof setInterval> | null = null;
 let syncTimeout: ReturnType<typeof setTimeout> | null = null;
 
-async function checkNetworkStatus(): Promise<boolean> {
+export type NetworkProbeResult = 'online' | 'offline' | 'degraded';
+
+/**
+ * Sonde tri-état (W12) : distingue « pas d'internet » (offline) de
+ * « internet OK mais backend injoignable » (degraded).
+ */
+export async function probeNetworkStatus(): Promise<NetworkProbeResult> {
   // 1. navigator.onLine (fast but unreliable)
-  if (!navigator.onLine) return false;
+  if (!navigator.onLine) return 'offline';
 
   // 2. Actual ping to backend (reliable)
   try {
@@ -41,9 +47,29 @@ async function checkNetworkStatus(): Promise<boolean> {
       { method: 'HEAD', signal: controller.signal },
     );
     clearTimeout(timeout);
-    return response.ok;
+    return response.ok ? 'online' : 'degraded';
   } catch {
-    return false;
+    // fetch a échoué alors que le navigateur se dit connecté → backend down.
+    return 'degraded';
+  }
+}
+
+async function checkNetworkStatus(): Promise<boolean> {
+  return (await probeNetworkStatus()) === 'online';
+}
+
+/** Applique le résultat de sonde au store, uniquement sur transition. */
+function applyProbeResult(status: NetworkProbeResult): void {
+  const store = useOfflineStore.getState();
+  if (store.networkStatus === status) return;
+  if (status === 'online') {
+    store.goOnline();
+    if (syncTimeout) clearTimeout(syncTimeout);
+    syncTimeout = setTimeout(() => runSync(), 2000);
+  } else if (status === 'degraded') {
+    store.goDegraded();
+  } else {
+    store.goOffline();
   }
 }
 
@@ -309,10 +335,10 @@ export async function runSync(): Promise<{ synced: number; failed: number; confl
 
     // Check network mid-sync (connection might drop during sync)
     if (i > 0 && i % 5 === 0) {
-      const stillOnline = await checkNetworkStatus();
-      if (!stillOnline) {
+      const status = await probeNetworkStatus();
+      if (status !== 'online') {
         console.log(`[SYNC] Connection lost during sync at entry ${i + 1}/${sorted.length}`);
-        store.goOffline();
+        applyProbeResult(status);
         break;
       }
     }
@@ -367,13 +393,8 @@ export function startNetworkWatcher() {
   // Browser online/offline events
   window.addEventListener('online', async () => {
     console.log('[NETWORK] Browser reports online');
-    const reallyOnline = await checkNetworkStatus();
-    if (reallyOnline) {
-      useOfflineStore.getState().goOnline();
-      // Auto-sync after short delay
-      if (syncTimeout) clearTimeout(syncTimeout);
-      syncTimeout = setTimeout(() => runSync(), 2000);
-    }
+    // Internet revenu ≠ backend joignable : la sonde tranche (online/degraded).
+    applyProbeResult(await probeNetworkStatus());
   });
 
   window.addEventListener('offline', () => {
@@ -384,27 +405,15 @@ export function startNetworkWatcher() {
   // Periodic check (every 15 seconds)
   if (networkCheckInterval) clearInterval(networkCheckInterval);
   networkCheckInterval = setInterval(async () => {
-    const store = useOfflineStore.getState();
-    const isOnline = await checkNetworkStatus();
-
-    if (isOnline && store.networkStatus === 'offline') {
-      store.goOnline();
-      // Trigger sync
-      if (syncTimeout) clearTimeout(syncTimeout);
-      syncTimeout = setTimeout(() => runSync(), 2000);
-    } else if (!isOnline && store.networkStatus === 'online') {
-      store.goOffline();
-    }
+    applyProbeResult(await probeNetworkStatus());
   }, 15000);
 
   // Load persisted data on startup
   useOfflineStore.getState().loadPersistedQueue();
 
   // Initial network check
-  checkNetworkStatus().then((isOnline) => {
-    if (!isOnline) {
-      useOfflineStore.getState().goOffline();
-    }
+  probeNetworkStatus().then((status) => {
+    if (status !== 'online') applyProbeResult(status);
   });
 
   console.log('[NETWORK] Watcher started');

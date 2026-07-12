@@ -118,6 +118,7 @@ interface OfflineState {
   // Actions — Network
   setNetworkStatus: (status: NetworkStatus) => void;
   goOffline: () => void;
+  goDegraded: () => void;
   goOnline: () => void;
 
   // Actions — Queue
@@ -249,6 +250,29 @@ export const useOfflineStore = create<OfflineState>((set, get) => ({
     });
   },
 
+  goDegraded: () => {
+    // Internet présent mais backend injoignable (health KO) : même comportement
+    // caisse que le mode offline (file locale, resync auto), seul le libellé
+    // change. offlineSince est conservé si une coupure est déjà en cours.
+    const now = new Date().toISOString();
+    const alreadyDown = get().networkStatus !== 'online';
+    set({
+      networkStatus: 'degraded',
+      lastOfflineAt: alreadyDown ? get().lastOfflineAt : now,
+      offlineSince: get().offlineSince ?? now,
+    });
+    get().updatePaymentAvailability();
+    if (!alreadyDown) {
+      get().enqueue({
+        type: 'antifraude_log',
+        payload: { event: 'backend_unreachable', timestamp: now },
+        cashierId: 'system',
+        cashierName: 'Systeme',
+        storeId: '',
+      });
+    }
+  },
+
   goOnline: () => {
     const now = new Date().toISOString();
     const offlineDuration = get().offlineSince
@@ -283,7 +307,7 @@ export const useOfflineStore = create<OfflineState>((set, get) => ({
       status: 'local_pending',
       retryCount: 0,
       maxRetries: 5,
-      createdOffline: get().networkStatus === 'offline',
+      createdOffline: get().networkStatus !== 'online',
     };
     const queue = [...get().queue, newEntry];
     const pendingCount = queue.filter((e) => e.status === 'local_pending').length;

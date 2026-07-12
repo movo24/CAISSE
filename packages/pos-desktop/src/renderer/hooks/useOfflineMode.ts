@@ -20,8 +20,11 @@ export function useOfflineMode() {
   }, []);
 
   // ── Is currently offline? ──
-  const isOffline = offline.networkStatus === 'offline';
+  // 'degraded' (internet OK mais backend injoignable) se comporte comme le mode
+  // offline partout (bandeau, file locale, retours différés) ; seul le libellé
+  // UI distingue les deux via isDegraded.
   const isDegraded = offline.networkStatus === 'degraded';
+  const isOffline = offline.networkStatus === 'offline' || isDegraded;
 
   // ── Offline duration (human readable) ──
   const offlineDuration = useCallback((): string => {

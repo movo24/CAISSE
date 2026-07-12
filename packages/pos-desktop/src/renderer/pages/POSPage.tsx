@@ -1114,10 +1114,12 @@ export function POSPage() {
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-1.5 bg-white/15 rounded-lg px-2.5 py-1">
               <WifiOff size={14} className="text-white animate-pulse" />
-              <span className="text-white text-xs font-black uppercase tracking-wider">Mode Offline</span>
+              <span className="text-white text-xs font-black uppercase tracking-wider">{offlineMode.isDegraded ? 'Serveur injoignable' : 'Mode Offline'}</span>
             </div>
             <span className="text-white/80 text-xs font-medium">
-              Ventes enregistrees localement — Resync automatique au retour du reseau
+              {offlineMode.isDegraded
+                ? 'Internet OK mais le serveur ne répond pas — Ventes enregistrées localement, resync automatique'
+                : 'Ventes enregistrees localement — Resync automatique au retour du reseau'}
             </span>
           </div>
           <div className="flex items-center gap-3">
@@ -1207,10 +1209,10 @@ export function POSPage() {
                 ? 'bg-amber-50 text-amber-600 ring-1 ring-amber-200 hover:bg-amber-100 cursor-pointer'
                 : 'bg-emerald-50 text-emerald-600 ring-1 ring-emerald-200'
             }`}
-            title={offlineMode.isOffline ? 'Hors ligne' : offlineMode.pendingCount > 0 ? 'Cliquer pour synchroniser' : 'Connecte'}
+            title={offlineMode.isDegraded ? 'Internet OK — serveur injoignable' : offlineMode.isOffline ? 'Hors ligne' : offlineMode.pendingCount > 0 ? 'Cliquer pour synchroniser' : 'Connecte'}
           >
             {offlineMode.isOffline ? <WifiOff size={10} /> : offlineMode.isSyncing ? <SyncIcon size={10} className="animate-spin" /> : <Wifi size={10} />}
-            {offlineMode.isOffline ? 'OFFLINE' : offlineMode.isSyncing ? `SYNC ${offlineMode.syncProgress}%` : offlineMode.pendingCount > 0 ? `${offlineMode.pendingCount} en attente` : 'ONLINE'}
+            {offlineMode.isDegraded ? 'SERVEUR INJOIGNABLE' : offlineMode.isOffline ? 'OFFLINE' : offlineMode.isSyncing ? `SYNC ${offlineMode.syncProgress}%` : offlineMode.pendingCount > 0 ? `${offlineMode.pendingCount} en attente` : 'ONLINE'}
           </button>
           {/* Shift duration indicator */}
           <ShiftIndicator />
