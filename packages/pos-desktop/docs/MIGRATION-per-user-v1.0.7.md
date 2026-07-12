@@ -77,10 +77,18 @@ powershell -ExecutionPolicy Bypass -File .\migrate-per-user-v1.0.7.ps1 `
     -Execute -Installer "D:\releases\The-Wesleys-POS-Setup-x64.exe"
 ```
 
-Le script : dry-run par défaut ; sauvegarde avant toute désinstallation ;
+Le script : dry-run par défaut ; ferme le POS **avant** la sauvegarde (fichiers
+LevelDB verrouillés app ouverte) ; sauvegarde avant toute désinstallation ;
 s'arrête sur toute ambiguïté (0 ou >1 install, installeur/désinstalleur
 introuvable, non-admin) ; **ne supprime jamais** `%APPDATA%\@caisse` ; journal
 horodaté ; vérifie version + chemin final + copie unique.
+
+> ⚠️ **Compte Windows.** Une install per-user atterrit dans le
+> `%LOCALAPPDATA%` **du compte qui lance le script**. Exécuter la session
+> PowerShell élevée avec le **même compte Windows que celui qui opère la
+> caisse** (élévation UAC du même compte, pas un second compte admin) — sinon
+> la v1.0.7 s'installe dans le mauvais profil et la caisse relancerait
+> l'ancienne version.
 
 ### Rollback
 

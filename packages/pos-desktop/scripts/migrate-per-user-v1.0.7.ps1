@@ -190,8 +190,8 @@ if ($Execute) {
 
 # -- 3) Plan --------------------------------------------------------------
 Info '--- Plan de migration ---'
-Info "1. Sauvegarder $AppDataDir -> $BackupRoot\appdata-$stamp (COPIE, jamais deplacement)"
-Info "2. Fermer les process POS ($($procs.Count))"
+Info "1. Fermer les process POS ($($procs.Count)) — AVANT la copie (fichiers verrouilles app ouverte)"
+Info "2. Sauvegarder $AppDataDir -> $BackupRoot\appdata-$stamp (COPIE, jamais deplacement)"
 Info "3. Desinstaller (silencieux) : $($target.DisplayName) v$($target.DisplayVersion) [$($target.Hive)]"
 Info "4. Installer (silencieux) v$ExpectedNewVer per-user depuis : $Installer"
 Info "5. Verifier : chemin=$PerUserDir version=$ExpectedNewVer HKLM vide 1 copie raccourcis a jour"
@@ -202,7 +202,21 @@ if (-not $Execute) {
     exit 0
 }
 
-# -- 4) Sauvegarde (COPIE) ------------------------------------------------
+# -- 4) Fermeture des process ----------------------------------------------
+# AVANT la sauvegarde : app ouverte = fichiers LevelDB (localStorage) verrouilles
+# -> Copy-Item echouerait brutalement en pleine copie. Fermer d'abord garantit
+# une sauvegarde complete et coherente.
+if ($procs.Count -gt 0) {
+    Info 'Fermeture des instances POS...'
+    $procs | Stop-Process -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 2
+    if (@(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "*$InstallLeaf*" }).Count -gt 0) {
+        Stop-Migration 'Des process POS refusent de se fermer. Arret avant sauvegarde/desinstallation.'
+    }
+    Ok 'Process POS fermes.'
+}
+
+# -- 5) Sauvegarde (COPIE) -------------------------------------------------
 Info '--- Sauvegarde des donnees ---'
 $backupDir = Join-Path $BackupRoot "appdata-$stamp"
 New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
@@ -214,17 +228,6 @@ if ($dstCount -lt $srcCount) {
     Stop-Migration "Sauvegarde incomplete ($dstCount/$srcCount). On NE desinstalle PAS. Donnees intactes."
 }
 Ok "Sauvegarde verifiee : $backupDir"
-
-# -- 5) Fermeture des process ---------------------------------------------
-if ($procs.Count -gt 0) {
-    Info 'Fermeture des instances POS...'
-    $procs | Stop-Process -Force -ErrorAction SilentlyContinue
-    Start-Sleep -Seconds 2
-    if (@(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "*$InstallLeaf*" }).Count -gt 0) {
-        Stop-Migration 'Des process POS refusent de se fermer. Arret avant desinstallation.'
-    }
-    Ok 'Process POS fermes.'
-}
 
 # -- 6) Desinstallation per-machine (silencieuse) -------------------------
 Info '--- Desinstallation per-machine ---'
