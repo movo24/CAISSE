@@ -46,6 +46,7 @@ import { TicketHistoryModal } from '../components/pos/TicketHistoryModal';
 import { ReturnModal } from '../components/pos/ReturnModal';
 import { AvoirTenderModal } from '../components/pos/AvoirTenderModal';
 import { peripheralBridge } from '../services/peripheralBridge';
+import { shouldAcceptWedgeScan } from '../services/wedgeScanGate';
 import { useCloudSyncStore } from '../services/cloudSyncIdentity';
 import { Wifi, WifiOff, CloudOff, Cloud, RefreshCw as SyncIcon, ShieldAlert, Upload, Lock as LockIcon } from 'lucide-react';
 import { IPadPOSLayout } from '../components/ipad/IPadPOSLayout';
@@ -139,6 +140,9 @@ export function POSPage() {
   const device = useDeviceProfile();
   const cloudSync = useCloudSyncStore();
   const scanRef = useRef<HTMLInputElement>(null);
+  // Dernière fonction de traitement d'un scan wedge global (mise à jour à chaque
+  // rendu ; l'abonnement au listener est fait une seule fois au montage).
+  const wedgeScanRef = useRef<(code: string) => void>(() => {});
   const cameraVideoRef = useRef<HTMLVideoElement>(null);
   // One idempotency key per checkout (reused on double-click / retry, reset on success).
   const saleIdemKeyRef = useRef<string | null>(null);
@@ -292,6 +296,16 @@ export function POSPage() {
       peripheralBridge.destroy();
       cloudSync.endSession();
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Abonnement UNIQUE à la douchette wedge globale (au montage). Le callback
+  // délègue à `wedgeScanRef` (toujours à jour) ; `startBarcodeListener` n'attache
+  // le handler clavier que si le scanner est de type keyboard_wedge (poste
+  // desktop/Windows), et ignore les scans tapés dans un champ de saisie.
+  useEffect(() => {
+    const off = peripheralBridge.startBarcodeListener((r) => wedgeScanRef.current(r.code));
+    return off;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -587,6 +601,23 @@ export function POSPage() {
     setScanValue('');
     setSearchOpen(false);
     scanRef.current?.focus();
+  };
+
+  // Douchette wedge GLOBALE (mini-PC Windows) : capte les scans même quand le
+  // champ de recherche n'a pas le focus. La ref porte toujours le dernier
+  // `handleScan` + le dernier état UI ; l'abonnement (ci-dessous) est fait une
+  // seule fois au montage. Le listener bas-niveau ignore déjà les scans tapés
+  // DANS un input → aucun double ajout avec le champ de recherche.
+  wedgeScanRef.current = (code: string) => {
+    const accept = shouldAcceptWedgeScan({
+      hasActiveCashier: !!store.employee,
+      paymentModalOpen: store.paymentModalOpen,
+      confirmationOpen: confirmation !== null,
+      unknownProductOpen: unknownProduct !== null,
+      weightModalOpen: weightModal !== null,
+      emailModalOpen: emailModal,
+    });
+    if (accept) void handleScan(code);
   };
 
   /* ── Produit inconnu (aucune création depuis la caisse) ── */
