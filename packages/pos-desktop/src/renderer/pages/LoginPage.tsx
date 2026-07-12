@@ -22,36 +22,64 @@ export function LoginPage() {
   const [mode, setMode] = useState<'pin' | 'qr'>('pin');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  // Diagnostic terrain (bug v1.0.2 → v1.0.3) : rend visible, sur l'écran de
-  // login, l'URL backend réellement utilisée, le résultat du healthcheck et le
-  // code d'erreur réseau exact — sans jamais exposer de secret (aucun token,
-  // aucun PIN, aucun identifiant n'est affiché ici).
-  const [diag, setDiag] = useState('');
+  // Diagnostic terrain (bug login v1.0.3 → v1.0.4). Affiche, SUR l'écran de
+  // login du .exe installé et sans jamais exposer de secret (ni token, ni PIN) :
+  //  - la VERSION réellement exécutée (piège « ancienne version encore lancée ») ;
+  //  - l'URL backend réellement utilisée par le build ;
+  //  - le healthcheck vu par le RENDERER (fetch, soumis au CORS) ;
+  //  - le healthcheck vu par le MAIN (net.request, SANS CORS) → joignabilité pure
+  //    + code d'erreur Chromium exact (ERR_NAME_NOT_RESOLVED, timeout…) ;
+  //  - le détail exact de la dernière tentative de login (endpoint, HTTP, code).
+  // Comparer renderer(CORS) vs main(sans CORS) distingue réseau ↔ CORS.
+  const posVersion =
+    typeof window !== 'undefined' ? (window as any).posDesktop?.version : undefined;
+  const [diag, setDiag] = useState<{
+    rendererHealth?: string;
+    mainHealth?: string;
+    login?: string;
+  }>({});
   const [probing, setProbing] = useState(false);
-  const [showDiag, setShowDiag] = useState(false);
   const pinRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     pinRef.current?.focus();
   }, [mode]);
 
-  // Sonde de connectivité : GET /api/health depuis le contexte packagé
-  // (mêmes contraintes réseau/CORS que le login réel). Affiche le code HTTP ou
-  // le code d'erreur Chromium exact (ex. Failed to fetch / ERR_CONNECTION_REFUSED).
-  const runHealthProbe = async () => {
+  // Sonde de connectivité complète. Renderer = fetch (subit le CORS, comme le
+  // login réel). Main = net.request via IPC (pas de CORS) → dit si le backend
+  // est JOIGNABLE tout court, avec le code réseau exact.
+  const runDiagnostics = async () => {
     setProbing(true);
-    setDiag('');
-    setShowDiag(true);
+    setDiag((d) => ({ ...d, rendererHealth: '…', mainHealth: '…' }));
+    // 1) Renderer fetch (avec CORS)
     const t0 = Date.now();
+    fetch(`${API_URL}/api/health`, { method: 'GET', cache: 'no-store' })
+      .then((res) => setDiag((d) => ({ ...d, rendererHealth: `HTTP ${res.status} · ${Date.now() - t0} ms` })))
+      .catch((e: any) => setDiag((d) => ({ ...d, rendererHealth: `ÉCHEC · ${e?.name || 'Error'}: ${e?.message || e}` })));
+    // 2) Main net.request (sans CORS) — joignabilité réelle + code exact
     try {
-      const res = await fetch(`${API_URL}/api/health`, { method: 'GET', cache: 'no-store' });
-      setDiag(`Healthcheck : HTTP ${res.status} · ${Date.now() - t0} ms`);
+      const probe = (window as any).posDesktop?.diagProbe;
+      if (typeof probe === 'function') {
+        const r = await probe(`${API_URL}/api/health`);
+        setDiag((d) => ({
+          ...d,
+          mainHealth: r?.ok ? `HTTP ${r.status} · ${r.ms} ms (sans CORS)` : `INJOIGNABLE · ${r?.errorCode} · ${r?.ms} ms`,
+        }));
+      } else {
+        setDiag((d) => ({ ...d, mainHealth: 'indisponible (hors .exe)' }));
+      }
     } catch (e: any) {
-      setDiag(`Healthcheck : ÉCHEC · ${e?.name || 'Error'}: ${e?.message || e}`);
+      setDiag((d) => ({ ...d, mainHealth: `erreur IPC: ${e?.message || e}` }));
     } finally {
       setProbing(false);
     }
   };
+
+  // Auto-run au montage : le diagnostic doit être visible SANS action.
+  useEffect(() => {
+    runDiagnostics();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleLogin = async () => {
     setError('');
@@ -117,13 +145,14 @@ export function LoginPage() {
       const code: string | undefined = err.code; // ERR_NETWORK, ECONNABORTED…
       const backendMsg: string | undefined = err.response?.data?.message;
       setError(backendMsg || 'Connexion impossible. Backend non disponible ?');
-      // Diagnostic factuel (pas de secret) : URL backend + nature exacte de l'échec.
-      setShowDiag(true);
-      setDiag(
-        status
-          ? `Login : HTTP ${status}${backendMsg ? ` · ${backendMsg}` : ''}`
-          : `Login : échec réseau · ${code || 'inconnu'}${err.message ? ` · ${err.message}` : ''}`,
-      );
+      // Diagnostic factuel (pas de secret) : endpoint exact + HTTP + code réseau.
+      const endpoint = `POST ${API_URL}/api/auth/login/${mode}`;
+      setDiag((d) => ({
+        ...d,
+        login: status
+          ? `${endpoint} → HTTP ${status}${backendMsg ? ` · « ${backendMsg} »` : ''}`
+          : `${endpoint} → échec réseau · ${code || 'inconnu'}${err.message ? ` · ${err.message}` : ''}`,
+      }));
     } finally {
       setLoading(false);
     }
@@ -256,27 +285,26 @@ export function LoginPage() {
             </p>
           )}
 
-          {/* Diagnostic terrain — URL backend + test de connectivité + code
-              d'erreur exact. Aucun secret affiché (ni token, ni PIN). */}
-          <div className="pt-1 border-t border-pos-border/10 space-y-2">
+          {/* Diagnostic terrain (toujours visible, sans secret) — version réelle,
+              URL backend, healthcheck renderer(CORS) vs main(sans CORS), et détail
+              de la dernière tentative de login. Sert de preuve depuis le .exe. */}
+          <div className="pt-2 border-t border-pos-border/10 space-y-1.5 text-[10px] font-mono text-pos-muted/70 leading-relaxed">
             <div className="flex items-center justify-between gap-2">
-              <span className="text-[10px] font-mono text-pos-muted/60 truncate" title={API_URL}>
-                {API_URL || '(URL backend absente)'}
-              </span>
+              <span>Diagnostic</span>
               <button
                 type="button"
-                onClick={runHealthProbe}
+                onClick={runDiagnostics}
                 disabled={probing}
-                className="shrink-0 text-[11px] font-medium text-pos-accent hover:underline disabled:opacity-50"
+                className="shrink-0 font-sans text-[11px] font-medium text-pos-accent hover:underline disabled:opacity-50"
               >
-                {probing ? 'Test…' : 'Tester la connexion'}
+                {probing ? 'Test…' : 'Retester'}
               </button>
             </div>
-            {showDiag && diag && (
-              <p className="text-[10px] font-mono text-pos-muted/70 break-words leading-relaxed">
-                {diag}
-              </p>
-            )}
+            <div>Version&nbsp;: <b className={posVersion === '1.0.4' ? 'text-pos-text' : 'text-pos-danger'}>{posVersion || 'web/dev'}</b></div>
+            <div className="break-all">Backend&nbsp;: {API_URL || '(URL absente)'}</div>
+            <div>Health (renderer/CORS)&nbsp;: {diag.rendererHealth ?? '—'}</div>
+            <div>Health (main/sans CORS)&nbsp;: {diag.mainHealth ?? '—'}</div>
+            {diag.login && <div className="break-all text-pos-danger/90">Login&nbsp;: {diag.login}</div>}
           </div>
         </div>
 

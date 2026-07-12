@@ -24,6 +24,9 @@ contextBridge.exposeInMainWorld('posDesktop', {
   isDesktop: true,
   platform: process.platform,
   version: appVersion,
+  // Sonde réseau côté MAIN (sans CORS) — diagnostic terrain du login.
+  // Retourne { ok, status } ou { ok:false, errorCode } + ms.
+  diagProbe: (url: string) => ipcRenderer.invoke('diag:probe', url),
 });
 
 /**
