@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { UserCircle, AlertTriangle, Clock, Monitor } from 'lucide-react';
+import { AlertTriangle, Clock, Monitor } from 'lucide-react';
 import { usePOSStore } from '../stores/posStore';
 import { employeeScoreApi, posTerminalId } from '../services/api';
 
@@ -92,10 +92,8 @@ export function ActiveCashierBanner({
   const day = score?.day;
 
   return (
-    <div className={`flex items-center gap-3 rounded-xl bg-white ring-1 ring-pos-border/40 shadow-sm ${compact ? 'px-3 py-1.5' : 'px-4 py-2'}`}>
-      <div className={`flex items-center justify-center rounded-full bg-pos-accent/10 text-pos-accent shrink-0 ${compact ? 'w-8 h-8' : 'w-10 h-10'}`}>
-        <UserCircle size={compact ? 20 : 24} />
-      </div>
+    <div className={`flex items-center gap-3 rounded-xl bg-white ring-1 ring-pos-border/40 shadow-sm ${compact ? 'px-3 py-1' : 'px-4 py-2'}`}>
+      {/* Pictogramme avatar retiré (demande owner : aucune information utile) */}
       <div className="leading-tight min-w-0">
         <p className={`font-black text-pos-text uppercase tracking-wide truncate ${compact ? 'text-sm' : 'text-lg'}`}>
           <span className="text-pos-muted font-semibold">Caisse de : </span>{name}

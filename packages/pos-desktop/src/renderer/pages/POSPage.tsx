@@ -24,7 +24,6 @@ import { useOfflineStore } from '../stores/offlineStore';
 import { getCardPaymentMode, CARD_DISABLED_MESSAGE } from '../services/cardPaymentMode';
 import { loadSettings as loadCustomerDisplaySettings, terminalLabel } from '../services/customerDisplay/settings';
 import { computePaymentState, type PaymentMethod } from '../services/paymentMachine';
-import { FluxWidget } from '../components/FluxWidget';
 import { ManualDiscountControl } from '../components/ManualDiscountControl';
 import { PromoCodeControl } from '../components/PromoCodeControl';
 import { useOfflineMode } from '../hooks/useOfflineMode';
@@ -1170,9 +1169,9 @@ export function POSPage() {
 
       {/* ═══════ SYNC COMPLETE BANNER (show briefly after sync) ═══════ */}
       {!offlineMode.isOffline && !offlineMode.isSyncing && offlineMode.syncedCount > 0 && (
-        <div className="bg-gradient-to-r from-emerald-500 to-green-500 px-4 py-1.5 flex items-center justify-center gap-2 relative z-50">
-          <Cloud size={12} className="text-white" />
-          <span className="text-white text-xs font-semibold">
+        <div className="bg-gradient-to-r from-emerald-500 to-green-500 px-4 py-0.5 flex items-center justify-center gap-2 relative z-50">
+          <Cloud size={10} className="text-white" />
+          <span className="text-white text-[11px] font-semibold">
             Connecte — {offlineMode.syncedCount} ticket{offlineMode.syncedCount > 1 ? 's' : ''} synchronise{offlineMode.syncedCount > 1 ? 's' : ''}
           </span>
           {offlineMode.conflictCount > 0 && (
@@ -1188,13 +1187,20 @@ export function POSPage() {
       <ShiftWarning />
 
       {/* ── Header V1 « Cockpit Sombre » (design owner validé) ──
-          GRILLE 3 zones — gauche (actions/infos, wrap interne) · centre (logo
-          officiel ADDX) · droite (durée + ONLINE). La grille dimensionne chaque
-          zone indépendamment : le logo centré ne peut JAMAIS passer par-dessus
-          les actions (leçon du bug chevauchement v1.0.6). */}
-      <header className={`bg-[#12141c] border-b border-white/10 grid grid-cols-[1fr_auto_1fr] items-center relative z-30 ${device.isCompact ? 'gap-x-2 px-3 py-2' : 'gap-x-3 px-5 py-2.5'}`}>
-        {/* ── Zone GAUCHE : Scanner · Payer · Annuler · caissier · Historique · widgets · profil ── */}
-        <div className={`flex flex-wrap items-center min-w-0 ${device.isCompact ? 'gap-x-1.5 gap-y-1' : 'gap-x-2 gap-y-1'}`}>
+          FLEX 3 zones — logo officiel ADDX complètement à GAUCHE (flex:0 0 auto,
+          largeur propre uniquement, aucune colonne réservée) · actions/infos
+          juste après (flex-1, wrap interne) · durée + ONLINE à droite (flex-none).
+          Chaque enfant direct est dimensionné : le logo ne peut JAMAIS passer
+          par-dessus les actions (leçon du bug chevauchement v1.0.6). */}
+      <header className={`bg-[#12141c] border-b border-white/10 flex items-center relative z-30 ${device.isCompact ? 'gap-x-2 px-3 py-1' : 'gap-x-3 px-5 py-1'}`}>
+        {/* ── Logo ADDX : extrême gauche, n'occupe QUE sa largeur ── */}
+        <AddxWordmark
+          className="flex-none"
+          style={{ height: device.isCompact ? 12 : 14, flex: '0 0 auto', width: 'auto' }}
+        />
+
+        {/* ── Zone ACTIONS (commence immédiatement après le logo) : Scanner · Payer · Annuler · caissier · Historique · widgets · profil ── */}
+        <div className={`flex-1 flex flex-wrap items-center min-w-0 ${device.isCompact ? 'gap-x-1.5 gap-y-1' : 'gap-x-2 gap-y-1'}`}>
         {device.isTouch && device.hasCamera && (
           <button
             onClick={() => setCameraOpen(true)}
@@ -1210,7 +1216,7 @@ export function POSPage() {
 
         {/* 4. Score / Historique (+ Retour) — bandeau caissier tronquable */}
         <div className="flex-shrink min-w-0">
-          <ActiveCashierBanner onScoreClick={() => setScoreDetailOpen(true)} />
+          <ActiveCashierBanner compact onScoreClick={() => setScoreDetailOpen(true)} />
         </div>
         <button
           onClick={() => ticketHistory.openHistory()}
@@ -1231,8 +1237,8 @@ export function POSPage() {
           </button>
         )}
 
-        {/* Indicateurs (fonctions inchangées) */}
-        <FluxWidget occupancy={store.occupancy} weather={store.weather} />
+        {/* Indicateurs (fonctions inchangées ; FluxWidget retiré du header —
+            demande owner : pictos sans information utile en caisse) */}
         <StaffingWidget />
         <ComparisonWidget />
         {lastTransactionTime !== null && (
@@ -1307,14 +1313,8 @@ export function POSPage() {
         </div>
         </div>
 
-        {/* ── Zone CENTRE : logo officiel ADDX (fichier fourni, slot 190×44) ── */}
-        <AddxWordmark
-          className="justify-self-center"
-          style={{ height: device.isCompact ? 26 : 34 }}
-        />
-
         {/* ── Zone DROITE : durée de session + ONLINE (extrême droite) ── */}
-        <div className={`flex items-center justify-end min-w-0 ${device.isCompact ? 'gap-x-1.5' : 'gap-x-2'}`}>
+        <div className={`flex-none flex items-center justify-end ${device.isCompact ? 'gap-x-1.5' : 'gap-x-2'}`}>
           <ShiftIndicator />
           <button
             onClick={() => offlineMode.isOffline ? undefined : offlineMode.triggerManualSync()}
@@ -1337,7 +1337,7 @@ export function POSPage() {
 
       {/* ── Main content ── */}
       <div className="pos-main-layout">
-        <div className={`flex-1 flex flex-col gap-3 tablet:gap-4 ${device.isCompact ? 'p-3' : 'p-5'}`}>
+        <div className={`flex-1 flex flex-col gap-2 tablet:gap-3 ${device.isCompact ? 'p-2' : 'p-3'}`}>
 
           {/* ── Smart search bar (pleine largeur — zone de travail) ── */}
           <div className="relative w-full" ref={searchContainerRef}>
@@ -1485,10 +1485,10 @@ export function POSPage() {
             </div>
           )}
           {/* Objectif Shift — valorisé, en haut de la colonne (résumé de perf) */}
-          <div className="flex-1 min-h-0 overflow-y-auto p-4">
+          <div className="flex-1 min-h-0 overflow-y-auto p-3">
             <SalesCockpit />
           </div>
-          <div className="p-5 space-y-3 border-t border-white/10">
+          <div className="p-4 space-y-3 border-t border-white/10">
             <div className="flex justify-between text-sm text-slate-400">
               <span>Sous-total</span><span className="font-medium text-slate-200">{formatPrice(store.subtotal())}</span>
             </div>
@@ -1506,7 +1506,7 @@ export function POSPage() {
             </div>
             <div className="text-xs text-slate-500 text-right">{store.cartItems.reduce((s, i) => s + i.quantity, 0)} article(s)</div>
           </div>
-          <div className="p-5 space-y-2.5 border-t border-white/10">
+          <div className="p-4 space-y-2.5 border-t border-white/10">
             {/* Payer — rouge ADDX (V1), point focal de la colonne */}
             <button
               className="w-full text-base flex items-center justify-center gap-2 py-3.5 rounded-2xl font-bold text-white bg-[#e6003c] hover:bg-[#c50034] active:scale-[0.99] transition-all shadow-[0_6px_18px_rgba(230,0,60,0.35)] disabled:opacity-40 disabled:cursor-not-allowed"
