@@ -1,62 +1,41 @@
 import React from 'react';
 
 /**
- * ADDX — wordmark de marque (logotype ADDX Caisse POS).
+ * Logo officiel ADDX — rend le FICHIER fourni par l'owner, tel quel.
  *
- * Aucun asset ADDX n'existe dans le repo ; le logo est rendu en **inline SVG**
- * (net à toute taille, offline/CSP-safe, jamais de trou). Il reprend la marque
- * de la maquette : « ADD » dans la couleur courante (blanc sur header sombre) et
- * un « X » rouge de marque. La taille suit la `font-size`/hauteur du conteneur.
- *
- * Seul point d'usage du logotype ADDX — ne pas dupliquer le SVG ailleurs.
+ * RÈGLE OWNER (design V1 validé) : le logo n'est JAMAIS recréé, dessiné ou
+ * approximé dans le code — uniquement l'asset officiel
+ * `src/renderer/assets/addx-logo.png`. Tant que le fichier n'est pas déposé
+ * dans le repo, le slot reste VIDE (aucun substitut) : `import.meta.glob`
+ * résout l'asset s'il existe sans faire échouer le build s'il manque, et le
+ * logo apparaît automatiquement dès que le fichier officiel est ajouté.
  */
+const logoModules = import.meta.glob('../assets/addx-logo.png', {
+  eager: true,
+  query: '?url',
+  import: 'default',
+}) as Record<string, string>;
+
+const logoUrl = logoModules['../assets/addx-logo.png'];
+
 export function AddxWordmark({
   className,
   style,
   title = 'ADDX',
-  accent = '#ff2d55',
 }: {
   className?: string;
   style?: React.CSSProperties;
   title?: string;
-  /** Couleur du « X » (rouge de marque par défaut). */
-  accent?: string;
 }) {
+  // Fichier officiel pas encore déposé → slot vide, jamais de logo substitut.
+  if (!logoUrl) return null;
   return (
-    <svg
+    <img
+      src={logoUrl}
+      alt={title}
+      draggable={false}
       className={className}
-      style={style}
-      role="img"
-      aria-label={title}
-      viewBox="0 0 132 34"
-      height="1em"
-      width="auto"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <title>{title}</title>
-      <text
-        x="0"
-        y="27"
-        fontFamily="-apple-system, 'Segoe UI', system-ui, sans-serif"
-        fontSize="32"
-        fontWeight="900"
-        letterSpacing="-1"
-        fill="currentColor"
-      >
-        ADD
-      </text>
-      <text
-        x="97"
-        y="27"
-        fontFamily="-apple-system, 'Segoe UI', system-ui, sans-serif"
-        fontSize="32"
-        fontWeight="900"
-        letterSpacing="-1"
-        fill={accent}
-      >
-        X
-      </text>
-    </svg>
+      style={{ height: 34, width: 'auto', display: 'block', userSelect: 'none', ...style }}
+    />
   );
 }

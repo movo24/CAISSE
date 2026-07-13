@@ -157,10 +157,13 @@ export function SalesCockpit() {
     return <></>;
   }
 
+  // Carte SOMBRE (V1 « Cockpit Sombre », design validé) : le statut métier
+  // vert/orange/rouge reste porté par l'icône, le badge %, la barre et le
+  // message d'action — teintes adaptées au fond anthracite.
   const statusColors = {
-    green: { bg: 'bg-emerald-500', text: 'text-emerald-600', light: 'bg-emerald-50', border: 'border-emerald-200' },
-    orange: { bg: 'bg-amber-500', text: 'text-amber-600', light: 'bg-amber-50', border: 'border-amber-200' },
-    red: { bg: 'bg-red-500', text: 'text-red-600', light: 'bg-red-50', border: 'border-red-200' },
+    green: { bg: 'bg-emerald-500', text: 'text-emerald-400', msg: 'bg-emerald-500/15 text-emerald-300' },
+    orange: { bg: 'bg-amber-500', text: 'text-amber-400', msg: 'bg-amber-500/15 text-amber-300' },
+    red: { bg: 'bg-red-500', text: 'text-red-400', msg: 'bg-red-500/15 text-red-300' },
   };
   const colors = statusColors[data.status];
   const pct = Math.min(100, Math.round(data.percentAchieved * 100));
@@ -189,8 +192,8 @@ export function SalesCockpit() {
         </div>
       )}
 
-      {/* Main cockpit banner — carte Objectif Shift valorisée */}
-      <div className={`${colors.light} ${colors.border} border rounded-2xl p-5 transition-colors duration-500`}>
+      {/* Main cockpit banner — carte Objectif Shift, fond sombre (V1) */}
+      <div className="bg-[#1b1e29] border border-white/10 rounded-2xl p-5 transition-colors duration-500">
         {/* Row 1: Main KPI */}
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3 min-w-0">
@@ -198,14 +201,14 @@ export function SalesCockpit() {
               <Target size={22} className="text-white" />
             </div>
             <div className="min-w-0">
-              <p className="text-[11px] text-gray-500 font-bold uppercase tracking-wider">
+              <p className="text-[11px] text-slate-400 font-bold uppercase tracking-wider">
                 Objectif shift
               </p>
               <div className="flex items-baseline gap-2">
-                <span className={`text-3xl font-black tabular-nums ${colors.text}`}>
+                <span className="text-3xl font-black tabular-nums text-white">
                   {formatEuros(data.currentCA)} €
                 </span>
-                <span className="text-sm text-gray-400 font-semibold whitespace-nowrap">
+                <span className="text-sm text-slate-500 font-semibold whitespace-nowrap">
                   / {formatEuros(data.target)} €
                 </span>
               </div>
@@ -219,7 +222,7 @@ export function SalesCockpit() {
         </div>
 
         {/* Progress bar */}
-        <div className="w-full h-2.5 bg-gray-200 rounded-full mb-4 overflow-hidden">
+        <div className="w-full h-2.5 bg-white/10 rounded-full mb-4 overflow-hidden">
           <div
             className={`h-full ${colors.bg} rounded-full transition-all duration-1000`}
             style={{ width: `${Math.min(100, pct)}%` }}
@@ -228,60 +231,58 @@ export function SalesCockpit() {
 
         {/* Row 2: Details — 2×2, plus d'air et de lisibilité */}
         <div className="grid grid-cols-2 gap-2.5 mb-3">
-          <div className="p-3 rounded-xl bg-white/70">
-            <p className="text-[10px] text-gray-500 font-bold flex items-center gap-1.5">
+          <div className="p-3 rounded-xl bg-white/[0.06]">
+            <p className="text-[10px] text-slate-400 font-bold flex items-center gap-1.5">
               <Zap size={11} /> RESTANT
             </p>
-            <p className="text-lg font-black text-gray-800 tabular-nums mt-0.5">
+            <p className="text-lg font-black text-white tabular-nums mt-0.5">
               {formatEuros(data.remaining)} €
             </p>
           </div>
-          <div className="p-3 rounded-xl bg-white/70">
-            <p className="text-[10px] text-gray-500 font-bold flex items-center gap-1.5">
+          <div className="p-3 rounded-xl bg-white/[0.06]">
+            <p className="text-[10px] text-slate-400 font-bold flex items-center gap-1.5">
               <Clock size={11} /> TEMPS RESTANT
             </p>
-            <p className="text-lg font-black text-gray-800 tabular-nums mt-0.5">
+            <p className="text-lg font-black text-white tabular-nums mt-0.5">
               {formatTime(data.timeRemainingMs)}
             </p>
           </div>
-          <div className="p-3 rounded-xl bg-white/70">
-            <p className="text-[10px] text-gray-500 font-bold flex items-center gap-1.5">
+          <div className="p-3 rounded-xl bg-white/[0.06]">
+            <p className="text-[10px] text-slate-400 font-bold flex items-center gap-1.5">
               <TrendingUp size={11} /> RYTHME ACTUEL
             </p>
-            <p className="text-lg font-black text-gray-800 tabular-nums mt-0.5">
+            <p className="text-lg font-black text-white tabular-nums mt-0.5">
               {formatEuros(data.requiredPerHour)} €/h
             </p>
           </div>
-          <div className="p-3 rounded-xl bg-white/70">
-            <p className="text-[10px] text-gray-500 font-bold flex items-center gap-1.5">
+          <div className="p-3 rounded-xl bg-white/[0.06]">
+            <p className="text-[10px] text-slate-400 font-bold flex items-center gap-1.5">
               <Target size={11} /> CA RÉALISÉ
             </p>
-            <p className="text-lg font-black text-gray-800 tabular-nums mt-0.5">
+            <p className="text-lg font-black text-white tabular-nums mt-0.5">
               {formatEuros(data.currentCA)} €
             </p>
           </div>
         </div>
 
         {/* Row 3: Projection */}
-        <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-white/60 mb-3">
-          <span className="text-xs text-gray-500 font-semibold">Projection fin de shift</span>
+        <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-white/[0.06] mb-3">
+          <span className="text-xs text-slate-400 font-semibold">Projection fin de shift</span>
           <span className={`text-sm font-bold tabular-nums ${colors.text}`}>
             {formatEuros(data.projection)} €
           </span>
         </div>
 
         {/* Row 4: Action message */}
-        <div className={`flex items-center gap-2 px-3 py-2.5 rounded-xl ${
-          data.status === 'red' ? 'bg-red-100' : data.status === 'orange' ? 'bg-amber-100' : 'bg-emerald-100'
-        }`}>
+        <div className={`flex items-center gap-2 px-3 py-2.5 rounded-xl ${colors.msg}`}>
           {data.status === 'red' ? (
-            <AlertTriangle size={14} className="text-red-600 flex-shrink-0" />
+            <AlertTriangle size={14} className="flex-shrink-0" />
           ) : data.status === 'orange' ? (
-            <Minus size={14} className="text-amber-600 flex-shrink-0" />
+            <Minus size={14} className="flex-shrink-0" />
           ) : (
-            <TrendingUp size={14} className="text-emerald-600 flex-shrink-0" />
+            <TrendingUp size={14} className="flex-shrink-0" />
           )}
-          <p className={`text-xs font-bold ${colors.text}`}>
+          <p className="text-xs font-bold">
             {data.actionMessage}
           </p>
         </div>
