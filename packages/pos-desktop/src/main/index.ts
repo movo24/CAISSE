@@ -169,6 +169,11 @@ function createPOSWindow(): void {
     title: "The Wesley's POS",
     backgroundColor: '#0f0f19',
     show: false,
+    // Terminal dédié (demande owner) : en production la caisse s'ouvre en
+    // PLEIN ÉCRAN — pas de barre des tâches Windows, pas de menu Démarrer,
+    // aucun clic accidentel hors caisse. Dev : fenêtré (outillage).
+    fullscreen: !isDev,
+    autoHideMenuBar: true,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -181,6 +186,15 @@ function createPOSWindow(): void {
 
   posWindow.once('ready-to-show', () => posWindow?.show());
   if (isDev) posWindow.webContents.openDevTools({ mode: 'detach' });
+
+  // Maintenance : F11 bascule plein écran ↔ fenêtré (admin uniquement en
+  // pratique — le caissier n'a pas de raison de le faire). Le mode caisse
+  // revient automatiquement au prochain lancement.
+  posWindow.webContents.on('before-input-event', (_e, input) => {
+    if (input.type === 'keyDown' && input.key === 'F11') {
+      posWindow?.setFullScreen(!posWindow.isFullScreen());
+    }
+  });
 
   // Open external links in the user's browser, never in-app.
   posWindow.webContents.setWindowOpenHandler(({ url }) => {
