@@ -1187,83 +1187,64 @@ export function POSPage() {
       {/* ═══════ SHIFT WARNING BANNER ═══════ */}
       <ShiftWarning />
 
-      {/* ── Header ── */}
-      <header className={`bg-pos-text border-b border-white/10 flex items-center justify-between gap-3 relative z-30 ${device.isCompact ? 'px-3 py-2' : 'px-5 py-2.5'}`}>
-        <div className="flex items-center gap-2 tablet:gap-4 min-w-0 flex-1">
-          <AddxWordmark
-            className="text-white flex-shrink-0"
-            style={{ fontSize: device.isCompact ? 20 : 26 }}
-          />
-          {/* Caissier actif — bloc VISIBLE EN PERMANENCE */}
+      {/* ── Header ──
+          UNE SEULE rangée flex, chaque élément est un enfant direct : rien ne
+          peut se superposer. Ordre imposé (fix chevauchement terrain) :
+          Scanner → Payer → Annuler → Score/Historique → widgets → profil →
+          espace flexible → logo → ONLINE (extrême droite).
+          `flex-wrap` = dernier recours (jamais de superposition) ; seuls le
+          bandeau caissier (nom tronquable) peut se comprimer. */}
+      <header className={`bg-pos-text border-b border-white/10 flex flex-wrap items-center relative z-30 ${device.isCompact ? 'gap-x-1.5 gap-y-1 px-3 py-2' : 'gap-x-2 gap-y-1 px-5 py-2.5'}`}>
+        {/* 1-3. Actions : Scanner · Payer · Annuler */}
+        {device.isTouch && device.hasCamera && (
+          <button
+            onClick={() => setCameraOpen(true)}
+            className="flex-none flex items-center gap-1.5 text-[11px] font-semibold px-3 py-2 tablet:py-1.5 rounded-full bg-amber-50 text-amber-600 hover:bg-amber-100 transition-colors border border-amber-200"
+          >
+            <Camera size={14} />
+            <span className="hidden tablet:inline">Scanner</span>
+          </button>
+        )}
+        <span className="badge-ghost hide-compact flex-none"><ScanBarcode size={12} /><kbd>F2</kbd> <span className="shortcut-label">Scanner</span></span>
+        <span className="badge-ghost hide-compact flex-none"><CreditCard size={12} /><kbd>F5</kbd> <span className="shortcut-label">Payer</span></span>
+        <span className="badge-ghost hide-compact flex-none"><X size={12} /><kbd>F8</kbd> <span className="shortcut-label">Annuler</span></span>
+
+        {/* 4. Score / Historique (+ Retour) — bandeau caissier tronquable */}
+        <div className="flex-shrink min-w-0">
           <ActiveCashierBanner onScoreClick={() => setScoreDetailOpen(true)} />
-          <FluxWidget occupancy={store.occupancy} weather={store.weather} />
-          {/* Network status indicator */}
-          <button
-            onClick={() => offlineMode.isOffline ? undefined : offlineMode.triggerManualSync()}
-            className={`flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1 rounded-full transition-all ${
-              offlineMode.isOffline
-                ? 'bg-red-50 text-red-600 ring-1 ring-red-200 animate-pulse'
-                : offlineMode.isSyncing
-                ? 'bg-blue-50 text-blue-600 ring-1 ring-blue-200'
-                : offlineMode.pendingCount > 0
-                ? 'bg-amber-50 text-amber-600 ring-1 ring-amber-200 hover:bg-amber-100 cursor-pointer'
-                : 'bg-emerald-50 text-emerald-600 ring-1 ring-emerald-200'
-            }`}
-            title={offlineMode.isOffline ? 'Hors ligne' : offlineMode.pendingCount > 0 ? 'Cliquer pour synchroniser' : 'Connecte'}
-          >
-            {offlineMode.isOffline ? <WifiOff size={10} /> : offlineMode.isSyncing ? <SyncIcon size={10} className="animate-spin" /> : <Wifi size={10} />}
-            {offlineMode.isOffline ? 'OFFLINE' : offlineMode.isSyncing ? `SYNC ${offlineMode.syncProgress}%` : offlineMode.pendingCount > 0 ? `${offlineMode.pendingCount} en attente` : 'ONLINE'}
-          </button>
-          {/* Shift duration indicator */}
-          <ShiftIndicator />
-          {/* IA Staffing indicator */}
-          <StaffingWidget />
-          {/* Network comparison indicator */}
-          <ComparisonWidget />
-          {/* Transaction speed indicator */}
-          {lastTransactionTime !== null && (
-            <span className="flex items-center gap-1 text-[10px] font-semibold text-pos-muted bg-pos-subtle px-2 py-1 rounded-full">
-              <Clock size={10} />
-              {lastTransactionTime}s
-            </span>
-          )}
         </div>
-
-        <div className="flex items-center gap-1.5 tablet:gap-2 flex-shrink-0">
-          {/* Camera scan button — iPad/tablet only */}
-          {device.isTouch && device.hasCamera && (
-            <button
-              onClick={() => setCameraOpen(true)}
-              className="flex items-center gap-1.5 text-[11px] font-semibold px-3 py-2 tablet:py-1.5 rounded-full bg-amber-50 text-amber-600 hover:bg-amber-100 transition-colors border border-amber-200"
-            >
-              <Camera size={14} />
-              <span className="hidden tablet:inline">Scanner</span>
-            </button>
-          )}
-          <span className="badge-ghost hide-compact"><ScanBarcode size={12} /><kbd>F2</kbd> <span className="shortcut-label">Scanner</span></span>
-          <span className="badge-ghost hide-compact"><CreditCard size={12} /><kbd>F5</kbd> <span className="shortcut-label">Payer</span></span>
-          <span className="badge-ghost hide-compact"><X size={12} /><kbd>F8</kbd> <span className="shortcut-label">Annuler</span></span>
+        <button
+          onClick={() => ticketHistory.openHistory()}
+          className={`flex-none flex items-center gap-1.5 font-semibold rounded-full bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors border border-indigo-100 ${device.isCompact ? 'text-xs px-2.5 py-2' : 'text-[11px] px-3 py-1.5'}`}
+        >
+          <History size={device.isCompact ? 14 : 12} />
+          <span className="hidden compact:inline">Historique</span>
+          <kbd className="text-[9px] bg-indigo-100 px-1 py-0.5 rounded font-mono">F9</kbd>
+        </button>
+        {rights.canRefund && (
           <button
-            onClick={() => ticketHistory.openHistory()}
-            className={`flex items-center gap-1.5 font-semibold rounded-full bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors border border-indigo-100 ${device.isCompact ? 'text-xs px-2.5 py-2' : 'text-[11px] px-3 py-1.5'}`}
+            onClick={() => setReturnOpen(true)}
+            title="Retour / Avoir"
+            className={`flex-none flex items-center gap-1.5 font-semibold rounded-full bg-amber-50 text-amber-600 hover:bg-amber-100 transition-colors border border-amber-100 ${device.isCompact ? 'text-xs px-2.5 py-2' : 'text-[11px] px-3 py-1.5'}`}
           >
-            <History size={device.isCompact ? 14 : 12} />
-            <span className="hidden compact:inline">Historique</span>
-            <kbd className="text-[9px] bg-indigo-100 px-1 py-0.5 rounded font-mono">F9</kbd>
+            <RotateCcw size={device.isCompact ? 14 : 12} />
+            <span className="hidden compact:inline">Retour</span>
           </button>
-          {rights.canRefund && (
-            <button
-              onClick={() => setReturnOpen(true)}
-              title="Retour / Avoir"
-              className={`flex items-center gap-1.5 font-semibold rounded-full bg-amber-50 text-amber-600 hover:bg-amber-100 transition-colors border border-amber-100 ${device.isCompact ? 'text-xs px-2.5 py-2' : 'text-[11px] px-3 py-1.5'}`}
-            >
-              <RotateCcw size={device.isCompact ? 14 : 12} />
-              <span className="hidden compact:inline">Retour</span>
-            </button>
-          )}
-        </div>
+        )}
 
-        <div className="relative">
+        {/* Indicateurs (fonctions inchangées) */}
+        <FluxWidget occupancy={store.occupancy} weather={store.weather} />
+        <ShiftIndicator />
+        <StaffingWidget />
+        <ComparisonWidget />
+        {lastTransactionTime !== null && (
+          <span className="flex-none flex items-center gap-1 text-[10px] font-semibold text-pos-muted bg-pos-subtle px-2 py-1 rounded-full">
+            <Clock size={10} />
+            {lastTransactionTime}s
+          </span>
+        )}
+
+        <div className="relative flex-none">
           <button className="profile-trigger" onClick={() => setProfileOpen(!profileOpen)}>
             <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center">
               <UserCircle size={18} className="text-white" />
@@ -1326,6 +1307,33 @@ export function POSPage() {
             </>
           )}
         </div>
+
+        {/* Espace flexible → pousse logo + ONLINE à droite */}
+        <div className="flex-1 min-w-2" aria-hidden="true" />
+
+        {/* Logo CAISSE — à droite, séparé des actions, jamais par-dessus */}
+        <AddxWordmark
+          className="text-white flex-none"
+          style={{ fontSize: device.isCompact ? 18 : 24 }}
+        />
+
+        {/* ONLINE — extrême droite */}
+        <button
+          onClick={() => offlineMode.isOffline ? undefined : offlineMode.triggerManualSync()}
+          className={`flex-none flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1 rounded-full transition-all ${
+            offlineMode.isOffline
+              ? 'bg-red-50 text-red-600 ring-1 ring-red-200 animate-pulse'
+              : offlineMode.isSyncing
+              ? 'bg-blue-50 text-blue-600 ring-1 ring-blue-200'
+              : offlineMode.pendingCount > 0
+              ? 'bg-amber-50 text-amber-600 ring-1 ring-amber-200 hover:bg-amber-100 cursor-pointer'
+              : 'bg-emerald-50 text-emerald-600 ring-1 ring-emerald-200'
+          }`}
+          title={offlineMode.isOffline ? 'Hors ligne' : offlineMode.pendingCount > 0 ? 'Cliquer pour synchroniser' : 'Connecte'}
+        >
+          {offlineMode.isOffline ? <WifiOff size={10} /> : offlineMode.isSyncing ? <SyncIcon size={10} className="animate-spin" /> : <Wifi size={10} />}
+          {offlineMode.isOffline ? 'OFFLINE' : offlineMode.isSyncing ? `SYNC ${offlineMode.syncProgress}%` : offlineMode.pendingCount > 0 ? `${offlineMode.pendingCount} en attente` : 'ONLINE'}
+        </button>
       </header>
 
       {/* ── Main content ── */}
