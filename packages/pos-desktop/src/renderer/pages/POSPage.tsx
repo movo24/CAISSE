@@ -1187,13 +1187,20 @@ export function POSPage() {
       <ShiftWarning />
 
       {/* ── Header V1 « Cockpit Sombre » (design owner validé) ──
-          GRILLE 3 zones — gauche (actions/infos, wrap interne) · centre (logo
-          officiel ADDX) · droite (durée + ONLINE). La grille dimensionne chaque
-          zone indépendamment : le logo centré ne peut JAMAIS passer par-dessus
-          les actions (leçon du bug chevauchement v1.0.6). */}
-      <header className={`bg-[#12141c] border-b border-white/10 grid grid-cols-[1fr_auto_1fr] items-center relative z-30 ${device.isCompact ? 'gap-x-2 px-3 py-1' : 'gap-x-3 px-5 py-1'}`}>
-        {/* ── Zone GAUCHE : Scanner · Payer · Annuler · caissier · Historique · widgets · profil ── */}
-        <div className={`flex flex-wrap items-center min-w-0 ${device.isCompact ? 'gap-x-1.5 gap-y-1' : 'gap-x-2 gap-y-1'}`}>
+          FLEX 3 zones — logo officiel ADDX complètement à GAUCHE (flex:0 0 auto,
+          largeur propre uniquement, aucune colonne réservée) · actions/infos
+          juste après (flex-1, wrap interne) · durée + ONLINE à droite (flex-none).
+          Chaque enfant direct est dimensionné : le logo ne peut JAMAIS passer
+          par-dessus les actions (leçon du bug chevauchement v1.0.6). */}
+      <header className={`bg-[#12141c] border-b border-white/10 flex items-center relative z-30 ${device.isCompact ? 'gap-x-2 px-3 py-1' : 'gap-x-3 px-5 py-1'}`}>
+        {/* ── Logo ADDX : extrême gauche, n'occupe QUE sa largeur ── */}
+        <AddxWordmark
+          className="flex-none"
+          style={{ height: device.isCompact ? 12 : 14, flex: '0 0 auto', width: 'auto' }}
+        />
+
+        {/* ── Zone ACTIONS (commence immédiatement après le logo) : Scanner · Payer · Annuler · caissier · Historique · widgets · profil ── */}
+        <div className={`flex-1 flex flex-wrap items-center min-w-0 ${device.isCompact ? 'gap-x-1.5 gap-y-1' : 'gap-x-2 gap-y-1'}`}>
         {device.isTouch && device.hasCamera && (
           <button
             onClick={() => setCameraOpen(true)}
@@ -1306,14 +1313,8 @@ export function POSPage() {
         </div>
         </div>
 
-        {/* ── Zone CENTRE : logo officiel ADDX (fichier fourni, slot 190×44) ── */}
-        <AddxWordmark
-          className="justify-self-center"
-          style={{ height: device.isCompact ? 12 : 14 }}
-        />
-
         {/* ── Zone DROITE : durée de session + ONLINE (extrême droite) ── */}
-        <div className={`flex items-center justify-end min-w-0 ${device.isCompact ? 'gap-x-1.5' : 'gap-x-2'}`}>
+        <div className={`flex-none flex items-center justify-end ${device.isCompact ? 'gap-x-1.5' : 'gap-x-2'}`}>
           <ShiftIndicator />
           <button
             onClick={() => offlineMode.isOffline ? undefined : offlineMode.triggerManualSync()}
