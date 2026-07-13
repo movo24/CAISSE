@@ -1187,15 +1187,14 @@ export function POSPage() {
       {/* ═══════ SHIFT WARNING BANNER ═══════ */}
       <ShiftWarning />
 
-      {/* ── Header ──
-          UNE SEULE rangée flex, chaque élément est un enfant direct : rien ne
-          peut se superposer. Ordre imposé (fix chevauchement terrain) :
-          Scanner → Payer → Annuler → Score/Historique → widgets → profil →
-          espace flexible → logo → ONLINE (extrême droite).
-          `flex-wrap` = dernier recours (jamais de superposition) ; seuls le
-          bandeau caissier (nom tronquable) peut se comprimer. */}
-      <header className={`bg-pos-text border-b border-white/10 flex flex-wrap items-center relative z-30 ${device.isCompact ? 'gap-x-1.5 gap-y-1 px-3 py-2' : 'gap-x-2 gap-y-1 px-5 py-2.5'}`}>
-        {/* 1-3. Actions : Scanner · Payer · Annuler */}
+      {/* ── Header V1 « Cockpit Sombre » (design owner validé) ──
+          GRILLE 3 zones — gauche (actions/infos, wrap interne) · centre (logo
+          officiel ADDX) · droite (durée + ONLINE). La grille dimensionne chaque
+          zone indépendamment : le logo centré ne peut JAMAIS passer par-dessus
+          les actions (leçon du bug chevauchement v1.0.6). */}
+      <header className={`bg-[#12141c] border-b border-white/10 grid grid-cols-[1fr_auto_1fr] items-center relative z-30 ${device.isCompact ? 'gap-x-2 px-3 py-2' : 'gap-x-3 px-5 py-2.5'}`}>
+        {/* ── Zone GAUCHE : Scanner · Payer · Annuler · caissier · Historique · widgets · profil ── */}
+        <div className={`flex flex-wrap items-center min-w-0 ${device.isCompact ? 'gap-x-1.5 gap-y-1' : 'gap-x-2 gap-y-1'}`}>
         {device.isTouch && device.hasCamera && (
           <button
             onClick={() => setCameraOpen(true)}
@@ -1205,9 +1204,9 @@ export function POSPage() {
             <span className="hidden tablet:inline">Scanner</span>
           </button>
         )}
-        <span className="badge-ghost hide-compact flex-none"><ScanBarcode size={12} /><kbd>F2</kbd> <span className="shortcut-label">Scanner</span></span>
-        <span className="badge-ghost hide-compact flex-none"><CreditCard size={12} /><kbd>F5</kbd> <span className="shortcut-label">Payer</span></span>
-        <span className="badge-ghost hide-compact flex-none"><X size={12} /><kbd>F8</kbd> <span className="shortcut-label">Annuler</span></span>
+        <span className="badge-ghost-dark hide-compact flex-none"><ScanBarcode size={12} /><kbd>F2</kbd> <span className="shortcut-label">Scanner</span></span>
+        <span className="badge-ghost-dark hide-compact flex-none"><CreditCard size={12} /><kbd>F5</kbd> <span className="shortcut-label">Payer</span></span>
+        <span className="badge-ghost-dark hide-compact flex-none"><X size={12} /><kbd>F8</kbd> <span className="shortcut-label">Annuler</span></span>
 
         {/* 4. Score / Historique (+ Retour) — bandeau caissier tronquable */}
         <div className="flex-shrink min-w-0">
@@ -1215,11 +1214,11 @@ export function POSPage() {
         </div>
         <button
           onClick={() => ticketHistory.openHistory()}
-          className={`flex-none flex items-center gap-1.5 font-semibold rounded-full bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors border border-indigo-100 ${device.isCompact ? 'text-xs px-2.5 py-2' : 'text-[11px] px-3 py-1.5'}`}
+          className={`flex-none flex items-center gap-1.5 font-semibold rounded-full bg-white/10 text-slate-300 hover:bg-white/15 transition-colors ${device.isCompact ? 'text-xs px-2.5 py-2' : 'text-[11px] px-3 py-1.5'}`}
         >
           <History size={device.isCompact ? 14 : 12} />
           <span className="hidden compact:inline">Historique</span>
-          <kbd className="text-[9px] bg-indigo-100 px-1 py-0.5 rounded font-mono">F9</kbd>
+          <kbd className="text-[9px] bg-white/10 text-slate-400 px-1 py-0.5 rounded font-mono">F9</kbd>
         </button>
         {rights.canRefund && (
           <button
@@ -1234,11 +1233,10 @@ export function POSPage() {
 
         {/* Indicateurs (fonctions inchangées) */}
         <FluxWidget occupancy={store.occupancy} weather={store.weather} />
-        <ShiftIndicator />
         <StaffingWidget />
         <ComparisonWidget />
         {lastTransactionTime !== null && (
-          <span className="flex-none flex items-center gap-1 text-[10px] font-semibold text-pos-muted bg-pos-subtle px-2 py-1 rounded-full">
+          <span className="flex-none flex items-center gap-1 text-[10px] font-semibold text-slate-300 bg-white/10 px-2 py-1 rounded-full">
             <Clock size={10} />
             {lastTransactionTime}s
           </span>
@@ -1307,33 +1305,34 @@ export function POSPage() {
             </>
           )}
         </div>
+        </div>
 
-        {/* Espace flexible → pousse logo + ONLINE à droite */}
-        <div className="flex-1 min-w-2" aria-hidden="true" />
-
-        {/* Logo CAISSE — à droite, séparé des actions, jamais par-dessus */}
+        {/* ── Zone CENTRE : logo officiel ADDX (fichier fourni, slot 190×44) ── */}
         <AddxWordmark
-          className="text-white flex-none"
-          style={{ fontSize: device.isCompact ? 18 : 24 }}
+          className="justify-self-center"
+          style={{ height: device.isCompact ? 26 : 34 }}
         />
 
-        {/* ONLINE — extrême droite */}
-        <button
-          onClick={() => offlineMode.isOffline ? undefined : offlineMode.triggerManualSync()}
-          className={`flex-none flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1 rounded-full transition-all ${
-            offlineMode.isOffline
-              ? 'bg-red-50 text-red-600 ring-1 ring-red-200 animate-pulse'
-              : offlineMode.isSyncing
-              ? 'bg-blue-50 text-blue-600 ring-1 ring-blue-200'
-              : offlineMode.pendingCount > 0
-              ? 'bg-amber-50 text-amber-600 ring-1 ring-amber-200 hover:bg-amber-100 cursor-pointer'
-              : 'bg-emerald-50 text-emerald-600 ring-1 ring-emerald-200'
-          }`}
-          title={offlineMode.isOffline ? 'Hors ligne' : offlineMode.pendingCount > 0 ? 'Cliquer pour synchroniser' : 'Connecte'}
-        >
-          {offlineMode.isOffline ? <WifiOff size={10} /> : offlineMode.isSyncing ? <SyncIcon size={10} className="animate-spin" /> : <Wifi size={10} />}
-          {offlineMode.isOffline ? 'OFFLINE' : offlineMode.isSyncing ? `SYNC ${offlineMode.syncProgress}%` : offlineMode.pendingCount > 0 ? `${offlineMode.pendingCount} en attente` : 'ONLINE'}
-        </button>
+        {/* ── Zone DROITE : durée de session + ONLINE (extrême droite) ── */}
+        <div className={`flex items-center justify-end min-w-0 ${device.isCompact ? 'gap-x-1.5' : 'gap-x-2'}`}>
+          <ShiftIndicator />
+          <button
+            onClick={() => offlineMode.isOffline ? undefined : offlineMode.triggerManualSync()}
+            className={`flex-none flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1 rounded-full transition-all ${
+              offlineMode.isOffline
+                ? 'bg-red-50 text-red-600 ring-1 ring-red-200 animate-pulse'
+                : offlineMode.isSyncing
+                ? 'bg-blue-50 text-blue-600 ring-1 ring-blue-200'
+                : offlineMode.pendingCount > 0
+                ? 'bg-amber-50 text-amber-600 ring-1 ring-amber-200 hover:bg-amber-100 cursor-pointer'
+                : 'bg-[#0d2b1e] text-[#3ce68a] ring-1 ring-[#1d5c3f]'
+            }`}
+            title={offlineMode.isOffline ? 'Hors ligne' : offlineMode.pendingCount > 0 ? 'Cliquer pour synchroniser' : 'Connecte'}
+          >
+            {offlineMode.isOffline ? <WifiOff size={10} /> : offlineMode.isSyncing ? <SyncIcon size={10} className="animate-spin" /> : <Wifi size={10} />}
+            {offlineMode.isOffline ? 'OFFLINE' : offlineMode.isSyncing ? `SYNC ${offlineMode.syncProgress}%` : offlineMode.pendingCount > 0 ? `${offlineMode.pendingCount} en attente` : 'ONLINE'}
+          </button>
+        </div>
       </header>
 
       {/* ── Main content ── */}
@@ -1467,7 +1466,7 @@ export function POSPage() {
         </div>
 
         {/* ── Right: Summary panel (sidebar on desktop, bottom sheet on compact) ── */}
-        <div className="pos-summary-panel">
+        <div className="pos-summary-panel pos-summary-panel--dark">
           {store.customer && (
             <div className="p-4 border-b border-pos-border/30 bg-gradient-to-r from-violet-50 to-purple-50">
               <div className="flex items-center justify-between">
@@ -1489,30 +1488,35 @@ export function POSPage() {
           <div className="flex-1 min-h-0 overflow-y-auto p-4">
             <SalesCockpit />
           </div>
-          <div className="p-5 space-y-3 border-t border-pos-border/30">
-            <div className="flex justify-between text-sm text-pos-muted">
-              <span>Sous-total</span><span className="font-medium">{formatPrice(store.subtotal())}</span>
+          <div className="p-5 space-y-3 border-t border-white/10">
+            <div className="flex justify-between text-sm text-slate-400">
+              <span>Sous-total</span><span className="font-medium text-slate-200">{formatPrice(store.subtotal())}</span>
             </div>
             {store.totalDiscount() > 0 && (
-              <div className="flex justify-between text-sm text-pos-success">
+              <div className="flex justify-between text-sm text-emerald-400">
                 <span>Remise</span><span className="font-medium">-{formatPrice(store.totalDiscount())}</span>
               </div>
             )}
             <ManualDiscountControl />
             <PromoCodeControl />
-            <div className="h-px bg-pos-border/40" />
+            <div className="h-px bg-white/10" />
             <div className="flex justify-between items-end">
-              <span className="text-pos-muted text-sm font-medium">Total</span>
-              <span className="text-3xl font-bold tracking-tight">{formatPrice(store.total())}</span>
+              <span className="text-slate-400 text-sm font-medium">Total</span>
+              <span className="text-3xl font-bold tracking-tight text-white">{formatPrice(store.total())}</span>
             </div>
-            <div className="text-xs text-pos-muted/60 text-right">{store.cartItems.reduce((s, i) => s + i.quantity, 0)} article(s)</div>
+            <div className="text-xs text-slate-500 text-right">{store.cartItems.reduce((s, i) => s + i.quantity, 0)} article(s)</div>
           </div>
-          <div className="p-5 space-y-2.5 border-t border-pos-border/30">
-            <button className="btn-primary w-full text-base flex items-center justify-center gap-2 py-3.5" disabled={store.cartItems.length === 0 || processing} onClick={() => store.setPaymentModalOpen(true)}>
+          <div className="p-5 space-y-2.5 border-t border-white/10">
+            {/* Payer — rouge ADDX (V1), point focal de la colonne */}
+            <button
+              className="w-full text-base flex items-center justify-center gap-2 py-3.5 rounded-2xl font-bold text-white bg-[#e6003c] hover:bg-[#c50034] active:scale-[0.99] transition-all shadow-[0_6px_18px_rgba(230,0,60,0.35)] disabled:opacity-40 disabled:cursor-not-allowed"
+              disabled={store.cartItems.length === 0 || processing}
+              onClick={() => store.setPaymentModalOpen(true)}
+            >
               <CreditCard size={18} /> Payer
             </button>
             <button
-              className={`btn-ghost w-full text-sm py-2.5 ${!rights.canVoid ? 'opacity-40 cursor-not-allowed' : ''}`}
+              className={`w-full text-sm py-2.5 rounded-xl text-slate-400 hover:bg-white/5 transition-colors ${!rights.canVoid ? 'opacity-40 cursor-not-allowed' : ''}`}
               onClick={() => rights.canVoid && store.clearCart()}
               disabled={!rights.canVoid}
               title={!rights.canVoid ? 'Droit insuffisant — annulation non autorisee' : undefined}

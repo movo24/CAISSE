@@ -121,6 +121,24 @@
     @apply py-5 text-xl;
   }
 
+  /* ── Badge Ghost sombre (header V1 « Cockpit Sombre » — design validé) ── */
+  .badge-ghost-dark {
+    @apply inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full
+           bg-white/10 text-slate-300 text-xs font-semibold
+           hover:bg-white/15 transition-colors duration-150 cursor-default
+           select-none;
+  }
+  .badge-ghost-dark kbd {
+    @apply bg-white/10 text-slate-400;
+  }
+  .is-touch .badge-ghost-dark kbd {
+    display: none;
+  }
+  .is-touch .badge-ghost-dark {
+    @apply px-4 py-2.5 text-sm;
+    min-height: 40px;
+  }
+
   /* ── Badge Ghost (action keys) ── */
   .badge-ghost {
     @apply inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full
@@ -180,6 +198,19 @@
   @media (min-width: 1440px) {
     .pos-summary-panel {
       width: 380px;
+    }
+  }
+
+  /* Variante sombre du panneau résumé (V1 « Cockpit Sombre » — design validé).
+     Chrome anthracite assorti au header ; zone de travail centrale inchangée. */
+  .pos-summary-panel--dark {
+    background: #12141c;
+    color: #e8eaf2;
+    border-top-color: rgba(255, 255, 255, 0.08);
+  }
+  @media (min-width: 1024px) {
+    .pos-summary-panel--dark {
+      border-left: 1px solid rgba(255, 255, 255, 0.08);
     }
   }
 
