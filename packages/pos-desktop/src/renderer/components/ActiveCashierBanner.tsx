@@ -1,14 +1,14 @@
 import { useEffect, useState, useCallback } from 'react';
-import { AlertTriangle, Clock, Monitor } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 import { usePOSStore } from '../stores/posStore';
 import { employeeScoreApi, posTerminalId } from '../services/api';
 
 /**
- * Bloc caissier actif — VISIBLE EN PERMANENCE, impossible à rater.
+ * Bloc identité caisse — hiérarchisé (refonte premium).
  *
  * Règle métier : une caisse appartient clairement à un caissier à un instant T.
- *   CAISSE DE : KARIM B.
- *   Session ouverte depuis 09:04 · Terminal : Caisse 02 · Score jour : 86 🟢
+ * Hiérarchie : OPÉRATEUR (dominant) → caisse · magasin · n° session (secondaire)
+ * → score jour (pastille sobre, cliquable).
  *
  * Si aucune session employé n'est ouverte :
  *   AUCUN CAISSIER CONNECTÉ — Connexion obligatoire pour encaisser
@@ -16,19 +16,14 @@ import { employeeScoreApi, posTerminalId } from '../services/api';
 
 type ScoreColor = 'green' | 'orange' | 'red' | 'red_critical';
 
-function colorClasses(color?: ScoreColor): string {
+function scoreDot(color?: ScoreColor): string {
   switch (color) {
-    case 'green': return 'bg-emerald-100 text-emerald-700';
-    case 'orange': return 'bg-amber-100 text-amber-700';
-    case 'red': return 'bg-red-100 text-red-700';
-    case 'red_critical': return 'bg-red-200 text-red-800';
-    default: return 'bg-gray-100 text-gray-500';
+    case 'green': return 'bg-emerald-500';
+    case 'orange': return 'bg-amber-500';
+    case 'red': return 'bg-red-500';
+    case 'red_critical': return 'bg-red-600';
+    default: return 'bg-gray-300';
   }
-}
-function colorEmoji(color?: ScoreColor): string {
-  if (color === 'green') return '🟢';
-  if (color === 'orange') return '🟠';
-  return color ? '🔴' : '⚪';
 }
 function terminalDisplay(): string {
   // "TERMINAL 02" → "Caisse 02"
@@ -45,7 +40,7 @@ interface DayScore { total: number; color: ScoreColor }
 interface ScoreSummary { day: DayScore; week: DayScore; year: DayScore }
 
 /**
- * @param compact — variante réduite (barres denses iPad) ; le nom reste dominant.
+ * @param compact — conservé pour compat (densité gérée par le header premium).
  * @param onScoreClick — ouvre le détail du score.
  */
 export function ActiveCashierBanner({
@@ -57,6 +52,7 @@ export function ActiveCashierBanner({
 }) {
   const employee = usePOSStore((s) => s.employee);
   const posSession = usePOSStore((s) => s.posSession);
+  const storeInfo = usePOSStore((s) => s.storeInfo);
   const [score, setScore] = useState<ScoreSummary | null>(null);
 
   const refreshScore = useCallback(async () => {
@@ -90,28 +86,31 @@ export function ActiveCashierBanner({
 
   const name = `${employee.firstName} ${employee.lastName}`.trim();
   const day = score?.day;
+  const sessionNo = posSession?.id ? `#${posSession.id.slice(0, 8).toUpperCase()}` : null;
+  const storeName = storeInfo?.storeName || null;
 
   return (
-    <div className={`flex items-center gap-3 rounded-xl bg-white ring-1 ring-pos-border/40 shadow-sm ${compact ? 'px-3 py-1' : 'px-4 py-2'}`}>
-      {/* Pictogramme avatar retiré (demande owner : aucune information utile) */}
+    <div className="flex items-center gap-3 min-w-0">
       <div className="leading-tight min-w-0">
-        <p className={`font-black text-pos-text uppercase tracking-wide truncate ${compact ? 'text-sm' : 'text-lg'}`}>
-          <span className="text-pos-muted font-semibold">Caisse de : </span>{name}
+        {/* Opérateur — niveau 1 */}
+        <p className="text-sm font-bold text-pos-text truncate">{name}</p>
+        {/* Caisse · magasin · session — niveau 2, une seule ligne calme */}
+        <p className="text-[11px] text-pos-muted truncate tabular-nums">
+          {terminalDisplay()}
+          {storeName && <> · {storeName}</>}
+          {sessionNo && <> · Session {sessionNo}</>}
+          {posSession?.openedAt && <> · depuis {hhmm(posSession.openedAt)}</>}
         </p>
-        <div className={`flex items-center gap-2 text-pos-muted ${compact ? 'text-[10px]' : 'text-xs'}`}>
-          <span className="inline-flex items-center gap-1"><Clock size={11} /> Session depuis {hhmm(posSession?.openedAt)}</span>
-          <span className="text-pos-border">·</span>
-          <span className="inline-flex items-center gap-1"><Monitor size={11} /> {terminalDisplay()}</span>
-        </div>
       </div>
+      {/* Score jour — pastille sobre */}
       <button
         onClick={onScoreClick}
         title="Voir le détail du score"
-        className={`ml-auto flex items-center gap-1.5 rounded-lg font-bold shrink-0 transition-transform active:scale-95 ${colorClasses(day?.color)} ${compact ? 'px-2 py-1 text-xs' : 'px-3 py-1.5 text-sm'}`}
+        className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-pos-border bg-white text-xs font-semibold text-pos-text/80 hover:bg-pos-subtle shrink-0 transition-colors active:scale-95"
       >
-        <span className="opacity-70 font-medium">Score jour</span>
-        <span>{day ? day.total : '—'}</span>
-        <span>{colorEmoji(day?.color)}</span>
+        <span className={`w-2 h-2 rounded-full ${scoreDot(day?.color)}`} />
+        <span className="text-pos-muted font-medium">Score</span>
+        <span className="tabular-nums">{day ? day.total : '—'}</span>
       </button>
     </div>
   );

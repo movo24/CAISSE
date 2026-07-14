@@ -6,7 +6,7 @@ import {
   ScanBarcode, UserCircle, Weight, Tag, ArrowRight,
   FileText, Smartphone, XCircle, Clock, Trash2, Coins, Split,
   History, RotateCcw, Printer, Receipt, AlertTriangle,
-  Camera, Monitor, Tablet, Mail, Loader2, Ticket, Gift,
+  Camera, Monitor, Tablet, Mail, Loader2, Ticket, Gift, Percent,
 } from 'lucide-react';
 import { usePOSStore } from '../stores/posStore';
 import { productsApi, productIntegrationApi, salesApi, customersApi, occupancyApi, receiptsApi } from '../services/api';
@@ -24,7 +24,6 @@ import { useOfflineStore } from '../stores/offlineStore';
 import { getCardPaymentMode, CARD_DISABLED_MESSAGE } from '../services/cardPaymentMode';
 import { loadSettings as loadCustomerDisplaySettings, terminalLabel } from '../services/customerDisplay/settings';
 import { computePaymentState, type PaymentMethod } from '../services/paymentMachine';
-import { ManualDiscountControl } from '../components/ManualDiscountControl';
 import { PromoCodeControl } from '../components/PromoCodeControl';
 import { useOfflineMode } from '../hooks/useOfflineMode';
 import { useWakeLock } from '../hooks/useWakeLock';
@@ -44,10 +43,13 @@ import { useTicketHistory } from '../hooks/useTicketHistory';
 import { TicketHistoryModal } from '../components/pos/TicketHistoryModal';
 import { ReturnModal } from '../components/pos/ReturnModal';
 import { AvoirTenderModal } from '../components/pos/AvoirTenderModal';
+import { RemiseModal } from '../components/pos/RemiseModal';
+import { BonAchatModal } from '../components/pos/BonAchatModal';
+import { WesleysWordmark } from '../components/WesleysWordmark';
 import { peripheralBridge } from '../services/peripheralBridge';
 import { shouldAcceptWedgeScan } from '../services/wedgeScanGate';
 import { useCloudSyncStore } from '../services/cloudSyncIdentity';
-import { Wifi, WifiOff, CloudOff, Cloud, RefreshCw as SyncIcon, ShieldAlert, Upload, Lock as LockIcon } from 'lucide-react';
+import { Wifi, WifiOff, CloudOff, RefreshCw as SyncIcon, ShieldAlert, Upload, Lock as LockIcon } from 'lucide-react';
 import { IPadPOSLayout } from '../components/ipad/IPadPOSLayout';
 import { StockAlertToast } from '../components/StockAlertToast';
 import { SaleGuardsGate } from '../components/SaleGuardsGate';
@@ -197,6 +199,8 @@ export function POSPage() {
   const [returnOpen, setReturnOpen] = useState(false);
   // Pay-by-avoir tender modal
   const [avoirOpen, setAvoirOpen] = useState(false);
+  const [remiseOpen, setRemiseOpen] = useState(false);
+  const [bonAchatOpen, setBonAchatOpen] = useState(false);
   const [ticketCountdown, setTicketCountdown] = useState(TICKET_TIMEOUT_MS / 1000);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -514,11 +518,14 @@ export function POSPage() {
   const searchResults = useMemo(() => {
     if (!scanValue.trim() || store.scanMode === 'customer') return [];
     const q = scanValue.toLowerCase().trim();
+    // Matche tout ce que le catalogue POS expose réellement : nom, description
+    // (marque incluse quand renseignée), code-barres/SKU (EAN) et catégorie.
     return catalogue
       .filter((p) =>
         p.name.toLowerCase().includes(q) ||
         (p.description && p.description.toLowerCase().includes(q)) ||
-        p.ean.includes(q),
+        p.ean.includes(q) ||
+        (p.categoryId && p.categoryId.toLowerCase().includes(q)),
       )
       .slice(0, 8);
   }, [scanValue, store.scanMode, catalogue]);
@@ -1167,15 +1174,15 @@ export function POSPage() {
         </div>
       )}
 
-      {/* ═══════ SYNC COMPLETE BANNER (show briefly after sync) ═══════ */}
+      {/* ═══════ SYNC COMPLETE (discret — le statut ne domine jamais la page) ═══════ */}
       {!offlineMode.isOffline && !offlineMode.isSyncing && offlineMode.syncedCount > 0 && (
-        <div className="bg-gradient-to-r from-emerald-500 to-green-500 px-4 py-0.5 flex items-center justify-center gap-2 relative z-50">
-          <Cloud size={10} className="text-white" />
-          <span className="text-white text-[11px] font-semibold">
-            Connecte — {offlineMode.syncedCount} ticket{offlineMode.syncedCount > 1 ? 's' : ''} synchronise{offlineMode.syncedCount > 1 ? 's' : ''}
+        <div className="bg-white border-b border-pos-border px-4 py-1 flex items-center justify-center gap-2 relative z-50">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+          <span className="text-pos-muted text-[11px] font-medium">
+            Synchronisation active — {offlineMode.syncedCount} ticket{offlineMode.syncedCount > 1 ? 's' : ''} enregistré{offlineMode.syncedCount > 1 ? 's' : ''}
           </span>
           {offlineMode.conflictCount > 0 && (
-            <span className="flex items-center gap-1 bg-amber-400/30 text-white text-[10px] font-bold px-2 py-0.5 rounded-full ml-2">
+            <span className="flex items-center gap-1 bg-amber-50 text-amber-700 text-[10px] font-bold px-2 py-0.5 rounded-full ml-2 ring-1 ring-amber-200">
               <ShieldAlert size={10} />
               {offlineMode.conflictCount} conflit{offlineMode.conflictCount > 1 ? 's' : ''}
             </span>
@@ -1186,75 +1193,86 @@ export function POSPage() {
       {/* ═══════ SHIFT WARNING BANNER ═══════ */}
       <ShiftWarning />
 
-      {/* ── Header V1 « Cockpit Sombre » (design owner validé) ──
-          FLEX 3 zones — logo officiel ADDX complètement à GAUCHE (flex:0 0 auto,
-          largeur propre uniquement, aucune colonne réservée) · actions/infos
-          juste après (flex-1, wrap interne) · durée + ONLINE à droite (flex-none).
-          Chaque enfant direct est dimensionné : le logo ne peut JAMAIS passer
-          par-dessus les actions (leçon du bug chevauchement v1.0.6). */}
-      <header className={`bg-[#12141c] border-b border-white/10 flex items-center relative z-30 ${device.isCompact ? 'gap-x-2 px-3 py-1' : 'gap-x-3 px-5 py-1'}`}>
-        {/* ── Logo ADDX : extrême gauche, n'occupe QUE sa largeur ── */}
+      {/* ── Header PREMIUM (refonte owner) — clair, équilibré, hiérarchisé ──
+          Logo ADDX net à GAUCHE (flex:0 0 auto, uniquement sa largeur, jamais
+          de bande vide) · identité opérateur/caisse/magasin/session · actions
+          secondaires calmes · logo The Wesley's entre Analyses et la durée de
+          session (élément central d'identité) · statut à droite. Enfants
+          dimensionnés (flex-none / flex-1 min-w-0) : aucun chevauchement
+          possible (leçon v1.0.6). */}
+      <header className={`hdr ${device.isCompact ? 'gap-x-2 px-3 py-1.5' : 'gap-x-3 px-5 py-1.5'}`}>
+        {/* Logo ADDX — plus grand, parfaitement net, n'occupe QUE sa largeur */}
         <AddxWordmark
           className="flex-none"
-          style={{ height: device.isCompact ? 12 : 14, flex: '0 0 auto', width: 'auto' }}
+          style={{ height: device.isCompact ? 16 : 20, flex: '0 0 auto', width: 'auto' }}
         />
+        <div className="hdr-sep" />
 
-        {/* ── Zone ACTIONS (commence immédiatement après le logo) : Scanner · Payer · Annuler · caissier · Historique · widgets · profil ── */}
-        <div className={`flex-1 flex flex-wrap items-center min-w-0 ${device.isCompact ? 'gap-x-1.5 gap-y-1' : 'gap-x-2 gap-y-1'}`}>
+        {/* Identité — opérateur dominant ; caisse · magasin · n° session en secondaire */}
+        <div className="flex-shrink min-w-0">
+          <ActiveCashierBanner compact onScoreClick={() => setScoreDetailOpen(true)} />
+        </div>
+
+        {/* Actions & indicateurs — hiérarchie calme, jamais dominants */}
+        <div className={`flex-1 flex flex-wrap items-center justify-end min-w-0 ${device.isCompact ? 'gap-x-1.5 gap-y-1' : 'gap-x-2 gap-y-1'}`}>
         {device.isTouch && device.hasCamera && (
-          <button
-            onClick={() => setCameraOpen(true)}
-            className="flex-none flex items-center gap-1.5 text-[11px] font-semibold px-3 py-2 tablet:py-1.5 rounded-full bg-amber-50 text-amber-600 hover:bg-amber-100 transition-colors border border-amber-200"
-          >
+          <button onClick={() => setCameraOpen(true)} className="hdr-btn flex-none">
             <Camera size={14} />
             <span className="hidden tablet:inline">Scanner</span>
           </button>
         )}
-        <span className="badge-ghost-dark hide-compact flex-none"><ScanBarcode size={12} /><kbd>F2</kbd> <span className="shortcut-label">Scanner</span></span>
-        <span className="badge-ghost-dark hide-compact flex-none"><CreditCard size={12} /><kbd>F5</kbd> <span className="shortcut-label">Payer</span></span>
-        <span className="badge-ghost-dark hide-compact flex-none"><X size={12} /><kbd>F8</kbd> <span className="shortcut-label">Annuler</span></span>
-
-        {/* 4. Score / Historique (+ Retour) — bandeau caissier tronquable */}
-        <div className="flex-shrink min-w-0">
-          <ActiveCashierBanner compact onScoreClick={() => setScoreDetailOpen(true)} />
-        </div>
-        <button
-          onClick={() => ticketHistory.openHistory()}
-          className={`flex-none flex items-center gap-1.5 font-semibold rounded-full bg-white/10 text-slate-300 hover:bg-white/15 transition-colors ${device.isCompact ? 'text-xs px-2.5 py-2' : 'text-[11px] px-3 py-1.5'}`}
-        >
-          <History size={device.isCompact ? 14 : 12} />
+        <button onClick={() => ticketHistory.openHistory()} className="hdr-btn flex-none">
+          <History size={13} />
           <span className="hidden compact:inline">Historique</span>
-          <kbd className="text-[9px] bg-white/10 text-slate-400 px-1 py-0.5 rounded font-mono">F9</kbd>
+          <kbd>F9</kbd>
         </button>
         {rights.canRefund && (
-          <button
-            onClick={() => setReturnOpen(true)}
-            title="Retour / Avoir"
-            className={`flex-none flex items-center gap-1.5 font-semibold rounded-full bg-amber-50 text-amber-600 hover:bg-amber-100 transition-colors border border-amber-100 ${device.isCompact ? 'text-xs px-2.5 py-2' : 'text-[11px] px-3 py-1.5'}`}
-          >
-            <RotateCcw size={device.isCompact ? 14 : 12} />
+          <button onClick={() => setReturnOpen(true)} title="Retour / Avoir" className="hdr-btn flex-none">
+            <RotateCcw size={13} />
             <span className="hidden compact:inline">Retour</span>
           </button>
         )}
-
-        {/* Indicateurs (fonctions inchangées ; FluxWidget retiré du header —
-            demande owner : pictos sans information utile en caisse) */}
-        <StaffingWidget />
-        <ComparisonWidget />
         {lastTransactionTime !== null && (
-          <span className="flex-none flex items-center gap-1 text-[10px] font-semibold text-slate-300 bg-white/10 px-2 py-1 rounded-full">
-            <Clock size={10} />
+          <span className="hdr-chip flex-none tabular-nums">
+            <Clock size={11} />
             {lastTransactionTime}s
           </span>
         )}
+        <ComparisonWidget />
+        <StaffingWidget />
+
+        {/* The Wesley's — identité visuelle centrale, entre Analyses et la durée de session */}
+        <WesleysWordmark
+          tone="magenta"
+          className="flex-none mx-2"
+          style={{ fontSize: device.isCompact ? 18 : 24 }}
+        />
+
+        <ShiftIndicator />
+        <button
+          onClick={() => offlineMode.isOffline ? undefined : offlineMode.triggerManualSync()}
+          className={`flex-none flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1 rounded-full transition-all ${
+            offlineMode.isOffline
+              ? 'bg-red-50 text-red-600 ring-1 ring-red-200 animate-pulse'
+              : offlineMode.isSyncing
+              ? 'bg-blue-50 text-blue-600 ring-1 ring-blue-200'
+              : offlineMode.pendingCount > 0
+              ? 'bg-amber-50 text-amber-600 ring-1 ring-amber-200 hover:bg-amber-100 cursor-pointer'
+              : 'bg-emerald-50 text-emerald-600 ring-1 ring-emerald-200'
+          }`}
+          title={offlineMode.isOffline ? 'Hors ligne' : offlineMode.pendingCount > 0 ? 'Cliquer pour synchroniser' : 'Connecte'}
+        >
+          {offlineMode.isOffline ? <WifiOff size={10} /> : offlineMode.isSyncing ? <SyncIcon size={10} className="animate-spin" /> : <Wifi size={10} />}
+          {offlineMode.isOffline ? 'OFFLINE' : offlineMode.isSyncing ? `SYNC ${offlineMode.syncProgress}%` : offlineMode.pendingCount > 0 ? `${offlineMode.pendingCount} en attente` : 'ONLINE'}
+        </button>
 
         <div className="relative flex-none">
           <button className="profile-trigger" onClick={() => setProfileOpen(!profileOpen)}>
-            <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center">
-              <UserCircle size={18} className="text-white" />
+            <div className="w-8 h-8 rounded-full bg-pos-subtle flex items-center justify-center">
+              <UserCircle size={18} className="text-pos-muted" />
             </div>
-            <span className="text-sm font-medium text-white/90 hidden lg:block">{store.employee?.firstName}</span>
-            <ChevronDown size={14} className="text-white/60" />
+            <span className="text-sm font-medium text-pos-text hidden lg:block">{store.employee?.firstName}</span>
+            <ChevronDown size={14} className="text-pos-muted" />
           </button>
           {profileOpen && (
             <>
@@ -1312,47 +1330,29 @@ export function POSPage() {
           )}
         </div>
         </div>
-
-        {/* ── Zone DROITE : durée de session + ONLINE (extrême droite) ── */}
-        <div className={`flex-none flex items-center justify-end ${device.isCompact ? 'gap-x-1.5' : 'gap-x-2'}`}>
-          <ShiftIndicator />
-          <button
-            onClick={() => offlineMode.isOffline ? undefined : offlineMode.triggerManualSync()}
-            className={`flex-none flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1 rounded-full transition-all ${
-              offlineMode.isOffline
-                ? 'bg-red-50 text-red-600 ring-1 ring-red-200 animate-pulse'
-                : offlineMode.isSyncing
-                ? 'bg-blue-50 text-blue-600 ring-1 ring-blue-200'
-                : offlineMode.pendingCount > 0
-                ? 'bg-amber-50 text-amber-600 ring-1 ring-amber-200 hover:bg-amber-100 cursor-pointer'
-                : 'bg-[#0d2b1e] text-[#3ce68a] ring-1 ring-[#1d5c3f]'
-            }`}
-            title={offlineMode.isOffline ? 'Hors ligne' : offlineMode.pendingCount > 0 ? 'Cliquer pour synchroniser' : 'Connecte'}
-          >
-            {offlineMode.isOffline ? <WifiOff size={10} /> : offlineMode.isSyncing ? <SyncIcon size={10} className="animate-spin" /> : <Wifi size={10} />}
-            {offlineMode.isOffline ? 'OFFLINE' : offlineMode.isSyncing ? `SYNC ${offlineMode.syncProgress}%` : offlineMode.pendingCount > 0 ? `${offlineMode.pendingCount} en attente` : 'ONLINE'}
-          </button>
-        </div>
       </header>
 
       {/* ── Main content ── */}
       <div className="pos-main-layout">
-        <div className={`flex-1 flex flex-col gap-2 tablet:gap-3 ${device.isCompact ? 'p-2' : 'p-3'}`}>
+        <div className={`flex-1 flex flex-col min-h-0 ${device.isCompact ? 'gap-2 p-3' : 'gap-3 p-5 pt-4'}`}>
 
-          {/* ── Smart search bar (pleine largeur — zone de travail) ── */}
-          <div className="relative w-full" ref={searchContainerRef}>
-            <Search size={20} className="absolute left-5 top-1/2 -translate-y-1/2 text-pos-muted/40 z-10" />
-            <input
-              ref={scanRef}
-              type="text"
-              className="scan-input pl-14 pr-28"
-              placeholder={store.scanMode === 'customer' ? 'Scanner QR client...' : 'Rechercher produit, categorie ou scanner code-barre...'}
-              value={scanValue}
-              onChange={(e) => { setScanValue(e.target.value); setSearchOpen(e.target.value.trim().length > 0); setSelectedIdx(-1); }}
-              onKeyDown={handleSearchKeyDown}
-              onFocus={() => { if (scanValue.trim()) setSearchOpen(true); }}
-            />
-            <span className={`absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full transition-colors ${store.scanMode === 'customer' ? 'bg-violet-100 text-violet-700' : 'bg-pos-subtle text-pos-muted'}`}>
+          {/* ── Recherche — ÉLÉMENT PRINCIPAL de l'écran : centrée, ample,
+                 immédiatement identifiable (produit · code-barres · SKU ·
+                 catégorie · marque) ── */}
+          <div className="w-full max-w-[880px] mx-auto">
+            <div className="relative w-full" ref={searchContainerRef}>
+              <Search size={20} className="absolute left-5 top-1/2 -translate-y-1/2 text-pos-muted/50 z-10" />
+              <input
+                ref={scanRef}
+                type="text"
+                className="scan-input pl-14 pr-28"
+                placeholder={store.scanMode === 'customer' ? 'Scanner le QR client…' : 'Rechercher un produit, scanner un code-barres, SKU, catégorie, marque…'}
+                value={scanValue}
+                onChange={(e) => { setScanValue(e.target.value); setSearchOpen(e.target.value.trim().length > 0); setSelectedIdx(-1); }}
+                onKeyDown={handleSearchKeyDown}
+                onFocus={() => { if (scanValue.trim()) setSearchOpen(true); }}
+              />
+              <span className={`absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full transition-colors ${store.scanMode === 'customer' ? 'bg-violet-100 text-violet-700' : 'bg-pos-subtle text-pos-muted'}`}>
               {store.scanMode === 'customer' ? <User size={12} /> : <ShoppingBag size={12} />}
               {store.scanMode === 'customer' ? 'CLIENT' : 'PRODUIT'}
             </span>
@@ -1399,18 +1399,29 @@ export function POSPage() {
                 ))}
               </div>
             )}
+            </div>
+
+            {/* Raccourcis clavier — rappel discret sous la recherche (desktop) */}
+            {!device.isTouch && (
+              <div className="flex items-center justify-center gap-4 mt-2 text-[11px] text-pos-muted/70 select-none">
+                <span><kbd>F2</kbd> Scanner</span>
+                <span><kbd>F5</kbd> Payer</span>
+                <span><kbd>F8</kbd> Annuler</span>
+                <span><kbd>F9</kbd> Historique</span>
+              </div>
+            )}
           </div>
 
           {error && (
             <div className="w-full bg-pos-danger/5 text-pos-danger rounded-2xl px-4 py-2.5 text-sm font-medium animate-slide-up">{error}</div>
           )}
 
-          {/* ── Panier — tableau produits pleine largeur (zone de travail) ── */}
-          <div className="flex-1 min-h-0 w-full flex flex-col bg-white rounded-2xl shadow-soft border border-pos-border/30 overflow-hidden">
+          {/* ── Ticket en cours — colonnes parfaitement alignées, lisibilité maximale ── */}
+          <div className="flex-1 min-h-0 w-full flex flex-col bg-white rounded-2xl border border-pos-border overflow-hidden">
             {/* En-tête de colonnes */}
-            <div className="grid grid-cols-[1fr_auto_112px_128px_36px] gap-4 px-5 py-3 border-b border-pos-border/30 bg-pos-subtle/40 text-[11px] font-bold uppercase tracking-wider text-pos-muted">
+            <div className="grid grid-cols-[1fr_150px_120px_140px_44px] gap-4 px-6 py-3 border-b border-pos-border bg-pos-subtle/50 text-[11px] font-bold uppercase tracking-wider text-pos-muted">
               <span>Produit</span>
-              <span className="text-center">Qté</span>
+              <span className="text-center">Quantité</span>
               <span className="text-right">Prix unit.</span>
               <span className="text-right">Total</span>
               <span />
@@ -1432,32 +1443,32 @@ export function POSPage() {
                 store.cartItems.map((item, idx) => (
                   <div
                     key={item.productId}
-                    className={`grid grid-cols-[1fr_auto_112px_128px_36px] gap-4 items-center px-5 border-b border-pos-border/10 last:border-b-0 hover:bg-pos-subtle/30 transition-colors animate-slide-up ${device.isTouch ? 'py-3.5' : 'py-3'}`}
+                    className={`grid grid-cols-[1fr_150px_120px_140px_44px] gap-4 items-center px-6 border-b border-pos-border/60 last:border-b-0 hover:bg-pos-subtle/40 transition-colors animate-slide-up ${device.isTouch ? 'py-4' : 'py-3.5'}`}
                     style={{ animationDelay: `${idx * 30}ms` }}
                   >
                     {/* Produit */}
-                    <div className="flex items-center gap-3 min-w-0">
+                    <div className="flex items-center gap-3.5 min-w-0">
                       <div className={`product-avatar bg-gradient-to-br ${avatarColor(item.name)} flex-shrink-0`}>{initials(item.name)}</div>
                       <div className="min-w-0">
-                        <p className={`font-semibold truncate text-pos-text ${device.isTouch ? 'text-base' : 'text-sm'}`}>{item.name}</p>
+                        <p className={`font-semibold truncate text-pos-text ${device.isTouch ? 'text-base' : 'text-[15px]'}`}>{item.name}</p>
                         <p className="text-xs text-pos-muted font-mono mt-0.5 truncate">{item.ean}</p>
                       </div>
                     </div>
-                    {/* Qté */}
-                    <div className={`flex items-center gap-1 bg-pos-subtle rounded-full justify-self-center ${device.isTouch ? 'p-1' : 'p-0.5'}`}>
-                      <button className={`rounded-full hover:bg-white hover:shadow-soft flex items-center justify-center transition-all ${device.isTouch ? 'w-10 h-10' : 'w-7 h-7'}`} onClick={() => store.updateQuantity(item.productId, item.quantity - 1)}><Minus size={device.isTouch ? 18 : 14} /></button>
-                      <span className={`text-center font-semibold tabular-nums ${device.isTouch ? 'w-10 text-lg' : 'w-8 text-sm'}`}>{item.quantity}</span>
-                      <button className={`rounded-full hover:bg-white hover:shadow-soft flex items-center justify-center transition-all ${device.isTouch ? 'w-10 h-10' : 'w-7 h-7'}`} onClick={() => store.updateQuantity(item.productId, item.quantity + 1)}><Plus size={device.isTouch ? 18 : 14} /></button>
+                    {/* Quantité — stepper aligné, largeur fixe */}
+                    <div className={`flex items-center justify-center gap-0.5 bg-pos-subtle rounded-xl justify-self-center ${device.isTouch ? 'p-1' : 'p-0.5'}`}>
+                      <button className={`rounded-lg hover:bg-white hover:shadow-soft flex items-center justify-center transition-all ${device.isTouch ? 'w-10 h-10' : 'w-8 h-8'}`} onClick={() => store.updateQuantity(item.productId, item.quantity - 1)}><Minus size={device.isTouch ? 18 : 14} /></button>
+                      <span className={`text-center font-bold tabular-nums ${device.isTouch ? 'w-10 text-lg' : 'w-9 text-[15px]'}`}>{item.quantity}</span>
+                      <button className={`rounded-lg hover:bg-white hover:shadow-soft flex items-center justify-center transition-all ${device.isTouch ? 'w-10 h-10' : 'w-8 h-8'}`} onClick={() => store.updateQuantity(item.productId, item.quantity + 1)}><Plus size={device.isTouch ? 18 : 14} /></button>
                     </div>
                     {/* Prix unitaire */}
-                    <div className="text-right text-sm text-pos-muted font-medium tabular-nums">{formatPrice(item.unitPriceMinorUnits)}</div>
+                    <div className="text-right text-[15px] text-pos-muted font-medium tabular-nums">{formatPrice(item.unitPriceMinorUnits)}</div>
                     {/* Total ligne */}
                     <div className="text-right">
-                      <p className={`font-bold text-pos-text tabular-nums ${device.isTouch ? 'text-base' : 'text-sm'}`}>{formatPrice(item.unitPriceMinorUnits * item.quantity)}</p>
+                      <p className={`font-bold text-pos-text tabular-nums ${device.isTouch ? 'text-lg' : 'text-base'}`}>{formatPrice(item.unitPriceMinorUnits * item.quantity)}</p>
                       {item.discountMinorUnits > 0 && <p className="text-xs text-pos-success font-medium">-{formatPrice(item.discountMinorUnits)}</p>}
                     </div>
                     {/* Supprimer */}
-                    <button className={`rounded-full hover:bg-pos-danger/10 flex items-center justify-center text-pos-muted hover:text-pos-danger transition-colors ${device.isTouch ? 'w-9 h-9' : 'w-7 h-7'}`} onClick={() => store.removeFromCart(item.productId)}><X size={device.isTouch ? 18 : 14} /></button>
+                    <button className={`rounded-lg hover:bg-pos-danger/10 flex items-center justify-center text-pos-muted/70 hover:text-pos-danger transition-colors justify-self-end ${device.isTouch ? 'w-9 h-9' : 'w-8 h-8'}`} onClick={() => store.removeFromCart(item.productId)}><X size={device.isTouch ? 18 : 15} /></button>
                   </div>
                 ))
               )}
@@ -1466,7 +1477,7 @@ export function POSPage() {
         </div>
 
         {/* ── Right: Summary panel (sidebar on desktop, bottom sheet on compact) ── */}
-        <div className="pos-summary-panel pos-summary-panel--dark">
+        <div className="pos-summary-panel pos-summary-panel--light">
           {store.customer && (
             <div className="p-4 border-b border-pos-border/30 bg-gradient-to-r from-violet-50 to-purple-50">
               <div className="flex items-center justify-between">
@@ -1485,38 +1496,61 @@ export function POSPage() {
             </div>
           )}
           {/* Objectif Shift — valorisé, en haut de la colonne (résumé de perf) */}
-          <div className="flex-1 min-h-0 overflow-y-auto p-3">
+          <div className="flex-1 min-h-0 overflow-y-auto p-4">
             <SalesCockpit />
           </div>
-          <div className="p-4 space-y-3 border-t border-white/10">
-            <div className="flex justify-between text-sm text-slate-400">
-              <span>Sous-total</span><span className="font-medium text-slate-200">{formatPrice(store.subtotal())}</span>
+
+          {/* ── Actions ticket : Bon d'achat + Remise — essentielles, toujours visibles ── */}
+          <div className="px-5 pt-4 pb-1 flex gap-2.5">
+            <button onClick={() => setBonAchatOpen(true)} className="ticket-action-btn">
+              <Gift size={16} /> Bon d'achat
+            </button>
+            <button
+              onClick={() => setRemiseOpen(true)}
+              disabled={store.cartItems.length === 0}
+              className="ticket-action-btn disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <Percent size={16} /> Remise
+            </button>
+          </div>
+
+          <div className="p-5 space-y-3">
+            <div className="flex justify-between text-sm text-pos-muted">
+              <span>Sous-total</span><span className="font-medium text-pos-text tabular-nums">{formatPrice(store.subtotal())}</span>
             </div>
             {store.totalDiscount() > 0 && (
-              <div className="flex justify-between text-sm text-emerald-400">
-                <span>Remise</span><span className="font-medium">-{formatPrice(store.totalDiscount())}</span>
+              <div className="flex justify-between text-sm text-pos-success">
+                <span>Remise</span><span className="font-medium tabular-nums">-{formatPrice(store.totalDiscount())}</span>
               </div>
             )}
-            <ManualDiscountControl />
+            {/* Remise responsable active — retrait possible (l'ajout passe par le bouton Remise) */}
+            {store.manualDiscountMinorUnits > 0 && (
+              <div className="flex justify-between items-center text-sm text-pos-success">
+                <span className="flex items-center gap-1.5"><Percent size={13} /> Remise responsable</span>
+                <button onClick={() => store.setManualDiscount(0, null)} className="flex items-center gap-1 text-pos-muted hover:text-red-500 transition-colors" title="Retirer la remise">
+                  -{formatPrice(store.manualDiscountMinorUnits)} <X size={13} />
+                </button>
+              </div>
+            )}
             <PromoCodeControl />
-            <div className="h-px bg-white/10" />
+            <div className="h-px bg-pos-border" />
             <div className="flex justify-between items-end">
-              <span className="text-slate-400 text-sm font-medium">Total</span>
-              <span className="text-3xl font-bold tracking-tight text-white">{formatPrice(store.total())}</span>
+              <span className="text-pos-muted text-sm font-medium">Total</span>
+              <span className="text-4xl font-black tracking-tight text-pos-text tabular-nums">{formatPrice(store.total())}</span>
             </div>
-            <div className="text-xs text-slate-500 text-right">{store.cartItems.reduce((s, i) => s + i.quantity, 0)} article(s)</div>
+            <div className="text-xs text-pos-muted text-right">{store.cartItems.reduce((s, i) => s + i.quantity, 0)} article(s)</div>
           </div>
-          <div className="p-4 space-y-2.5 border-t border-white/10">
-            {/* Payer — rouge ADDX (V1), point focal de la colonne */}
+          <div className="p-5 pt-0 space-y-2.5">
+            {/* Payer — magenta Wesley, point focal de la colonne */}
             <button
-              className="w-full text-base flex items-center justify-center gap-2 py-3.5 rounded-2xl font-bold text-white bg-[#e6003c] hover:bg-[#c50034] active:scale-[0.99] transition-all shadow-[0_6px_18px_rgba(230,0,60,0.35)] disabled:opacity-40 disabled:cursor-not-allowed"
+              className="w-full text-base flex items-center justify-center gap-2 py-4 rounded-2xl font-bold text-white bg-pos-accent hover:bg-pos-accent-deep active:scale-[0.99] transition-all shadow-pay disabled:opacity-40 disabled:cursor-not-allowed"
               disabled={store.cartItems.length === 0 || processing}
               onClick={() => store.setPaymentModalOpen(true)}
             >
               <CreditCard size={18} /> Payer
             </button>
             <button
-              className={`w-full text-sm py-2.5 rounded-xl text-slate-400 hover:bg-white/5 transition-colors ${!rights.canVoid ? 'opacity-40 cursor-not-allowed' : ''}`}
+              className={`w-full text-sm py-2.5 rounded-xl text-pos-muted hover:bg-pos-subtle transition-colors ${!rights.canVoid ? 'opacity-40 cursor-not-allowed' : ''}`}
               onClick={() => rights.canVoid && store.clearCart()}
               disabled={!rights.canVoid}
               title={!rights.canVoid ? 'Droit insuffisant — annulation non autorisee' : undefined}
@@ -2297,6 +2331,24 @@ export function POSPage() {
       {returnOpen && <ReturnModal onClose={() => setReturnOpen(false)} />}
 
       {/* ═══════ PAY-BY-AVOIR TENDER MODAL ═══════ */}
+      {/* ── Remise — fixe/% · ligne/ticket · plafond 30% · code responsable · motif journalisé ── */}
+      {remiseOpen && <RemiseModal onClose={() => setRemiseOpen(false)} />}
+
+      {/* ── Bon d'achat — lecture code, solde serveur, application comme paiement store_credit ── */}
+      {bonAchatOpen && (
+        <BonAchatModal
+          amountDueMinor={store.total() - totalPaid}
+          onApply={(code, amt) => {
+            // Même chemin que le paiement existant : le serveur re-valide et
+            // verrouille l'avoir à l'encaissement (source de vérité unique).
+            store.setPaymentModalOpen(true);
+            commitPartialPayment('store_credit', amt, code);
+            setBonAchatOpen(false);
+          }}
+          onClose={() => setBonAchatOpen(false)}
+        />
+      )}
+
       {avoirOpen && (
         <AvoirTenderModal
           amountDueMinor={remaining}
