@@ -399,6 +399,17 @@ L'owner a validé les orientations avec les décisions suivantes, désormais **n
 | D-PE6 | **Webhooks lorsqu'ils existent + réconciliation périodique (cron).** Les webhooks peuvent être perdus ou retardés ; la réconciliation est le filet de sécurité. |
 | + | **`GlobalPaymentId`** : identifiant universel de transaction interne, créé par ADDX avant tout échange fournisseur ; toutes les références PSP s'y rattachent (§3.5). Identifiant de référence dans tout le moteur. |
 
+**Principe fondamental ratifié par l'owner** (GO merge #82, 2026-07-14) :
+> Le Payment Engine doit rester indépendant de tout fournisseur. **L'ajout ou le
+> remplacement d'un PSP ne devra jamais nécessiter de modification de la logique
+> métier de la caisse.**
+
+**Séquencement ratifié** : cette architecture est la **référence officielle** du Payment
+Engine. Le GO d'implémentation (P0/P1) n'est **pas** donné : il sera donné explicitement
+une fois le premier partenaire monétique arrêté (échanges techniques et contractuels en
+cours — CIC probable, non figé). Aucun développement du Payment Engine ne doit commencer
+avant ce GO explicite ; l'implémentation conservera exactement cette architecture.
+
 ## 7. Note de processus — commit `e82427a` non amendé
 
 Le hook de vérification de signature signale `e82427a` (committer `noreply@github.com`)
