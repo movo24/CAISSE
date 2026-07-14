@@ -10,6 +10,14 @@ Statuts : OPEN · IN PROGRESS · BLOCKED (owner/accès) · CLOSED (PR retire l'e
 
 ---
 
+## D21 — Branche `feat/external-wiring-fallbacks-2026-07` divergente de main (backlog backend) — RÉSOLU pour les livrables session, OUVERT pour le reste
+
+**Contexte** : branche divergée du merge-base 2026-06-11 (615 fichiers branche / 396 main). Un merge in-place bute sur 50 conflits dont le cœur fiscal NF525 (audit P373).
+**Résolu (P374)** : les livrables validés (app mobile pilotage « The Wesley Control » + WebAuthn + analytics) ont été **rejoués additivement** sur une branche fraîche depuis main → `feat/wesley-control-on-main` (poussée, PR à ouvrir, gated). Tests verts (backend 1022 / front 452 / runtime).
+**Ouvert (backlog)** : ~26 autres modules backend divergents. Dossier d'arbitrage complet dans `packages/backend/docs/RECONCILIATION_DECISIONS.md` (27 fiches, workflow P375) : **13 REPLAY_A** (additif, GO simple), **8 ARBITRAGE_FISCAL** (double implémentation NF525 — coupon, pos-session, products, reports, returns, sales, sync, timewin — décision produit requise), **6 ABANDON** (main plus riche : customers, stock, stock-locations, stores, stripe-terminal, suppliers).
+**⚠️ Alerte** : plusieurs modules de branche régresseraient des durcissements ajoutés à main APRÈS le fork (audit-after-commit coupon D16, lockout brute-force auth) — ne PAS rejouer à l'aveugle.
+**Ce qui la ferme** : GO feature par feature sur le tableau du dossier + tranches de replay/arbitrage. Branche session et tag `backup/pre-reconcile-20260714` conservés comme archive jusqu'à décision.
+
 ## D1 — Reversal fiscal d'une vente **cash** via `createReturn` non couvert
 **Status:** ✅ **CLOSED (D1.4 ratifiée + implémentée, GO owner 2026-07-08).** Modèle ratifié : credit_notes = pièce opposable (numéro séquentiel/magasin, HT/TVA/TTC, approbation cash) ; fiscal_journal = scellement immuable — 4 maillons chaînés dans la MÊME tx (`sale_original_referenced` → `credit_note_issued` → `stock_restored` → `cash_refund_recorded`). Atomicité totale prouvée sur VRAI Postgres (`avoir-d14-atomicity.pg.spec.ts`). Migration `1753` additive ; empreintes hash inchangées. **Since:** void-cash-realized guard (#10), 2026-06-12.
 

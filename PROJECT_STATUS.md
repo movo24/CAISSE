@@ -1,7 +1,11 @@
 # PROJECT_STATUS.md — état live
 
+## 2026-07-14 — Réconciliation branche↔main (option A livrée)
+Livrables de session (app mobile pilotage lecture seule « The Wesley Control » + passkeys WebAuthn + analytics multi-magasins) **rejoués additivement sur main** → branche `feat/wesley-control-on-main` (commits 2ebcadb→0fa3bc5). Preuves : tsc backend+mobile 0, backend 118 suites/1022 PASS, front 452 tests, builds 0, migration base vierge unifiée 40 mig (1759 en tête), runtime OK (jointure brands, variant_name). Backlog des ~26 autres modules backend divergents = dossier d'arbitrage gated (`RECONCILIATION_DECISIONS.md`). Prérequis prod passkeys gated : `WEBAUTHN_RP_ID`/`WEBAUTHN_ORIGINS` + migration 1759.
+
 > Tableau de bord du chantier modulaire. Détail modules : `MASTER_ROADMAP.md`. Dette : `TECHNICAL_DEBT.md`. Journal : `EXECUTION_LOG.md`.
-> Dernière reconstruction : **2026-06-21** (audit 10 agents + vérification centrale). Branche : `feat/pos-caisse-build`.
+> Dernière reconstruction : **2026-06-21** (audit 10 agents + vérification centrale).
+> **⚠️ Branche canonique de travail depuis 2026-07-14 : `feat/wesley-control-on-main`** (réconciliation option A, poussée, PR gated). L'ancienne `feat/external-wiring-fallbacks-2026-07` est ARCHIVÉE (tag `backup/pre-reconcile-20260714`) jusqu'à décision sur le backlog divergent — voir `packages/backend/docs/RECONCILIATION_DECISIONS.md`.
 
 ## Vérification centrale (faits objectifs, 2026-06-21)
 | Package | tsc | tests | note |
