@@ -23,6 +23,16 @@ Garde anti-régression appliquée par module (diff main depuis merge-base + pré
 | `subscriptions` | REPLAY_A | ✅ REJOUÉ | additif pur (main-modif=0) |
 | `customer-visits` | REPLAY_A | 🔴 REQUALIFIÉ ARBITRAGE | signature service divergente (3e arg requis) casse le test main |
 | `inventory-scan` | REPLAY_A | 🔴 REQUALIFIÉ ARBITRAGE | dépend de stock/stock-movement-journal (ABANDON, fiscal-adjacent) |
+| `sales-ai` | REPLAY_A | ✅ REJOUÉ | (déjà listé) |
+| `backoffice-discounts` | REPLAY_A | 🔴 REQUALIFIÉ ARBITRAGE | dépend de `sales/discount-policy` (module fiscal ARBITRAGE) |
+| `comptamax` | REPLAY_A | 🔴 REQUALIFIÉ ARBITRAGE | dépend de `integration_events` (branche) + `timewin` (ARBITRAGE) ; inerte sans producteurs fiscaux |
+| `employees` | REPLAY_A | 🔴 REQUALIFIÉ ARBITRAGE | régresserait le durcissement main `pinHash select:false` + `addSelect` opt-in |
+| `integration` | REPLAY_A | 🔴 REQUALIFIÉ ARBITRAGE | couplé à `stock` (ABANDON) + `timewin` (ARBITRAGE) ; outbox alimenté par les modules fiscaux |
+| `loyalty-card` | REPLAY_A | 🔴 REQUALIFIÉ ARBITRAGE | couplé à `coupon` (ARBITRAGE) + test top-level main divergent |
+| `mobile-auth` | REPLAY_A | 🔴 REQUALIFIÉ ARBITRAGE | couplé à `coupon` (ARBITRAGE) |
+| `promotions` | REPLAY_A | 🔴 REQUALIFIÉ ARBITRAGE | dépend de la migration branche 1724 (`promo_rules.usage_limit`) + inerte sans enforcement `sales` |
+
+**Bilan replay P376** : sur 13 REPLAY_A initiaux → **4 réellement rejoués** (auth déjà fait P374, shift-reminders, sales-ai, subscriptions), **9 requalifiés ARBITRAGE_FISCAL** par la garde anti-régression (couplage à un module fiscal, régression d'un durcissement main, ou dépendance à une migration/colonne branche). Les verdicts initiaux des agents (comparaison branche↔main isolée par module) étaient optimistes ; la garde par module a révélé les couplages croisés. Les 9 requalifiés + les 8 ARBITRAGE_FISCAL d'origine + les 6 ABANDON restent gated (décision produit / fiscal).
 
 ## Tableau de synthèse (GO feature par feature)
 
