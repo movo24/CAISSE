@@ -10,6 +10,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { Repository } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
 import { SubscriptionEntity } from '../../database/entities/subscription.entity';
+import { isUnlimited, isWithinLimit, subscriptionAccessDenial } from './subscription-policy';
 import { ProductEntity } from '../../database/entities/product.entity';
 import { TimewinService } from '../timewin/timewin.service';
 import { AuditService } from '../audit/audit.service';
@@ -262,12 +263,12 @@ export class SubscriptionsService {
     const sub = await this.getByStoreId(storeId);
     this.assertActive(sub);
 
-    if (sub.maxProducts === -1) return; // unlimited
+    if (isUnlimited(sub.maxProducts)) return;
 
     const count = await this.productsRepo.count({
       where: { storeId, isActive: true },
     });
-    if (count >= sub.maxProducts) {
+    if (!isWithinLimit(count, sub.maxProducts)) {
       throw new ForbiddenException(
         `Product limit reached (${sub.maxProducts}). ` +
           `Upgrade to ${this.suggestUpgrade(sub.plan)} for more.`,
@@ -279,7 +280,7 @@ export class SubscriptionsService {
     const sub = await this.getByStoreId(storeId);
     this.assertActive(sub);
 
-    if (sub.maxEmployees === -1) return;
+    if (isUnlimited(sub.maxEmployees)) return;
 
     // Employee count from TimeWin24 (via cached sync or live call)
     let count = 0;
@@ -290,7 +291,7 @@ export class SubscriptionsService {
       const cached = this.timewin.getCachedEmployees(storeId);
       count = cached?.length ?? 0;
     }
-    if (count >= sub.maxEmployees) {
+    if (!isWithinLimit(count, sub.maxEmployees)) {
       throw new ForbiddenException(
         `Employee limit reached (${sub.maxEmployees}). ` +
           `Upgrade to ${this.suggestUpgrade(sub.plan)} for more.`,
@@ -419,18 +420,17 @@ export class SubscriptionsService {
   // Helpers
   // -----------------------------------------------------------------------
   private assertActive(sub: SubscriptionEntity): void {
-    if (sub.status === 'suspended') {
+    // Pure, unit-tested denial logic (behavior-preserving).
+    const denial = subscriptionAccessDenial(sub.status, sub.currentPeriodEnd);
+    if (denial === 'suspended') {
       throw new ForbiddenException(
         'Subscription is suspended. Please renew your plan to continue.',
       );
     }
-    if (sub.status === 'cancelled') {
-      // Check if still in grace period
-      if (sub.currentPeriodEnd && sub.currentPeriodEnd < new Date()) {
-        throw new ForbiddenException(
-          'Subscription has expired. Please renew your plan.',
-        );
-      }
+    if (denial === 'expired') {
+      throw new ForbiddenException(
+        'Subscription has expired. Please renew your plan.',
+      );
     }
   }
 
