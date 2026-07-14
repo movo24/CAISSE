@@ -1,9 +1,13 @@
 # Payment Engine universel — Audit & Architecture
 
-> Statut : **PROPOSITION — document seul, aucune implémentation** (GO owner requis avant tout code).
+> Statut : **ARCHITECTURE VALIDÉE PAR L'OWNER (arbitrages D-PE1..D-PE6 + GlobalPaymentId
+> intégrés, §6) — document seul, aucune implémentation** (GO owner explicite requis avant tout code).
 > Date : 2026-07-14 · Base : `main@e82427a` (v1.1.0)
 > Règle centrale ratifiée par l'owner : **un paiement au résultat incertain ne repart JAMAIS
 > comme un nouveau paiement — il passe en vérification/réconciliation. Zéro double débit.**
+> Identifiant de référence unique du moteur : **`GlobalPaymentId`**, créé par ADDX **avant tout
+> échange avec le fournisseur** — les références PSP (PaymentIntent Stripe, référence CIC,
+> PSP Reference Adyen, Worldline Transaction ID…) s'y rattachent, jamais l'inverse.
 
 ---
 
@@ -149,7 +153,7 @@ export interface PaymentProvider {
 
   /** Post-transaction. */
   getStatus(providerRef: string): Promise<ProviderTxStatus>;   // consultation du statut (réconciliation)
-  refund(req: RefundRequest): Promise<ProviderResult>;         // remboursement référencé (jamais « aveugle »)
+  refund(req: RefundRequest): Promise<ProviderResult>;         // remboursement référencé COMPLET (D-PE3 ; jamais « aveugle », partiels plus tard)
 
   /** Références restituées : toujours normalisées. */
   // ProviderResult = { outcome, providerRef, authorizationCode?, acquirerRRN?,
@@ -213,10 +217,20 @@ Chaque tentative porte, générés par le MOTEUR (jamais par le connecteur — c
 `useStripeTerminal.ts:41-42`) :
 
 ```
+GlobalPaymentId    (uuid ADDX, créé AVANT tout échange fournisseur — identifiant de
+                    référence unique dans tout le moteur, les journaux, les entités
+                    et les échanges POS↔backend ; ne change jamais)
 PaymentAttemptId   (uuid, stable pour toute la vie de la tentative)
 IdempotencyKey     (déterministe : dérivée de PaymentAttemptId — identique sur tout retry technique)
 StoreId · TerminalId · CashSessionId · SaleId
 ```
+
+**Rattachement des références fournisseur** : chaque connecteur enregistre ses propres
+références (Stripe PaymentIntent, référence CIC, PSP Reference Adyen, Worldline
+Transaction ID…) SOUS le `GlobalPaymentId` (table de correspondance
+`payment_provider_refs(global_payment_id, provider, ref_type, ref_value)`), jamais
+l'inverse. Le moteur, la réconciliation, le journal et les entités de vente ne
+raisonnent QUE en `GlobalPaymentId` — aucune dépendance aux identifiants du prestataire.
 
 Protections cumulées :
 
@@ -263,11 +277,13 @@ désactivée (`disabled`), espèces/avoirs restent disponibles.
 ### 3.8 Coupure réseau, réponse incertaine, reprise & réconciliation
 
 - **Persistance locale des tentatives** (corrige R1) : chaque attempt est écrit dans un
-  journal local (IndexedDB/fichier) **avant** l'envoi au terminal, mis à jour à chaque
-  transition. Au démarrage, le moteur relit les attempts non terminaux →
+  journal local **IndexedDB** (D-PE2 ratifié) **avant** l'envoi au terminal, mis à jour à
+  chaque transition. Au démarrage, le moteur relit les attempts non terminaux →
   `VERIFICATION_REQUIRED` → `provider.getStatus(providerRef)` → résolution :
-  - PSP dit APPROVED → proposer la reprise de la vente (recréation du ticket avec la
-    jambe déjà payée) ou la régularisation ;
+  - PSP dit APPROVED et la vente n'existe plus → **aucune recréation automatique**
+    (D-PE5 ratifié) : l'attempt reste en `VERIFICATION_REQUIRED`, alerte visible, et un
+    **responsable** décide — rattacher le paiement à une vente existante · recréer la
+    vente · ou rembourser — chaque décision tracée (acteur + motif) ;
   - PSP dit DECLINED/CANCELLED/inexistant → tentative close, la vente peut être re-tentée ;
   - PSP injoignable → l'attempt reste en vérification, alerte visible, JAMAIS de relance.
 - **Réconciliation serveur automatique** : job périodique backend qui balaie
@@ -282,9 +298,10 @@ désactivée (`disabled`), espèces/avoirs restent disponibles.
 Chaque tentative journalise (POS local + backend, append-only, jamais UPDATE/DELETE —
 même discipline que `audit_entry`) :
 
-`attemptId · saleId · storeId · terminalId · cashSessionId · provider · montant · devise ·
-heure d'envoi · heure de réponse · durée · transition (from→to) · résultat ·
-providerRef · authorizationCode · acquirerRRN · code erreur · acteur (caissier/système)`
+`globalPaymentId · attemptId · saleId · storeId · terminalId · cashSessionId · provider ·
+montant · devise · heure d'envoi · heure de réponse · durée · transition (from→to) ·
+résultat · providerRef · authorizationCode · acquirerRRN · code erreur ·
+acteur (caissier/système)`
 
 Le `fiscal_journal` reste inchangé (NF525) ; le journal de paiement est un journal
 technique complémentaire, rattaché à la vente par `saleId`.
@@ -317,9 +334,11 @@ TPE partagé POSPage/iPad (fin de la duplication R5), branché sur les états du
 
 ### 3.12 Compatibilité future
 
-- Multi-acquéreurs : `provider` + `providerRef`/`acquirerRRN` neutres dans `sale_payments`
-  (ajout de colonnes ; les colonnes `stripe_*` existantes sont conservées puis migrées vers
-  les champs neutres — aucune réécriture d'historique).
+- Multi-acquéreurs : `global_payment_id` + `provider` + `providerRef`/`acquirerRRN` neutres
+  dans `sale_payments` (ajout de colonnes ; les colonnes `stripe_*` existantes sont
+  conservées puis migrées vers les champs neutres — aucune réécriture d'historique).
+  Le `GlobalPaymentId` est la clé de jonction unique entre vente, tentative, journal,
+  références PSP et rapports acquéreur.
 - Multi-modèles de TPE : `device_model` libre + `capabilities()` par connecteur (un TPE sans
   remboursement piloté → le moteur bascule sur le flux avoir/manuel).
 - Auth/capture séparées : supportées par le flux (3.4) dès qu'un provider le permet
@@ -366,16 +385,19 @@ Toute migration touchant `sales/payments` = **Tier-2 → GO owner explicite pré
 - Preuve terrain avant GO prod : scénario complet sur TPE réel en magasin pilote
   (paiement, refus, annulation, timeout avec vérification, remboursement, coupure réseau).
 
-## 6. Décisions nécessitant l'arbitrage de l'owner
+## 6. Arbitrages owner — **RATIFIÉS** (2026-07-14)
 
-| # | Décision | Options (défaut proposé en gras) |
-|---|---|---|
-| D-PE1 | **Premier connecteur réel après Stripe** | CIC/Monetico · Worldline · Adyen · autre — dépend du partenariat bancaire (aucun défaut proposable) |
-| D-PE2 | Persistance des tentatives côté POS | **IndexedDB via le store offline existant** · fichier local Electron |
-| D-PE3 | Portée du remboursement piloté (P4) | **Remboursement référencé uniquement** (jamais de crédit aveugle) · inclure remboursement partiel multiple |
-| D-PE4 | `stores.payment_provider` vs config uniquement par terminal | **Les deux** (magasin = défaut, terminal = override) · terminal seul |
-| D-PE5 | Résolution d'un attempt `VERIFICATION_REQUIRED` approuvé dont la vente n'existe plus | **Proposer recréation de vente au caissier + trace** · annulation PSP automatique (quand `cancel` possible) |
-| D-PE6 | Job de réconciliation backend | **Cron 5 min sur `payment_pending` + attempts remontés** · webhooks seuls |
+L'owner a validé les orientations avec les décisions suivantes, désormais **normatives** :
+
+| # | Décision ratifiée |
+|---|---|
+| D-PE1 | **Aucun fournisseur figé maintenant.** Premier connecteur réel = celui du prestataire effectivement retenu (CIC, Adyen, Worldline ou autre). Le Payment Engine reste totalement indépendant. |
+| D-PE2 | **IndexedDB** pour la persistance locale des tentatives (robuste, adapté à Electron, plus simple à maintenir qu'un format de fichier propriétaire). |
+| D-PE3 | **Remboursement référencé COMPLET uniquement** au départ. Les remboursements partiels arriveront plus tard. |
+| D-PE4 | **Configuration par magasin avec surcharge possible par terminal** (ex. : Magasin A → CIC, Magasin B → Adyen ; une caisse spécifique du magasin A peut utiliser un autre provider en cas de besoin). |
+| D-PE5 | **Aucune recréation automatique de vente.** Paiement approuvé sans vente correspondante → `VERIFICATION_REQUIRED`, puis **décision d'un responsable** : rattacher le paiement à une vente existante · recréer la vente · ou rembourser. Intervention humaine obligatoire. |
+| D-PE6 | **Webhooks lorsqu'ils existent + réconciliation périodique (cron).** Les webhooks peuvent être perdus ou retardés ; la réconciliation est le filet de sécurité. |
+| + | **`GlobalPaymentId`** : identifiant universel de transaction interne, créé par ADDX avant tout échange fournisseur ; toutes les références PSP s'y rattachent (§3.5). Identifiant de référence dans tout le moteur. |
 
 ## 7. Note de processus — commit `e82427a` non amendé
 
