@@ -6,8 +6,10 @@ import { EmployeeStoreAccessEntity } from '../../database/entities/employee-stor
 import { AccessAuditLogEntity } from '../../database/entities/access-audit-log.entity';
 import { AccessService } from './access.service';
 import { AccessAuditService } from './access-audit.service';
+import { AccessAdminService } from './access-admin.service';
 import { StoreAccessGuard } from './store-access.guard';
 import { PilotageAccessController } from './pilotage-access.controller';
+import { PilotageAccessAdminController } from './pilotage-access-admin.controller';
 
 /**
  * Module de pilotage-access : RBAC applicatif (accès application + périmètre magasin +
@@ -22,8 +24,8 @@ import { PilotageAccessController } from './pilotage-access.controller';
       AccessAuditLogEntity,
     ]),
   ],
-  controllers: [PilotageAccessController],
-  providers: [AccessService, AccessAuditService, StoreAccessGuard],
-  exports: [AccessService, AccessAuditService, StoreAccessGuard],
+  controllers: [PilotageAccessController, PilotageAccessAdminController],
+  providers: [AccessService, AccessAuditService, AccessAdminService, StoreAccessGuard],
+  exports: [AccessService, AccessAuditService, AccessAdminService, StoreAccessGuard],
 })
 export class PilotageAccessModule {}
