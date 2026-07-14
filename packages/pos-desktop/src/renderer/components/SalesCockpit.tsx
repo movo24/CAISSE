@@ -187,16 +187,15 @@ export function SalesCockpit() {
     return <></>;
   }
 
-  // Carte SOMBRE (V1 « Cockpit Sombre », design validé) : le statut métier
-  // vert/orange/rouge reste porté par l'icône, le badge %, la barre et le
-  // message d'action — teintes adaptées au fond anthracite. Sans objectif
-  // réel configuré, le statut est NEUTRE (gris) — jamais simulé.
+  // Carte CLAIRE (refonte premium) : le statut métier vert/orange/rouge reste
+  // porté par l'icône, le badge %, la barre et le message d'action. Sans
+  // objectif réel configuré, le statut est NEUTRE (gris) — jamais simulé.
   const statusColors = {
-    green: { bg: 'bg-emerald-500', text: 'text-emerald-400', msg: 'bg-emerald-500/15 text-emerald-300' },
-    orange: { bg: 'bg-amber-500', text: 'text-amber-400', msg: 'bg-amber-500/15 text-amber-300' },
-    red: { bg: 'bg-red-500', text: 'text-red-400', msg: 'bg-red-500/15 text-red-300' },
+    green: { bg: 'bg-emerald-500', text: 'text-emerald-600', msg: 'bg-emerald-50 text-emerald-700' },
+    orange: { bg: 'bg-amber-500', text: 'text-amber-600', msg: 'bg-amber-50 text-amber-700' },
+    red: { bg: 'bg-red-500', text: 'text-red-600', msg: 'bg-red-50 text-red-700' },
   };
-  const neutralColors = { bg: 'bg-white/10', text: 'text-slate-400', msg: 'bg-white/[0.06] text-slate-400' };
+  const neutralColors = { bg: 'bg-pos-subtle', text: 'text-pos-muted', msg: 'bg-pos-subtle text-pos-muted' };
   const colors = data.status !== null ? statusColors[data.status] : neutralColors;
   const pct = data.percentAchieved !== null ? Math.min(100, Math.round(data.percentAchieved * 100)) : null;
 
@@ -225,22 +224,22 @@ export function SalesCockpit() {
       )}
 
       {/* Main cockpit banner — carte Objectif Shift, fond sombre (V1) */}
-      <div className="bg-[#1b1e29] border border-white/10 rounded-2xl p-5 transition-colors duration-500">
+      <div className="bg-white border border-pos-border rounded-2xl p-5 transition-colors duration-500">
         {/* Row 1: Main KPI — CA réel de la session / objectif réel ou « — » */}
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3 min-w-0">
             <div className={`w-11 h-11 rounded-xl ${colors.bg} flex items-center justify-center flex-shrink-0`}>
-              <Target size={22} className={data.status !== null ? 'text-white' : 'text-slate-400'} />
+              <Target size={22} className={data.status !== null ? 'text-white' : 'text-pos-muted'} />
             </div>
             <div className="min-w-0">
-              <p className="text-[11px] text-slate-400 font-bold uppercase tracking-wider">
+              <p className="text-[11px] text-pos-muted font-bold uppercase tracking-wider">
                 Objectif shift
               </p>
               <div className="flex items-baseline gap-2">
-                <span className="text-3xl font-black tabular-nums text-white">
+                <span className="text-3xl font-black tabular-nums text-pos-text">
                   {formatEuros(data.currentCA)} €
                 </span>
-                <span className="text-sm text-slate-500 font-semibold whitespace-nowrap">
+                <span className="text-sm text-pos-muted/80 font-semibold whitespace-nowrap">
                   / {data.target !== null ? `${formatEuros(data.target)} €` : '—'}
                 </span>
               </div>
@@ -248,58 +247,58 @@ export function SalesCockpit() {
           </div>
 
           {/* Percentage badge — % réel ou neutre */}
-          <div className={`px-4 py-2.5 rounded-2xl ${colors.bg} ${data.status !== null ? 'text-white' : 'text-slate-400'} flex-shrink-0`}>
+          <div className={`px-4 py-2.5 rounded-2xl ${colors.bg} ${data.status !== null ? 'text-white' : 'text-pos-muted'} flex-shrink-0`}>
             <span className="text-2xl font-black tabular-nums">{pct !== null ? `${pct}%` : '—'}</span>
           </div>
         </div>
 
         {/* Progress bar — progression réelle ; vide sans objectif configuré */}
-        <div className="w-full h-2.5 bg-white/10 rounded-full mb-4 overflow-hidden">
+        <div className="w-full h-2.5 bg-pos-subtle rounded-full mb-4 overflow-hidden">
           <div
-            className={`h-full ${data.status !== null ? colors.bg : 'bg-white/20'} rounded-full transition-all duration-1000`}
+            className={`h-full ${data.status !== null ? colors.bg : 'bg-pos-border'} rounded-full transition-all duration-1000`}
             style={{ width: `${pct !== null ? Math.min(100, pct) : 0}%` }}
           />
         </div>
 
         {/* Row 2: Details — 2×2, valeurs réelles uniquement (« — » sinon) */}
         <div className="grid grid-cols-2 gap-2.5 mb-3">
-          <div className="p-3 rounded-xl bg-white/[0.06]">
-            <p className="text-[10px] text-slate-400 font-bold flex items-center gap-1.5">
+          <div className="p-3 rounded-xl bg-pos-subtle/70">
+            <p className="text-[10px] text-pos-muted font-bold flex items-center gap-1.5">
               <Zap size={11} /> RESTANT
             </p>
-            <p className="text-lg font-black text-white tabular-nums mt-0.5">
+            <p className="text-lg font-black text-pos-text tabular-nums mt-0.5">
               {data.remaining !== null ? `${formatEuros(data.remaining)} €` : '—'}
             </p>
           </div>
-          <div className="p-3 rounded-xl bg-white/[0.06]">
-            <p className="text-[10px] text-slate-400 font-bold flex items-center gap-1.5">
+          <div className="p-3 rounded-xl bg-pos-subtle/70">
+            <p className="text-[10px] text-pos-muted font-bold flex items-center gap-1.5">
               <Clock size={11} /> TEMPS RESTANT
             </p>
-            <p className="text-lg font-black text-white tabular-nums mt-0.5">
+            <p className="text-lg font-black text-pos-text tabular-nums mt-0.5">
               {data.timeRemainingMs !== null ? formatTime(data.timeRemainingMs) : '—'}
             </p>
           </div>
-          <div className="p-3 rounded-xl bg-white/[0.06]">
-            <p className="text-[10px] text-slate-400 font-bold flex items-center gap-1.5">
+          <div className="p-3 rounded-xl bg-pos-subtle/70">
+            <p className="text-[10px] text-pos-muted font-bold flex items-center gap-1.5">
               <TrendingUp size={11} /> RYTHME ACTUEL
             </p>
-            <p className="text-lg font-black text-white tabular-nums mt-0.5">
+            <p className="text-lg font-black text-pos-text tabular-nums mt-0.5">
               {formatEuros(data.ratePerHour)} €/h
             </p>
           </div>
-          <div className="p-3 rounded-xl bg-white/[0.06]">
-            <p className="text-[10px] text-slate-400 font-bold flex items-center gap-1.5">
+          <div className="p-3 rounded-xl bg-pos-subtle/70">
+            <p className="text-[10px] text-pos-muted font-bold flex items-center gap-1.5">
               <Receipt size={11} /> TICKETS · ARTICLES
             </p>
-            <p className="text-lg font-black text-white tabular-nums mt-0.5">
+            <p className="text-lg font-black text-pos-text tabular-nums mt-0.5">
               {data.ticketCount} · {data.itemCount}
             </p>
           </div>
         </div>
 
         {/* Row 3: Projection — réelle (rythme × durée configurée) ou « — » */}
-        <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-white/[0.06] mb-3">
-          <span className="text-xs text-slate-400 font-semibold">Projection fin de shift</span>
+        <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-pos-subtle/70 mb-3">
+          <span className="text-xs text-pos-muted font-semibold">Projection fin de shift</span>
           <span className={`text-sm font-bold tabular-nums ${colors.text}`}>
             {data.projection !== null ? `${formatEuros(data.projection)} €` : '—'}
           </span>

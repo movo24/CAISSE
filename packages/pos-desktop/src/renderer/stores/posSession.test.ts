@@ -124,10 +124,13 @@ describe('POS session lifecycle — une caisse appartient à un caissier', () =>
 describe('ActiveCashierBanner — exigences UX (source)', () => {
   const src = readFileSync(join(__dirname, '..', 'components', 'ActiveCashierBanner.tsx'), 'utf8');
 
-  it('affiche « Caisse de : » et le nom complet du caissier', () => {
-    expect(src).toMatch(/Caisse de\s*:/i);
+  // Refonte premium (owner) : la présentation change, les INVARIANTS restent —
+  // opérateur identifié (nom complet dominant), terminal, magasin, n° de
+  // session + heure d'ouverture, score jour, état bloquant sans caissier.
+  it('affiche le nom complet du caissier (opérateur dominant)', () => {
     expect(src).toContain('firstName');
     expect(src).toContain('lastName');
+    expect(src).toMatch(/Opérateur — niveau 1/);
   });
 
   it('affiche l’état AUCUN CAISSIER CONNECTÉ + connexion obligatoire', () => {
@@ -135,9 +138,11 @@ describe('ActiveCashierBanner — exigences UX (source)', () => {
     expect(src).toMatch(/Connexion obligatoire pour encaisser/);
   });
 
-  it('affiche session depuis + terminal + score jour', () => {
-    expect(src).toMatch(/Session depuis/);
-    expect(src).toMatch(/Score jour/);
+  it('affiche n° de session + heure d’ouverture + terminal + magasin + score', () => {
+    expect(src).toMatch(/Session \{sessionNo\}/);
+    expect(src).toMatch(/depuis \{hhmm\(posSession\.openedAt\)\}/);
+    expect(src).toContain('storeName');
+    expect(src).toMatch(/score/i);
     expect(src.toLowerCase()).toContain('terminal');
   });
 });

@@ -107,18 +107,57 @@
     min-height: 48px;
   }
 
-  /* ── Spotlight Search Bar (scan input) ── */
+  /* ── Spotlight Search Bar (scan input) — élément PRINCIPAL de l'écran ── */
   .scan-input {
-    @apply w-full px-8 py-4 rounded-full bg-white
+    @apply w-full px-8 py-4 rounded-2xl bg-white
            text-pos-text text-lg font-medium
-           shadow-card border border-pos-border/40
-           focus:outline-none focus:ring-4 focus:ring-pos-accent/15
-           focus:border-pos-accent/40 focus:shadow-elevated
+           border border-pos-border
+           focus:outline-none focus:ring-4 focus:ring-pos-accent/10
+           focus:border-pos-accent/50
            transition-all duration-300 ease-out
            placeholder:text-pos-muted/50 placeholder:font-normal;
+    box-shadow: 0 1px 2px rgba(17, 24, 39, 0.04), 0 8px 24px -12px rgba(17, 24, 39, 0.10);
+  }
+  .scan-input:focus {
+    box-shadow: 0 1px 2px rgba(17, 24, 39, 0.04), 0 12px 32px -12px rgba(229, 17, 122, 0.18);
   }
   .is-touch .scan-input {
     @apply py-5 text-xl;
+  }
+
+  /* ══════════════════════════════════════════════
+     HEADER PREMIUM — clair, hiérarchisé, équilibré
+     ══════════════════════════════════════════════ */
+  .hdr {
+    @apply bg-white/95 border-b border-pos-border flex items-center relative z-30;
+    backdrop-filter: blur(12px);
+    min-height: 56px;
+  }
+  /* Chip d'information secondaire du header (magasin, session, widgets) */
+  .hdr-chip {
+    @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg
+           text-xs font-medium text-pos-muted
+           hover:bg-pos-subtle transition-colors duration-150 select-none;
+  }
+  /* Bouton d'action du header (Historique, Retour) */
+  .hdr-btn {
+    @apply inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg
+           text-xs font-semibold text-pos-text/80
+           border border-pos-border bg-white
+           hover:bg-pos-subtle hover:border-pos-border transition-colors duration-150;
+  }
+  /* Séparateur vertical hairline */
+  .hdr-sep {
+    @apply w-px h-6 bg-pos-border flex-none;
+  }
+
+  /* ── Barre d'action ticket (Bon d'achat / Remise) — visible, premium ── */
+  .ticket-action-btn {
+    @apply flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl
+           text-sm font-semibold text-pos-text
+           border border-pos-border bg-white
+           hover:border-pos-accent/40 hover:text-pos-accent hover:bg-pos-accent/[0.03]
+           active:scale-[0.99] transition-all duration-150;
   }
 
   /* ── Badge Ghost sombre (header V1 « Cockpit Sombre » — design validé) ── */
@@ -201,8 +240,8 @@
     }
   }
 
-  /* Variante sombre du panneau résumé (V1 « Cockpit Sombre » — design validé).
-     Chrome anthracite assorti au header ; zone de travail centrale inchangée. */
+  /* Variante sombre du panneau résumé (héritage V1 « Cockpit Sombre » —
+     conservée pour compat, plus utilisée depuis la refonte premium claire). */
   .pos-summary-panel--dark {
     background: #12141c;
     color: #e8eaf2;
@@ -211,6 +250,24 @@
   @media (min-width: 1024px) {
     .pos-summary-panel--dark {
       border-left: 1px solid rgba(255, 255, 255, 0.08);
+    }
+  }
+
+  /* Refonte premium claire : panneau résumé lumineux, hairlines, respiration */
+  .pos-summary-panel--light {
+    background: #ffffff;
+    color: #111827;
+    border-top-color: #e5e7eb;
+  }
+  @media (min-width: 1024px) {
+    .pos-summary-panel--light {
+      border-left: 1px solid #e5e7eb;
+      width: 400px;
+    }
+  }
+  @media (min-width: 1440px) {
+    .pos-summary-panel--light {
+      width: 420px;
     }
   }
 

@@ -24,17 +24,18 @@ export default {
       },
       colors: {
         pos: {
-          bg: '#F8F8FA',
+          bg: '#F7F7F9',
           card: '#FFFFFF',
-          accent: '#ff007a',       // Accent vif — action principale
+          accent: '#E5117A',       // Magenta Wesley officiel — action principale, identité unique
+          'accent-deep': '#C40E68',// Magenta enfoncé — hover/active
           'accent-alt': '#00ffcc', // Accent secondaire — highlights
-          success: '#22c55e',
+          success: '#16a34a',
           warning: '#f59e0b',
-          danger: '#ef4444',
-          text: '#0f172a',         // Noir mat profond
-          muted: '#64748b',
-          border: '#e2e8f0',
-          subtle: '#f1f5f9',
+          danger: '#dc2626',
+          text: '#111827',         // Noir mat profond
+          muted: '#6b7280',
+          border: '#e5e7eb',
+          subtle: '#f3f4f6',
         },
       },
       spacing: {
@@ -53,7 +54,8 @@ export default {
         soft: '0 1px 3px 0 rgba(0, 0, 0, 0.04), 0 1px 2px -1px rgba(0, 0, 0, 0.03)',
         card: '0 2px 8px -2px rgba(0, 0, 0, 0.06), 0 1px 3px -1px rgba(0, 0, 0, 0.04)',
         elevated: '0 8px 24px -8px rgba(0, 0, 0, 0.1)',
-        glow: '0 0 20px rgba(255, 0, 122, 0.15)',
+        glow: '0 0 20px rgba(229, 17, 122, 0.15)',
+        pay: '0 8px 20px -6px rgba(229, 17, 122, 0.45)',
       },
       fontSize: {
         /* Touch-optimized text sizes */
