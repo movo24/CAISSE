@@ -107,3 +107,15 @@ Revue adversariale de TOUS les fixes de la campagne (chaque agent tente de RÉFU
 
 ### Prochaine action automatique (continuité)
 Safe restant : audit read-only des modules ⚠️ (jackpot/loyalty/etc.) → confirmer/infirmer, garde-fous additifs + tests si bug évident. Vrais blocages : M107 réconciliation prod / décision A-B-C, D16-D17 archi, secrets/prod (#3, D6/D8/D7), Stripe parqué.
+
+## PAQUET P374 — Réconciliation branche divergente : replay sur branche fraîche depuis main (2026-07-14)
+
+**Contexte** : la branche `feat/external-wiring-fallbacks-2026-07` avait divergé de `main` (merge-base 2026-06-11 ; 615 fichiers branche / 396 main). Un merge in-place bute sur 50 conflits dont le cœur fiscal NF525 (audit P373 sur la branche session). Décision : **option A** — branche neuve `feat/wesley-control-on-main` depuis `origin/main`, replay ADDITIF des seuls livrables validés, évitant les conflits fiscaux.
+
+**Livrables rejoués sur main** : app mobile « The Wesley Control » (pilotage lecture seule, remplace l'app inventaire de main), module `mobile-cockpit` complet (alertes + analytics multi-magasins + WebAuthn), migration **1759** WebAuthn (au-dessus de 1758), `createSessionForEmployee` dans `auth.service`, `MobileCockpitModule` dans `app.module`, WebAuthn dans `auth.module`.
+
+**Recâblage schéma main (arbitrage « lignée officielle gagne », migrations branche 1723/1726/1727/1728/1729 NON rejouées car couvertes par main)** : `variant_label`→`variant_name` ; `products.brand` (varchar) → jointure `brands` + `brand_id` ; `price_override_minor_units` → prix de base (main = table `store_product_prices`). Correctif bonus : `vitest.setup.ts` mobile (import `fake-indexeddb` obsolète retiré).
+
+**Preuves** : tsc backend + mobile = 0 ; suite backend **118 suites / 1022 PASS** ; front **452 tests** (backoffice 78 + pos-desktop 335 + mobile 39) ; builds nest + vite = 0. Migration base vierge unifiée = **40 migrations** (lignée main complète + 1759 en tête après 1758), `brands`+`variant_name` présents, idempotence « No migrations pending ». **Preuve RUNTIME** (backend démarré sur base seedée schéma-main) : `/analytics/products` remonte la marque « Haribo » via la jointure `brands`, produit sans marque = null (LEFT JOIN OK), filtre `q=haribo` opérationnel, variante « Format XL » via `variant_name`.
+
+**Reste** : les ~260 AUTRES fichiers backend de la branche divergente (integration, comptamax, sales-ai, etc.) NON rejoués — leur réconciliation exige les décisions produit fiscales du STOP DUR P373 (options B/C). Branche session et tag `backup/pre-reconcile-20260714` intacts.
