@@ -1,2 +1,3 @@
-// IndexedDB en mémoire pour les tests offline (file de comptage).
-import 'fake-indexeddb/auto';
+// The Wesley Control est une app de consultation (lecture seule) : pas
+// d'IndexedDB ni de file offline. Aucun shim global nécessaire.
+export {};
