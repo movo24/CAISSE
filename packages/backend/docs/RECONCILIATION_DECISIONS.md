@@ -11,6 +11,19 @@
 
 **Synthèse** : 13 REPLAY_A · 8 ARBITRAGE_FISCAL · 6 ABANDON · 14/27 touchent le fiscal NF525.
 
+## Suivi d'exécution du replay (P376, branche `feat/replay-backlog-on-main`)
+
+Garde anti-régression appliquée par module (diff main depuis merge-base + préservation des durcissements post-fork).
+
+| Module | Verdict initial | Statut réel | Note |
+|---|---|---|---|
+| `auth` | REPLAY_A | ✅ DÉJÀ FAIT (P374) | WebAuthn replayé ; durcissements main (lockout, addSelect) préservés |
+| `shift-reminders` | REPLAY_A | ✅ REJOUÉ | quiet-hours greffé sur le service refactoré de main (normalizeShiftRecords préservé) |
+| `sales-ai` | REPLAY_A | ✅ REJOUÉ | additif pur (main-modif=0) |
+| `subscriptions` | REPLAY_A | ✅ REJOUÉ | additif pur (main-modif=0) |
+| `customer-visits` | REPLAY_A | 🔴 REQUALIFIÉ ARBITRAGE | signature service divergente (3e arg requis) casse le test main |
+| `inventory-scan` | REPLAY_A | 🔴 REQUALIFIÉ ARBITRAGE | dépend de stock/stock-movement-journal (ABANDON, fiscal-adjacent) |
+
 ## Tableau de synthèse (GO feature par feature)
 
 | Module | Verdict | Effort | Risque fiscal | Maturité | Résumé |
