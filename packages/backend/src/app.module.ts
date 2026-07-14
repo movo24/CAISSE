@@ -17,6 +17,7 @@ import { StoresModule } from './modules/stores/stores.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { PromotionsModule } from './modules/promotions/promotions.module';
 import { StockModule } from './modules/stock/stock.module';
+import { MobileCockpitModule } from './modules/mobile-cockpit/mobile-cockpit.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { CurrencyModule } from './modules/currency/currency.module';
 import { SyncModule } from './modules/sync/sync.module';
@@ -108,6 +109,7 @@ const isProd = process.env.NODE_ENV === 'production';
     ReportsModule,
     PromotionsModule,
     StockModule,
+    MobileCockpitModule,
     AuditModule,
     CurrencyModule,
     SyncModule,

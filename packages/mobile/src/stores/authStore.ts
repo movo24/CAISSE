@@ -37,14 +37,14 @@ interface AuthState {
   error: string | null;
 
   // Actions
-  login: (storeId: string, pin: string) => Promise<void>;
+  loginWesley: (email: string, pin: string) => Promise<void>;
+  /** Applique une session déjà validée par le serveur (login passkey). */
+  applySession: (session: any) => void;
   logout: () => void;
   restoreSession: () => void;
 
-  // Role helpers
-  canScan: () => boolean;
-  canModifyStock: () => boolean;
-  canValidate: () => boolean;
+  // Role helper (lecture seule) : manager/admin = accès pilotage
+  isSupervisor: () => boolean;
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -55,33 +55,61 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   isLoading: false,
   error: null,
 
-  login: async (storeId: string, pin: string) => {
+  /**
+   * Connexion via l'authentification CENTRALE du dashboard The Wesley
+   * (email + code d'accès). Profil, rôle et périmètre magasins sont
+   * renvoyés par le serveur — aucun code magasin saisi côté client.
+   */
+  loginWesley: async (email: string, pin: string) => {
     set({ isLoading: true, error: null });
     try {
-      const response = await authApi.loginPin(storeId, pin);
+      const response = await authApi.loginEmail(email, pin);
       const { accessToken, refreshToken, employee, storeInfo } = response.data;
 
       localStorage.setItem('accessToken', accessToken);
       localStorage.setItem('refreshToken', refreshToken);
       localStorage.setItem('employee', JSON.stringify(employee));
       if (storeInfo) localStorage.setItem('storeInfo', JSON.stringify(storeInfo));
-      localStorage.setItem('lastStoreId', storeId);
 
       set({
         isAuthenticated: true,
         employee,
         storeInfo: storeInfo
-          ? { id: storeId, name: storeInfo.storeName || storeInfo.name || storeId, address: storeInfo.address }
-          : { id: storeId, name: storeId },
+          ? {
+              id: storeInfo.id ?? employee.storeId,
+              name: storeInfo.storeName || storeInfo.name || '',
+              address: storeInfo.address,
+            }
+          : null,
         accessToken,
         isLoading: false,
       });
     } catch (err: any) {
       set({
         isLoading: false,
-        error: err.response?.data?.message || 'PIN incorrect ou erreur serveur',
+        error:
+          err.response?.data?.message ||
+          'Identifiants incorrects ou serveur indisponible.',
       });
     }
+  },
+
+  applySession: (session: any) => {
+    const { accessToken, refreshToken, employee, storeInfo } = session;
+    localStorage.setItem('accessToken', accessToken);
+    localStorage.setItem('refreshToken', refreshToken);
+    localStorage.setItem('employee', JSON.stringify(employee));
+    if (storeInfo) localStorage.setItem('storeInfo', JSON.stringify(storeInfo));
+    set({
+      isAuthenticated: true,
+      employee,
+      storeInfo: storeInfo
+        ? { id: storeInfo.id ?? employee.storeId, name: storeInfo.storeName || storeInfo.name || '', address: storeInfo.address }
+        : null,
+      accessToken,
+      isLoading: false,
+      error: null,
+    });
   },
 
   logout: () => {
@@ -143,23 +171,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  // ── Role helpers ──
-  // cashier → viewer (scan/search only)
-  // manager → inventory (scan + inventory + receiving + stock adjust)
-  // admin → manager (all + validate)
+  // ── Role helper ── l'app de pilotage est réservée manager/admin
 
-  canScan: () => {
-    const role = get().employee?.role;
-    return !!role; // All authenticated roles can scan
-  },
-
-  canModifyStock: () => {
+  isSupervisor: () => {
     const role = get().employee?.role;
     return role === 'manager' || role === 'admin';
-  },
-
-  canValidate: () => {
-    const role = get().employee?.role;
-    return role === 'admin';
   },
 }));

@@ -520,44 +520,51 @@ export class AuthService {
     // Check PIN against each employee's bcrypt hash
     for (const emp of employees) {
       if (opts.pin && await bcrypt.compare(opts.pin, emp.pinHash)) {
-        // Match found — build session locally
-        const jti = randomBytes(16).toString('hex');
-        await this.cache.set(`token_family:${emp.id}`, jti, TOKEN_REVOKE_TTL);
-        await this.cache.srem('revoked_tokens', emp.id);
-
-        const payload = {
-          sub: emp.id,
-          storeId: emp.storeId,
-          role: emp.role,
-          employeeName: `${emp.firstName} ${emp.lastName}`,
-          maxDiscount: emp.maxDiscountPercent,
-        };
-
-        const store = await this.storeRepo.findOne({ where: { id: emp.storeId } }).catch(() => null);
-
         this.logger.log(`[AUTH] Login OK (POS Caisse local): ${emp.firstName} ${emp.lastName} (${emp.role}) store=${emp.storeId}`);
-
-        return {
-          accessToken: this.jwtService.sign(payload),
-          refreshToken: this.jwtService.sign(
-            { ...payload, jti },
-            { secret: process.env.JWT_REFRESH_SECRET!, expiresIn: '7d' },
-          ),
-          employee: {
-            id: emp.id,
-            employeeCode: emp.qrCode,
-            firstName: emp.firstName,
-            lastName: emp.lastName,
-            email: emp.email,
-            role: emp.role,
-            storeId: emp.storeId,
-            maxDiscountPercent: emp.maxDiscountPercent,
-          },
-          storeInfo: store ? mapStoreEntityToStoreInfo(store) : null,
-        };
+        return this.createSessionForEmployee(emp);
       }
     }
 
     throw new UnauthorizedException('Code PIN incorrect');
+  }
+
+  /**
+   * P370 — Construit une session (JWT access + refresh) pour un employé DÉJÀ
+   * authentifié par un mécanisme fort (PIN local vérifié, ou signature WebAuthn
+   * validée). Rôle et périmètre viennent EXCLUSIVEMENT de la base à l'appel.
+   */
+  async createSessionForEmployee(emp: EmployeeEntity) {
+    const jti = randomBytes(16).toString('hex');
+    await this.cache.set(`token_family:${emp.id}`, jti, TOKEN_REVOKE_TTL);
+    await this.cache.srem('revoked_tokens', emp.id);
+
+    const payload = {
+      sub: emp.id,
+      storeId: emp.storeId,
+      role: emp.role,
+      employeeName: `${emp.firstName} ${emp.lastName}`,
+      maxDiscount: emp.maxDiscountPercent,
+    };
+
+    const store = await this.storeRepo.findOne({ where: { id: emp.storeId } }).catch(() => null);
+
+    return {
+      accessToken: this.jwtService.sign(payload),
+      refreshToken: this.jwtService.sign(
+        { ...payload, jti },
+        { secret: process.env.JWT_REFRESH_SECRET!, expiresIn: '7d' },
+      ),
+      employee: {
+        id: emp.id,
+        employeeCode: emp.qrCode,
+        firstName: emp.firstName,
+        lastName: emp.lastName,
+        email: emp.email,
+        role: emp.role,
+        storeId: emp.storeId,
+        maxDiscountPercent: emp.maxDiscountPercent,
+      },
+      storeInfo: store ? mapStoreEntityToStoreInfo(store) : null,
+    };
   }
 }

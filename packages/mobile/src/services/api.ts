@@ -166,69 +166,76 @@ api.interceptors.response.use(
   },
 );
 
-// ── API groups (mobile-specific subset) ──
+
+// ── API groups — STRICTEMENT LECTURE SEULE ───────────────────────
+// Règle absolue (P366) : l'application observe, compare
+// et analyse — elle ne commande RIEN. En dehors de l'authentification
+// (login/refresh/logout + passkeys WebAuthn P370), ce client n'expose
+// QUE des GET. Ajouter un
+// POST/PUT/PATCH/DELETE métier ici est une violation de conception.
+// ─────────────────────────────────────────────────────────────────
+
+/** P370 — Passkeys WebAuthn (périmètre AUTH, comme login/refresh/logout).
+ *  Aucune credential côté client : options + réponses signées uniquement. */
+export const webauthnApi = {
+  registerOptions: () => api.post('/auth/webauthn/register/options'),
+  registerVerify: (body: { response: unknown; deviceName: string }) =>
+    api.post('/auth/webauthn/register/verify', body),
+  loginOptions: () => api.post('/auth/webauthn/login/options'),
+  loginVerify: (body: { challengeId: string; response: unknown }) =>
+    api.post('/auth/webauthn/login/verify', body),
+  credentials: () => api.get('/auth/webauthn/credentials'),
+  rename: (id: string, name: string) =>
+    api.patch(`/auth/webauthn/credentials/${encodeURIComponent(id)}`, { name }),
+  revoke: (id: string) => api.delete(`/auth/webauthn/credentials/${encodeURIComponent(id)}`),
+};
 
 export const authApi = {
-  loginPin: (storeId: string, pin: string) =>
-    api.post('/auth/login/pin', { storeId, pin }),
+  /** Auth CENTRALE du dashboard The Wesley (email + code d'accès).
+   *  Le rôle et le périmètre sont déterminés côté serveur. */
+  loginEmail: (email: string, pin: string) =>
+    api.post('/auth/login/admin', { email, pin }),
   refreshToken: (refreshToken: string) =>
     api.post('/auth/refresh', { refreshToken }),
   logout: () => api.post('/auth/logout'),
 };
 
-export const productsApi = {
-  list: () => api.get('/products'),
-  scan: (ean: string) => api.get(`/products/scan/${ean}`),
-  get: (id: string) => api.get(`/products/${id}`),
-  categories: () => api.get('/products/categories'),
-  createCategory: (name: string) => api.post('/products/categories', { name }),
-  create: (data: {
-    ean: string;
-    name: string;
-    priceMinorUnits: number;
-    costMinorUnits?: number;
-    categoryId?: string;
-    taxRate?: number;
-    stockQuantity?: number;
-    stockAlertThreshold?: number;
-    description?: string;
-    imageUrl?: string;
-  }) => api.post('/products', data),
-  /** Update product fields (including imageUrl for photo) */
-  update: (id: string, data: Record<string, unknown>) =>
-    api.put(`/products/${id}`, data),
+/** POS-110 — alertes de supervision lecture seule (manager/admin). */
+export const cockpitApi = {
+  alerts: () => api.get('/mobile/v1/alerts'),
 };
 
-export const stockApi = {
-  alerts: () => api.get('/stock/alerts'),
-  /** Adjust stock — mode: 'absolute' sets to exact value, 'delta' adds/subtracts */
-  adjust: (productId: string, data: { quantity: number; reason: string; mode?: 'absolute' | 'delta' }) =>
-    api.post(`/stock/${productId}/adjust`, {
-      quantity: Math.round(Number(data.quantity) || 0),
-      reason: data.reason || 'ajustement_mobile',
-      mode: data.mode || 'absolute',
-    }),
+/** P366 — analytics réseau lecture seule (manager/admin, GET uniquement). */
+export const analyticsApi = {
+  overview: (params: Record<string, string | undefined>) =>
+    api.get('/mobile/v1/analytics/overview', { params }),
+  revenueWindows: (params: Record<string, string | undefined>) =>
+    api.get('/mobile/v1/analytics/revenue-windows', { params }),
+  stores: (params: Record<string, string | undefined>) =>
+    api.get('/mobile/v1/analytics/stores', { params }),
+  storeDetail: (id: string, params: Record<string, string | undefined>) =>
+    api.get(`/mobile/v1/analytics/stores/${encodeURIComponent(id)}`, { params }),
+  products: (params: Record<string, string | undefined>) =>
+    api.get('/mobile/v1/analytics/products', { params }),
+  catalog: (params: Record<string, string | undefined>) =>
+    api.get('/mobile/v1/analytics/catalog', { params }),
+  productDetail: (ean: string, params: Record<string, string | undefined>) =>
+    api.get(`/mobile/v1/analytics/products/${encodeURIComponent(ean)}`, { params }),
+  categories: (params: Record<string, string | undefined>) =>
+    api.get('/mobile/v1/analytics/categories', { params }),
+  heatmap: (params: Record<string, string | undefined>) =>
+    api.get('/mobile/v1/analytics/heatmap', { params }),
+  compare: (params: Record<string, string | undefined>) =>
+    api.get('/mobile/v1/analytics/compare', { params }),
+  series: (params: Record<string, string | undefined>) =>
+    api.get('/mobile/v1/analytics/series', { params }),
+  productsMatrix: (params: Record<string, string | undefined>) =>
+    api.get('/mobile/v1/analytics/products-matrix', { params }),
 };
 
-/**
- * Intégration produit — demande de création pour un code-barres inconnu
- * (workflow sécurisé : la fiche est validée depuis Dashboard / Inventaire).
- */
-export const productIntegrationApi = {
-  createRequest: (data: { barcode: string; source: 'mobile'; comment?: string }) =>
-    api.post('/product-integration/requests', data),
-};
-
-/** Inventaire — enregistrement d'un scan/comptage (POST /api/inventory-scans). */
-export const inventoryScanApi = {
-  record: (data: {
-    barcode: string;
-    quantity: number;
-    scanType?: string;
-    sessionId?: string;
-    notes?: string;
-    clientEntryId?: string;
-  }) => api.post('/inventory-scans', data),
+/** Liste des magasins accessibles (référentiel, lecture seule). */
+export const storesApi = {
+  accessible: () => api.get('/stores/accessible'),
 };
 
 export default api;

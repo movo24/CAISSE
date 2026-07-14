@@ -1,7 +1,7 @@
-// CAISSE Inventaire — Service Worker (PWA installability)
-// Minimal network-first SW for mobile inventory app
+// The Wesley Control — Service Worker (PWA installability)
+// Minimal network-first SW for the read-only network pilot app
 
-const CACHE_NAME = 'caisse-inventaire-v1';
+const CACHE_NAME = 'wesley-control-v1';
 
 self.addEventListener('install', () => {
   self.skipWaiting();

@@ -1,13 +1,13 @@
 {
-  "name": "CAISSE Inventaire",
-  "short_name": "Inventaire",
-  "description": "Scanner inventaire & reception",
+  "name": "The Wesley Control",
+  "short_name": "Wesley Control",
+  "description": "Supervision et analyse du réseau The Wesley — accès sécurisé en lecture seule",
   "start_url": ".",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#F8F8FA",
-  "theme_color": "#7c3aed",
+  "theme_color": "#0f172a",
   "icons": [
     {
       "src": "/icons/icon-192.png",

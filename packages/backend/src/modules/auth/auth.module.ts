@@ -4,10 +4,13 @@ import { PassportModule } from '@nestjs/passport';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
+import { WebauthnService } from './webauthn.service';
+import { WebauthnController } from './webauthn.controller';
 import { JwtStrategy } from './jwt.strategy';
 import { StoreEntity } from '../../database/entities/store.entity';
 import { EmployeeEntity } from '../../database/entities/employee.entity';
 import { PosSessionEntity } from '../../database/entities/pos-session.entity';
+import { WebauthnCredentialEntity } from '../../database/entities/webauthn-credential.entity';
 import { AuditModule } from '../audit/audit.module';
 
 @Module({
@@ -27,10 +30,10 @@ import { AuditModule } from '../audit/audit.module';
       })(),
       signOptions: { expiresIn: '15m' },
     }),
-    TypeOrmModule.forFeature([StoreEntity, EmployeeEntity, PosSessionEntity]),
+    TypeOrmModule.forFeature([StoreEntity, EmployeeEntity, PosSessionEntity, WebauthnCredentialEntity]),
   ],
-  controllers: [AuthController],
-  providers: [AuthService, JwtStrategy],
+  controllers: [AuthController, WebauthnController],
+  providers: [AuthService, JwtStrategy, WebauthnService],
   exports: [AuthService, JwtModule],
 })
 export class AuthModule {}

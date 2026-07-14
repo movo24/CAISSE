@@ -1,168 +1,188 @@
-// ── LoginPage ────────────────────────────────────────────────────
-// PIN login with numeric keypad, storeId remembered
+// ── Porte d'entrée The Wesley Control ────────────────────────────
+// Connexion via le système d'authentification CENTRAL du dashboard
+// (POST /api/auth/login/admin : email + code d'accès — même mécanisme
+// que le back-office). Aucun code magasin : le profil, le rôle et les
+// magasins accessibles sont déterminés côté serveur (JWT + guards).
+// Session valide déjà présente → entrée directe (ProtectedRoute).
+// Identité : logo officiel The Wesleys (public/brand/, copié depuis
+// les assets du site principal) — aucun logo recréé.
 // ─────────────────────────────────────────────────────────────────
 
-import { useState, useCallback } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
-import { ScanBarcode, Store, Loader2, Delete } from 'lucide-react';
+import { Fingerprint, Loader2, Lock, Mail } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
+import { detectPasskeySupport, isUserCancellation, loginWithPasskey, PasskeySupport } from '../lib/webauthn';
 
 export function LoginPage() {
-  const { isAuthenticated, login, isLoading, error } = useAuthStore();
-  const [storeId, setStoreId] = useState(() => localStorage.getItem('lastStoreId') || '');
+  const { isAuthenticated, loginWesley, isLoading, error, applySession } = useAuthStore();
+  const [showForm, setShowForm] = useState(false);
+  const [email, setEmail] = useState('');
   const [pin, setPin] = useState('');
-  const [showStoreInput, setShowStoreInput] = useState(() => !localStorage.getItem('lastStoreId'));
+  const [passkey, setPasskey] = useState<PasskeySupport | null>(null);
+  const [passkeyBusy, setPasskeyBusy] = useState(false);
+  const [passkeyError, setPasskeyError] = useState<string | null>(null);
 
-  const handlePinDigit = useCallback((digit: string) => {
-    // Clear error on new input
-    if (useAuthStore.getState().error) {
-      useAuthStore.setState({ error: null });
-    }
-    setPin((prev) => {
-      if (prev.length >= 8) return prev;
-      return prev + digit;
-    });
+  useEffect(() => {
+    detectPasskeySupport().then(setPasskey).catch(() => setPasskey(null));
   }, []);
 
-  const handleDelete = useCallback(() => {
-    if (useAuthStore.getState().error) {
-      useAuthStore.setState({ error: null });
-    }
-    setPin((prev) => prev.slice(0, -1));
-  }, []);
-
-  const handleSubmit = useCallback(async () => {
-    if (pin.length >= 4 && storeId) {
-      await login(storeId, pin);
-      // Reset PIN after failed attempt
-      if (!useAuthStore.getState().isAuthenticated) {
-        setTimeout(() => setPin(''), 1500);
+  const passkeyLogin = async () => {
+    setPasskeyBusy(true);
+    setPasskeyError(null);
+    try {
+      // Cérémonie WebAuthn native (Face ID / Touch ID / Hello / clé FIDO2) —
+      // l'app ne s'ouvre qu'après validation SERVEUR de la signature.
+      const session = await loginWithPasskey();
+      applySession(session);
+    } catch (e: any) {
+      if (isUserCancellation(e)) {
+        setPasskeyError('Connexion annulée.');
+      } else {
+        setPasskeyError(
+          e?.response?.data?.message ??
+            'Aucune clé d’accès utilisable sur cet appareil — utilisez la connexion The Wesley.',
+        );
       }
+    } finally {
+      setPasskeyBusy(false);
     }
-  }, [pin, storeId, login]);
+  };
 
   if (isAuthenticated) {
     return <Navigate to="/" replace />;
   }
 
+  const canSubmit = email.includes('@') && pin.length >= 4 && !isLoading;
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (canSubmit) await loginWesley(email.trim(), pin);
+  };
+
   return (
-    <div className="min-h-[100dvh] flex flex-col items-center justify-center bg-gradient-to-b from-violet-600 to-violet-800 px-6 safe-top safe-bottom">
-      {/* ── Logo ── */}
-      <div className="mb-8 text-center">
-        <div className="w-16 h-16 rounded-2xl bg-white/15 backdrop-blur flex items-center justify-center mx-auto mb-4">
-          <ScanBarcode size={32} className="text-white" />
-        </div>
-        <h1 className="text-2xl font-bold text-white">CAISSE Inventaire</h1>
-        <p className="text-violet-200 text-sm mt-1">Scanner & gestion de stock</p>
-      </div>
+    <div className="min-h-[100dvh] flex flex-col items-center justify-center bg-mobile-bg px-5 py-8 safe-top safe-bottom">
+      <main className="w-full max-w-sm">
+        {/* Carte centrale claire et compacte */}
+        <div className="bg-white rounded-3xl shadow-card border border-mobile-border/60 px-6 py-8 sm:px-8">
+          {/* Logo officiel The Wesleys — net, sans effet */}
+          <img
+            src="/brand/wesleys-logo-official.png"
+            alt="The Wesleys"
+            className="mx-auto w-56 max-w-full h-auto select-none"
+            draggable={false}
+          />
 
-      {/* ── Store ID input ── */}
-      {showStoreInput ? (
-        <div className="w-full max-w-xs mb-6 animate-fade-in">
-          <label className="text-violet-200 text-xs font-semibold mb-2 block">
-            Code magasin
-          </label>
-          <div className="relative">
-            <Store size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-violet-300" />
-            <input
-              type="text"
-              value={storeId}
-              onChange={(e) => setStoreId(e.target.value.trim())}
-              placeholder="ex: BELLERIVE"
-              className="w-full pl-10 pr-4 py-3.5 rounded-2xl bg-white/10 border border-white/20 text-white placeholder-violet-300 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-white/40"
-              autoFocus
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && storeId) setShowStoreInput(false);
-              }}
-            />
+          <h1 className="mt-6 text-center text-[17px] font-bold tracking-[0.18em] text-mobile-text">
+            THE WESLEY CONTROL
+          </h1>
+          <p className="mt-1 text-center text-sm text-mobile-muted">
+            Supervision et analyse du réseau
+          </p>
+          <p className="mt-0.5 text-center text-[11px] text-mobile-muted/80">
+            Accès sécurisé en lecture seule
+          </p>
+
+          <div className="mt-7 space-y-3">
+            {/* Prioritaire : clé d'accès (biométrie gérée par l'OS) */}
+            {passkey?.available && !showForm && (
+              <>
+                <button
+                  onClick={passkeyLogin}
+                  disabled={passkeyBusy}
+                  className="w-full min-h-[48px] rounded-2xl bg-mobile-text text-white text-sm font-bold
+                             flex items-center justify-center gap-2 disabled:opacity-60 active:opacity-90
+                             focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2
+                             focus-visible:outline-violet-600 transition-opacity"
+                >
+                  {passkeyBusy ? <Loader2 size={16} className="animate-spin" /> : <Fingerprint size={16} />}
+                  {passkeyBusy ? 'Validation…' : passkey.buttonLabel}
+                </button>
+                {passkeyError && (
+                  <p role="alert" className="text-xs text-red-600 bg-red-50 rounded-xl px-3 py-2.5">
+                    {passkeyError}
+                  </p>
+                )}
+              </>
+            )}
+
+            {!showForm ? (
+              <button
+                onClick={() => setShowForm(true)}
+                className={`w-full min-h-[48px] rounded-2xl text-sm font-bold active:opacity-90
+                           focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2
+                           focus-visible:outline-violet-600 transition-opacity ${
+                             passkey?.available
+                               ? 'bg-mobile-subtle text-mobile-text'
+                               : 'bg-mobile-text text-white'
+                           }`}
+              >
+                Se connecter avec The Wesley
+              </button>
+            ) : (
+              <form onSubmit={submit} className="space-y-3 animate-fade-in" noValidate>
+                <label className="block">
+                  <span className="text-[11px] font-semibold text-mobile-muted">Email professionnel</span>
+                  <span className="relative block mt-1">
+                    <Mail size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-mobile-muted" />
+                    <input
+                      type="email"
+                      autoComplete="email"
+                      inputMode="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="prenom@thewesleys.fr"
+                      autoFocus
+                      className="w-full min-h-[48px] pl-10 pr-4 rounded-2xl border border-mobile-border bg-mobile-subtle/60
+                                 text-sm text-mobile-text placeholder-mobile-muted/60
+                                 focus:outline-none focus:ring-2 focus:ring-violet-600/50 focus:border-violet-600/40"
+                    />
+                  </span>
+                </label>
+                <label className="block">
+                  <span className="text-[11px] font-semibold text-mobile-muted">Code d'accès</span>
+                  <span className="relative block mt-1">
+                    <Lock size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-mobile-muted" />
+                    <input
+                      type="password"
+                      autoComplete="current-password"
+                      inputMode="numeric"
+                      value={pin}
+                      onChange={(e) => setPin(e.target.value)}
+                      placeholder="••••"
+                      className="w-full min-h-[48px] pl-10 pr-4 rounded-2xl border border-mobile-border bg-mobile-subtle/60
+                                 text-sm text-mobile-text placeholder-mobile-muted/60 tracking-widest
+                                 focus:outline-none focus:ring-2 focus:ring-violet-600/50 focus:border-violet-600/40"
+                    />
+                  </span>
+                </label>
+
+                {error && (
+                  <p role="alert" className="text-xs text-red-600 bg-red-50 rounded-xl px-3 py-2.5">
+                    {error}
+                  </p>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={!canSubmit}
+                  className="w-full min-h-[48px] rounded-2xl bg-mobile-text text-white text-sm font-bold
+                             disabled:opacity-40 active:opacity-90 flex items-center justify-center gap-2
+                             focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2
+                             focus-visible:outline-violet-600 transition-opacity"
+                >
+                  {isLoading && <Loader2 size={16} className="animate-spin" />}
+                  {isLoading ? 'Connexion…' : 'Connexion'}
+                </button>
+              </form>
+            )}
           </div>
-          <button
-            onClick={() => storeId && setShowStoreInput(false)}
-            disabled={!storeId}
-            className="w-full mt-3 py-3 rounded-2xl bg-white text-violet-700 font-bold text-sm disabled:opacity-40 transition-opacity"
-          >
-            Continuer
-          </button>
+
+          <p className="mt-6 text-center text-[11px] text-mobile-muted/80">
+            Accès réservé aux équipes autorisées
+          </p>
         </div>
-      ) : (
-        <div className="w-full max-w-xs animate-fade-in">
-          {/* Store badge */}
-          <button
-            onClick={() => setShowStoreInput(true)}
-            className="flex items-center gap-2 mx-auto mb-6 px-4 py-1.5 rounded-full bg-white/10 border border-white/20 text-violet-100 text-xs font-semibold"
-          >
-            <Store size={13} />
-            {storeId}
-          </button>
-
-          {/* PIN dots (supports 4-8 digit PINs) */}
-          <div className="flex items-center justify-center gap-2.5 mb-6">
-            {[0, 1, 2, 3, 4, 5].map((i) => (
-              <div
-                key={i}
-                className={`w-4 h-4 rounded-full transition-all duration-200 ${
-                  pin.length > i
-                    ? 'bg-white scale-110'
-                    : 'bg-white/20 border border-white/30'
-                }`}
-              />
-            ))}
-          </div>
-
-          {/* Error */}
-          {error && (
-            <div className="mb-4 px-4 py-2.5 rounded-xl bg-red-500/20 border border-red-400/30 text-red-100 text-xs font-medium text-center">
-              {error}
-            </div>
-          )}
-
-          {/* Loading indicator */}
-          {isLoading && (
-            <div className="flex items-center justify-center mb-4">
-              <Loader2 size={24} className="text-white animate-spin" />
-            </div>
-          )}
-
-          {/* Numeric keypad */}
-          {!isLoading && (
-            <div className="grid grid-cols-3 gap-3">
-              {['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', 'del'].map((key) => {
-                if (key === '') return <div key="empty" />;
-                if (key === 'del') {
-                  return (
-                    <button
-                      key="del"
-                      onClick={handleDelete}
-                      className="h-16 rounded-2xl bg-white/10 flex items-center justify-center text-white keypad-btn active:bg-white/20 transition-colors"
-                    >
-                      <Delete size={22} />
-                    </button>
-                  );
-                }
-                return (
-                  <button
-                    key={key}
-                    onClick={() => handlePinDigit(key)}
-                    className="h-16 rounded-2xl bg-white/10 flex items-center justify-center text-white text-2xl font-semibold keypad-btn active:bg-white/20 transition-colors"
-                  >
-                    {key}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Manual submit (for 5-6 digit PINs) */}
-          {pin.length >= 4 && !isLoading && (
-            <button
-              onClick={handleSubmit}
-              className="w-full mt-4 py-3.5 rounded-2xl bg-white text-violet-700 font-bold text-sm transition-opacity"
-            >
-              Se connecter
-            </button>
-          )}
-        </div>
-      )}
+      </main>
     </div>
   );
 }
