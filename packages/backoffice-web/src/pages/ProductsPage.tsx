@@ -162,6 +162,7 @@ export function ProductsPage() {
     return [];
   });
   const [showViewsMenu, setShowViewsMenu] = useState(false);
+  const [newViewName, setNewViewName] = useState('');
   const persistViews = (views: Array<{ name: string; v: any }>) => {
     setSavedViews(views);
     try { localStorage.setItem('catalog.views', JSON.stringify(views)); } catch { /* noop */ }
@@ -281,10 +282,10 @@ export function ProductsPage() {
     sortBy, sortDir, visibleCols,
   });
   const saveCurrentView = () => {
-    const name = window.prompt('Nom de la vue :')?.trim();
+    const name = newViewName.trim();
     if (!name) return;
     persistViews([...savedViews.filter((x) => x.name !== name), { name, v: captureView() }]);
-    setShowViewsMenu(false);
+    setNewViewName('');
   };
   const applyView = (view: { name: string; v: any }) => {
     const v = view.v || {};
@@ -683,7 +684,21 @@ export function ProductsPage() {
               <>
                 <div className="fixed inset-0 z-10" onClick={() => setShowViewsMenu(false)} />
                 <div className="absolute right-0 mt-1 z-20 bg-white rounded-xl border border-gray-100 shadow-elevated p-2 w-64">
-                  <button onClick={saveCurrentView} className="w-full text-left px-2 py-1.5 rounded-lg text-sm text-bo-accent hover:bg-gray-50 flex items-center gap-1.5"><Plus size={14} /> Sauvegarder la vue actuelle</button>
+                  <div className="flex items-center gap-1.5 px-1 pb-1.5">
+                    <input
+                      value={newViewName}
+                      onChange={(e) => setNewViewName(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') saveCurrentView(); }}
+                      placeholder="Nom de la vue…"
+                      className="flex-1 min-w-0 py-1.5 px-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-bo-accent/30"
+                    />
+                    <button
+                      onClick={saveCurrentView}
+                      disabled={!newViewName.trim()}
+                      title="Sauvegarder la vue actuelle"
+                      className="p-1.5 rounded-lg text-bo-accent hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                    ><Plus size={16} /></button>
+                  </div>
                   {savedViews.length > 0 && <div className="border-t border-gray-50 my-1" />}
                   {savedViews.length === 0 && <p className="px-2 py-1.5 text-xs text-gray-400">Aucune vue enregistrée.</p>}
                   {savedViews.map((view) => (
