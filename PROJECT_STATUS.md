@@ -198,3 +198,27 @@ validation WisePad 3 + clé Stripe prod (GO owner), DNS cutover + déploiement R
 `TEST_DATABASE_URL` pour les specs pg/e2e en CI (décision infra), rotations de secrets D6/D8,
 réconciliation stock one-shot (écrit le stock réel — validation prod), **certificat de signature `.exe`**.
 Chaque action attend son GO nommé — aucune ne s'ouvre sur un « continue » générique (charte §0).
+
+## Chantier Journal de stock unifié / NF525 — branche `feat/stock-journal-nf525-on-main`
+> Surface Tier-2 (fiscal/stock). Synthèse : `PRODUCTS_FISCAL_STOCK_SYNTHESIS.md` · Dossier de GO :
+> `GO_F2_PACKAGE.md` · Dette : **D22**. **Aucun merge (Tier-2, GO owner).**
+
+**Véhicule canonique du GO : `feat/stock-journal-nf525-on-main`** — branchée sur `origin/main`,
+**3 commits**, indépendante du catalogue (prouvé : intersection = 3 docs de suivi, aucun fichier de
+code ; toutes les tables requises sur `origin/main`). Mergeable **seule**, sans embarquer la refonte
+catalogue. ⚠️ **La branche empilée `feat/stock-journal-nf525` (stack de 40 commits catalogue) est
+ARCHIVE** — ne plus l'utiliser comme véhicule de GO ni de merge.
+
+- **F0** — mig 1767 additive : `stock_movements` += liaison vente (store_id/sale_id/sale_line_item_id/
+  occurred_at) + index + unique partiel. ZÉRO comportement. Base vierge : 40 migrations, **tête = 1767**
+  (au-dessus de 1758 ; trou 1759→1766 = accès+catalogue absents, sans effet). ✅
+- **F1** — écriture double *shadow*, flag `STOCK_JOURNAL_SHADOW` **OFF par défaut**. Vente+retour →
+  mouvements, lecture caisse inchangée. **Hash de vente inchangé** (recalcul canonique prouvé). ✅
+- **Vérifs (vrai PG, base jetable, exit 0)** — pg-mem **967/0** ; F0 gated **3/3** ; F1 gated **5/5** ;
+  4 specs fiscales flag OFF (avoir-atomicité 1/1, fiscal-e2e 1/1, packs 2/2, anti-survente 1/1) ;
+  réconciliation **3/3**.
+- **Gaté, GO nominatif** — **F2** (void inverse + fix G3), **F1b** (`inventory_adjust` shadow ;
+  recommandation *delta signé* motivée + test), **F3** (bascule lecture + cutover solde d'ouverture),
+  **F4** (retrait legacy), **activation du flag hors test local**, **tout merge**.
+- **Dette D22** — couverture shadow partielle (vente+retour seulement) ⇒ réconciliation **non
+  exhaustive** tant que F1b/F2 non livrés. D21 réservée à la branche accès non mergée.
