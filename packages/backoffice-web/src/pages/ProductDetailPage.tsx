@@ -63,12 +63,15 @@ export function ProductDetailPage() {
   // Rendu du code-barres de l'étiquette (aperçu avant impression).
   useEffect(() => {
     if (!showLabel || !product?.ean || !labelBarcodeRef.current) return;
+    const svg = labelBarcodeRef.current;
+    const opts = { width: 2, height: 48, fontSize: 13, margin: 4 };
+    const fmt = product.ean.length === 8 ? 'EAN8' : product.ean.length === 13 ? 'EAN13' : 'CODE128';
     try {
-      JsBarcode(labelBarcodeRef.current, product.ean, {
-        format: product.ean.length === 8 ? 'EAN8' : product.ean.length === 13 ? 'EAN13' : 'CODE128',
-        width: 2, height: 48, fontSize: 13, margin: 4,
-      });
-    } catch { /* EAN non conforme : pas d'aperçu code-barres */ }
+      JsBarcode(svg, product.ean, { ...opts, format: fmt });
+    } catch {
+      // EAN non conforme (clé de contrôle) → repli CODE128 (imprime n'importe quelle chaîne).
+      try { JsBarcode(svg, product.ean, { ...opts, format: 'CODE128' }); } catch { /* non imprimable */ }
+    }
   }, [showLabel, product]);
 
   const brand = brands.find((b) => b.id === product?.brandId);
