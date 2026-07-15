@@ -136,6 +136,16 @@ Mission owner : RBAC pilotage par magasin + journal d'activité (connexions/sess
   retirées. `re-run` (exit 0) → ré-appliquées. Codifié : `access-activity-migrations.pg.spec.ts` (gated
   TEST_DATABASE_URL) — **3/3 PASS** sur PG local, **skippé** sinon. Commit `04c7dd0`.
 
-### Reste (déféré LÉGITIME — session live dédiée)
-Walkthrough navigateur bout-en-bout + **captures §20** (stack complète requise). Runbook exécutable :
-`docs/design/access-activity-audit-live-verification-runbook.md`. Verdict **NON TERMINÉ** motivé (D21).
+### Vérification LIVE EXÉCUTÉE (2026-07-15 — stack réelle PG16 + backend :3001 + backoffice :5173)
+- Migrations base vierge `caisse_liveverify` : run exit 0 (45), schéma `\d` vérifié (types/défauts/UNIQUE/
+  FK CASCADE/index partiel/anti-fork), revert ×6 exit 0, re-run exit 0, idempotent. Gated PG : 10/10.
+- HTTP réels (curl) : admin login, grant 201/200, audit `{valid:true}` ; manager Évry **403 FORBIDDEN/
+  STORE_NOT_IN_SCOPE**, suspend **403 ACCOUNT_SUSPENDED**, expiré **403 ACCESS_EXPIRED**, clear null → 200.
+- **2 BUGS trouvés en live → corrigés + re-vérifiés (commit `941a3ad`)** : (A) filtre d'exception global
+  écrasait le code métier en `HTTP_ERROR` → préserve `code`+`reason` (§5) ; (B) `grantStoreAccess` ne
+  pouvait effacer une borne via `null`. Suite après fix : **1026/0**.
+- Navigateur : 4 onglets rendus avec données réelles (IP masquée, risque, badge chaîne intègre), filtre +
+  état vide OK, gate admin (manager redirigé). Télémétrie : scan SQL 3 tables → **0 secret**.
+- Captures : en session (pane), pas PNG disque (limitation outil de capture). `.env`/launch.json restaurés.
+
+**Verdict : TERMINÉ ET VALIDÉ** (réserves : merge `main` = Tier-2 GO owner ; captures = session). D21 CLOSED.

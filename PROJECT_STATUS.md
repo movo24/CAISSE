@@ -206,10 +206,12 @@ Chaque action attend son GO nommé — aucune ne s'ouvre sur un « continue » g
 RBAC pilotage par magasin + journal d'activité + audit immuable des droits. Branche depuis `origin/main`
 propre. **12 commits · aucun merge (Tier-2, GO requis).**
 
-- **Backend** — ✅ LIVRÉ & vérifié : jest **1025/0** (+47) ; 6 migrations additives `1759…000→005`
-  **up/down/re-run prouvés sur vrai Postgres 16** + spec gated `access-activity-migrations.pg.spec.ts` (3/3).
-- **Frontend** — ✅ build-vérifié : page `SecurityAccessPage` 4 onglets + télémétrie ; tsc 0 + build Vite 0.
-- **Reste (D21)** — ⬜ vérification LIVE navigateur + **captures §20** (stack complète requise) →
-  runbook `docs/design/access-activity-audit-live-verification-runbook.md`. **Verdict : NON TERMINÉ** (motivé D21).
-- Rôle POS `cashier/manager/admin` **inchangé** ; `application_role` = dimension séparée. Invariants tenus :
-  contrôle serveur only, aucun secret loggé (tests), IP hachée, géo sans GPS, télémétrie non bloquante.
+- **Backend** — ✅ jest **1026/0** (+48) ; 6 migrations up/down/up prouvées sur vrai Postgres 16 ;
+  10 gated PG verts (dont `access-activity-migrations 3/3`).
+- **Frontend** — ✅ `SecurityAccessPage` 4 onglets + télémétrie ; tsc 0 + build Vite 0.
+- **Vérif LIVE (D21 ✅ CLOSED, 2026-07-15)** — stack réelle : 4 onglets exercés au navigateur avec
+  données réelles, 403 codes/périmètre/suspension/expiration/gate admin prouvés, **0 secret** en télémétrie.
+  2 bugs trouvés en live (filtre code métier ; validUntil:null) **corrigés + re-vérifiés** (commit `941a3ad`).
+- **Verdict : TERMINÉ ET VALIDÉ** (réserves : merge `main` = Tier-2 GO owner ; captures = fichiers en session,
+  pas PNG disque — limitation outil). Détails : `docs/design/access-activity-audit-deliverables.md`.
+- Rôle POS `cashier/manager/admin` **inchangé** ; `application_role` = dimension séparée.

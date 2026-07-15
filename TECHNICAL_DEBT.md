@@ -112,8 +112,15 @@ Statuts : OPEN · IN PROGRESS · BLOCKED (owner/accès) · CLOSED (PR retire l'e
 
 ---
 
-## D21 — Accès magasins + journal d'activité : **vérification LIVE navigateur + captures §20** non faite
-**Status:** OPEN (déféré légitime — nécessite la stack complète tournante). **Since:** 2026-07-15, branche `feat/mobile-access-and-activity-audit`.
+## D21 — Accès magasins + journal d'activité : vérification LIVE
+**Status:** ✅ **CLOSED (vérif live EXÉCUTÉE 2026-07-15)** — stack réelle Postgres 16 + backend + backoffice.
+Migrations up/down/up prouvées sur base vierge (schéma `\d` vérifié) ; 10 gated PG verts ; 4 onglets
+exercés au navigateur avec données réelles ; 403 codes / périmètre / suspension / expiration / gate admin
+prouvés ; **0 secret** dans la télémétrie (scan SQL). **2 bugs découverts en live** (filtre écrasait le
+code métier en `HTTP_ERROR` ; `validUntil:null` n'effaçait pas la borne) → **corrigés + re-vérifiés**
+(commit `941a3ad`, + test de régression). **Résiduel mineur (non-défaut)** : captures = fichiers en
+session (pane navigateur), pas PNG disque — l'outil de capture n'écrit pas de fichier (export possible
+via passe headless Playwright si requis). Merge `main` = Tier-2, GO owner. **Since:** 2026-07-15, branche `feat/mobile-access-and-activity-audit`.
 
 **Contexte.** Le backend (RBAC pilotage, `access_audit_log` immuable, télémétrie non bloquante, alertes,
 rétention opt-in) est **complet et vérifié** : suite backend **1025/0**, et le cycle migrations up/down/re-run
