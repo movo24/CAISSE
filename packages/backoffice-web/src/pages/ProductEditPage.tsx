@@ -134,6 +134,9 @@ export function ProductEditPage() {
   const [barcodes, setBarcodes] = useState<any[]>([]);
   const [newBarcode, setNewBarcode] = useState('');
   const [newBarcodeType, setNewBarcodeType] = useState('ean');
+  // Lot B — fournisseurs multiples
+  const [prodSuppliers, setProdSuppliers] = useState<any[]>([]);
+  const [psForm, setPsForm] = useState({ supplierId: '', supplierRef: '', purchasePrice: '', currencyCode: 'EUR', leadTimeDays: '', minOrderQuantity: '', incoterm: '', isPrimary: false });
 
   const load = useCallback(async () => {
     try {
@@ -215,6 +218,7 @@ export function ProductEditPage() {
       productsApi.listMedia(id).then((r) => setMedia(r.data || [])).catch(() => {});
       productsApi.listDocuments(id).then((r) => setDocuments(r.data || [])).catch(() => {});
       productsApi.listBarcodes(id).then((r) => setBarcodes(r.data || [])).catch(() => {});
+      productsApi.listProductSuppliers(id).then((r) => setProdSuppliers(r.data || [])).catch(() => {});
     } catch (e: any) {
       setError(e?.response?.data?.message || 'Chargement impossible');
     } finally { setLoading(false); }
@@ -436,6 +440,35 @@ export function ProductEditPage() {
     if (!id) return;
     await productsApi.removeBarcode(id, bid).catch(() => {});
     setBarcodes((await productsApi.listBarcodes(id)).data || []);
+  };
+
+  // ── Fournisseurs multiples (Lot B) ──
+  const addProdSupplier = async () => {
+    if (!id || !psForm.supplierId) { setError('Choisissez un fournisseur.'); return; }
+    try {
+      await productsApi.addProductSupplier(id, {
+        supplierId: psForm.supplierId,
+        isPrimary: psForm.isPrimary,
+        supplierRef: psForm.supplierRef.trim() || undefined,
+        purchasePriceMinorUnits: toMinor(psForm.purchasePrice) ?? undefined,
+        currencyCode: psForm.currencyCode || 'EUR',
+        leadTimeDays: toInt(psForm.leadTimeDays),
+        minOrderQuantity: toInt(psForm.minOrderQuantity),
+        incoterm: psForm.incoterm.trim() || undefined,
+      });
+      setPsForm({ supplierId: '', supplierRef: '', purchasePrice: '', currencyCode: 'EUR', leadTimeDays: '', minOrderQuantity: '', incoterm: '', isPrimary: false });
+      setProdSuppliers((await productsApi.listProductSuppliers(id)).data || []);
+    } catch (e: any) { setError(e?.response?.data?.message || 'Ajout fournisseur impossible'); }
+  };
+  const setPrimaryProdSupplier = async (rowId: string) => {
+    if (!id) return;
+    await productsApi.updateProductSupplier(id, rowId, { isPrimary: true }).catch(() => {});
+    setProdSuppliers((await productsApi.listProductSuppliers(id)).data || []);
+  };
+  const removeProdSupplier = async (rowId: string) => {
+    if (!id) return;
+    await productsApi.removeProductSupplier(id, rowId).catch(() => {});
+    setProdSuppliers((await productsApi.listProductSuppliers(id)).data || []);
   };
 
   // ══════════ PORTE SCANNER (création) ══════════
@@ -664,7 +697,57 @@ export function ProductEditPage() {
               <Field label="MOQ (qté min. commande)"><input className={inputCls} inputMode="numeric" value={form.minOrderQuantity} onChange={(e) => set('minOrderQuantity', e.target.value)} /></Field>
               <Field label="Pays d'origine"><input className={inputCls} value={form.countryOfOrigin} onChange={(e) => set('countryOfOrigin', e.target.value)} placeholder="France" /></Field>
             </div>
-            <Phase2Notice fields="Fournisseur secondaire · contact dédié · conditionnement · devise · incoterm — table product_suppliers à venir" />
+            {isEdit ? (
+              <div className="space-y-3 border-t border-gray-100 pt-4">
+                <p className="text-sm font-semibold text-bo-text">Fournisseurs &amp; conditions d'achat ({prodSuppliers.length})</p>
+                {prodSuppliers.length > 0 && (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm min-w-[640px]">
+                      <thead><tr className="text-left text-[11px] uppercase text-gray-400 border-b border-gray-100"><th className="py-1.5">Fournisseur</th><th>Réf</th><th className="text-right">Prix achat</th><th className="text-right">Délai</th><th className="text-right">MOQ</th><th>Incoterm</th><th /></tr></thead>
+                      <tbody>
+                        {prodSuppliers.map((r) => {
+                          const sup = suppliers.find((s) => s.id === r.supplierId);
+                          return (
+                            <tr key={r.id} className="border-b border-gray-50">
+                              <td className="py-2 font-medium text-gray-700">{sup?.name || r.supplierId}{r.isPrimary && <span className="ml-2 text-[11px] font-semibold text-emerald-600">principal</span>}</td>
+                              <td className="text-gray-500 font-mono text-xs">{r.supplierRef || '—'}</td>
+                              <td className="text-right tabular-nums">{r.purchasePriceMinorUnits != null ? `${(r.purchasePriceMinorUnits / 100).toFixed(2)} ${r.currencyCode}` : '—'}</td>
+                              <td className="text-right tabular-nums">{r.leadTimeDays ?? '—'}</td>
+                              <td className="text-right tabular-nums">{r.minOrderQuantity ?? '—'}</td>
+                              <td className="text-gray-500">{r.incoterm || '—'}</td>
+                              <td className="text-right whitespace-nowrap">
+                                {!r.isPrimary && <button onClick={() => setPrimaryProdSupplier(r.id)} className="text-[11px] text-bo-accent hover:underline mr-2">principal</button>}
+                                <button onClick={() => removeProdSupplier(r.id)} className="p-1 text-red-400 hover:bg-red-50 rounded-lg inline-flex"><Trash2 size={13} /></button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 items-end rounded-xl bg-gray-50 p-3">
+                  <Field label="Fournisseur">
+                    <select className={inputCls} value={psForm.supplierId} onChange={(e) => setPsForm({ ...psForm, supplierId: e.target.value })}>
+                      <option value="">— Choisir —</option>
+                      {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Réf fournisseur"><input className={inputCls} value={psForm.supplierRef} onChange={(e) => setPsForm({ ...psForm, supplierRef: e.target.value })} /></Field>
+                  <Field label="Prix achat"><input className={inputCls} inputMode="decimal" value={psForm.purchasePrice} onChange={(e) => setPsForm({ ...psForm, purchasePrice: e.target.value })} /></Field>
+                  <Field label="Devise"><input className={inputCls} value={psForm.currencyCode} onChange={(e) => setPsForm({ ...psForm, currencyCode: e.target.value })} /></Field>
+                  <Field label="Délai (j)"><input className={inputCls} inputMode="numeric" value={psForm.leadTimeDays} onChange={(e) => setPsForm({ ...psForm, leadTimeDays: e.target.value })} /></Field>
+                  <Field label="MOQ"><input className={inputCls} inputMode="numeric" value={psForm.minOrderQuantity} onChange={(e) => setPsForm({ ...psForm, minOrderQuantity: e.target.value })} /></Field>
+                  <Field label="Incoterm"><input className={inputCls} value={psForm.incoterm} onChange={(e) => setPsForm({ ...psForm, incoterm: e.target.value })} placeholder="DDP, FOB…" /></Field>
+                  <div className="flex items-center gap-2">
+                    <label className="flex items-center gap-1.5 text-xs text-gray-600"><input type="checkbox" checked={psForm.isPrimary} onChange={(e) => setPsForm({ ...psForm, isPrimary: e.target.checked })} className="accent-bo-accent" /> principal</label>
+                    <button onClick={addProdSupplier} className="px-3 py-2 rounded-lg bg-bo-accent text-white text-sm font-semibold flex items-center gap-1 whitespace-nowrap"><Plus size={14} /> Ajouter</button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <Phase2Notice fields="Fournisseurs multiples : enregistrez d'abord la fiche pour ajouter des fournisseurs et leurs conditions d'achat." />
+            )}
           </div>
         )}
 

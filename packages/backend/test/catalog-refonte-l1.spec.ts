@@ -22,6 +22,7 @@ import { ProductComponentEntity } from '../src/database/entities/product-compone
 import { ProductMediaEntity } from '../src/database/entities/product-media.entity';
 import { ProductDocumentEntity } from '../src/database/entities/product-document.entity';
 import { ProductBarcodeEntity } from '../src/database/entities/product-barcode.entity';
+import { ProductSupplierEntity } from '../src/database/entities/product-supplier.entity';
 import { AuditEntryEntity } from '../src/database/entities/audit-entry.entity';
 import { AuditService } from '../src/modules/audit/audit.service';
 import { ProductsService } from '../src/modules/products/products.service';
@@ -52,6 +53,7 @@ describe('Catalogue refonte L1 — product enablement (no migration)', () => {
       ds.getRepository(ProductMediaEntity),
       ds.getRepository(ProductDocumentEntity),
       ds.getRepository(ProductBarcodeEntity),
+      ds.getRepository(ProductSupplierEntity),
     );
   });
   afterAll(async () => {
@@ -442,6 +444,48 @@ describe('Catalogue refonte L1 — product enablement (no migration)', () => {
 
     it('garde tenant : un autre magasin ne voit pas les codes', async () => {
       await expect(svc.listBarcodes(pid, uuidv4())).rejects.toThrow();
+    });
+  });
+
+  // ── Lot B — fournisseurs multiples ─────────────────────────────────
+  describe('Lot B — fournisseurs multiples', () => {
+    const S = uuidv4();
+    let pid = '';
+    let sup1 = '';
+    let sup2 = '';
+    beforeAll(async () => {
+      await ds.getRepository(StoreEntity).save({ id: S, name: 'LB', isActive: true, currencyCode: 'EUR' } as any);
+      pid = (await svc.create({ ean: nextEan(), name: 'Multi-frs', priceMinorUnits: 100, taxRate: 20, storeId: S } as any, EMP)).id;
+      sup1 = (await svc.getOrCreateSupplier(S, 'Frs 1')).id;
+      sup2 = (await svc.getOrCreateSupplier(S, 'Frs 2')).id;
+    });
+
+    it('attache 2 fournisseurs avec conditions ; principal exclusif ; anti-doublon', async () => {
+      await svc.addProductSupplier(pid, S, { supplierId: sup1, isPrimary: true, supplierRef: 'A-1', purchasePriceMinorUnits: 80, leadTimeDays: 5, minOrderQuantity: 12, incoterm: 'DDP' } as any);
+      await svc.addProductSupplier(pid, S, { supplierId: sup2, purchasePriceMinorUnits: 75, currencyCode: 'USD' } as any);
+      const list = await svc.listProductSuppliers(pid, S);
+      expect(list).toHaveLength(2);
+      expect(list.filter((r) => r.isPrimary)).toHaveLength(1);
+      expect(list.find((r) => r.supplierId === sup1)!.supplierRef).toBe('A-1');
+      expect(list.find((r) => r.supplierId === sup2)!.currencyCode).toBe('USD');
+      await expect(svc.addProductSupplier(pid, S, { supplierId: sup1 } as any)).rejects.toMatchObject({ code: 'PRODUCT_SUPPLIER_EXISTS' });
+    });
+
+    it('rejette un fournisseur hors magasin ; update bascule le principal', async () => {
+      await expect(svc.addProductSupplier(pid, S, { supplierId: uuidv4() } as any)).rejects.toThrow();
+      const list = await svc.listProductSuppliers(pid, S);
+      const second = list.find((r) => r.supplierId === sup2)!;
+      await svc.updateProductSupplier(pid, S, second.id, { isPrimary: true, leadTimeDays: 3 } as any);
+      const after = await svc.listProductSuppliers(pid, S);
+      expect(after.find((r) => r.id === second.id)!.isPrimary).toBe(true);
+      expect(after.find((r) => r.id === second.id)!.leadTimeDays).toBe(3);
+      expect(after.filter((r) => r.isPrimary)).toHaveLength(1);
+      await svc.removeProductSupplier(pid, S, second.id);
+      expect((await svc.listProductSuppliers(pid, S)).some((r) => r.id === second.id)).toBe(false);
+    });
+
+    it('garde tenant', async () => {
+      await expect(svc.listProductSuppliers(pid, uuidv4())).rejects.toThrow();
     });
   });
 });

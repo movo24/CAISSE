@@ -273,6 +273,11 @@ export const productsApi = {
     api.put(`/products/${id}/components/${componentRowId}`, data),
   removeComponent: (id: string, componentRowId: string) =>
     api.delete(`/products/${id}/components/${componentRowId}`),
+  // Fournisseurs multiples (Lot B)
+  listProductSuppliers: (id: string) => api.get(`/products/${id}/suppliers`),
+  addProductSupplier: (id: string, data: any) => api.post(`/products/${id}/suppliers`, data),
+  updateProductSupplier: (id: string, rowId: string, data: any) => api.put(`/products/${id}/suppliers/${rowId}`, data),
+  removeProductSupplier: (id: string, rowId: string) => api.delete(`/products/${id}/suppliers/${rowId}`),
   // Codes-barres multiples (Lot A)
   listBarcodes: (id: string) => api.get(`/products/${id}/barcodes`),
   addBarcode: (id: string, data: { barcode: string; type?: string; isPrimary?: boolean }) =>

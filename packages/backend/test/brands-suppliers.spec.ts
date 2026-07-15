@@ -17,6 +17,7 @@ import { ProductComponentEntity } from '../src/database/entities/product-compone
 import { ProductMediaEntity } from '../src/database/entities/product-media.entity';
 import { ProductDocumentEntity } from '../src/database/entities/product-document.entity';
 import { ProductBarcodeEntity } from '../src/database/entities/product-barcode.entity';
+import { ProductSupplierEntity } from '../src/database/entities/product-supplier.entity';
 import { AuditEntryEntity } from '../src/database/entities/audit-entry.entity';
 import { AuditService } from '../src/modules/audit/audit.service';
 import { ProductsService } from '../src/modules/products/products.service';
@@ -44,6 +45,7 @@ describe('Decision 3 — brand / supplier catalogue', () => {
       ds.getRepository(ProductMediaEntity),
       ds.getRepository(ProductDocumentEntity),
       ds.getRepository(ProductBarcodeEntity),
+      ds.getRepository(ProductSupplierEntity),
     );
   });
   afterAll(async () => {

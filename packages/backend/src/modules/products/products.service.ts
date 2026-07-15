@@ -17,6 +17,7 @@ import { ProductComponentEntity } from '../../database/entities/product-componen
 import { ProductMediaEntity } from '../../database/entities/product-media.entity';
 import { ProductDocumentEntity } from '../../database/entities/product-document.entity';
 import { ProductBarcodeEntity } from '../../database/entities/product-barcode.entity';
+import { ProductSupplierEntity } from '../../database/entities/product-supplier.entity';
 import { AuditService } from '../audit/audit.service';
 import { PaginatedResult } from '../../common/dto/pagination.dto';
 import { computePriceVerdict, PriceVerdict } from './price-verdict';
@@ -60,7 +61,73 @@ export class ProductsService {
     private documentRepo: Repository<ProductDocumentEntity>,
     @InjectRepository(ProductBarcodeEntity)
     private barcodeRepo: Repository<ProductBarcodeEntity>,
+    @InjectRepository(ProductSupplierEntity)
+    private productSupplierRepo: Repository<ProductSupplierEntity>,
   ) {}
+
+  // ── Fournisseurs multiples par produit (Lot B) ──
+
+  async listProductSuppliers(productId: string, storeId: string): Promise<ProductSupplierEntity[]> {
+    await this.findOneForStore(productId, storeId);
+    return this.productSupplierRepo.find({ where: { productId, storeId }, order: { isPrimary: 'DESC', createdAt: 'ASC' } });
+  }
+
+  private async assertSupplierInStore(storeId: string, supplierId: string): Promise<void> {
+    const sup = await this.supplierRepo.findOne({ where: { id: supplierId, storeId } });
+    if (!sup) throw new BadRequestException('Fournisseur introuvable dans ce magasin');
+  }
+
+  async addProductSupplier(
+    productId: string,
+    storeId: string,
+    data: Partial<ProductSupplierEntity>,
+  ): Promise<ProductSupplierEntity> {
+    await this.findOneForStore(productId, storeId);
+    if (!data.supplierId) throw new BadRequestException('Le fournisseur est requis');
+    await this.assertSupplierInStore(storeId, data.supplierId);
+    const dup = await this.productSupplierRepo.findOne({ where: { productId, supplierId: data.supplierId } });
+    if (dup) {
+      throw new BusinessError('PRODUCT_SUPPLIER_EXISTS', 'Ce fournisseur est déjà rattaché au produit.', HttpStatus.CONFLICT);
+    }
+    if (data.isPrimary) await this.productSupplierRepo.update({ productId, storeId }, { isPrimary: false });
+    return this.productSupplierRepo.save(
+      this.productSupplierRepo.create({
+        productId,
+        storeId,
+        supplierId: data.supplierId,
+        isPrimary: !!data.isPrimary,
+        supplierRef: data.supplierRef ?? null,
+        purchasePriceMinorUnits: data.purchasePriceMinorUnits ?? null,
+        currencyCode: data.currencyCode ?? 'EUR',
+        leadTimeDays: data.leadTimeDays ?? null,
+        minOrderQuantity: data.minOrderQuantity ?? null,
+        incoterm: data.incoterm ?? null,
+      }),
+    );
+  }
+
+  async updateProductSupplier(
+    productId: string,
+    storeId: string,
+    rowId: string,
+    patch: Partial<ProductSupplierEntity>,
+  ): Promise<ProductSupplierEntity> {
+    await this.findOneForStore(productId, storeId);
+    const row = await this.productSupplierRepo.findOne({ where: { id: rowId, productId, storeId } });
+    if (!row) throw new NotFoundException('Ligne fournisseur introuvable');
+    if (patch.isPrimary) await this.productSupplierRepo.update({ productId, storeId }, { isPrimary: false });
+    const allowed: (keyof ProductSupplierEntity)[] = [
+      'isPrimary', 'supplierRef', 'purchasePriceMinorUnits', 'currencyCode', 'leadTimeDays', 'minOrderQuantity', 'incoterm',
+    ];
+    for (const k of allowed) if (patch[k] !== undefined) (row as any)[k] = patch[k];
+    return this.productSupplierRepo.save(row);
+  }
+
+  async removeProductSupplier(productId: string, storeId: string, rowId: string): Promise<{ message: string }> {
+    await this.findOneForStore(productId, storeId);
+    await this.productSupplierRepo.delete({ id: rowId, productId, storeId });
+    return { message: 'Fournisseur retiré du produit.' };
+  }
 
   // ── Codes-barres multiples (Lot A) ──
 

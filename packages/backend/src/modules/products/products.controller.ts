@@ -271,6 +271,36 @@ export class ProductsController {
     return this.productsService.removeComponent(id, componentRowId, req.user.storeId);
   }
 
+  // ── Fournisseurs multiples (Lot B) ──
+
+  @Get(':id/suppliers')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'List the suppliers of a product (with purchase conditions)' })
+  listProductSuppliers(@Param('id') id: string, @Request() req: any) {
+    return this.productsService.listProductSuppliers(id, req.user.storeId);
+  }
+
+  @Post(':id/suppliers')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'Attach a supplier with purchase conditions' })
+  addProductSupplier(@Param('id') id: string, @Body() body: any, @Request() req: any) {
+    return this.productsService.addProductSupplier(id, req.user.storeId, body ?? {});
+  }
+
+  @Put(':id/suppliers/:rowId')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'Update a product-supplier line' })
+  updateProductSupplier(@Param('id') id: string, @Param('rowId') rowId: string, @Body() body: any, @Request() req: any) {
+    return this.productsService.updateProductSupplier(id, req.user.storeId, rowId, body ?? {});
+  }
+
+  @Delete(':id/suppliers/:rowId')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'Detach a supplier from the product' })
+  removeProductSupplier(@Param('id') id: string, @Param('rowId') rowId: string, @Request() req: any) {
+    return this.productsService.removeProductSupplier(id, req.user.storeId, rowId);
+  }
+
   // ── Codes-barres multiples (Lot A) ──
 
   @Get(':id/barcodes')
