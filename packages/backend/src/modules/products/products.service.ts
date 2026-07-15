@@ -291,6 +291,18 @@ export class ProductsService {
     return { message: 'Image retirée.' };
   }
 
+  /** Réordonne la galerie selon la liste d'ids fournie (glisser-déposer, Lot G). */
+  async reorderMedia(productId: string, storeId: string, orderedIds: string[]): Promise<ProductMediaEntity[]> {
+    await this.findOneForStore(productId, storeId);
+    const rows = await this.mediaRepo.find({ where: { productId, storeId } });
+    const known = new Set(rows.map((r) => r.id));
+    let order = 0;
+    for (const id of orderedIds || []) {
+      if (known.has(id)) await this.mediaRepo.update({ id, productId, storeId }, { sortOrder: order++ });
+    }
+    return this.listMedia(productId, storeId);
+  }
+
   async listDocuments(productId: string, storeId: string): Promise<ProductDocumentEntity[]> {
     await this.findOneForStore(productId, storeId);
     return this.documentRepo.find({ where: { productId, storeId }, order: { createdAt: 'ASC' } });

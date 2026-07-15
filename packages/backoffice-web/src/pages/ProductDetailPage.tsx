@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import JsBarcode from 'jsbarcode';
 import {
   ArrowLeft, Pencil, Copy, Power, PowerOff, Tag, ListOrdered, Loader2,
-  Package, AlertTriangle, XCircle, CheckCircle2,
+  Package, AlertTriangle, XCircle, CheckCircle2, X,
 } from 'lucide-react';
 import { productsApi, stockLocationsApi } from '../services/api';
 
@@ -33,6 +34,8 @@ export function ProductDetailPage() {
   const [categories, setCategories] = useState<Array<{ id: string; name: string; parentId: string | null }>>([]);
   const [movements, setMovements] = useState<any[] | null>(null);
   const [busy, setBusy] = useState(false);
+  const [showLabel, setShowLabel] = useState(false);
+  const labelBarcodeRef = useRef<SVGSVGElement>(null);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -56,6 +59,17 @@ export function ProductDetailPage() {
     }
   }, [id]);
   useEffect(() => { load(); }, [load]);
+
+  // Rendu du code-barres de l'étiquette (aperçu avant impression).
+  useEffect(() => {
+    if (!showLabel || !product?.ean || !labelBarcodeRef.current) return;
+    try {
+      JsBarcode(labelBarcodeRef.current, product.ean, {
+        format: product.ean.length === 8 ? 'EAN8' : product.ean.length === 13 ? 'EAN13' : 'CODE128',
+        width: 2, height: 48, fontSize: 13, margin: 4,
+      });
+    } catch { /* EAN non conforme : pas d'aperçu code-barres */ }
+  }, [showLabel, product]);
 
   const brand = brands.find((b) => b.id === product?.brandId);
   const supplier = suppliers.find((s) => s.id === product?.supplierId);
@@ -196,7 +210,7 @@ export function ProductDetailPage() {
             {busy ? <Loader2 size={15} className="animate-spin" /> : product.isActive ? <PowerOff size={15} /> : <Power size={15} />}
             {product.isActive ? 'Désactiver' : 'Réactiver'}
           </button>
-          <button onClick={() => navigate('/labels')} className="flex items-center gap-2 px-4 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50"><Tag size={15} /> Imprimer une étiquette</button>
+          <button onClick={() => setShowLabel(true)} className="flex items-center gap-2 px-4 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50"><Tag size={15} /> Aperçu étiquette</button>
           <button onClick={loadMovements} className="flex items-center gap-2 px-4 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50"><ListOrdered size={15} /> Consulter les mouvements</button>
         </div>
       </div>
@@ -243,6 +257,28 @@ export function ProductDetailPage() {
               </tbody>
             </table>
           )}
+        </div>
+      )}
+
+      {/* Aperçu étiquette avant impression (Lot G) */}
+      {showLabel && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-6" onClick={() => setShowLabel(false)}>
+          <div className="bg-white rounded-2xl shadow-elevated w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-bo-text">Aperçu de l'étiquette</h3>
+              <button onClick={() => setShowLabel(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+            </div>
+            <div id="label-print-area" className="border border-gray-200 rounded-xl p-4 text-center">
+              <p className="text-sm font-bold text-bo-text truncate">{product.name}</p>
+              {brand && <p className="text-[11px] text-gray-400">{brand.name}</p>}
+              <p className="text-2xl font-black text-bo-text my-2">{eur(calc?.ttc)}</p>
+              <svg ref={labelBarcodeRef} className="mx-auto" />
+            </div>
+            <div className="flex items-center justify-end gap-2 mt-4">
+              <button onClick={() => navigate('/labels')} className="px-4 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50">Atelier d'étiquettes</button>
+              <button onClick={() => window.print()} className="px-4 py-2 rounded-xl bg-bo-accent text-white text-sm font-semibold">Imprimer</button>
+            </div>
+          </div>
         </div>
       )}
     </div>

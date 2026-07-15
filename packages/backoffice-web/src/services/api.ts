@@ -296,6 +296,7 @@ export const productsApi = {
   listMedia: (id: string) => api.get(`/products/${id}/media`),
   addMedia: (id: string, url: string) => api.post(`/products/${id}/media`, { url }),
   removeMedia: (id: string, mediaId: string) => api.delete(`/products/${id}/media/${mediaId}`),
+  reorderMedia: (id: string, orderedIds: string[]) => api.put(`/products/${id}/media/reorder`, { orderedIds }),
   listDocuments: (id: string) => api.get(`/products/${id}/documents`),
   addDocument: (id: string, name: string, url: string) => api.post(`/products/${id}/documents`, { name, url }),
   removeDocument: (id: string, documentId: string) => api.delete(`/products/${id}/documents/${documentId}`),

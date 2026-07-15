@@ -391,6 +391,13 @@ export class ProductsController {
     return this.productsService.removeMedia(id, req.user.storeId, mediaId);
   }
 
+  @Put(':id/media/reorder')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'Reorder the gallery (drag & drop) — pass ordered media ids' })
+  reorderMedia(@Param('id') id: string, @Body() body: { orderedIds: string[] }, @Request() req: any) {
+    return this.productsService.reorderMedia(id, req.user.storeId, body?.orderedIds ?? []);
+  }
+
   @Get(':id/documents')
   @ApiOperation({ summary: 'List product documents (external URLs)' })
   listDocuments(@Param('id') id: string, @Request() req: any) {

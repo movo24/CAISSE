@@ -137,6 +137,7 @@ export function ProductEditPage() {
   const [reason, setReason] = useState('');
   // Lot 4 — galerie & documents
   const [media, setMedia] = useState<any[]>([]);
+  const [dragMediaIdx, setDragMediaIdx] = useState<number | null>(null);
   const [documents, setDocuments] = useState<any[]>([]);
   const [newMediaUrl, setNewMediaUrl] = useState('');
   const [newDocName, setNewDocName] = useState('');
@@ -454,6 +455,14 @@ export function ProductEditPage() {
     if (!id) return;
     await productsApi.removeMedia(id, mid).catch(() => {});
     setMedia((await productsApi.listMedia(id)).data || []);
+  };
+  const moveMedia = async (from: number, to: number) => {
+    if (!id || from === to || from == null) return;
+    const next = [...media];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    setMedia(next); // optimiste
+    try { setMedia((await productsApi.reorderMedia(id, next.map((m) => m.id))).data || next); } catch { /* garde l'ordre local */ }
   };
   const addDocument = async () => {
     if (!id || !newDocUrl.trim() || !newDocName.trim()) return;
@@ -1003,14 +1012,25 @@ export function ProductEditPage() {
                     <button onClick={addMedia} className="px-4 py-2.5 rounded-xl bg-bo-accent text-white text-sm font-semibold whitespace-nowrap flex items-center gap-1.5"><Plus size={14} /> Ajouter</button>
                   </div>
                   {media.length > 0 && (
-                    <div className="flex flex-wrap gap-3">
-                      {media.map((m) => (
-                        <div key={m.id} className="relative w-24 h-24 rounded-xl border border-gray-100 bg-gray-50 overflow-hidden group">
-                          <img src={m.url} alt="" className="w-full h-full object-contain" />
-                          <button onClick={() => removeMedia(m.id)} className="absolute top-1 right-1 p-1 rounded-lg bg-white/90 text-red-500 opacity-0 group-hover:opacity-100"><Trash2 size={13} /></button>
-                        </div>
-                      ))}
-                    </div>
+                    <>
+                      <div className="flex flex-wrap gap-3">
+                        {media.map((m, idx) => (
+                          <div
+                            key={m.id}
+                            draggable
+                            onDragStart={() => setDragMediaIdx(idx)}
+                            onDragOver={(e) => e.preventDefault()}
+                            onDrop={() => { if (dragMediaIdx !== null) moveMedia(dragMediaIdx, idx); setDragMediaIdx(null); }}
+                            className={`relative w-24 h-24 rounded-xl border bg-gray-50 overflow-hidden group cursor-move ${dragMediaIdx === idx ? 'border-bo-accent opacity-60' : 'border-gray-100'}`}
+                          >
+                            <img src={m.url} alt="" className="w-full h-full object-contain pointer-events-none" />
+                            {idx === 0 && <span className="absolute bottom-1 left-1 text-[9px] font-semibold bg-white/90 text-bo-accent px-1 rounded">principale</span>}
+                            <button onClick={() => removeMedia(m.id)} className="absolute top-1 right-1 p-1 rounded-lg bg-white/90 text-red-500 opacity-0 group-hover:opacity-100"><Trash2 size={13} /></button>
+                          </div>
+                        ))}
+                      </div>
+                      <p className="text-[11px] text-gray-400">Glissez-déposez pour réordonner ; la première image est la principale.</p>
+                    </>
                   )}
                 </div>
 

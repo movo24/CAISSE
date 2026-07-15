@@ -410,6 +410,15 @@ describe('Catalogue refonte L1 — product enablement (no migration)', () => {
     it('la galerie d’un autre magasin est inaccessible (garde tenant)', async () => {
       await expect(svc.listMedia(pid, uuidv4())).rejects.toThrow();
     });
+
+    it('reorderMedia réordonne selon la liste d’ids (glisser-déposer)', async () => {
+      await svc.addMedia(pid, S, 'http://x/r1.png');
+      await svc.addMedia(pid, S, 'http://x/r2.png');
+      const before = await svc.listMedia(pid, S);
+      const reversed = [...before].reverse().map((m) => m.id);
+      const after = await svc.reorderMedia(pid, S, reversed);
+      expect(after.map((m) => m.id)).toEqual(reversed);
+    });
   });
 
   // ── Lot A — codes-barres multiples ─────────────────────────────────
