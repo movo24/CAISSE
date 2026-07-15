@@ -109,6 +109,20 @@ export function ProductDetailPage() {
     }
   };
 
+  const duplicate = async () => {
+    if (!product) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await productsApi.duplicate(product.id);
+      navigate(`/products/${r.data.id}/edit`);
+    } catch (e: any) {
+      setError(e?.response?.data?.message || 'Duplication impossible.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const loadMovements = async () => {
     if (!id) return;
     try {
@@ -177,7 +191,7 @@ export function ProductDetailPage() {
         {/* Actions */}
         <div className="flex items-center gap-2 flex-wrap mt-6 pt-5 border-t border-gray-100">
           <button onClick={() => navigate(`/products/${product.id}/edit`)} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-bo-accent text-white text-sm font-semibold hover:bg-bo-accent/90"><Pencil size={15} /> Modifier</button>
-          <button onClick={() => navigate(`/products/new?from=${product.id}`)} className="flex items-center gap-2 px-4 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50"><Copy size={15} /> Dupliquer</button>
+          <button onClick={duplicate} disabled={busy} className="flex items-center gap-2 px-4 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50"><Copy size={15} /> Dupliquer</button>
           <button onClick={toggleActive} disabled={busy} className="flex items-center gap-2 px-4 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50">
             {busy ? <Loader2 size={15} className="animate-spin" /> : product.isActive ? <PowerOff size={15} /> : <Power size={15} />}
             {product.isActive ? 'Désactiver' : 'Réactiver'}

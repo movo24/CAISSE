@@ -484,6 +484,13 @@ export class ProductsController {
     );
   }
 
+  @Post(':id/duplicate')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'Full duplicate: clone the sheet + packs/media/documents/suppliers/links (new internal EAN, draft)' })
+  duplicateProduct(@Param('id') id: string, @Request() req: any) {
+    return this.productsService.duplicateProduct(id, req.user.storeId, req.user.employeeId);
+  }
+
   @Post(':id/generate-barcode')
   @Roles('admin', 'manager')
   @ApiOperation({ summary: 'Generate internal barcode for a product without one' })

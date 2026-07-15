@@ -599,4 +599,45 @@ describe('Catalogue refonte L1 — product enablement (no migration)', () => {
       await expect(svc.listLinks(a, uuidv4())).rejects.toThrow();
     });
   });
+
+  // ── Lot F — duplication complète ───────────────────────────────────
+  describe('Lot F — duplication complète', () => {
+    const S = uuidv4();
+    let src = '';
+    let other = '';
+    beforeAll(async () => {
+      await ds.getRepository(StoreEntity).save({ id: S, name: 'LF', isActive: true, currencyCode: 'EUR' } as any);
+      src = (await svc.create({ ean: nextEan(), name: 'À dupliquer', priceMinorUnits: 900, taxRate: 20, storeId: S, sku: 'SRC-1', weightGrams: 300 } as any, EMP)).id;
+      other = (await svc.create({ ean: nextEan(), name: 'Composant', priceMinorUnits: 100, taxRate: 20, storeId: S } as any, EMP)).id;
+      await svc.addComponent(src, S, { componentProductId: other, quantityPerParent: 2 } as any);
+      await svc.addMedia(src, S, 'http://x/a.png');
+      const sup = await svc.getOrCreateSupplier(S, 'FrsDup');
+      await svc.addProductSupplier(src, S, { supplierId: sup.id, purchasePriceMinorUnits: 400 } as any);
+      await svc.addLink(src, S, other, 'complementary');
+    });
+
+    it('clone la fiche (EAN interne neuf, SKU vidé, brouillon, stock 0) + composants/media/fournisseurs/liens', async () => {
+      const clone = await svc.duplicateProduct(src, S, EMP);
+      expect(clone.id).not.toBe(src);
+      expect(clone.name).toBe('À dupliquer (copie)');
+      expect(clone.ean).not.toBe((await svc.findOne(src, S)).ean);
+      expect(clone.ean.startsWith('290')).toBe(true);
+      expect(clone.sku).toBeFalsy();
+      expect(clone.status).toBe('draft');
+      expect(clone.isActive).toBe(false);
+      expect(clone.stockQuantity).toBe(0);
+      expect(clone.weightGrams).toBe(300); // champ additif copié
+      expect(await svc.listComponents(clone.id, S)).toHaveLength(1);
+      expect(await svc.listMedia(clone.id, S)).toHaveLength(1);
+      expect(await svc.listProductSuppliers(clone.id, S)).toHaveLength(1);
+      expect(await svc.listLinks(clone.id, S)).toHaveLength(1);
+    });
+
+    it('refuse de dupliquer une variante et garde tenant', async () => {
+      const parent = (await svc.create({ ean: nextEan(), name: 'Parent', priceMinorUnits: 100, taxRate: 20, storeId: S } as any, EMP)).id;
+      const variant = await svc.createVariant(parent, S, { ean: nextEan(), variantName: 'V', priceMinorUnits: 100 }, EMP);
+      await expect(svc.duplicateProduct(variant.id, S, EMP)).rejects.toThrow();
+      await expect(svc.duplicateProduct(src, uuidv4(), EMP)).rejects.toThrow();
+    });
+  });
 });

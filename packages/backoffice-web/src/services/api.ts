@@ -243,6 +243,7 @@ export const productsApi = {
   changeLog: (id: string) => api.get(`/products/${id}/change-log`),
   priceAnalytics: (id: string) => api.get(`/products/${id}/price-analytics`),
   generateBarcode: (id: string) => api.post(`/products/${id}/generate-barcode`),
+  duplicate: (id: string) => api.post(`/products/${id}/duplicate`),
   // Variants / SKU (decision 5)
   listVariants: (id: string) => api.get(`/products/${id}/variants`),
   createVariant: (id: string, data: { ean: string; variantName: string; priceMinorUnits: number; sku?: string; stockQuantity?: number; taxRate?: number; costMinorUnits?: number }) =>

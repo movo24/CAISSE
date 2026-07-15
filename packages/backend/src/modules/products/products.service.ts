@@ -888,6 +888,61 @@ export class ProductsService {
   }
 
   /**
+   * Duplication COMPLÈTE (Lot F) : clone la fiche + ses éléments rattachés
+   * (packs/composants, galerie, documents, fournisseurs, liens). Les identifiants
+   * UNIQUES ne sont PAS copiés : EAN interne régénéré, SKU vidé, stock à 0, statut
+   * brouillon. Les codes-barres additionnels (uniques par magasin) ne sont pas copiés.
+   */
+  async duplicateProduct(sourceId: string, storeId: string, employeeId: string): Promise<ProductEntity> {
+    const src = await this.findOneForStore(sourceId, storeId);
+    if (src.parentProductId) throw new BadRequestException('Impossible de dupliquer une variante ; dupliquez le produit parent.');
+
+    const ean = await this.generateInternalEan(storeId);
+    const clone = await this.create(
+      {
+        ...src,
+        id: undefined as any,
+        ean,
+        sku: null,
+        barcodeSource: 'generated',
+        stockQuantity: 0,
+        status: 'draft',
+        isActive: false,
+        name: `${src.name} (copie)`,
+        createdAt: undefined as any,
+        updatedAt: undefined as any,
+        store: undefined as any,
+      } as Partial<ProductEntity>,
+      employeeId,
+    );
+
+    // Composants du pack (structure conservée).
+    const components = await this.componentRepo.find({ where: { parentProductId: sourceId, storeId } });
+    for (const c of components) {
+      await this.componentRepo.save(this.componentRepo.create({
+        storeId, parentProductId: clone.id, componentProductId: c.componentProductId,
+        quantityPerParent: c.quantityPerParent, isActive: c.isActive,
+      }));
+    }
+    // Galerie + documents.
+    const media = await this.mediaRepo.find({ where: { productId: sourceId, storeId } });
+    for (const m of media) await this.mediaRepo.save(this.mediaRepo.create({ productId: clone.id, storeId, url: m.url, sortOrder: m.sortOrder }));
+    const docs = await this.documentRepo.find({ where: { productId: sourceId, storeId } });
+    for (const d of docs) await this.documentRepo.save(this.documentRepo.create({ productId: clone.id, storeId, name: d.name, url: d.url }));
+    // Fournisseurs + liens.
+    const psups = await this.productSupplierRepo.find({ where: { productId: sourceId, storeId } });
+    for (const s of psups) await this.productSupplierRepo.save(this.productSupplierRepo.create({
+      productId: clone.id, storeId, supplierId: s.supplierId, isPrimary: s.isPrimary, supplierRef: s.supplierRef,
+      purchasePriceMinorUnits: s.purchasePriceMinorUnits, currencyCode: s.currencyCode, leadTimeDays: s.leadTimeDays,
+      minOrderQuantity: s.minOrderQuantity, incoterm: s.incoterm,
+    }));
+    const links = await this.linkRepo.find({ where: { productId: sourceId, storeId } });
+    for (const l of links) await this.linkRepo.save(this.linkRepo.create({ productId: clone.id, storeId, linkedProductId: l.linkedProductId, linkType: l.linkType }));
+
+    return this.findOne(clone.id, storeId);
+  }
+
+  /**
    * Bloc 4i — export the store catalog as CSV (round-trippable with importCsv).
    * Canonical columns; one row per active product. Read-only.
    */
