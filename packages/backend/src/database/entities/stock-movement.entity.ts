@@ -45,6 +45,7 @@ export class StockMovementEntity {
     | 'supplier_receipt'
     | 'transfer'
     | 'sale'
+    | 'pack_consumption'
     | 'return_customer'
     | 'return_supplier'
     | 'inventory_adjust'
