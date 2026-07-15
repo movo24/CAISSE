@@ -111,9 +111,87 @@ ajustements (le journal suit désormais le scalaire) — c'est-à-dire l'inverse
 
 ---
 
-## Ce qu'il vous suffit de dire (GO nominatifs)
-- **« GO F2 »** — void inverse + fix G3 (avec le changement de comportement du tableau ci-dessus).
-- **« GO F1b »** — inventory_adjust en shadow, **convention `delta` signé** validée.
+## État — F2 et F1b sont LIVRÉS (GO nominatif owner, 2026-07-16)
+- **F2** ✅ commit `94fc362` — void inverse + fix G3. Preuve **rouge→vert** faite : le spec joué
+  contre le `voidSale` d'avant-F2 est rouge (4 échecs/5, composant jamais recrédité).
+- **F1b** ✅ commit `fe888a4` — `inventory_adjust` shadow, **convention `delta` signé** appliquée.
+- Effet : **tous les chemins qui mutent le scalaire côté caisse sont journalisés** (vente/pack/
+  retour/void/ajustement). Dette **D22 rétrécie** en conséquence.
 
-Restent gatés au-delà : F3 (bascule de lecture + cutover solde d'ouverture), F4 (retrait legacy),
-activation du flag hors test local, tout merge.
+---
+
+# F3 — bascule de lecture + cutover (solde d'ouverture)
+
+### ⚠️ PRÉCONDITION BLOQUANTE (physique, pas procédurale)
+F3 fait lire la **projection** au lieu du scalaire. Aujourd'hui `STOCK_JOURNAL_SHADOW` est **OFF
+partout** ⇒ le journal est **vide** en environnement réel. **Basculer la lecture maintenant ferait
+lire stock = 0 sur tout le catalogue** (rupture caisse totale). La séquence est incompressible :
+
+1. **Activation du flag** en environnement réel — *Tier-2 gaté séparément, non autorisé à ce jour*.
+2. **Fenêtre de double-run** (le journal se remplit, la caisse lit toujours le scalaire).
+3. **Critère mesuré** par `RECONCILE_SQL` : `gap` constant / 0 divergence sur N jours (N à fixer).
+4. **Cutover** : écrire un mouvement `opening_balance` par (magasin, produit) = scalaire courant,
+   pour que `SUM(mouvements) == scalaire` dès J0 (décision déjà prise : **pas** de backfill historique).
+5. **Alors seulement** la bascule de lecture.
+
+**Tant que 1→3 n'ont pas eu lieu, un GO F3 ne peut pas être exécuté** — il n'y a rien à lire.
+
+### Décisions d'architecture NON tranchées (c'est ce qu'il faut trancher, pas « GO »)
+- **(a) Que signifie exactement « basculer la lecture » ?** `products.stock_quantity` est lu partout
+  (pré-check de vente, liste catalogue, alertes, Z). Deux options :
+  - **Option 1 (recommandée) — « projection sans toucher les lectures chaudes »** : le scalaire reste
+    la valeur lue, mais devient un **cache dérivé** *maintenu et réparable* : le journal fait foi, un
+    job de réconciliation **répare** le scalaire depuis le journal, et toute écriture directe hors
+    service transactionnel est supprimée. Aucune lecture chaude modifiée ⇒ risque caisse quasi nul,
+    bénéfice (source unique + auditabilité) acquis.
+  - **Option 2 — bascule littérale** : les lectures calculent `SUM(mouvements)` (ou lisent une vue
+    matérialisée). Coût requête sur le chemin chaud de la caisse, gain réel faible vs Option 1.
+- **(b) Le cutover est une migration de DONNÉES sur le stock** (Tier-2 en soi). Migration TypeORM
+  (qui écrirait des données métier — douteux) **ou** endpoint/script admin gaté + idempotent
+  (recommandé) ? Et sur quel périmètre (tous magasins d'un coup / magasin par magasin) ?
+- **(c) N = combien de jours de double-run à 0 divergence** avant cutover ?
+
+### Diff prévu (si Option 1 retenue)
+- `stock-movement.entity.ts` : union `movementType += 'opening_balance'`.
+- Nouveau : service/endpoint admin **idempotent** de cutover (écrit `opening_balance` = scalaire) +
+  job de réconciliation **réparateur** (aujourd'hui l'instrument est lecture seule).
+- `stock-locations.service.ts` : `syncLegacyStock` = le dernier écrivain direct du scalaire → traité en F4.
+- **Aucune** modification de la surface fiscale.
+
+### Rollback / Risques
+- Rollback : Option 1 → arrêter le job réparateur (le scalaire reste tel quel) ; le cutover
+  (`opening_balance`) est append-only, non destructif, mais **sauvegarde DB avant** = obligatoire.
+- Risques : lire/réparer depuis un journal incomplet ⇒ **stock faux** (survente ou blocage caisse).
+  C'est le **point de non-retour applicatif** — d'où les préconditions 1→3.
+
+---
+
+# F4 — retrait du double système (`syncLegacyStock`)
+
+### Précondition
+F3 stable + 0 divergence prouvée. **Ne peut pas précéder F3.**
+
+### Objet & décision non tranchée
+`syncLegacyStock` (`stock-locations.service.ts`) recopie `SUM(balances système B)` → scalaire,
+et **écrase** donc les décréments de vente (mécanisme historique de divergence, cf. M107/D22).
+Le retirer suppose de décider **comment les opérations d'entrepôt alimentent le scalaire** :
+- **Option A (recommandée)** : réception/transfert/perte écrivent **aussi** le journal unifié
+  (`store_id` renseigné, cohérent avec la décision §1a « store_id porté par le mouvement ») ⇒ le
+  scalaire se dérive du journal, `syncLegacyStock` disparaît.
+- **Option B** : mapper chaque magasin à une `stock_locations` de type `store` et unifier les deux
+  systèmes par emplacement (plus lourd — c'était l'alternative déjà écartée en §1a).
+
+### Diff prévu / Rollback / Risques
+- Diff : suppression de `syncLegacyStock` + écriture journal dans les 4 ops entrepôt + tests deltas.
+- Rollback : réactiver `syncLegacyStock` (revert du bloc).
+- Risque : c'est le dernier écrivain direct du scalaire — tant qu'il vit, D22(a) reste ouverte.
+
+---
+
+## Ce qu'il vous suffit de dire
+- **F2 / F1b** : livrés ✅ (rien à donner).
+- **« GO activation flag <env> »** — pour démarrer le double-run (préalable indispensable à F3).
+- **F3** : à trancher d'abord — **(a) Option 1 vs 2**, **(b) cutover script vs migration**, **(c) N jours**.
+- **F4** : à trancher — **Option A vs B** (après F3).
+
+Restent gatés : F3, F4, activation du flag hors test local, tout merge.
