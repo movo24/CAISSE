@@ -291,12 +291,45 @@ describe('Catalogue refonte L1 — product enablement (no migration)', () => {
       expect((await svc.findOne(ids[0], S)).categoryId).toBe(cat.id);
     });
 
-    it('reports unknown / other-store ids in failed instead of throwing', async () => {
-      const r = await svc.bulkAction(S, EMP, 'activate', [ids[0], uuidv4()], {});
-      expect(r.requested).toBe(2);
-      expect(r.succeeded).toBe(1);
+    it('setSupplier validates the supplier exists (rejects unknown before write), applies a valid one', async () => {
+      await expect(svc.bulkAction(S, EMP, 'setSupplier', ids, { supplierId: uuidv4() })).rejects.toThrow();
+      const sup = await svc.getOrCreateSupplier(S, 'BulkFrs');
+      const r = await svc.bulkAction(S, EMP, 'setSupplier', ids, { supplierId: sup.id });
+      expect(r.succeeded).toBe(2);
+      expect((await svc.findOne(ids[0], S)).supplierId).toBe(sup.id);
+    });
+
+    it('setTax requires a valid rate; setCategory/setSupplier require their target id', async () => {
+      await expect(svc.bulkAction(S, EMP, 'setTax', ids, {})).rejects.toThrow();
+      await expect(svc.bulkAction(S, EMP, 'setCategory', ids, {})).rejects.toThrow();
+      await expect(svc.bulkAction(S, EMP, 'setSupplier', ids, {})).rejects.toThrow();
+    });
+
+    it('audits every successfully modified product (one entry per product)', async () => {
+      const auditRepo = ds.getRepository(AuditEntryEntity);
+      const before = await auditRepo.count({ where: { action: 'product_bulk_update' } });
+      const r = await svc.bulkAction(S, EMP, 'setTax', ids, { taxRate: 10 });
+      const after = await auditRepo.count({ where: { action: 'product_bulk_update' } });
+      expect(r.succeeded).toBe(2);
+      expect(after - before).toBe(2); // un audit par produit modifié
+    });
+
+    it('a partial batch reports exact succeeded + failed and still audits only the successes', async () => {
+      const auditRepo = ds.getRepository(AuditEntryEntity);
+      const before = await auditRepo.count({ where: { action: 'product_bulk_update' } });
+      const r = await svc.bulkAction(S, EMP, 'deactivate', [ids[0], uuidv4(), ids[1]], {});
+      expect(r.requested).toBe(3);
+      expect(r.succeeded).toBe(2);
       expect(r.failed).toHaveLength(1);
-      expect(r.failed[0].reason).toMatch(/introuvable/);
+      const after = await auditRepo.count({ where: { action: 'product_bulk_update' } });
+      expect(after - before).toBe(2); // aucun audit pour l'id introuvable
+    });
+
+    it('the bulk endpoint is role-gated to admin/manager (RolesGuard metadata)', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { ProductsController } = require('../src/modules/products/products.controller');
+      const roles = Reflect.getMetadata('roles', ProductsController.prototype.bulkAction);
+      expect(roles).toEqual(['admin', 'manager']);
     });
   });
 });
