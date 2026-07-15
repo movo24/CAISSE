@@ -1,6 +1,7 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
+import { SecurityAlertService } from './security-alert.service';
 import { UserLoginEventEntity } from '../../database/entities/user-login-event.entity';
 import { UserSessionEntity } from '../../database/entities/user-session.entity';
 import { UserViewEventEntity } from '../../database/entities/user-view-event.entity';
@@ -67,6 +68,8 @@ export class ActivityService {
     private readonly sessionRepo: Repository<UserSessionEntity>,
     @InjectRepository(UserViewEventEntity)
     private readonly viewRepo: Repository<UserViewEventEntity>,
+    // Analyse de risque — OPTIONNELLE et non bloquante.
+    @Optional() private readonly security?: SecurityAlertService,
   ) {}
 
   /**
@@ -94,6 +97,10 @@ export class ActivityService {
           deviceType: p.deviceType ?? null,
         }),
       );
+      // Afflux de refus d'accès magasin → alerte (non bloquant).
+      if (this.security && p.action === 'ACCESS_DENIED' && p.employeeId) {
+        void this.security.checkAccessDeniedBurst(p.employeeId);
+      }
       return true;
     } catch (e) {
       this.logger.warn(`[ACTIVITY] recordView failed (non-blocking): ${(e as Error)?.message}`);
@@ -146,7 +153,7 @@ export class ActivityService {
   /** Journalise un événement de connexion. Ne lève jamais. */
   async recordLogin(p: RecordLoginParams): Promise<void> {
     try {
-      await this.loginRepo.save(
+      const saved = await this.loginRepo.save(
         this.loginRepo.create({
           employeeId: p.employeeId ?? null,
           userId: p.userId ?? null,
@@ -166,6 +173,10 @@ export class ActivityService {
           riskScore: p.riskScore ?? 0,
         }),
       );
+      // Analyse de risque (non bloquante) pour les événements de connexion.
+      if (this.security && p.employeeId && (p.eventType === 'LOGIN_SUCCESS' || p.eventType === 'LOGIN_FAILED')) {
+        void this.security.assessAndAlert(p.employeeId, saved.id);
+      }
     } catch (e) {
       this.logger.warn(`[ACTIVITY] recordLogin failed (non-blocking): ${(e as Error)?.message}`);
     }

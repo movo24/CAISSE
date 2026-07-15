@@ -5,6 +5,7 @@ import { UserSessionEntity } from '../../database/entities/user-session.entity';
 import { UserViewEventEntity } from '../../database/entities/user-view-event.entity';
 import { PilotageAccessModule } from '../pilotage-access/pilotage-access.module';
 import { ActivityService } from './activity.service';
+import { SecurityAlertService } from './security-alert.service';
 import { ActivityAdminController } from './activity-admin.controller';
 import { ActivityIngestController } from './activity-ingest.controller';
 
@@ -18,7 +19,7 @@ import { ActivityIngestController } from './activity-ingest.controller';
     PilotageAccessModule,
   ],
   controllers: [ActivityAdminController, ActivityIngestController],
-  providers: [ActivityService],
-  exports: [ActivityService],
+  providers: [ActivityService, SecurityAlertService],
+  exports: [ActivityService, SecurityAlertService],
 })
 export class ActivityAuditModule {}
