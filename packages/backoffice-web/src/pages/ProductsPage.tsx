@@ -8,7 +8,6 @@ import {
   Zap,
   Trash2,
   ArrowUpDown,
-  Filter,
   Download,
   Upload,
   BarChart3,
@@ -17,15 +16,16 @@ import {
   XCircle,
   Loader2,
   X,
+  Columns3,
+  RotateCcw,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { productsApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
 import { useCurrentStoreId } from '../hooks/useCurrentStoreId';
 import { PriceAnalyticsPanel } from '../components/PriceAnalyticsPanel';
 import { validateProductForm, buildCreatePayload, buildUpdatePayload } from './productForm';
-
-type SortKey = 'name' | 'price' | 'stock' | 'category';
-type SortDir = 'asc' | 'desc';
 
 interface Product {
   id: string;
@@ -49,6 +49,46 @@ interface RefItem {
   id: string;
   name: string;
 }
+
+interface CatItem {
+  id: string;
+  name: string;
+  parentId: string | null;
+}
+
+interface CatalogStats {
+  total: number;
+  active: number;
+  outOfStock: number;
+  belowThreshold: number;
+  noImage: number;
+  noSupplier: number;
+  noCategory: number;
+}
+
+/** Colonnes optionnelles (Nom et Actions sont toujours affichées). */
+const COLUMN_DEFS: { key: string; label: string }[] = [
+  { key: 'sku', label: 'SKU' },
+  { key: 'ean', label: 'EAN' },
+  { key: 'category', label: 'Catégorie' },
+  { key: 'brand', label: 'Marque' },
+  { key: 'supplier', label: 'Fournisseur' },
+  { key: 'tva', label: 'TVA' },
+  { key: 'cost', label: "Prix d'achat" },
+  { key: 'priceTtc', label: 'Prix TTC' },
+  { key: 'margin', label: 'Marge' },
+  { key: 'stock', label: 'Stock' },
+  { key: 'status', label: 'Statut' },
+];
+const DEFAULT_COLS = ['ean', 'category', 'brand', 'priceTtc', 'stock', 'status'];
+
+const STATUS_META: Record<string, { label: string; cls: string }> = {
+  active: { label: 'Actif', cls: 'bg-emerald-50 text-emerald-600' },
+  draft: { label: 'Brouillon', cls: 'bg-gray-100 text-gray-500' },
+  archived: { label: 'Archivé', cls: 'bg-gray-100 text-gray-400' },
+  pending_validation: { label: 'En validation', cls: 'bg-amber-50 text-amber-600' },
+  rejected: { label: 'Rejeté', cls: 'bg-red-50 text-red-600' },
+};
 
 const avatarColors = [
   'from-indigo-100 to-indigo-200 text-indigo-600',
@@ -78,14 +118,44 @@ export function ProductsPage() {
   const employee = useAuthStore((s) => s.employee);
   const storeId = useCurrentStoreId();
   const [products, setProducts] = useState<Product[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const LIMIT = 50;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [search, setSearch] = useState('');
-  const [filterCat, setFilterCat] = useState<string>('all');
-  const [sortKey, setSortKey] = useState<SortKey>('name');
-  const [sortDir, setSortDir] = useState<SortDir>('asc');
 
-  // Modal state
+  // ── Filtres serveur ──
+  const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [fStatus, setFStatus] = useState('active');
+  const [fBrand, setFBrand] = useState('');
+  const [fSupplier, setFSupplier] = useState('');
+  const [fCategory, setFCategory] = useState('');
+  const [fTax, setFTax] = useState('');
+  const [fOutOfStock, setFOutOfStock] = useState(false);
+  const [fBelowThreshold, setFBelowThreshold] = useState(false);
+  const [fNoImage, setFNoImage] = useState(false);
+  const [fNoSupplier, setFNoSupplier] = useState(false);
+  const [fNoCategory, setFNoCategory] = useState(false);
+  const [sortBy, setSortBy] = useState<'name' | 'price' | 'stock' | 'updatedAt'>('name');
+  const [sortDir, setSortDir] = useState<'ASC' | 'DESC'>('ASC');
+
+  const [stats, setStats] = useState<CatalogStats | null>(null);
+
+  // Colonnes configurables (persistées)
+  const [visibleCols, setVisibleCols] = useState<string[]>(() => {
+    try { const s = localStorage.getItem('catalog.columns'); if (s) return JSON.parse(s); } catch { /* noop */ }
+    return DEFAULT_COLS;
+  });
+  const [showColMenu, setShowColMenu] = useState(false);
+  useEffect(() => {
+    try { localStorage.setItem('catalog.columns', JSON.stringify(visibleCols)); } catch { /* noop */ }
+  }, [visibleCols]);
+  const colOn = (k: string) => visibleCols.includes(k);
+  const toggleCol = (k: string) =>
+    setVisibleCols((cols) => (cols.includes(k) ? cols.filter((c) => c !== k) : [...cols, k]));
+
+  // Modal state (édition rapide secondaire)
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -95,17 +165,35 @@ export function ProductsPage() {
   // Price analytics panel
   const [analyticsProductId, setAnalyticsProductId] = useState<string | null>(null);
 
-  // Référentiels (marques / fournisseurs / catégories) pour les sélecteurs de la fiche.
+  // Référentiels (marques / fournisseurs / catégories) pour filtres + fiche rapide.
   const [brands, setBrands] = useState<RefItem[]>([]);
   const [suppliers, setSuppliers] = useState<RefItem[]>([]);
-  const [categoryRefs, setCategoryRefs] = useState<RefItem[]>([]);
+  const [categoryRefs, setCategoryRefs] = useState<CatItem[]>([]);
 
   const fetchProducts = useCallback(async () => {
     try {
       setLoading(true);
-      // limit 100 (plafond serveur) — au-delà, la pagination serveur prend le relais.
-      const res = await productsApi.list({ storeId, limit: 100 });
-      const data: any[] = Array.isArray(res.data) ? res.data : (res.data?.data || res.data?.products || []);
+      const res = await productsApi.list({
+        storeId,
+        page,
+        limit: LIMIT,
+        search: debouncedSearch || undefined,
+        status: fStatus || undefined,
+        brandId: fBrand || undefined,
+        supplierId: fSupplier || undefined,
+        categoryId: fCategory || undefined,
+        ...(fTax ? { taxRate: fTax } : {}),
+        ...(fOutOfStock ? { outOfStock: fOutOfStock } : {}),
+        ...(fBelowThreshold ? { belowThreshold: fBelowThreshold } : {}),
+        ...(fNoImage ? { noImage: fNoImage } : {}),
+        ...(fNoSupplier ? { noSupplier: fNoSupplier } : {}),
+        ...(fNoCategory ? { noCategory: fNoCategory } : {}),
+        sortBy,
+        sortDir,
+      } as any);
+      const body: any = res.data;
+      const data: any[] = Array.isArray(body) ? body : (body?.data || body?.products || []);
+      setTotal(body?.meta?.total ?? data.length);
       setProducts(
         data.map((p: any) => ({
           id: p.id,
@@ -113,7 +201,7 @@ export function ProductsPage() {
           name: p.name || '',
           price: (p.priceMinorUnits || 0) / 100,
           stock: p.stockQuantity ?? 0,
-          category: typeof p.categoryId === 'string' ? p.categoryId : (typeof p.category === 'string' ? p.category : 'Non classe'),
+          category: typeof p.categoryId === 'string' ? p.categoryId : (typeof p.category === 'string' ? p.category : ''),
           image: p.imageUrl || null,
           description: typeof p.description === 'string' ? p.description : '',
           cost: typeof p.costMinorUnits === 'number' ? p.costMinorUnits / 100 : null,
@@ -132,6 +220,13 @@ export function ProductsPage() {
     } finally {
       setLoading(false);
     }
+  }, [storeId, page, debouncedSearch, fStatus, fBrand, fSupplier, fCategory, fTax, fOutOfStock, fBelowThreshold, fNoImage, fNoSupplier, fNoCategory, sortBy, sortDir]);
+
+  const fetchStats = useCallback(async () => {
+    try {
+      const r = await productsApi.catalogStats({ storeId });
+      setStats(r.data as CatalogStats);
+    } catch { /* compteurs non bloquants */ }
   }, [storeId]);
 
   const fetchRefs = useCallback(async () => {
@@ -143,43 +238,44 @@ export function ProductsPage() {
       ]);
       setBrands((b.data || []).map((x: any) => ({ id: x.id, name: x.name })));
       setSuppliers((s.data || []).map((x: any) => ({ id: x.id, name: x.name })));
-      setCategoryRefs((c.data || []).map((x: any) => ({ id: x.id, name: x.name })));
+      setCategoryRefs((c.data || []).map((x: any) => ({ id: x.id, name: x.name, parentId: x.parentId ?? null })));
     } catch {
-      /* référentiels non bloquants : la fiche fonctionne sans eux */
+      /* référentiels non bloquants */
     }
   }, []);
 
+  // Recherche débouncée (retour page 1)
   useEffect(() => {
-    fetchProducts();
-    fetchRefs();
-  }, [fetchProducts, fetchRefs]);
+    const t = setTimeout(() => { setDebouncedSearch(search); setPage(1); }, 300);
+    return () => clearTimeout(t);
+  }, [search]);
+  // Un changement de filtre/tri repart page 1
+  useEffect(() => { setPage(1); }, [fStatus, fBrand, fSupplier, fCategory, fTax, fOutOfStock, fBelowThreshold, fNoImage, fNoSupplier, fNoCategory, sortBy, sortDir]);
+  useEffect(() => { fetchProducts(); }, [fetchProducts]);
+  useEffect(() => { fetchStats(); fetchRefs(); }, [fetchStats, fetchRefs]);
 
-  const categories = [...new Set(products.map((p) => p.category))];
+  const reload = useCallback(() => { fetchProducts(); fetchStats(); }, [fetchProducts, fetchStats]);
 
-  const toggleSort = (key: SortKey) => {
-    if (sortKey === key) setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
-    else { setSortKey(key); setSortDir('asc'); }
+  const resetFilters = () => {
+    setSearch(''); setDebouncedSearch('');
+    setFStatus('active'); setFBrand(''); setFSupplier(''); setFCategory(''); setFTax('');
+    setFOutOfStock(false); setFBelowThreshold(false); setFNoImage(false); setFNoSupplier(false); setFNoCategory(false);
+    setSortBy('name'); setSortDir('ASC'); setPage(1);
   };
 
-  const filtered = products
-    .filter((p) => {
-      const matchSearch =
-        p.name.toLowerCase().includes(search.toLowerCase()) || p.ean.includes(search);
-      const matchCat = filterCat === 'all' || p.category === filterCat;
-      return matchSearch && matchCat;
-    })
-    .sort((a, b) => {
-      const dir = sortDir === 'asc' ? 1 : -1;
-      if (sortKey === 'name') return a.name.localeCompare(b.name) * dir;
-      if (sortKey === 'price') return (a.price - b.price) * dir;
-      if (sortKey === 'stock') return (a.stock - b.stock) * dir;
-      if (sortKey === 'category') return a.category.localeCompare(b.category) * dir;
-      return 0;
-    });
+  const toggleSort = (key: 'name' | 'price' | 'stock' | 'updatedAt') => {
+    if (sortBy === key) setSortDir(sortDir === 'ASC' ? 'DESC' : 'ASC');
+    else { setSortBy(key); setSortDir('ASC'); }
+  };
 
-  const totalStock = products.reduce((s, p) => s + p.stock, 0);
-  const lowStock = products.filter((p) => p.stock <= 15).length;
-  const avgPrice = products.length > 0 ? products.reduce((s, p) => s + p.price, 0) / products.length : 0;
+  const totalPages = Math.max(1, Math.ceil(total / LIMIT));
+  const catName = (id: string) => categoryRefs.find((c) => c.id === id)?.name || id;
+  const brandName = (id: string) => brands.find((b) => b.id === id)?.name || '';
+  const supplierName = (id: string) => suppliers.find((s) => s.id === id)?.name || '';
+  const activeFilterCount =
+    (debouncedSearch ? 1 : 0) + (fStatus !== 'active' ? 1 : 0) + (fBrand ? 1 : 0) + (fSupplier ? 1 : 0) +
+    (fCategory ? 1 : 0) + (fTax ? 1 : 0) + (fOutOfStock ? 1 : 0) + (fBelowThreshold ? 1 : 0) +
+    (fNoImage ? 1 : 0) + (fNoSupplier ? 1 : 0) + (fNoCategory ? 1 : 0);
 
   /* ── Onboarding catalogue (PR #29) — import CSV serveur + modèle round-trip ── */
   interface ImportReport {
@@ -202,7 +298,7 @@ export function ProductsPage() {
       const res = await productsApi.importCsv(csv);
       // Rapport honnête par ligne : rien n'est silencieusement ignoré.
       setImportReport(res.data as ImportReport);
-      await fetchProducts(); // le catalogue affiché reflète l'état réel post-import
+      reload(); // le catalogue + compteurs reflètent l'état réel post-import
     } catch (err: any) {
       setImportError(err?.response?.data?.message || err?.message || 'Import impossible');
     } finally {
@@ -230,9 +326,9 @@ export function ProductsPage() {
   };
 
   const handleExportCsv = () => {
-    if (filtered.length === 0) return;
-    const header = ['Nom', 'EAN', 'Categorie', 'Prix (EUR)', 'Stock'];
-    const rows = filtered.map((p) => [p.name, p.ean, p.category, p.price.toFixed(2), String(p.stock)]);
+    if (products.length === 0) return;
+    const header = ['Nom', 'EAN', 'SKU', 'Categorie', 'Prix (EUR)', 'Stock'];
+    const rows = products.map((p) => [p.name, p.ean, p.sku, catName(p.category), p.price.toFixed(2), String(p.stock)]);
     const escapeCell = (v: string) => `"${v.replace(/"/g, '""')}"`;
     const csv = [header, ...rows].map((r) => r.map(escapeCell).join(',')).join('\r\n');
     // Prepend BOM so Excel detects UTF-8
@@ -314,7 +410,7 @@ export function ProductsPage() {
       setShowModal(false);
       setOriginalPrice(null);
       resetForm();
-      await fetchProducts();
+      reload();
     } catch (err: any) {
       const rawMsg = err.response?.data?.message;
       const msg = typeof rawMsg === 'string' ? rawMsg : Array.isArray(rawMsg) ? rawMsg.join(', ') : 'Erreur lors de la sauvegarde';
@@ -328,14 +424,14 @@ export function ProductsPage() {
     if (!confirm('Supprimer ce produit ?')) return;
     try {
       await productsApi.delete(id);
-      await fetchProducts();
+      reload();
     } catch (err: any) {
       const delMsg = err.response?.data?.message;
       alert(typeof delMsg === 'string' ? delMsg : Array.isArray(delMsg) ? delMsg.join(', ') : 'Erreur lors de la suppression');
     }
   };
 
-  if (loading) {
+  if (loading && products.length === 0) {
     return (
       <div className="flex items-center justify-center h-96">
         <Loader2 size={32} className="animate-spin text-bo-accent" />
@@ -390,9 +486,9 @@ export function ProductsPage() {
           </button>
           <button
             onClick={handleExportCsv}
-            disabled={filtered.length === 0}
+            disabled={products.length === 0}
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
-            title="Exporter les produits filtrés en CSV"
+            title="Exporter la page courante en CSV"
           >
             <Download size={16} />
             Exporter
@@ -407,200 +503,212 @@ export function ProductsPage() {
         </div>
       </div>
 
-      {/* Stats mini */}
-      <div className="grid grid-cols-4 gap-4">
+      {/* Stats en-t\u00eate (compteurs r\u00e9els serveur) */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { label: 'Total references', value: String(products.length), icon: Package, color: 'text-bo-accent bg-indigo-50' },
-          { label: 'Stock total', value: totalStock.toLocaleString('fr-FR'), icon: BarChart3, color: 'text-emerald-600 bg-emerald-50' },
-          { label: 'Alertes stock', value: String(lowStock), icon: AlertTriangle, color: 'text-amber-600 bg-amber-50' },
-          { label: 'Prix moyen', value: `${avgPrice.toFixed(2)} \u20ac`, icon: ArrowUpDown, color: 'text-cyan-600 bg-cyan-50' },
+          { label: 'Total fiches', value: stats?.total, icon: Package, color: 'text-bo-accent bg-indigo-50', filter: null as null | (() => void), on: false },
+          { label: 'Actifs', value: stats?.active, icon: CheckCircle2, color: 'text-emerald-600 bg-emerald-50', filter: () => setFStatus('active'), on: fStatus === 'active' },
+          { label: 'Ruptures', value: stats?.outOfStock, icon: XCircle, color: 'text-red-600 bg-red-50', filter: () => setFOutOfStock((v) => !v), on: fOutOfStock },
+          { label: 'Sous seuil', value: stats?.belowThreshold, icon: AlertTriangle, color: 'text-amber-600 bg-amber-50', filter: () => setFBelowThreshold((v) => !v), on: fBelowThreshold },
         ].map((s) => {
           const Icon = s.icon;
           return (
-            <div key={s.label} className="bg-white rounded-2xl p-4 shadow-soft border border-gray-100/50 flex items-center gap-4">
+            <button
+              key={s.label}
+              onClick={s.filter ?? undefined}
+              className={`text-left bg-white rounded-2xl p-4 shadow-soft border flex items-center gap-4 transition-colors ${s.on ? 'border-bo-accent ring-1 ring-bo-accent/30' : 'border-gray-100/50'} ${s.filter ? 'hover:border-bo-accent/50 cursor-pointer' : 'cursor-default'}`}
+            >
               <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${s.color}`}>
                 <Icon size={18} />
               </div>
               <div>
                 <p className="text-xs text-gray-400 font-medium">{s.label}</p>
-                <p className="text-lg font-bold text-bo-text">{s.value}</p>
+                <p className="text-lg font-bold text-bo-text tabular-nums">{s.value ?? '\u2014'}</p>
               </div>
-            </div>
+            </button>
           );
         })}
       </div>
 
-      {/* Filters bar */}
-      <div className="flex items-center gap-3">
-        <div className="relative flex-1">
-          <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Rechercher par nom ou code EAN..."
-            className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-bo-accent/30 focus:border-bo-accent transition-all"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-        </div>
-        <div className="relative">
-          <Filter size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <select
-            className="pl-8 pr-8 py-2.5 rounded-xl border border-gray-200 bg-white text-sm appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-bo-accent/30"
-            value={filterCat}
-            onChange={(e) => setFilterCat(e.target.value)}
-          >
-            <option value="all">Toutes categories</option>
-            {categories.map((c) => (
-              <option key={c} value={c}>{c}</option>
-            ))}
+      {/* Filtres serveur */}
+      <div className="bg-white rounded-2xl shadow-soft border border-gray-100/50 p-4 space-y-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative flex-1 min-w-[240px]">
+            <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Rechercher par nom, EAN ou SKU..."
+              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-bo-accent/30 focus:border-bo-accent transition-all"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+          <select className="py-2.5 px-3 rounded-xl border border-gray-200 bg-white text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-bo-accent/30" value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
+            <option value="active">Actifs</option>
+            <option value="all">Tous statuts</option>
+            <option value="draft">Brouillons</option>
+            <option value="archived">Archivés</option>
+            <option value="pending_validation">En validation</option>
+            <option value="rejected">Rejetés</option>
           </select>
+          <select className="py-2.5 px-3 rounded-xl border border-gray-200 bg-white text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-bo-accent/30" value={fBrand} onChange={(e) => setFBrand(e.target.value)}>
+            <option value="">Toutes marques</option>
+            {brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+          </select>
+          <select className="py-2.5 px-3 rounded-xl border border-gray-200 bg-white text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-bo-accent/30" value={fSupplier} onChange={(e) => setFSupplier(e.target.value)}>
+            <option value="">Tous fournisseurs</option>
+            {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+          <select className="py-2.5 px-3 rounded-xl border border-gray-200 bg-white text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-bo-accent/30" value={fCategory} onChange={(e) => setFCategory(e.target.value)}>
+            <option value="">Toutes catégories</option>
+            {categoryRefs.map((c) => <option key={c.id} value={c.id}>{c.parentId ? '— ' : ''}{c.name}</option>)}
+          </select>
+          <select className="py-2.5 px-3 rounded-xl border border-gray-200 bg-white text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-bo-accent/30" value={fTax} onChange={(e) => setFTax(e.target.value)}>
+            <option value="">Toute TVA</option>
+            {['0', '2.1', '5.5', '10', '20'].map((r) => <option key={r} value={r}>{r} %</option>)}
+          </select>
+          <div className="relative">
+            <button onClick={() => setShowColMenu((v) => !v)} className="flex items-center gap-1.5 py-2.5 px-3 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50"><Columns3 size={15} /> Colonnes</button>
+            {showColMenu && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setShowColMenu(false)} />
+                <div className="absolute right-0 mt-1 z-20 bg-white rounded-xl border border-gray-100 shadow-elevated p-2 w-48">
+                  {COLUMN_DEFS.map((c) => (
+                    <label key={c.key} className="flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm text-gray-700 hover:bg-gray-50 cursor-pointer">
+                      <input type="checkbox" checked={colOn(c.key)} onChange={() => toggleCol(c.key)} className="accent-bo-accent" /> {c.label}
+                    </label>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+          {activeFilterCount > 0 && (
+            <button onClick={resetFilters} className="flex items-center gap-1.5 py-2.5 px-3 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50"><RotateCcw size={14} /> Réinitialiser ({activeFilterCount})</button>
+          )}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {[
+            { label: 'Ruptures', on: fOutOfStock, set: () => setFOutOfStock((v) => !v) },
+            { label: 'Sous seuil', on: fBelowThreshold, set: () => setFBelowThreshold((v) => !v) },
+            { label: 'Sans image', on: fNoImage, set: () => setFNoImage((v) => !v) },
+            { label: 'Sans fournisseur', on: fNoSupplier, set: () => setFNoSupplier((v) => !v) },
+            { label: 'Sans catégorie', on: fNoCategory, set: () => setFNoCategory((v) => !v) },
+          ].map((chip) => (
+            <button key={chip.label} onClick={chip.set} className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${chip.on ? 'bg-bo-accent text-white border-bo-accent' : 'bg-white text-gray-500 border-gray-200 hover:border-bo-accent/50'}`}>
+              {chip.label}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Table */}
-      <div className="bg-white rounded-2xl shadow-soft border border-gray-100/50 overflow-hidden">
-        <table className="w-full">
+      {/* Table serveur */}
+      <div className="bg-white rounded-2xl shadow-soft border border-gray-100/50 overflow-x-auto">
+        <table className="w-full min-w-[720px]">
           <thead>
             <tr className="border-b border-gray-100 bg-gray-50/50">
-              <th className="text-left py-3.5 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider w-12">
-                #
+              <th className="text-left py-3.5 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer hover:text-bo-accent" onClick={() => toggleSort('name')}>
+                <span className="flex items-center gap-1">Produit <ArrowUpDown size={12} className={sortBy === 'name' ? 'text-bo-accent' : ''} /></span>
               </th>
-              <th className="text-left py-3.5 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                Produit
-              </th>
-              <th
-                className="text-left py-3.5 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer hover:text-bo-accent transition-colors"
-                onClick={() => toggleSort('category')}
-              >
-                <span className="flex items-center gap-1">
-                  Categorie
-                  <ArrowUpDown size={12} />
-                </span>
-              </th>
-              <th className="text-left py-3.5 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                EAN
-              </th>
-              <th
-                className="text-right py-3.5 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer hover:text-bo-accent transition-colors"
-                onClick={() => toggleSort('price')}
-              >
-                <span className="flex items-center justify-end gap-1">
-                  Prix
-                  <ArrowUpDown size={12} />
-                </span>
-              </th>
-              <th
-                className="text-right py-3.5 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer hover:text-bo-accent transition-colors"
-                onClick={() => toggleSort('stock')}
-              >
-                <span className="flex items-center justify-end gap-1">
-                  Stock
-                  <ArrowUpDown size={12} />
-                </span>
-              </th>
-              <th className="text-right py-3.5 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                Actions
-              </th>
+              {colOn('sku') && <th className="text-left py-3.5 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">SKU</th>}
+              {colOn('ean') && <th className="text-left py-3.5 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">EAN</th>}
+              {colOn('category') && <th className="text-left py-3.5 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Catégorie</th>}
+              {colOn('brand') && <th className="text-left py-3.5 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Marque</th>}
+              {colOn('supplier') && <th className="text-left py-3.5 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Fournisseur</th>}
+              {colOn('tva') && <th className="text-right py-3.5 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">TVA</th>}
+              {colOn('cost') && <th className="text-right py-3.5 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Achat</th>}
+              {colOn('priceTtc') && (
+                <th className="text-right py-3.5 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer hover:text-bo-accent" onClick={() => toggleSort('price')}>
+                  <span className="flex items-center justify-end gap-1">Prix TTC <ArrowUpDown size={12} className={sortBy === 'price' ? 'text-bo-accent' : ''} /></span>
+                </th>
+              )}
+              {colOn('margin') && <th className="text-right py-3.5 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Marge</th>}
+              {colOn('stock') && (
+                <th className="text-right py-3.5 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer hover:text-bo-accent" onClick={() => toggleSort('stock')}>
+                  <span className="flex items-center justify-end gap-1">Stock <ArrowUpDown size={12} className={sortBy === 'stock' ? 'text-bo-accent' : ''} /></span>
+                </th>
+              )}
+              {colOn('status') && <th className="text-left py-3.5 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Statut</th>}
+              <th className="text-right py-3.5 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Actions</th>
             </tr>
           </thead>
           <tbody>
-            {filtered.map((product, idx) => {
+            {products.map((product) => {
               const badge = stockBadge(product.stock);
               const BadgeIcon = badge.icon;
+              const ht = product.taxRate != null ? product.price / (1 + product.taxRate / 100) : null;
+              const margin = ht != null && product.cost != null ? ht - product.cost : null;
+              const colCount = 2 + visibleCols.length;
+              const st = STATUS_META[product.status] || { label: product.status, cls: 'bg-gray-100 text-gray-500' };
               return (
                 <React.Fragment key={product.id}>
-                <tr
-                  className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors group"
-                >
-                  <td className="py-3 px-4 text-xs text-gray-300 font-mono">{idx + 1}</td>
-                  <td className="py-3 px-4">
-                    <div className="flex items-center gap-3">
-                      <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${avatarColor(product.name)} flex items-center justify-center font-bold text-sm flex-shrink-0`}>
-                        {product.name.charAt(0)}
+                  <tr className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors group cursor-pointer" onClick={() => navigate(`/products/${product.id}`)}>
+                    <td className="py-3 px-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl border border-gray-100 bg-gray-50 flex items-center justify-center overflow-hidden flex-shrink-0">
+                          {product.image
+                            ? <img src={product.image} alt="" className="max-h-full max-w-full object-contain" />
+                            : <span className={`w-full h-full rounded-xl bg-gradient-to-br ${avatarColor(product.name)} flex items-center justify-center font-bold text-sm`}>{product.name.charAt(0)}</span>}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-semibold text-sm text-bo-text truncate">{product.name}</p>
+                          <p className="text-[11px] text-gray-400 font-mono">{product.ean}</p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="font-semibold text-sm text-bo-text">{product.name}</p>
-                        <p className="text-[11px] text-gray-400">{product.category}</p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="py-3 px-4">
-                    <span className="text-xs font-medium px-2.5 py-1 rounded-lg bg-gray-100 text-gray-600">
-                      {product.category}
-                    </span>
-                  </td>
-                  <td className="py-3 px-4 font-mono text-xs text-gray-400">
-                    {product.ean}
-                  </td>
-                  <td className="py-3 px-4 text-right font-semibold text-sm">
-                    {product.price.toFixed(2).replace('.', ',')} &euro;
-                  </td>
-                  <td className="py-3 px-4 text-right">
-                    <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full ring-1 ${badge.color}`}>
-                      <BadgeIcon size={12} />
-                      {product.stock}
-                    </span>
-                  </td>
-                  <td className="py-3 px-4 text-right">
-                    <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button
-                        onClick={() => setAnalyticsProductId(analyticsProductId === product.id ? null : product.id)}
-                        className={`p-2 rounded-lg transition-colors ${analyticsProductId === product.id ? 'bg-indigo-100 text-bo-accent' : 'hover:bg-indigo-50 text-gray-400 hover:text-bo-accent'}`}
-                        title="Historique tarifaire"
-                      >
-                        <BarChart3 size={14} />
-                      </button>
-                      <button
-                        onClick={() => navigate(`/products/${product.id}/edit`)}
-                        className="p-2 rounded-lg hover:bg-indigo-50 text-gray-400 hover:text-bo-accent transition-colors"
-                        title="Fiche complète (modifier)"
-                      >
-                        <Pencil size={14} />
-                      </button>
-                      <button
-                        onClick={() => openEdit(product)}
-                        className="p-2 rounded-lg hover:bg-indigo-50 text-gray-400 hover:text-bo-accent transition-colors"
-                        title="Édition rapide (secondaire)"
-                      >
-                        <Zap size={14} />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(product.id)}
-                        className="p-2 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"
-                        title="Supprimer"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-                {/* Price analytics expandable row */}
-                {analyticsProductId === product.id && (
-                  <tr>
-                    <td colSpan={6} className="p-0">
-                      <div className="px-6 py-4 bg-bo-subtle/50 border-b border-bo-border animate-fade-in">
-                        <PriceAnalyticsPanel productId={product.id} />
+                    </td>
+                    {colOn('sku') && <td className="py-3 px-4 font-mono text-xs text-gray-400">{product.sku || '—'}</td>}
+                    {colOn('ean') && <td className="py-3 px-4 font-mono text-xs text-gray-400">{product.ean}</td>}
+                    {colOn('category') && <td className="py-3 px-4"><span className="text-xs font-medium px-2.5 py-1 rounded-lg bg-gray-100 text-gray-600">{product.category ? catName(product.category) : '—'}</span></td>}
+                    {colOn('brand') && <td className="py-3 px-4 text-sm text-gray-600">{brandName(product.brandId) || '—'}</td>}
+                    {colOn('supplier') && <td className="py-3 px-4 text-sm text-gray-600">{supplierName(product.supplierId) || '—'}</td>}
+                    {colOn('tva') && <td className="py-3 px-4 text-right text-sm tabular-nums text-gray-600">{product.taxRate != null ? `${product.taxRate} %` : '—'}</td>}
+                    {colOn('cost') && <td className="py-3 px-4 text-right text-sm tabular-nums text-gray-600">{product.cost != null ? `${product.cost.toFixed(2).replace('.', ',')} €` : '—'}</td>}
+                    {colOn('priceTtc') && <td className="py-3 px-4 text-right font-semibold text-sm tabular-nums">{product.price.toFixed(2).replace('.', ',')} €</td>}
+                    {colOn('margin') && <td className={`py-3 px-4 text-right text-sm tabular-nums ${margin != null && margin < 0 ? 'text-red-600' : 'text-gray-600'}`}>{margin != null ? `${margin.toFixed(2).replace('.', ',')} €` : '—'}</td>}
+                    {colOn('stock') && (
+                      <td className="py-3 px-4 text-right">
+                        <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full ring-1 ${badge.color}`}><BadgeIcon size={12} />{product.stock}</span>
+                      </td>
+                    )}
+                    {colOn('status') && <td className="py-3 px-4"><span className={`text-xs font-medium px-2.5 py-1 rounded-full ${st.cls}`}>{st.label}</span></td>}
+                    <td className="py-3 px-4 text-right" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button onClick={() => setAnalyticsProductId(analyticsProductId === product.id ? null : product.id)} className={`p-2 rounded-lg transition-colors ${analyticsProductId === product.id ? 'bg-indigo-100 text-bo-accent' : 'hover:bg-indigo-50 text-gray-400 hover:text-bo-accent'}`} title="Historique tarifaire"><BarChart3 size={14} /></button>
+                        <button onClick={() => navigate(`/products/${product.id}/edit`)} className="p-2 rounded-lg hover:bg-indigo-50 text-gray-400 hover:text-bo-accent transition-colors" title="Fiche complète (modifier)"><Pencil size={14} /></button>
+                        <button onClick={() => openEdit(product)} className="p-2 rounded-lg hover:bg-indigo-50 text-gray-400 hover:text-bo-accent transition-colors" title="Édition rapide (secondaire)"><Zap size={14} /></button>
+                        <button onClick={() => handleDelete(product.id)} className="p-2 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors" title="Supprimer"><Trash2 size={14} /></button>
                       </div>
                     </td>
                   </tr>
-                )}
+                  {analyticsProductId === product.id && (
+                    <tr>
+                      <td colSpan={colCount} className="p-0">
+                        <div className="px-6 py-4 bg-bo-subtle/50 border-b border-bo-border animate-fade-in">
+                          <PriceAnalyticsPanel productId={product.id} />
+                        </div>
+                      </td>
+                    </tr>
+                  )}
                 </React.Fragment>
               );
             })}
           </tbody>
         </table>
 
-        {filtered.length === 0 && (
+        {!loading && products.length === 0 && (
           <div className="py-12 text-center">
             <Package size={32} className="mx-auto text-gray-300 mb-3" />
-            <p className="text-gray-400 text-sm">Aucun produit ne correspond a votre recherche</p>
+            <p className="text-gray-400 text-sm">Aucun produit ne correspond à ces filtres.</p>
+            {activeFilterCount > 0 && <button onClick={resetFilters} className="mt-3 text-sm font-medium text-bo-accent hover:underline">Réinitialiser les filtres</button>}
           </div>
         )}
 
-        {/* Footer */}
-        <div className="px-4 py-3 border-t border-gray-100 flex items-center justify-between text-xs text-gray-400">
-          <span>{filtered.length} produit{filtered.length > 1 ? 's' : ''} affiche{filtered.length > 1 ? 's' : ''}</span>
-          <span>Catalogue produits</span>
+        {/* Footer pagination serveur */}
+        <div className="px-4 py-3 border-t border-gray-100 flex items-center justify-between text-xs text-gray-500">
+          <span>{total.toLocaleString('fr-FR')} produit{total > 1 ? 's' : ''} · page {page}/{totalPages}</span>
+          <div className="flex items-center gap-1">
+            <button disabled={page <= 1 || loading} onClick={() => setPage((p) => Math.max(1, p - 1))} className="p-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"><ChevronLeft size={15} /></button>
+            <button disabled={page >= totalPages || loading} onClick={() => setPage((p) => Math.min(totalPages, p + 1))} className="p-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"><ChevronRight size={15} /></button>
+          </div>
         </div>
       </div>
 

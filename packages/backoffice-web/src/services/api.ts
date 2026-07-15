@@ -156,6 +156,7 @@ export const productsApi = {
     limit?: number;
   }) => api.get('/products', { params }),
   get: (id: string) => api.get(`/products/${id}`),
+  catalogStats: (params?: { storeId?: string }) => api.get('/products/catalog-stats', { params }),
   // Aligné sur CreateProductDto : ean+name+priceMinorUnits obligatoires, le
   // storeId est forcé serveur depuis le JWT (jamais envoyé par le client).
   create: (data: {

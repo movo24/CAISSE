@@ -21,8 +21,10 @@ describe('ProductsPage — import CSV catalogue (source)', () => {
     expect(src).toMatch(/importReport\.errors\.map/);
   });
 
-  it('the catalogue list is refreshed after import (UI reflects the real state)', () => {
-    expect(src).toMatch(/await fetchProducts\(\); \/\/ le catalogue affiché reflète l'état réel post-import/);
+  it('the catalogue list + counts are refreshed after import (UI reflects the real state)', () => {
+    // reload() rafraîchit la liste ET les compteurs d'en-tête (fetchProducts + fetchStats).
+    expect(src).toMatch(/reload\(\); \/\/ le catalogue \+ compteurs reflètent l'état réel post-import/);
+    expect(src).toMatch(/const reload = useCallback\(\(\) => \{ fetchProducts\(\); fetchStats\(\); \}/);
   });
 
   it('a round-trippable server template/export is downloadable', () => {
