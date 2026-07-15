@@ -46,6 +46,7 @@ export class StockMovementEntity {
     | 'transfer'
     | 'sale'
     | 'pack_consumption'
+    | 'void'
     | 'return_customer'
     | 'return_supplier'
     | 'inventory_adjust'
