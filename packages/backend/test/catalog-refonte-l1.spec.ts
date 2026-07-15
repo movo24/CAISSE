@@ -332,4 +332,35 @@ describe('Catalogue refonte L1 — product enablement (no migration)', () => {
       expect(roles).toEqual(['admin', 'manager']);
     });
   });
+
+  // ── Lot 2 — champs additifs de la fiche (migration 1760) ───────────
+  describe('Lot 2 — champs additifs persistés (identification / logistique / achat)', () => {
+    const S = uuidv4();
+    beforeAll(async () => {
+      await ds.getRepository(StoreEntity).save({ id: S, name: 'L2', isActive: true, currencyCode: 'EUR' } as any);
+    });
+
+    it('create + update persistent short_name/internal_ref/type/logistique/achat', async () => {
+      const p = await svc.create(
+        {
+          ean: nextEan(), name: 'Fiche complète', priceMinorUnits: 500, taxRate: 20, storeId: S,
+          shortName: 'Fiche', internalRef: 'INT-001', supplierRef: 'FRS-9', productType: 'pack',
+          countryOfOrigin: 'France', leadTimeDays: 7, minOrderQuantity: 24,
+          weightGrams: 950, widthMm: 80, heightMm: 300, depthMm: 80, volumeMl: 1000, unitsPerCarton: 6,
+        } as any,
+        EMP,
+      );
+      expect(p.shortName).toBe('Fiche');
+      expect(p.productType).toBe('pack');
+      expect(p.weightGrams).toBe(950);
+      expect(p.unitsPerCarton).toBe(6);
+
+      const up = await svc.update(p.id, { weightGrams: 1200, leadTimeDays: 3 } as any, EMP, undefined, S);
+      expect(up.weightGrams).toBe(1200);
+      expect(up.leadTimeDays).toBe(3);
+      // champs non touchés préservés
+      expect(up.internalRef).toBe('INT-001');
+      expect(up.countryOfOrigin).toBe('France');
+    });
+  });
 });

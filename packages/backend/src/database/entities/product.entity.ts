@@ -89,6 +89,46 @@ export class ProductEntity {
   @Column({ type: 'varchar', default: 'active' })
   status: 'draft' | 'pending_validation' | 'active' | 'rejected' | 'archived';
 
+  // ── Lot 2 — champs additifs de la fiche pro (migration 1760, tous nullables) ──
+  @Column({ name: 'short_name', type: 'varchar', nullable: true })
+  shortName: string | null;
+
+  @Column({ name: 'internal_ref', type: 'varchar', nullable: true })
+  internalRef: string | null;
+
+  @Column({ name: 'supplier_ref', type: 'varchar', nullable: true })
+  supplierRef: string | null;
+
+  @Column({ name: 'product_type', type: 'varchar', default: 'simple' })
+  productType: 'simple' | 'variant' | 'pack' | 'service' | 'deposit' | 'gift_card';
+
+  @Column({ name: 'country_of_origin', type: 'varchar', nullable: true })
+  countryOfOrigin: string | null;
+
+  @Column({ name: 'lead_time_days', type: 'integer', nullable: true })
+  leadTimeDays: number | null;
+
+  @Column({ name: 'min_order_quantity', type: 'integer', nullable: true })
+  minOrderQuantity: number | null;
+
+  @Column({ name: 'weight_grams', type: 'integer', nullable: true })
+  weightGrams: number | null;
+
+  @Column({ name: 'width_mm', type: 'integer', nullable: true })
+  widthMm: number | null;
+
+  @Column({ name: 'height_mm', type: 'integer', nullable: true })
+  heightMm: number | null;
+
+  @Column({ name: 'depth_mm', type: 'integer', nullable: true })
+  depthMm: number | null;
+
+  @Column({ name: 'volume_ml', type: 'integer', nullable: true })
+  volumeMl: number | null;
+
+  @Column({ name: 'units_per_carton', type: 'integer', nullable: true })
+  unitsPerCarton: number | null;
+
   @Column({ name: 'store_id' })
   storeId: string;
 

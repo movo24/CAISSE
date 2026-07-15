@@ -50,6 +50,11 @@ const toMinor = (s: string) => {
   const v = parseFloat((s || '').replace(',', '.'));
   return Number.isFinite(v) && v >= 0 ? Math.round(v * 100) : null;
 };
+/** Entier positif ou undefined (jamais de clé vide envoyée). */
+const toInt = (s: string): number | undefined => {
+  const n = parseInt((s || '').trim(), 10);
+  return Number.isFinite(n) && n >= 0 ? n : undefined;
+};
 
 const inputCls = 'w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-bo-accent/20 focus:border-bo-accent/50';
 const labelCls = 'block text-xs font-semibold text-gray-500 mb-1.5';
@@ -102,6 +107,10 @@ export function ProductEditPage() {
     ean: '', name: '', description: '', categoryId: '', unitType: 'unit',
     sku: '', brandId: '', supplierId: '', priceTtc: '', cost: '', taxRate: '20',
     stock: '0', alertThreshold: '10', criticalThreshold: '5', imageUrl: '', status: 'active',
+    // Lot 2 — champs additifs
+    shortName: '', internalRef: '', supplierRef: '', productType: 'simple', countryOfOrigin: '',
+    leadTimeDays: '', minOrderQuantity: '', weightGrams: '', widthMm: '', heightMm: '', depthMm: '',
+    volumeMl: '', unitsPerCarton: '',
   });
   const set = (k: keyof typeof form, v: any) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -149,6 +158,16 @@ export function ProductEditPage() {
               criticalThreshold: String(src.stockCriticalThreshold ?? 5),
               imageUrl: src.imageUrl || '',
               status: 'draft',
+              shortName: src.shortName || '', internalRef: '', supplierRef: src.supplierRef || '',
+              productType: src.productType || 'simple', countryOfOrigin: src.countryOfOrigin || '',
+              leadTimeDays: src.leadTimeDays != null ? String(src.leadTimeDays) : '',
+              minOrderQuantity: src.minOrderQuantity != null ? String(src.minOrderQuantity) : '',
+              weightGrams: src.weightGrams != null ? String(src.weightGrams) : '',
+              widthMm: src.widthMm != null ? String(src.widthMm) : '',
+              heightMm: src.heightMm != null ? String(src.heightMm) : '',
+              depthMm: src.depthMm != null ? String(src.depthMm) : '',
+              volumeMl: src.volumeMl != null ? String(src.volumeMl) : '',
+              unitsPerCarton: src.unitsPerCarton != null ? String(src.unitsPerCarton) : '',
             }));
           } catch { /* source introuvable → création vierge */ }
         }
@@ -166,6 +185,16 @@ export function ProductEditPage() {
         alertThreshold: String(p.stockAlertThreshold ?? 10),
         criticalThreshold: String(p.stockCriticalThreshold ?? 5),
         imageUrl: p.imageUrl || '', status: p.status || 'active',
+        shortName: p.shortName || '', internalRef: p.internalRef || '', supplierRef: p.supplierRef || '',
+        productType: p.productType || 'simple', countryOfOrigin: p.countryOfOrigin || '',
+        leadTimeDays: p.leadTimeDays != null ? String(p.leadTimeDays) : '',
+        minOrderQuantity: p.minOrderQuantity != null ? String(p.minOrderQuantity) : '',
+        weightGrams: p.weightGrams != null ? String(p.weightGrams) : '',
+        widthMm: p.widthMm != null ? String(p.widthMm) : '',
+        heightMm: p.heightMm != null ? String(p.heightMm) : '',
+        depthMm: p.depthMm != null ? String(p.depthMm) : '',
+        volumeMl: p.volumeMl != null ? String(p.volumeMl) : '',
+        unitsPerCarton: p.unitsPerCarton != null ? String(p.unitsPerCarton) : '',
       });
       // Chargements non bloquants des onglets (endpoints existants)
       productsApi.listComponents(id).then((r) => setComponents(r.data || [])).catch(() => {});
@@ -249,6 +278,20 @@ export function ProductEditPage() {
       supplierId: form.supplierId || undefined,
       sku: form.sku.trim() || undefined,
       status: form.status || undefined,
+      // Lot 2 — champs additifs
+      shortName: form.shortName.trim() || undefined,
+      internalRef: form.internalRef.trim() || undefined,
+      supplierRef: form.supplierRef.trim() || undefined,
+      productType: form.productType || undefined,
+      countryOfOrigin: form.countryOfOrigin.trim() || undefined,
+      leadTimeDays: toInt(form.leadTimeDays),
+      minOrderQuantity: toInt(form.minOrderQuantity),
+      weightGrams: toInt(form.weightGrams),
+      widthMm: toInt(form.widthMm),
+      heightMm: toInt(form.heightMm),
+      depthMm: toInt(form.depthMm),
+      volumeMl: toInt(form.volumeMl),
+      unitsPerCarton: toInt(form.unitsPerCarton),
     };
     setSaving(true);
     try {
@@ -449,7 +492,19 @@ export function ProductEditPage() {
                 )}
               </select>
             </Field>
-            <Phase2Notice fields="Désignation courte/longue séparées · sous-famille · code UPC · code interne" />
+            <Field label="Nom court (caisse)"><input className={inputCls} value={form.shortName} onChange={(e) => set('shortName', e.target.value)} placeholder="ex : Coca 33" /></Field>
+            <Field label="Référence interne"><input className={`${inputCls} font-mono`} value={form.internalRef} onChange={(e) => set('internalRef', e.target.value)} placeholder="INT-0001" /></Field>
+            <Field label="Type de produit">
+              <select className={inputCls} value={form.productType} onChange={(e) => set('productType', e.target.value)}>
+                <option value="simple">Produit simple</option>
+                <option value="variant">Variante</option>
+                <option value="pack">Pack / kit</option>
+                <option value="service">Service</option>
+                <option value="deposit">Consigne</option>
+                <option value="gift_card">Carte cadeau</option>
+              </select>
+            </Field>
+            <Phase2Notice fields="Codes-barres multiples (UPC/GTIN secondaires) — table product_barcodes à venir" />
           </div>
         )}
 
@@ -513,7 +568,13 @@ export function ProductEditPage() {
                 ))}
               </div>
             )}
-            <Phase2Notice fields="Fournisseur secondaire · référence fournisseur · contact dédié produit · délai de livraison · MOQ · conditionnement · devise · incoterm" />
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <Field label="Référence fournisseur"><input className={`${inputCls} font-mono`} value={form.supplierRef} onChange={(e) => set('supplierRef', e.target.value)} placeholder="FRS-REF" /></Field>
+              <Field label="Délai (jours)"><input className={inputCls} inputMode="numeric" value={form.leadTimeDays} onChange={(e) => set('leadTimeDays', e.target.value)} /></Field>
+              <Field label="MOQ (qté min. commande)"><input className={inputCls} inputMode="numeric" value={form.minOrderQuantity} onChange={(e) => set('minOrderQuantity', e.target.value)} /></Field>
+              <Field label="Pays d'origine"><input className={inputCls} value={form.countryOfOrigin} onChange={(e) => set('countryOfOrigin', e.target.value)} placeholder="France" /></Field>
+            </div>
+            <Phase2Notice fields="Fournisseur secondaire · contact dédié · conditionnement · devise · incoterm — table product_suppliers à venir" />
           </div>
         )}
 
@@ -600,7 +661,17 @@ export function ProductEditPage() {
         )}
 
         {tab === 'logistique' && (
-          <Phase2Notice fields="Poids · longueur · largeur · hauteur · volume — aucune colonne en base aujourd'hui : rien n'est affiché tant que la migration n'est pas validée." />
+          <div className="space-y-6">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-5">
+              <Field label="Poids (g)"><input className={inputCls} inputMode="numeric" value={form.weightGrams} onChange={(e) => set('weightGrams', e.target.value)} /></Field>
+              <Field label="Largeur (mm)"><input className={inputCls} inputMode="numeric" value={form.widthMm} onChange={(e) => set('widthMm', e.target.value)} /></Field>
+              <Field label="Hauteur (mm)"><input className={inputCls} inputMode="numeric" value={form.heightMm} onChange={(e) => set('heightMm', e.target.value)} /></Field>
+              <Field label="Profondeur (mm)"><input className={inputCls} inputMode="numeric" value={form.depthMm} onChange={(e) => set('depthMm', e.target.value)} /></Field>
+              <Field label="Volume (ml)"><input className={inputCls} inputMode="numeric" value={form.volumeMl} onChange={(e) => set('volumeMl', e.target.value)} /></Field>
+              <Field label="Unités / carton"><input className={inputCls} inputMode="numeric" value={form.unitsPerCarton} onChange={(e) => set('unitsPerCarton', e.target.value)} /></Field>
+            </div>
+            <Phase2Notice fields="Cartons par palette · emplacement réserve/rayon · matière · allergènes / ingrédients · péremption / lot réglementaire — à venir" />
+          </div>
         )}
 
         {tab === 'promotions' && (

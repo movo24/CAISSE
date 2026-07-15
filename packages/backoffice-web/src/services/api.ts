@@ -184,6 +184,19 @@ export const productsApi = {
     imageUrl?: string;
     stockAlertThreshold?: number;
     stockCriticalThreshold?: number;
+    shortName?: string;
+    internalRef?: string;
+    supplierRef?: string;
+    productType?: string;
+    countryOfOrigin?: string;
+    leadTimeDays?: number;
+    minOrderQuantity?: number;
+    weightGrams?: number;
+    widthMm?: number;
+    heightMm?: number;
+    depthMm?: number;
+    volumeMl?: number;
+    unitsPerCarton?: number;
   }) => api.post('/products', data),
   // Aligné sur UpdateProductDto : PAS de `ean` (immuable, absent du DTO →
   // rejeté par forbidNonWhitelisted), PAS de `storeId`.
@@ -206,6 +219,19 @@ export const productsApi = {
       imageUrl?: string;
       stockAlertThreshold?: number;
       stockCriticalThreshold?: number;
+      shortName?: string;
+      internalRef?: string;
+      supplierRef?: string;
+      productType?: string;
+      countryOfOrigin?: string;
+      leadTimeDays?: number;
+      minOrderQuantity?: number;
+      weightGrams?: number;
+      widthMm?: number;
+      heightMm?: number;
+      depthMm?: number;
+      volumeMl?: number;
+      unitsPerCarton?: number;
       reason?: string;
       isActive?: boolean;
     },

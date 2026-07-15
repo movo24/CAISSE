@@ -18,6 +18,10 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 // Canonical product lifecycle statuses (single source of truth).
 import { PRODUCT_STATUSES, ProductStatus } from './product-integration.dto';
 
+/** Types de produit déclaratifs (Lot 2). */
+export const PRODUCT_TYPES = ['simple', 'variant', 'pack', 'service', 'deposit', 'gift_card'] as const;
+export type ProductType = (typeof PRODUCT_TYPES)[number];
+
 export class CreateProductDto {
   @ApiProperty({ example: '3760123456789' })
   @IsString()
@@ -118,6 +122,59 @@ export class CreateProductDto {
   @IsOptional()
   @IsIn(PRODUCT_STATUSES)
   status?: ProductStatus;
+
+  // ── Lot 2 — champs additifs (colonnes migration 1760) ──
+  @ApiPropertyOptional({ description: 'Nom court pour la caisse' })
+  @IsOptional() @IsString() @MaxLength(120)
+  shortName?: string;
+
+  @ApiPropertyOptional({ description: 'Référence interne (distincte du SKU)' })
+  @IsOptional() @IsString() @MaxLength(100)
+  internalRef?: string;
+
+  @ApiPropertyOptional({ description: 'Référence fournisseur' })
+  @IsOptional() @IsString() @MaxLength(100)
+  supplierRef?: string;
+
+  @ApiPropertyOptional({ enum: PRODUCT_TYPES })
+  @IsOptional() @IsIn(PRODUCT_TYPES)
+  productType?: ProductType;
+
+  @ApiPropertyOptional({ description: "Pays d'origine" })
+  @IsOptional() @IsString() @MaxLength(80)
+  countryOfOrigin?: string;
+
+  @ApiPropertyOptional({ description: 'Délai fournisseur (jours)' })
+  @IsOptional() @IsInt() @Min(0)
+  leadTimeDays?: number;
+
+  @ApiPropertyOptional({ description: 'Quantité minimale de commande (MOQ)' })
+  @IsOptional() @IsInt() @Min(0)
+  minOrderQuantity?: number;
+
+  @ApiPropertyOptional({ description: 'Poids (grammes)' })
+  @IsOptional() @IsInt() @Min(0)
+  weightGrams?: number;
+
+  @ApiPropertyOptional({ description: 'Largeur (mm)' })
+  @IsOptional() @IsInt() @Min(0)
+  widthMm?: number;
+
+  @ApiPropertyOptional({ description: 'Hauteur (mm)' })
+  @IsOptional() @IsInt() @Min(0)
+  heightMm?: number;
+
+  @ApiPropertyOptional({ description: 'Profondeur (mm)' })
+  @IsOptional() @IsInt() @Min(0)
+  depthMm?: number;
+
+  @ApiPropertyOptional({ description: 'Volume (ml)' })
+  @IsOptional() @IsInt() @Min(0)
+  volumeMl?: number;
+
+  @ApiPropertyOptional({ description: 'Unités par carton' })
+  @IsOptional() @IsInt() @Min(0)
+  unitsPerCarton?: number;
 }
 
 export class UpdateProductDto {
@@ -230,6 +287,59 @@ export class UpdateProductDto {
   @IsOptional()
   @IsIn(PRODUCT_STATUSES)
   status?: ProductStatus;
+
+  // ── Lot 2 — champs additifs (colonnes migration 1760) ──
+  @ApiPropertyOptional({ description: 'Nom court pour la caisse' })
+  @IsOptional() @IsString() @MaxLength(120)
+  shortName?: string;
+
+  @ApiPropertyOptional({ description: 'Référence interne (distincte du SKU)' })
+  @IsOptional() @IsString() @MaxLength(100)
+  internalRef?: string;
+
+  @ApiPropertyOptional({ description: 'Référence fournisseur' })
+  @IsOptional() @IsString() @MaxLength(100)
+  supplierRef?: string;
+
+  @ApiPropertyOptional({ enum: PRODUCT_TYPES })
+  @IsOptional() @IsIn(PRODUCT_TYPES)
+  productType?: ProductType;
+
+  @ApiPropertyOptional({ description: "Pays d'origine" })
+  @IsOptional() @IsString() @MaxLength(80)
+  countryOfOrigin?: string;
+
+  @ApiPropertyOptional({ description: 'Délai fournisseur (jours)' })
+  @IsOptional() @IsInt() @Min(0)
+  leadTimeDays?: number;
+
+  @ApiPropertyOptional({ description: 'Quantité minimale de commande (MOQ)' })
+  @IsOptional() @IsInt() @Min(0)
+  minOrderQuantity?: number;
+
+  @ApiPropertyOptional({ description: 'Poids (grammes)' })
+  @IsOptional() @IsInt() @Min(0)
+  weightGrams?: number;
+
+  @ApiPropertyOptional({ description: 'Largeur (mm)' })
+  @IsOptional() @IsInt() @Min(0)
+  widthMm?: number;
+
+  @ApiPropertyOptional({ description: 'Hauteur (mm)' })
+  @IsOptional() @IsInt() @Min(0)
+  heightMm?: number;
+
+  @ApiPropertyOptional({ description: 'Profondeur (mm)' })
+  @IsOptional() @IsInt() @Min(0)
+  depthMm?: number;
+
+  @ApiPropertyOptional({ description: 'Volume (ml)' })
+  @IsOptional() @IsInt() @Min(0)
+  volumeMl?: number;
+
+  @ApiPropertyOptional({ description: 'Unités par carton' })
+  @IsOptional() @IsInt() @Min(0)
+  unitsPerCarton?: number;
 }
 
 /** Hierarchical product category — create with an optional parent. */
