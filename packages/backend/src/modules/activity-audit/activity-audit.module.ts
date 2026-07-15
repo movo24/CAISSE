@@ -6,6 +6,7 @@ import { UserViewEventEntity } from '../../database/entities/user-view-event.ent
 import { PilotageAccessModule } from '../pilotage-access/pilotage-access.module';
 import { ActivityService } from './activity.service';
 import { SecurityAlertService } from './security-alert.service';
+import { RetentionService } from './retention.service';
 import { ActivityAdminController } from './activity-admin.controller';
 import { ActivityIngestController } from './activity-ingest.controller';
 
@@ -19,7 +20,7 @@ import { ActivityIngestController } from './activity-ingest.controller';
     PilotageAccessModule,
   ],
   controllers: [ActivityAdminController, ActivityIngestController],
-  providers: [ActivityService, SecurityAlertService],
-  exports: [ActivityService, SecurityAlertService],
+  providers: [ActivityService, SecurityAlertService, RetentionService],
+  exports: [ActivityService, SecurityAlertService, RetentionService],
 })
 export class ActivityAuditModule {}
