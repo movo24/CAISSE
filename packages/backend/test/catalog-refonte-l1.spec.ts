@@ -23,6 +23,7 @@ import { ProductMediaEntity } from '../src/database/entities/product-media.entit
 import { ProductDocumentEntity } from '../src/database/entities/product-document.entity';
 import { ProductBarcodeEntity } from '../src/database/entities/product-barcode.entity';
 import { ProductSupplierEntity } from '../src/database/entities/product-supplier.entity';
+import { ProductChangeLogEntity } from '../src/database/entities/product-change-log.entity';
 import { AuditEntryEntity } from '../src/database/entities/audit-entry.entity';
 import { AuditService } from '../src/modules/audit/audit.service';
 import { ProductsService } from '../src/modules/products/products.service';
@@ -54,6 +55,7 @@ describe('Catalogue refonte L1 — product enablement (no migration)', () => {
       ds.getRepository(ProductDocumentEntity),
       ds.getRepository(ProductBarcodeEntity),
       ds.getRepository(ProductSupplierEntity),
+      ds.getRepository(ProductChangeLogEntity),
     );
   });
   afterAll(async () => {
@@ -526,6 +528,33 @@ describe('Catalogue refonte L1 — product enablement (no migration)', () => {
       await expect(svc.generateVariants(pid, S, [], EMP)).rejects.toThrow();
       const variant = (await svc.listVariants(pid, S))[0];
       await expect(svc.generateVariants(variant.id, S, [{ name: 'X', values: ['a'] }], EMP)).rejects.toThrow();
+    });
+  });
+
+  // ── Lot D — journal des modifications de la fiche ──────────────────
+  describe('Lot D — journal des modifications', () => {
+    const S = uuidv4();
+    let pid = '';
+    beforeAll(async () => {
+      await ds.getRepository(StoreEntity).save({ id: S, name: 'LD', isActive: true, currencyCode: 'EUR' } as any);
+      pid = (await svc.create({ ean: nextEan(), name: 'Suivi', priceMinorUnits: 1000, costMinorUnits: 600, taxRate: 20, storeId: S } as any, EMP)).id;
+    });
+
+    it('trace prix de vente, prix d’achat, TVA et nom lors d’un update', async () => {
+      await svc.update(pid, { priceMinorUnits: 1200, costMinorUnits: 700, taxRate: 5.5, name: 'Suivi v2' } as any, EMP, 'hausse', S, 'backoffice', 'admin');
+      const log = await svc.getChangeLog(pid, S);
+      const byField = new Map(log.map((r) => [r.field, r]));
+      expect(byField.get('priceMinorUnits')).toMatchObject({ oldValue: '1000', newValue: '1200' });
+      expect(byField.get('costMinorUnits')).toMatchObject({ oldValue: '600', newValue: '700' });
+      expect(byField.get('taxRate')?.oldValue).toBe('20');
+      expect(byField.get('name')).toMatchObject({ oldValue: 'Suivi', newValue: 'Suivi v2', changedByRole: 'admin' });
+    });
+
+    it('ne trace pas un champ inchangé ; garde tenant', async () => {
+      const before = (await svc.getChangeLog(pid, S)).length;
+      await svc.update(pid, { name: 'Suivi v2' } as any, EMP, undefined, S); // identique → rien
+      expect((await svc.getChangeLog(pid, S)).length).toBe(before);
+      await expect(svc.getChangeLog(pid, uuidv4())).rejects.toThrow();
     });
   });
 });

@@ -137,6 +137,8 @@ export function ProductEditPage() {
   // Lot B — fournisseurs multiples
   const [prodSuppliers, setProdSuppliers] = useState<any[]>([]);
   const [psForm, setPsForm] = useState({ supplierId: '', supplierRef: '', purchasePrice: '', currencyCode: 'EUR', leadTimeDays: '', minOrderQuantity: '', incoterm: '', isPrimary: false });
+  // Lot D — journal des modifications
+  const [changeLog, setChangeLog] = useState<any[]>([]);
 
   const load = useCallback(async () => {
     try {
@@ -219,6 +221,7 @@ export function ProductEditPage() {
       productsApi.listDocuments(id).then((r) => setDocuments(r.data || [])).catch(() => {});
       productsApi.listBarcodes(id).then((r) => setBarcodes(r.data || [])).catch(() => {});
       productsApi.listProductSuppliers(id).then((r) => setProdSuppliers(r.data || [])).catch(() => {});
+      productsApi.changeLog(id).then((r) => setChangeLog(r.data || [])).catch(() => {});
     } catch (e: any) {
       setError(e?.response?.data?.message || 'Chargement impossible');
     } finally { setLoading(false); }
@@ -1000,7 +1003,35 @@ export function ProductEditPage() {
                 ))}</tbody>
               </table>
             )}
-            <p className="text-[11px] text-gray-400">Historique réel des changements de PRIX (table price_history). Les modifications hors prix ne sont pas encore journalisées côté serveur — Phase 2 (audit product_updated).</p>
+            <p className="text-[11px] text-gray-400">Historique réel des changements de PRIX de vente (table price_history).</p>
+
+            {/* Journal complet des modifications (Lot D) */}
+            {isEdit && (
+              <div className="border-t border-gray-100 pt-4">
+                <p className="text-sm font-semibold text-bo-text mb-2">Modifications de la fiche ({changeLog.length})</p>
+                {changeLog.length === 0 ? (
+                  <p className="text-sm text-gray-400">Aucune modification enregistrée (nom, prix d'achat, TVA, catégorie, fournisseur, statut…).</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm min-w-[560px]">
+                      <thead><tr className="text-left text-[11px] uppercase text-gray-400 border-b border-gray-100"><th className="py-2">Date</th><th>Champ</th><th>Avant</th><th>Après</th><th>Par</th></tr></thead>
+                      <tbody>
+                        {changeLog.map((c) => (
+                          <tr key={c.id} className="border-b border-gray-50">
+                            <td className="py-2 text-gray-600 whitespace-nowrap">{new Date(c.createdAt).toLocaleString('fr-FR')}</td>
+                            <td className="text-gray-700 font-medium">{c.field}</td>
+                            <td className="text-gray-400 tabular-nums">{c.oldValue || '—'}</td>
+                            <td className="text-bo-text tabular-nums">{c.newValue || '—'}</td>
+                            <td className="text-xs text-gray-400">{c.changedByRole || '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                <p className="text-[11px] text-gray-400 mt-2">Journal réel (table product_change_log) : prix d'achat, TVA, fournisseur, catégorie, statut, dimensions…</p>
+              </div>
+            )}
           </div>
         )}
       </div>

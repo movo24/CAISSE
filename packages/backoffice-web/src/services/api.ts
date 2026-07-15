@@ -240,6 +240,7 @@ export const productsApi = {
   scan: (ean: string) => api.get(`/products/scan/${ean}`),
   stockAlerts: () => api.get('/products/stock-alerts'),
   priceHistory: (id: string) => api.get(`/products/${id}/price-history`),
+  changeLog: (id: string) => api.get(`/products/${id}/change-log`),
   priceAnalytics: (id: string) => api.get(`/products/${id}/price-analytics`),
   generateBarcode: (id: string) => api.post(`/products/${id}/generate-barcode`),
   // Variants / SKU (decision 5)

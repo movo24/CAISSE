@@ -13,11 +13,12 @@ import { ProductMediaEntity } from '../../database/entities/product-media.entity
 import { ProductDocumentEntity } from '../../database/entities/product-document.entity';
 import { ProductBarcodeEntity } from '../../database/entities/product-barcode.entity';
 import { ProductSupplierEntity } from '../../database/entities/product-supplier.entity';
+import { ProductChangeLogEntity } from '../../database/entities/product-change-log.entity';
 import { AuditModule } from '../audit/audit.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([ProductEntity, ProductCategoryEntity, PriceHistoryEntity, BrandEntity, SupplierEntity, StoreProductPriceEntity, ProductComponentEntity, ProductMediaEntity, ProductDocumentEntity, ProductBarcodeEntity, ProductSupplierEntity]),
+    TypeOrmModule.forFeature([ProductEntity, ProductCategoryEntity, PriceHistoryEntity, BrandEntity, SupplierEntity, StoreProductPriceEntity, ProductComponentEntity, ProductMediaEntity, ProductDocumentEntity, ProductBarcodeEntity, ProductSupplierEntity, ProductChangeLogEntity]),
     AuditModule,
   ],
   controllers: [ProductsController],

@@ -18,6 +18,7 @@ import { ProductMediaEntity } from '../../database/entities/product-media.entity
 import { ProductDocumentEntity } from '../../database/entities/product-document.entity';
 import { ProductBarcodeEntity } from '../../database/entities/product-barcode.entity';
 import { ProductSupplierEntity } from '../../database/entities/product-supplier.entity';
+import { ProductChangeLogEntity } from '../../database/entities/product-change-log.entity';
 import { AuditService } from '../audit/audit.service';
 import { PaginatedResult } from '../../common/dto/pagination.dto';
 import { computePriceVerdict, PriceVerdict } from './price-verdict';
@@ -63,7 +64,57 @@ export class ProductsService {
     private barcodeRepo: Repository<ProductBarcodeEntity>,
     @InjectRepository(ProductSupplierEntity)
     private productSupplierRepo: Repository<ProductSupplierEntity>,
+    @InjectRepository(ProductChangeLogEntity)
+    private changeLogRepo: Repository<ProductChangeLogEntity>,
   ) {}
+
+  // ── Journal des modifications de la fiche (Lot D) ──
+
+  /** Champs tracés dans le journal des modifications (fiche + prix + fournisseur). */
+  private static readonly TRACKED_FIELDS: string[] = [
+    'name', 'shortName', 'description', 'priceMinorUnits', 'oldPriceMinorUnits', 'costMinorUnits',
+    'taxRate', 'categoryId', 'brandId', 'supplierId', 'status', 'isActive', 'sku', 'internalRef',
+    'supplierRef', 'productType', 'unitType', 'countryOfOrigin', 'leadTimeDays', 'minOrderQuantity',
+    'weightGrams', 'widthMm', 'heightMm', 'depthMm', 'volumeMl', 'unitsPerCarton',
+  ];
+
+  private async recordChangeLog(
+    existing: ProductEntity,
+    data: Partial<ProductEntity>,
+    changedBy?: string,
+    changedByRole?: string,
+  ): Promise<void> {
+    const rows: Partial<ProductChangeLogEntity>[] = [];
+    for (const field of ProductsService.TRACKED_FIELDS) {
+      if ((data as any)[field] === undefined) continue;
+      const oldV = (existing as any)[field];
+      const newV = (data as any)[field];
+      const oldS = oldV === null || oldV === undefined ? '' : String(oldV);
+      const newS = newV === null || newV === undefined ? '' : String(newV);
+      if (oldS === newS) continue;
+      rows.push({
+        productId: existing.id,
+        storeId: existing.storeId,
+        field,
+        oldValue: oldS,
+        newValue: newS,
+        changedBy: changedBy ?? null,
+        changedByRole: changedByRole ?? null,
+      });
+    }
+    if (rows.length) {
+      try {
+        await this.changeLogRepo.save(this.changeLogRepo.create(rows));
+      } catch (e: any) {
+        console.warn(`[ProductsService] change-log save failed (non-blocking): ${e?.message}`);
+      }
+    }
+  }
+
+  async getChangeLog(productId: string, storeId: string): Promise<ProductChangeLogEntity[]> {
+    await this.findOneForStore(productId, storeId);
+    return this.changeLogRepo.find({ where: { productId, storeId }, order: { createdAt: 'DESC' }, take: 200 });
+  }
 
   // ── Fournisseurs multiples par produit (Lot B) ──
 
@@ -791,6 +842,7 @@ export class ProductsService {
     }
 
     this.alignStatusActive(data);
+    await this.recordChangeLog(existing, data, employeeId, employeeRole);
     await this.productRepo.update(id, data);
     return this.findOne(id, storeId);
   }

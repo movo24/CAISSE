@@ -429,6 +429,12 @@ export class ProductsController {
     return this.productsService.getPriceHistory(id, req.user.storeId);
   }
 
+  @Get(':id/change-log')
+  @ApiOperation({ summary: 'Full change log of the product sheet (fields, purchase price, supplier, status)' })
+  changeLog(@Param('id') id: string, @Request() req: any) {
+    return this.productsService.getChangeLog(id, req.user.storeId);
+  }
+
   @Get(':id/price-analytics')
   @ApiOperation({ summary: 'Get price analytics with sales impact per period' })
   priceAnalytics(@Param('id') id: string, @Request() req: any) {
