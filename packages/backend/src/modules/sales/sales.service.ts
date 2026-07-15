@@ -23,6 +23,7 @@ import { ProductEntity } from '../../database/entities/product.entity';
 import { FiscalJournalEntity } from '../../database/entities/fiscal-journal.entity';
 import { PosSessionEntity } from '../../database/entities/pos-session.entity';
 import { SaleComponentMovementEntity } from '../../database/entities/sale-component-movement.entity';
+import { StockMovementEntity } from '../../database/entities/stock-movement.entity';
 import { StoreEntity } from '../../database/entities/store.entity';
 import { PosMachineEntity } from '../../database/entities/pos-machine.entity';
 import { evaluateEnrollmentGate } from '../machine-enrollment/machine-enrollment.service';
@@ -846,6 +847,14 @@ export class SalesService {
         }
       }
 
+      // --- Journal de stock unifié — bloc F1 (shadow). Flag OFF par défaut :
+      //     AUCUN mouvement écrit, comportement identique (prouvé par la suite).
+      //     ON : écriture double dans la MÊME tx ; la caisse lit toujours le
+      //     scalaire (lecture inchangée). Les mouvements sont HORS empreinte de
+      //     hash (déjà calculée ligne 745) — aucun hash de vente n'est modifié.
+      const stockJournalShadow = process.env.STOCK_JOURNAL_SHADOW === 'true';
+      const shadowEmployeeName = sale.employeeNameSnapshot || employeeId;
+
       // --- Product Packs (GO owner 2026-07-09) : composants dans la MÊME tx ---
       // Le parent reste la seule ligne commerciale (CA/ticket inchangés). Chaque
       // composant ACTIF sort du stock avec le même décrément conditionnel
@@ -892,6 +901,43 @@ export class SalesService {
             employeeId,
             sessionId: registerBinding.sessionId,
             terminalId: registerBinding.terminalId,
+          });
+          if (stockJournalShadow) {
+            await queryRunner.manager.insert(StockMovementEntity, {
+              productId: comp.component_product_id,
+              movementType: 'pack_consumption',
+              fromLocationId: null,
+              toLocationId: null,
+              quantity: consumed,
+              reference: ticketNumber,
+              employeeId,
+              employeeName: shadowEmployeeName,
+              storeId,
+              saleId: sale.id,
+              saleLineItemId: li.id,
+              occurredAt: completedAt,
+            });
+          }
+        }
+      }
+
+      // Mouvement 'sale' par ligne (parent facturé) — même tx, idempotent via
+      // l'index unique partiel (F0). N'entre dans aucun hash.
+      if (stockJournalShadow) {
+        for (const li of lineItems) {
+          await queryRunner.manager.insert(StockMovementEntity, {
+            productId: li.productId,
+            movementType: 'sale',
+            fromLocationId: null,
+            toLocationId: null,
+            quantity: li.quantity,
+            reference: ticketNumber,
+            employeeId,
+            employeeName: shadowEmployeeName,
+            storeId,
+            saleId: sale.id,
+            saleLineItemId: li.id,
+            occurredAt: completedAt,
           });
         }
       }
