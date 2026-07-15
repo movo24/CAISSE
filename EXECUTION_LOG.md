@@ -149,3 +149,39 @@ Mission owner : RBAC pilotage par magasin + journal d'activité (connexions/sess
 - Captures : en session (pane), pas PNG disque (limitation outil de capture). `.env`/launch.json restaurés.
 
 **Verdict : TERMINÉ ET VALIDÉ** (réserves : merge `main` = Tier-2 GO owner ; captures = session). D21 CLOSED.
+
+---
+
+## 2026-07-16 — Journal de stock unifié / NF525 : F0 + F1 (GO owner nommé) — branche `feat/stock-journal-nf525`
+
+### Synthèse décisionnelle (avant tout code)
+- Reprise de `PRODUCTS_FISCAL_STOCK_ARCHITECTURE.md`, vérifiée fichier:ligne contre le code réel
+  (4 explorations // : vente+void, journal fiscal+retours, sync/offline, session/terminal/employé).
+- Livré `PRODUCTS_FISCAL_STOCK_SYNTHESIS.md` : 11 décisions + diagramme + inventaire schéma/endpoints.
+- **GO owner en canal (AskUserQuestion)** : périmètre **F0 puis F1**, `store_id` sur le mouvement,
+  `occurred_at`=oui, fix G3→**F2** (GO propre). Le « go » nu ne suffit pas (charte §0/§3) — décisions explicites.
+
+### F0 — liaison additive (commit `b684cac`, doc `32682ef`)
+- Migration `1767` additive/réversible : `stock_movements +=` store_id/sale_id/sale_line_item_id/occurred_at
+  + index sale/store + **index unique partiel** `(sale_line_item_id, product_id, movement_type) WHERE sale_id NOT NULL`.
+  Entité alignée (4 colonnes nullable). ZÉRO comportement, ZÉRO DDL fiscal.
+- **Vérifs** : pg-mem **1072/0** ; up/down/re-run sur VRAI PG (base vierge, lignée 1700→1767) ✅.
+
+### F1 — écriture double shadow (commit `e047a36`)
+- Flag `STOCK_JOURNAL_SHADOW` **OFF par défaut**. ON : vente → `sale`(ligne)+`pack_consumption`(composant) ;
+  retour → `return_customer` ; même tx ; lecture caisse inchangée. Vente = `sale_id` (idempotent via index F0) ;
+  retour = lié par reference+note (retour partiel répété légitime). Union `movementType += 'pack_consumption'`.
+- **Vérifs (vrai PG)** : `stock-journal-shadow.pg.spec.ts` **5/5** — dont **HASH DE VENTE INCHANGÉ**
+  (recalcul canonique stock-exclu == hash stocké). Non-régression : 4 specs fiscaux/concurrence gated
+  (avoir-atomicité, fiscal-verifier, packs, anti-survente) **verts** flag OFF. pg-mem **1072/0**, tsc+lint clean.
+- Branche **poussée** `origin/feat/stock-journal-nf525` (stack sur catalogue non mergé ; lot fiscal = 3 commits).
+
+### Périmètre automatique post-lot (docs / lecture seule, sans GO)
+- **`GO_F2_PACKAGE.md`** : dossier de décision F2 (void inverse + G3, avant/après concret) + F1b
+  (`inventory_adjust` shadow, convention delta signé) — deux GO nominatifs d'une page chacun.
+- **`stock-reconciliation-readonly.pg.spec.ts`** (**3/3**) : instrument de mesure F3, SELECT PUR
+  scalaire vs SUM(mouvements) ; propriété prouvée = *gap constant tant que couvert ; variation = effet non couvert*.
+- **Dette D22** (couverture shadow partielle) formalisée dans `TECHNICAL_DEBT.md`.
+
+**Restent gatés (GO nominatif)** : F2, F1b, F3 (bascule lecture + cutover), F4 (retrait legacy),
+activation du flag hors test local, tout merge.

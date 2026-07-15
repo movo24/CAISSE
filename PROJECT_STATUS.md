@@ -215,3 +215,15 @@ propre. **12 commits · aucun merge (Tier-2, GO requis).**
 - **Verdict : TERMINÉ ET VALIDÉ** (réserves : merge `main` = Tier-2 GO owner ; captures = fichiers en session,
   pas PNG disque — limitation outil). Détails : `docs/design/access-activity-audit-deliverables.md`.
 - Rôle POS `cashier/manager/admin` **inchangé** ; `application_role` = dimension séparée.
+
+## Chantier Journal de stock unifié / NF525 (branche `feat/stock-journal-nf525`)
+> Surface Tier-2 (fiscal/stock). Synthèse : `PRODUCTS_FISCAL_STOCK_SYNTHESIS.md`. Dette : D22. **Aucun merge (GO requis).**
+> Stack sur `feat/catalog-refonte` non mergé — le lot fiscal = **3 commits** (`32682ef` → `b684cac` → `e047a36`).
+
+- **F0** (`b684cac`) — mig 1767 additive : `stock_movements` += liaison vente (store_id/sale_id/sale_line_item_id/occurred_at)
+  + index + unique partiel. ZÉRO comportement. Prouvé up/down/re-run vrai PG. ✅
+- **F1** (`e047a36`) — écriture double *shadow*, flag `STOCK_JOURNAL_SHADOW` **OFF défaut**. Vente+retour → mouvements.
+  **Hash de vente inchangé** (recalcul canonique prouvé). pg-mem **1072/0** ; F1 gated **5/5** ; 4 specs fiscaux verts. ✅
+- **Outils** — `GO_F2_PACKAGE.md` (dossier GO F2+F1b) ; `stock-reconciliation-readonly.pg.spec.ts` **3/3** (instrument F3).
+- **Gaté, GO nominatif** — F2 (void+G3), F1b (adjust shadow), F3 (bascule lecture + cutover), F4 (retrait legacy),
+  activation flag hors test local, tout merge. Dette **D22** : couverture shadow partielle (réconciliation non exhaustive).

@@ -138,3 +138,32 @@ déclare jamais ces vérifications faites lui-même.
 captures 01→04) → captures archivées + verdict passé à TERMINÉ → retirer cette entrée. **Cross-refs.**
 `docs/design/access-activity-audit-deliverables.md`, `…-plan.md`, `…-live-verification-runbook.md`.
 **Rappel :** merge vers `main` = Tier-2 (GO owner explicite), distinct de cette dette.
+
+---
+
+## D22 — Journal de stock unifié : couverture shadow PARTIELLE (F1) — la réconciliation n'est pas exhaustive
+**Status:** OPEN (par conception, gaté). **Since:** F1 (`e047a36`, 2026-07-16), branche `feat/stock-journal-nf525`.
+
+**Contexte.** Le journal de stock unifié (`stock_movements` = source unique cible ; voir
+`PRODUCTS_FISCAL_STOCK_SYNTHESIS.md`) est livré en **F0** (schéma additif, mig 1767) + **F1**
+(écriture double *shadow*, flag `STOCK_JOURNAL_SHADOW` **OFF par défaut**). Le flag ON écrit les
+mouvements **uniquement pour la vente et le retour**.
+
+**Ce qui n'est PAS couvert (conscient, nommé).** Deux chemins mutent encore le scalaire
+`products.stock_quantity` **sans** écrire de mouvement : (a) **`voidSale`** (mouvement inverse
+`void` + fix G3 = bloc **F2**) ; (b) **`stock.adjustStock`** (`inventory_adjust` = bloc **F1b**).
+**Conséquence directe :** tant que F1b + F2 ne sont pas livrés, une réconciliation
+`scalaire vs SUM(mouvements)` **n'est pas exhaustive** — un écart non nul est *attendu* et
+*explicable* par ces deux chemins (+ l'absence de solde d'ouverture avant le cutover F3).
+
+**Instrument de mesure (livré, lecture seule).** `test/stock-reconciliation-readonly.pg.spec.ts`
++ la requête `RECONCILE_SQL` : par (magasin, produit), `gap = scalaire − SUM(mouvements signés)`.
+**Propriété prouvée :** tant que seuls des chemins couverts tournent, `gap` reste constant ;
+toute variation de `gap` = exactement l'effet des chemins non couverts. C'est le critère de
+bascule **F3** (0 divergence après cutover + couverture complète).
+
+**Ce qui la ferme.** Livraison de **F1b** (adjust shadow) + **F2** (void inverse) sous GO nominatifs
+(dossier prêt : `GO_F2_PACKAGE.md`) → la réconciliation devient exhaustive → puis F3 (cutover solde
+d'ouverture) atteint `gap → 0`. **Cross-refs.** `PRODUCTS_FISCAL_STOCK_SYNTHESIS.md`,
+`GO_F2_PACKAGE.md`, `stock-journal-shadow.pg.spec.ts`, `stock-reconciliation-readonly.pg.spec.ts`.
+**Rappel :** F1b/F2/F3/F4, activation du flag hors test local, et tout merge = Tier-2 (GO explicite).
