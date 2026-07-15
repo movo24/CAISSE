@@ -107,3 +107,35 @@ Revue adversariale de TOUS les fixes de la campagne (chaque agent tente de RÉFU
 
 ### Prochaine action automatique (continuité)
 Safe restant : audit read-only des modules ⚠️ (jackpot/loyalty/etc.) → confirmer/infirmer, garde-fous additifs + tests si bug évident. Vrais blocages : M107 réconciliation prod / décision A-B-C, D16-D17 archi, secrets/prod (#3, D6/D8/D7), Stripe parqué.
+
+---
+
+## 2026-07-15 — Accès magasins + journal d'activité (branche `feat/mobile-access-and-activity-audit`)
+
+Mission owner : RBAC pilotage par magasin + journal d'activité (connexions/sessions/consultations)
++ audit immuable des droits. Branche depuis `origin/main` propre (choix owner — évite la divergence
+`mobile-pilotage-readonly`). **Aucun merge** (Tier-2, GO requis).
+
+### Backend (Lots 0-9, 11 commits `eac412b`→`e35e033`)
+- 6 migrations additives `1759000000000`→`…005` : enrich `employee_store_access` (entité réparée,
+  colonnes snake_case) + nouvelles tables `employee_application_access`, `access_audit_log` (hash-chaîné,
+  réutilise `computeAuditHashV2`), `user_login_events`, `user_sessions`, `user_view_events`.
+- Modules `pilotage-access` (AccessService + StoreAccessGuard/@RequireStoreAccess + AccessAuditService +
+  AccessAdminService) et `activity-audit` (ActivityService NON bloquant + hooks auth @Optional +
+  SecurityAlertService + RetentionService opt-in). Rôle POS inchangé ; `application_role` = dimension séparée.
+- **Vérifs** : suite backend **jest 1025/0** (exit 0, +47 nouveaux, 10 fichiers de specs). tsc + lint OK.
+
+### Frontend (commit `0b91369`)
+- `securityApi`/`activityApi` + `services/telemetry.ts` (batché non bloquant) + hook route-view (Layout) +
+  page `SecurityAccessPage` 4 onglets admin-gated + route `/security` + nav. **Vérifs** : tsc 0 + build Vite 0.
+
+### Migrations sur VRAI Postgres 16 (2026-07-15, base vierge locale — gap #1 fermé)
+- `migration:run` : exit 0, 45 migrations, tête `CreateUserViewEvents1759000000005`, schéma vérifié
+  (colonnes snake_case `employee_store_access`, 5 tables, index anti-fork `UX_access_scope_prevhash`).
+- Idempotence : « No migrations are pending » (exit 0). `revert` ×6 (exit 0) → tête `1758`, tables/colonnes
+  retirées. `re-run` (exit 0) → ré-appliquées. Codifié : `access-activity-migrations.pg.spec.ts` (gated
+  TEST_DATABASE_URL) — **3/3 PASS** sur PG local, **skippé** sinon. Commit `04c7dd0`.
+
+### Reste (déféré LÉGITIME — session live dédiée)
+Walkthrough navigateur bout-en-bout + **captures §20** (stack complète requise). Runbook exécutable :
+`docs/design/access-activity-audit-live-verification-runbook.md`. Verdict **NON TERMINÉ** motivé (D21).

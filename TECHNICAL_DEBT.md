@@ -109,3 +109,25 @@ Statuts : OPEN · IN PROGRESS · BLOCKED (owner/accès) · CLOSED (PR retire l'e
 - ✅ **Déjà résolus (dérive du registre, vérifiés)** : `migration:run` utilise `typeorm-ts-node-commonjs` (plus de `typeorm/cli.js` inexistant) ; `promo-codes` & `stock-reconciliation` **sont** documentés dans la table des modules.
 
 **Résiduel (non fait — évite d'introduire une NOUVELLE incohérence)** : les en-têtes `## Backend Modules (42)` (réel 46) et `## TypeORM Entities (55)` (réel 62) sont suivis de **tables énumérées** ; bumper le seul chiffre sans réconcilier la table crée un écart pire → réconciliation complète des tables = passe dédiée. Restent aussi : barrel `entities/index.ts` (inoffensif), seeds PIN `1234/5678` littéraux, colonnes date Z vs KPI. **Ferme :** réconcilier les 2 tables énumérées + les 3 nits restants.
+
+---
+
+## D21 — Accès magasins + journal d'activité : **vérification LIVE navigateur + captures §20** non faite
+**Status:** OPEN (déféré légitime — nécessite la stack complète tournante). **Since:** 2026-07-15, branche `feat/mobile-access-and-activity-audit`.
+
+**Contexte.** Le backend (RBAC pilotage, `access_audit_log` immuable, télémétrie non bloquante, alertes,
+rétention opt-in) est **complet et vérifié** : suite backend **1025/0**, et le cycle migrations up/down/re-run
+est **prouvé sur vrai Postgres 16** (base vierge) + codifié en spec gated `access-activity-migrations.pg.spec.ts`
+(3/3 PASS, skippé sans `TEST_DATABASE_URL`). Le frontend (`SecurityAccessPage` 4 onglets + client télémétrie)
+est **build-vérifié** (tsc 0 + build Vite 0).
+
+**Ce qui reste OUVERT (motive le verdict NON TERMINÉ).** La vérification **bout-en-bout au navigateur** et les
+**captures d'écran §20** ne sont PAS faites : la page est login-gated et consomme l'API → exige Postgres +
+backend + backoffice + données seed tournants simultanément (non trivial dans le harness agent). L'agent ne
+déclare jamais ces vérifications faites lui-même.
+
+**Ce qui la ferme.** Session live dédiée suivant `docs/design/access-activity-audit-live-verification-runbook.md`
+(boot stack, comptes, parcours par onglet, cas d'échec 403 FORBIDDEN/ACCOUNT_SUSPENDED/ACCESS_EXPIRED,
+captures 01→04) → captures archivées + verdict passé à TERMINÉ → retirer cette entrée. **Cross-refs.**
+`docs/design/access-activity-audit-deliverables.md`, `…-plan.md`, `…-live-verification-runbook.md`.
+**Rappel :** merge vers `main` = Tier-2 (GO owner explicite), distinct de cette dette.

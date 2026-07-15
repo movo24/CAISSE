@@ -198,3 +198,18 @@ validation WisePad 3 + clé Stripe prod (GO owner), DNS cutover + déploiement R
 `TEST_DATABASE_URL` pour les specs pg/e2e en CI (décision infra), rotations de secrets D6/D8,
 réconciliation stock one-shot (écrit le stock réel — validation prod), **certificat de signature `.exe`**.
 Chaque action attend son GO nommé — aucune ne s'ouvre sur un « continue » générique (charte §0).
+
+---
+
+## Feature — Accès magasins + journal d'activité (2026-07-15) — branche `feat/mobile-access-and-activity-audit`
+
+RBAC pilotage par magasin + journal d'activité + audit immuable des droits. Branche depuis `origin/main`
+propre. **12 commits · aucun merge (Tier-2, GO requis).**
+
+- **Backend** — ✅ LIVRÉ & vérifié : jest **1025/0** (+47) ; 6 migrations additives `1759…000→005`
+  **up/down/re-run prouvés sur vrai Postgres 16** + spec gated `access-activity-migrations.pg.spec.ts` (3/3).
+- **Frontend** — ✅ build-vérifié : page `SecurityAccessPage` 4 onglets + télémétrie ; tsc 0 + build Vite 0.
+- **Reste (D21)** — ⬜ vérification LIVE navigateur + **captures §20** (stack complète requise) →
+  runbook `docs/design/access-activity-audit-live-verification-runbook.md`. **Verdict : NON TERMINÉ** (motivé D21).
+- Rôle POS `cashier/manager/admin` **inchangé** ; `application_role` = dimension séparée. Invariants tenus :
+  contrôle serveur only, aucun secret loggé (tests), IP hachée, géo sans GPS, télémétrie non bloquante.
