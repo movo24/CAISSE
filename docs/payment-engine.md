@@ -410,7 +410,46 @@ une fois le premier partenaire monétique arrêté (échanges techniques et cont
 cours — CIC probable, non figé). Aucun développement du Payment Engine ne doit commencer
 avant ce GO explicite ; l'implémentation conservera exactement cette architecture.
 
-## 7. Note de processus — commit `e82427a` non amendé
+## 7. Checklist de conformité AVANT le lancement de P0/P1 (owner)
+
+À re-vérifier formellement au moment du GO d'implémentation — chaque point doit être
+prouvable par lecture du code livré :
+
+1. **Interface 100 % générique** : `PaymentProvider` ne contient aucune notion propre à
+   Stripe, CIC, Adyen, Worldline ou autre — toutes les méthodes restent génériques
+   (gardé par la règle lint anti-`if <psp>` hors du dossier du connecteur, §3.1/§5).
+2. **`GlobalPaymentId` maître** : identifiant utilisé par toute la caisse ; les références
+   PSP ne sont QUE des correspondances (`payment_provider_refs`, §3.5).
+3. **Statuts génériques** : les statuts canoniques (§3.3) couvrent tous les PSP (autorisé,
+   en attente, capturé, annulé, remboursé, échec, inconnu…) sans dépendre de la
+   terminologie d'un fournisseur — chaque connecteur mappe SES états vers le canon,
+   jamais l'inverse.
+4. **Remboursements entièrement référencés** : jamais de crédit aveugle — aucun risque de
+   double remboursement ni de désynchronisation (D-PE3, idempotence §3.5.4).
+5. **Dépendance à sens unique** : toute la logique métier (vente, clôture de caisse,
+   statistiques, fiscalité, stock, journal) dépend du Payment Engine, **jamais**
+   directement du SDK d'un PSP.
+
+## 8. Grille d'évaluation des candidats PSP (owner)
+
+Démonstration exigée de CHAQUE candidat (CIC/Monetico, Worldline, Adyen ou autre) sur une
+base commune — l'interface §3.2 sert de cahier des charges :
+
+1. Paiement TPE intégré (Windows/Electron).
+2. Paiement sans contact (Apple Pay, Google Pay si pertinent).
+3. Webhooks fiables avec reprise en cas de perte réseau.
+4. Remboursement référencé.
+5. Idempotence.
+6. Temps moyen de transaction.
+7. Fonctionnement hors connexion et reprise.
+8. Disponibilité d'un environnement de test.
+9. Support technique et SLA.
+10. Coût complet (commission, location TPE, frais fixes, frais de remboursement…).
+
+Rien n'est figé — même avec un favori (CIC) — avant les spécifications techniques ET le
+contrat. L'architecture permet de comparer les prestataires sans redessiner le moteur.
+
+## 9. Note de processus — commit `e82427a` non amendé
 
 Le hook de vérification de signature signale `e82427a` (committer `noreply@github.com`)
 comme « Unverified ». **Décision ratifiée owner : ne pas amender.** Ce commit est le commit
