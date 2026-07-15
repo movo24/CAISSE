@@ -5,11 +5,15 @@ import {
   IsOptional,
   IsNotEmpty,
   IsBoolean,
+  IsUUID,
+  IsIn,
   Min,
   MaxLength,
   ValidateIf,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+// Canonical product lifecycle statuses (single source of truth).
+import { PRODUCT_STATUSES, ProductStatus } from './product-integration.dto';
 
 export class CreateProductDto {
   @ApiProperty({ example: '3760123456789' })
@@ -84,6 +88,33 @@ export class CreateProductDto {
   @IsInt()
   @Min(0)
   stockCriticalThreshold?: number;
+
+  @ApiPropertyOptional({ description: 'Brand id (uuid) for the product' })
+  @IsOptional()
+  @IsUUID()
+  brandId?: string;
+
+  @ApiPropertyOptional({ description: 'Supplier id (uuid) for the product' })
+  @IsOptional()
+  @IsUUID()
+  supplierId?: string;
+
+  @ApiPropertyOptional({ description: 'Internal SKU / reference (unique per store when set)' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  sku?: string;
+
+  @ApiPropertyOptional({ example: 200, description: 'Struck-through / former price in minor units (for promo display)' })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  oldPriceMinorUnits?: number;
+
+  @ApiPropertyOptional({ enum: PRODUCT_STATUSES, description: 'Lifecycle status (aligns with isActive)' })
+  @IsOptional()
+  @IsIn(PRODUCT_STATUSES)
+  status?: ProductStatus;
 }
 
 export class UpdateProductDto {
@@ -166,4 +197,64 @@ export class UpdateProductDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @ApiPropertyOptional({ description: 'Brand id (uuid). Send null to clear.' })
+  @IsOptional()
+  @ValidateIf((_o, v) => v !== null)
+  @IsUUID()
+  brandId?: string | null;
+
+  @ApiPropertyOptional({ description: 'Supplier id (uuid). Send null to clear.' })
+  @IsOptional()
+  @ValidateIf((_o, v) => v !== null)
+  @IsUUID()
+  supplierId?: string | null;
+
+  @ApiPropertyOptional({ description: 'Internal SKU / reference (unique per store when set)' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  sku?: string;
+
+  @ApiPropertyOptional({ description: 'Struck-through / former price in minor units. Send null to clear.' })
+  @IsOptional()
+  @ValidateIf((_o, v) => v !== null)
+  @IsInt()
+  @Min(0)
+  oldPriceMinorUnits?: number | null;
+
+  @ApiPropertyOptional({ enum: PRODUCT_STATUSES, description: 'Lifecycle status (aligns with isActive)' })
+  @IsOptional()
+  @IsIn(PRODUCT_STATUSES)
+  status?: ProductStatus;
+}
+
+/** Hierarchical product category — create with an optional parent. */
+export class CreateCategoryDto {
+  @ApiProperty({ example: 'Boissons' })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(120)
+  name: string;
+
+  @ApiPropertyOptional({ description: 'Parent category id (uuid) for a sub-category' })
+  @IsOptional()
+  @ValidateIf((_o, v) => v !== null)
+  @IsUUID()
+  parentId?: string | null;
+}
+
+export class UpdateCategoryDto {
+  @ApiPropertyOptional({ example: 'Boissons sans alcool' })
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(120)
+  name?: string;
+
+  @ApiPropertyOptional({ description: 'New parent category id (uuid). Send null to move to root.' })
+  @IsOptional()
+  @ValidateIf((_o, v) => v !== null)
+  @IsUUID()
+  parentId?: string | null;
 }

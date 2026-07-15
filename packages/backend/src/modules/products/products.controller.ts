@@ -16,7 +16,13 @@ import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { ProductsService } from './products.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard, Roles } from '../../common/guards/roles.guard';
-import { CreateProductDto, UpdateProductDto, PaginationQueryDto } from '../../common/dto';
+import {
+  CreateProductDto,
+  UpdateProductDto,
+  PaginationQueryDto,
+  CreateCategoryDto,
+  UpdateCategoryDto,
+} from '../../common/dto';
 
 @ApiTags('products')
 @ApiBearerAuth()
@@ -36,7 +42,7 @@ export class ProductsController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'List products for store (paginated; filter by search/brand/supplier)' })
+  @ApiOperation({ summary: 'List products for store (paginated; filter by search/brand/supplier/category/status; sortable)' })
   findAll(
     @Request() req: any,
     @Query('page') page?: string,
@@ -45,6 +51,10 @@ export class ProductsController {
     @Query('storeId') queryStoreId?: string,
     @Query('brandId') brandId?: string,
     @Query('supplierId') supplierId?: string,
+    @Query('categoryId') categoryId?: string,
+    @Query('status') status?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortDir') sortDir?: string,
   ) {
     const effectiveStoreId = (req.user.role === 'admin' && queryStoreId)
       ? queryStoreId
@@ -55,6 +65,10 @@ export class ProductsController {
       search,
       brandId,
       supplierId,
+      categoryId,
+      status,
+      sortBy,
+      sortDir,
     });
   }
 
@@ -97,16 +111,34 @@ export class ProductsController {
   }
 
   @Get('categories')
-  @ApiOperation({ summary: 'List product categories for store' })
+  @ApiOperation({ summary: 'List product categories (tree: id, name, parentId, productCount)' })
   getCategories(@Request() req: any) {
     return this.productsService.getCategories(req.user.storeId);
   }
 
   @Post('categories')
   @Roles('admin', 'manager')
-  @ApiOperation({ summary: 'Create a product category' })
-  createCategory(@Request() req: any, @Body() body: { name: string }) {
-    return this.productsService.createCategory(req.user.storeId, body.name);
+  @ApiOperation({ summary: 'Create a product category (optional parentId for a sub-category)' })
+  createCategory(@Request() req: any, @Body() body: CreateCategoryDto) {
+    return this.productsService.createCategory(req.user.storeId, body.name, body.parentId ?? null);
+  }
+
+  @Put('categories/:categoryId')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'Rename and/or move a category (cycle-safe)' })
+  updateCategory(
+    @Param('categoryId') categoryId: string,
+    @Body() body: UpdateCategoryDto,
+    @Request() req: any,
+  ) {
+    return this.productsService.updateCategory(req.user.storeId, categoryId, body);
+  }
+
+  @Delete('categories/:categoryId')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'Delete a category (refused if it has sub-categories or attached products)' })
+  deleteCategory(@Param('categoryId') categoryId: string, @Request() req: any) {
+    return this.productsService.deleteCategory(req.user.storeId, categoryId);
   }
 
   @Get('stock-alerts')
