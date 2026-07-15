@@ -81,6 +81,22 @@ export class StockMovementEntity {
   @Column({ name: 'employee_name', type: 'varchar', length: 200 })
   employeeName: string;
 
+  // ── Liaison vente (bloc F0, additif — renseigné à partir de F1) ──
+  // Sale/return/void movements carry these; warehouse movements leave them NULL.
+  @Column({ name: 'store_id', type: 'uuid', nullable: true })
+  storeId: string | null;
+
+  @Column({ name: 'sale_id', type: 'uuid', nullable: true })
+  saleId: string | null;
+
+  @Column({ name: 'sale_line_item_id', type: 'uuid', nullable: true })
+  saleLineItemId: string | null;
+
+  // Business time of the operation (e.g. real time of an offline sale replayed
+  // later), distinct from created_at (server record time).
+  @Column({ name: 'occurred_at', type: 'timestamp', nullable: true })
+  occurredAt: Date | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
