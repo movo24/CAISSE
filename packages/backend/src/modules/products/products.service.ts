@@ -16,6 +16,7 @@ import { StoreProductPriceEntity } from '../../database/entities/store-product-p
 import { ProductComponentEntity } from '../../database/entities/product-component.entity';
 import { ProductMediaEntity } from '../../database/entities/product-media.entity';
 import { ProductDocumentEntity } from '../../database/entities/product-document.entity';
+import { ProductBarcodeEntity } from '../../database/entities/product-barcode.entity';
 import { AuditService } from '../audit/audit.service';
 import { PaginatedResult } from '../../common/dto/pagination.dto';
 import { computePriceVerdict, PriceVerdict } from './price-verdict';
@@ -57,7 +58,59 @@ export class ProductsService {
     private mediaRepo: Repository<ProductMediaEntity>,
     @InjectRepository(ProductDocumentEntity)
     private documentRepo: Repository<ProductDocumentEntity>,
+    @InjectRepository(ProductBarcodeEntity)
+    private barcodeRepo: Repository<ProductBarcodeEntity>,
   ) {}
+
+  // ── Codes-barres multiples (Lot A) ──
+
+  async listBarcodes(productId: string, storeId: string): Promise<ProductBarcodeEntity[]> {
+    await this.findOneForStore(productId, storeId);
+    return this.barcodeRepo.find({ where: { productId, storeId }, order: { isPrimary: 'DESC', createdAt: 'ASC' } });
+  }
+
+  async addBarcode(
+    productId: string,
+    storeId: string,
+    barcode: string,
+    type?: string,
+    isPrimary?: boolean,
+  ): Promise<ProductBarcodeEntity> {
+    await this.findOneForStore(productId, storeId);
+    const clean = (barcode || '').trim();
+    if (!clean) throw new BadRequestException('Le code-barres est requis');
+    const dup = await this.barcodeRepo.findOne({ where: { storeId, barcode: clean } });
+    if (dup) {
+      throw new BusinessError(
+        'BARCODE_ALREADY_EXISTS',
+        `Ce code-barres (${clean}) est déjà rattaché à un produit de ce magasin.`,
+        HttpStatus.CONFLICT,
+        { existingProductId: dup.productId },
+      );
+    }
+    const t = (['ean', 'upc', 'gtin', 'other'] as const).includes(type as any) ? (type as any) : 'ean';
+    if (isPrimary) {
+      await this.barcodeRepo.update({ productId, storeId }, { isPrimary: false });
+    }
+    return this.barcodeRepo.save(
+      this.barcodeRepo.create({ productId, storeId, barcode: clean, type: t, isPrimary: !!isPrimary }),
+    );
+  }
+
+  async setPrimaryBarcode(productId: string, storeId: string, barcodeId: string): Promise<{ message: string }> {
+    await this.findOneForStore(productId, storeId);
+    const row = await this.barcodeRepo.findOne({ where: { id: barcodeId, productId, storeId } });
+    if (!row) throw new NotFoundException('Code-barres introuvable');
+    await this.barcodeRepo.update({ productId, storeId }, { isPrimary: false });
+    await this.barcodeRepo.update({ id: barcodeId }, { isPrimary: true });
+    return { message: 'Code-barres principal défini.' };
+  }
+
+  async removeBarcode(productId: string, storeId: string, barcodeId: string): Promise<{ message: string }> {
+    await this.findOneForStore(productId, storeId);
+    await this.barcodeRepo.delete({ id: barcodeId, productId, storeId });
+    return { message: 'Code-barres retiré.' };
+  }
 
   // ── Galerie d'images + documents (Lot 4, URLs externes) ──
 

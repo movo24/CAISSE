@@ -21,6 +21,7 @@ import { StoreProductPriceEntity } from '../src/database/entities/store-product-
 import { ProductComponentEntity } from '../src/database/entities/product-component.entity';
 import { ProductMediaEntity } from '../src/database/entities/product-media.entity';
 import { ProductDocumentEntity } from '../src/database/entities/product-document.entity';
+import { ProductBarcodeEntity } from '../src/database/entities/product-barcode.entity';
 import { AuditEntryEntity } from '../src/database/entities/audit-entry.entity';
 import { AuditService } from '../src/modules/audit/audit.service';
 import { ProductsService } from '../src/modules/products/products.service';
@@ -50,6 +51,7 @@ describe('Catalogue refonte L1 — product enablement (no migration)', () => {
       ds.getRepository(ProductComponentEntity),
       ds.getRepository(ProductMediaEntity),
       ds.getRepository(ProductDocumentEntity),
+      ds.getRepository(ProductBarcodeEntity),
     );
   });
   afterAll(async () => {
@@ -401,6 +403,45 @@ describe('Catalogue refonte L1 — product enablement (no migration)', () => {
 
     it('la galerie d’un autre magasin est inaccessible (garde tenant)', async () => {
       await expect(svc.listMedia(pid, uuidv4())).rejects.toThrow();
+    });
+  });
+
+  // ── Lot A — codes-barres multiples ─────────────────────────────────
+  describe('Lot A — codes-barres multiples', () => {
+    const S = uuidv4();
+    let pid = '';
+    beforeAll(async () => {
+      await ds.getRepository(StoreEntity).save({ id: S, name: 'LA', isActive: true, currencyCode: 'EUR' } as any);
+      pid = (await svc.create({ ean: nextEan(), name: 'Multi-EAN', priceMinorUnits: 100, taxRate: 20, storeId: S } as any, EMP)).id;
+    });
+
+    it('add/list, refuse un doublon (store, barcode), gère le principal', async () => {
+      await svc.addBarcode(pid, S, '5010000000001', 'ean', true);
+      await svc.addBarcode(pid, S, '012345678905', 'upc');
+      const list = await svc.listBarcodes(pid, S);
+      expect(list.map((b) => b.barcode).sort()).toEqual(['012345678905', '5010000000001']);
+      expect(list.find((b) => b.barcode === '5010000000001')!.isPrimary).toBe(true);
+      // un seul principal
+      expect(list.filter((b) => b.isPrimary)).toHaveLength(1);
+      // doublon
+      await expect(svc.addBarcode(pid, S, '5010000000001', 'ean')).rejects.toMatchObject({ code: 'BARCODE_ALREADY_EXISTS' });
+      // vide
+      await expect(svc.addBarcode(pid, S, '  ', 'ean')).rejects.toThrow();
+    });
+
+    it('setPrimary bascule le principal ; remove supprime', async () => {
+      const list = await svc.listBarcodes(pid, S);
+      const upc = list.find((b) => b.barcode === '012345678905')!;
+      await svc.setPrimaryBarcode(pid, S, upc.id);
+      const after = await svc.listBarcodes(pid, S);
+      expect(after.find((b) => b.id === upc.id)!.isPrimary).toBe(true);
+      expect(after.filter((b) => b.isPrimary)).toHaveLength(1);
+      await svc.removeBarcode(pid, S, upc.id);
+      expect((await svc.listBarcodes(pid, S)).some((b) => b.id === upc.id)).toBe(false);
+    });
+
+    it('garde tenant : un autre magasin ne voit pas les codes', async () => {
+      await expect(svc.listBarcodes(pid, uuidv4())).rejects.toThrow();
     });
   });
 });

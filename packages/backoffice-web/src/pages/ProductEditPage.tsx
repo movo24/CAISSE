@@ -130,6 +130,10 @@ export function ProductEditPage() {
   const [newMediaUrl, setNewMediaUrl] = useState('');
   const [newDocName, setNewDocName] = useState('');
   const [newDocUrl, setNewDocUrl] = useState('');
+  // Lot A — codes-barres multiples
+  const [barcodes, setBarcodes] = useState<any[]>([]);
+  const [newBarcode, setNewBarcode] = useState('');
+  const [newBarcodeType, setNewBarcodeType] = useState('ean');
 
   const load = useCallback(async () => {
     try {
@@ -210,6 +214,7 @@ export function ProductEditPage() {
       productsApi.priceAnalytics(id).then((r) => setAnalytics(r.data || null)).catch(() => {});
       productsApi.listMedia(id).then((r) => setMedia(r.data || [])).catch(() => {});
       productsApi.listDocuments(id).then((r) => setDocuments(r.data || [])).catch(() => {});
+      productsApi.listBarcodes(id).then((r) => setBarcodes(r.data || [])).catch(() => {});
     } catch (e: any) {
       setError(e?.response?.data?.message || 'Chargement impossible');
     } finally { setLoading(false); }
@@ -413,6 +418,26 @@ export function ProductEditPage() {
     setDocuments((await productsApi.listDocuments(id)).data || []);
   };
 
+  // ── Codes-barres multiples (Lot A) ──
+  const addBarcode = async () => {
+    if (!id || !newBarcode.trim()) return;
+    try {
+      await productsApi.addBarcode(id, { barcode: newBarcode.trim(), type: newBarcodeType });
+      setNewBarcode('');
+      setBarcodes((await productsApi.listBarcodes(id)).data || []);
+    } catch (e: any) { setError(e?.response?.data?.message || 'Ajout code-barres impossible'); }
+  };
+  const setPrimaryBarcode = async (bid: string) => {
+    if (!id) return;
+    await productsApi.setPrimaryBarcode(id, bid).catch(() => {});
+    setBarcodes((await productsApi.listBarcodes(id)).data || []);
+  };
+  const removeBarcode = async (bid: string) => {
+    if (!id) return;
+    await productsApi.removeBarcode(id, bid).catch(() => {});
+    setBarcodes((await productsApi.listBarcodes(id)).data || []);
+  };
+
   // ══════════ PORTE SCANNER (création) ══════════
   if (gate) {
     return (
@@ -540,7 +565,36 @@ export function ProductEditPage() {
                 <option value="gift_card">Carte cadeau</option>
               </select>
             </Field>
-            <Phase2Notice fields="Codes-barres multiples (UPC/GTIN secondaires) — table product_barcodes à venir" />
+            {isEdit ? (
+              <div className="md:col-span-2 space-y-2">
+                <label className={labelCls}>Codes-barres additionnels ({barcodes.length})</label>
+                <div className="flex gap-2">
+                  <input className={`${inputCls} font-mono`} value={newBarcode} onChange={(e) => setNewBarcode(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addBarcode()} placeholder="EAN / UPC / GTIN…" />
+                  <select className={inputCls} style={{ maxWidth: 120 }} value={newBarcodeType} onChange={(e) => setNewBarcodeType(e.target.value)}>
+                    <option value="ean">EAN</option><option value="upc">UPC</option><option value="gtin">GTIN</option><option value="other">Autre</option>
+                  </select>
+                  <button onClick={addBarcode} className="px-4 rounded-xl bg-bo-accent text-white text-sm font-semibold flex items-center"><Plus size={15} /></button>
+                </div>
+                {barcodes.length > 0 && (
+                  <ul className="divide-y divide-gray-50 rounded-xl border border-gray-100">
+                    {barcodes.map((b) => (
+                      <li key={b.id} className="py-1.5 px-3 flex items-center gap-2 text-sm">
+                        <span className="font-mono text-bo-text">{b.barcode}</span>
+                        <span className="text-[10px] uppercase text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded">{b.type}</span>
+                        {b.isPrimary
+                          ? <span className="text-[11px] font-semibold text-emerald-600">principal</span>
+                          : <button onClick={() => setPrimaryBarcode(b.id)} className="text-[11px] text-bo-accent hover:underline">définir principal</button>}
+                        <div className="flex-1" />
+                        <button onClick={() => removeBarcode(b.id)} className="p-1 text-red-400 hover:bg-red-50 rounded-lg"><Trash2 size={13} /></button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <p className="text-[11px] text-gray-400">Le code EAN principal (ci-dessus) reste le code historique du produit.</p>
+              </div>
+            ) : (
+              <Phase2Notice fields="Codes-barres multiples : enregistrez d'abord la fiche pour les gérer." />
+            )}
           </div>
         )}
 

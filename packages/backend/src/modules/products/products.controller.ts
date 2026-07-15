@@ -271,6 +271,39 @@ export class ProductsController {
     return this.productsService.removeComponent(id, componentRowId, req.user.storeId);
   }
 
+  // ── Codes-barres multiples (Lot A) ──
+
+  @Get(':id/barcodes')
+  @ApiOperation({ summary: 'List additional barcodes of a product' })
+  listBarcodes(@Param('id') id: string, @Request() req: any) {
+    return this.productsService.listBarcodes(id, req.user.storeId);
+  }
+
+  @Post(':id/barcodes')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'Add a barcode (EAN/UPC/GTIN); unique per store' })
+  addBarcode(
+    @Param('id') id: string,
+    @Body() body: { barcode: string; type?: string; isPrimary?: boolean },
+    @Request() req: any,
+  ) {
+    return this.productsService.addBarcode(id, req.user.storeId, body?.barcode ?? '', body?.type, body?.isPrimary);
+  }
+
+  @Put(':id/barcodes/:barcodeId/primary')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'Set a barcode as primary' })
+  setPrimaryBarcode(@Param('id') id: string, @Param('barcodeId') barcodeId: string, @Request() req: any) {
+    return this.productsService.setPrimaryBarcode(id, req.user.storeId, barcodeId);
+  }
+
+  @Delete(':id/barcodes/:barcodeId')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'Remove a barcode' })
+  removeBarcode(@Param('id') id: string, @Param('barcodeId') barcodeId: string, @Request() req: any) {
+    return this.productsService.removeBarcode(id, req.user.storeId, barcodeId);
+  }
+
   // ── Galerie d'images + documents (Lot 4, URLs externes) ──
 
   @Get(':id/media')

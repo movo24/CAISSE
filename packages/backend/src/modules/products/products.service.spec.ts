@@ -11,6 +11,7 @@ import { StoreProductPriceEntity } from '../../database/entities/store-product-p
 import { ProductComponentEntity } from '../../database/entities/product-component.entity';
 import { ProductMediaEntity } from '../../database/entities/product-media.entity';
 import { ProductDocumentEntity } from '../../database/entities/product-document.entity';
+import { ProductBarcodeEntity } from '../../database/entities/product-barcode.entity';
 import { AuditService } from '../audit/audit.service';
 
 /**
@@ -45,6 +46,7 @@ describe('ProductsService — getStockAlerts pagination', () => {
         { provide: getRepositoryToken(ProductComponentEntity), useValue: {} },
         { provide: getRepositoryToken(ProductMediaEntity), useValue: {} },
         { provide: getRepositoryToken(ProductDocumentEntity), useValue: {} },
+        { provide: getRepositoryToken(ProductBarcodeEntity), useValue: {} },
       ],
     }).compile();
     service = module.get(ProductsService);

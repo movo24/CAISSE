@@ -273,6 +273,12 @@ export const productsApi = {
     api.put(`/products/${id}/components/${componentRowId}`, data),
   removeComponent: (id: string, componentRowId: string) =>
     api.delete(`/products/${id}/components/${componentRowId}`),
+  // Codes-barres multiples (Lot A)
+  listBarcodes: (id: string) => api.get(`/products/${id}/barcodes`),
+  addBarcode: (id: string, data: { barcode: string; type?: string; isPrimary?: boolean }) =>
+    api.post(`/products/${id}/barcodes`, data),
+  setPrimaryBarcode: (id: string, barcodeId: string) => api.put(`/products/${id}/barcodes/${barcodeId}/primary`),
+  removeBarcode: (id: string, barcodeId: string) => api.delete(`/products/${id}/barcodes/${barcodeId}`),
   // Galerie & documents (Lot 4 — URLs externes)
   listMedia: (id: string) => api.get(`/products/${id}/media`),
   addMedia: (id: string, url: string) => api.post(`/products/${id}/media`, { url }),
