@@ -43,8 +43,9 @@ export class AccessAdminService {
     row.applicationRole = dto.applicationRole;
     if (dto.permissionLevel !== undefined) row.permissionLevel = dto.permissionLevel;
     row.primaryStoreId = dto.primaryStoreId ?? row.primaryStoreId ?? null;
-    row.validFrom = dto.validFrom ? new Date(dto.validFrom) : row.validFrom ?? null;
-    row.validUntil = dto.validUntil ? new Date(dto.validUntil) : row.validUntil ?? null;
+    // Présent (string OU null) ⇒ appliquer (null efface la borne) ; absent (undefined) ⇒ conserver.
+    if (dto.validFrom !== undefined) row.validFrom = dto.validFrom ? new Date(dto.validFrom) : null;
+    if (dto.validUntil !== undefined) row.validUntil = dto.validUntil ? new Date(dto.validUntil) : null;
 
     const saved = await this.appRepo.save(row);
 
@@ -118,8 +119,9 @@ export class AccessAdminService {
     for (const k of ['canViewDashboard', 'canViewFinancials', 'canViewEmployees', 'canViewAlerts', 'canCompare'] as const) {
       if (dto[k] !== undefined) (row as any)[k] = dto[k];
     }
-    row.validFrom = dto.validFrom ? new Date(dto.validFrom) : row.validFrom ?? null;
-    row.validUntil = dto.validUntil ? new Date(dto.validUntil) : row.validUntil ?? null;
+    // Présent (string OU null) ⇒ appliquer (null efface la borne) ; absent (undefined) ⇒ conserver.
+    if (dto.validFrom !== undefined) row.validFrom = dto.validFrom ? new Date(dto.validFrom) : null;
+    if (dto.validUntil !== undefined) row.validUntil = dto.validUntil ? new Date(dto.validUntil) : null;
     row.grantedBy = actor.actorEmployeeId;
     row.grantedReason = dto.reason ?? row.grantedReason ?? null;
     // Re-grant d'un accès révoqué : on ré-active la ligne (soft-undelete).

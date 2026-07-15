@@ -97,4 +97,18 @@ describe('Lot 5 — AccessAdminService', () => {
     expect(regranted.revokedAt).toBeNull();
     expect((await access.resolveEffectiveAccess({ employeeId: emp, storeId: CERGY, accountActive: true })).allowed).toBe(true);
   });
+
+  it('Fix B — valid_until effaçable via null (débloque un accès expiré)', async () => {
+    const NOW = new Date('2026-07-15T12:00:00Z');
+    const emp = uuidv4();
+    await admin.grantApplicationAccess(emp, { applicationRole: 'STORE_MANAGER' }, ACTOR);
+    await admin.grantStoreAccess(emp, CERGY, { validUntil: '2020-01-01T00:00:00.000Z' }, ACTOR);
+    expect((await access.resolveEffectiveAccess({ employeeId: emp, storeId: CERGY, accountActive: true, at: NOW })).reason).toBe('ACCESS_EXPIRED');
+
+    // validUntil: null DOIT effacer la borne (auparavant conservait l'ancienne valeur)
+    await admin.grantStoreAccess(emp, CERGY, { validUntil: null as any }, ACTOR);
+    const row: any = await ds.getRepository(EmployeeStoreAccessEntity).findOne({ where: { employeeId: emp, storeId: CERGY } });
+    expect(row.validUntil).toBeNull();
+    expect((await access.resolveEffectiveAccess({ employeeId: emp, storeId: CERGY, accountActive: true, at: NOW })).allowed).toBe(true);
+  });
 });

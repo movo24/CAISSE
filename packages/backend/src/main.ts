@@ -77,16 +77,17 @@ class GlobalExceptionFilter implements ExceptionFilter {
         return;
       }
 
-      // Any other HttpException
+      // Any other HttpException. Préserve un `code`/`reason` métier si l'exception en fournit un
+      // (ex. StoreAccessGuard → FORBIDDEN/ACCOUNT_SUSPENDED/ACCESS_EXPIRED, spec §5) ; sinon HTTP_ERROR.
+      const resObj: any = typeof res === 'object' && res !== null ? res : {};
       const message =
-        typeof res === 'string'
-          ? res
-          : (res as any).message || 'Internal server error';
+        typeof res === 'string' ? res : resObj.message || 'Internal server error';
       response.status(status).json({
         success: false,
-        code: 'HTTP_ERROR',
+        code: typeof resObj.code === 'string' ? resObj.code : 'HTTP_ERROR',
         message,
         statusCode: status,
+        ...(resObj.reason ? { reason: resObj.reason } : {}),
       });
       return;
     }
