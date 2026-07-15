@@ -7,6 +7,9 @@ import {
   IsBoolean,
   IsUUID,
   IsIn,
+  IsArray,
+  ArrayNotEmpty,
+  ArrayMaxSize,
   Min,
   MaxLength,
   ValidateIf,
@@ -242,6 +245,39 @@ export class CreateCategoryDto {
   @ValidateIf((_o, v) => v !== null)
   @IsUUID()
   parentId?: string | null;
+}
+
+export const BULK_PRODUCT_ACTIONS = ['activate', 'deactivate', 'setCategory', 'setSupplier', 'setTax'] as const;
+export type BulkProductAction = (typeof BULK_PRODUCT_ACTIONS)[number];
+
+/** Action de masse sur une sélection de produits (endpoint dédié, tracée). */
+export class BulkProductActionDto {
+  @ApiProperty({ enum: BULK_PRODUCT_ACTIONS })
+  @IsIn(BULK_PRODUCT_ACTIONS)
+  action: BulkProductAction;
+
+  @ApiProperty({ description: 'Ids (uuid) des produits ciblés', type: [String] })
+  @IsArray()
+  @ArrayNotEmpty()
+  @ArrayMaxSize(500)
+  @IsUUID('4', { each: true })
+  productIds: string[];
+
+  @ApiPropertyOptional({ description: 'Catégorie cible (id) — action setCategory' })
+  @IsOptional()
+  @IsString()
+  categoryId?: string;
+
+  @ApiPropertyOptional({ description: 'Fournisseur cible (uuid) — action setSupplier' })
+  @IsOptional()
+  @IsUUID()
+  supplierId?: string;
+
+  @ApiPropertyOptional({ description: 'Taux de TVA — action setTax' })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  taxRate?: number;
 }
 
 export class UpdateCategoryDto {

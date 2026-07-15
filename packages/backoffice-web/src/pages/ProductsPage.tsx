@@ -277,6 +277,64 @@ export function ProductsPage() {
     (fCategory ? 1 : 0) + (fTax ? 1 : 0) + (fOutOfStock ? 1 : 0) + (fBelowThreshold ? 1 : 0) +
     (fNoImage ? 1 : 0) + (fNoSupplier ? 1 : 0) + (fNoCategory ? 1 : 0);
 
+  // ── Sélection + actions de masse ──
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkMsg, setBulkMsg] = useState<string | null>(null);
+  const allOnPageSelected = products.length > 0 && products.every((p) => selected.has(p.id));
+  const toggleSelect = (id: string) =>
+    setSelected((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const toggleSelectAllPage = () =>
+    setSelected((s) => {
+      const n = new Set(s);
+      if (allOnPageSelected) products.forEach((p) => n.delete(p.id));
+      else products.forEach((p) => n.add(p.id));
+      return n;
+    });
+  const clearSelection = () => setSelected(new Set());
+
+  const executeBulk = async (
+    action: 'activate' | 'deactivate' | 'setCategory' | 'setSupplier' | 'setTax',
+    extra: { categoryId?: string; supplierId?: string; taxRate?: number } = {},
+  ) => {
+    const productIds = [...selected];
+    if (productIds.length === 0) return;
+    if (action === 'deactivate' && !confirm(`Désactiver ${productIds.length} produit(s) ?`)) return;
+    setBulkBusy(true);
+    setBulkMsg(null);
+    try {
+      const res = await productsApi.bulk({ action, productIds, ...extra });
+      const r: any = res.data;
+      setBulkMsg(`${r.succeeded} produit(s) mis à jour${r.failed?.length ? `, ${r.failed.length} échec(s)` : ''}.`);
+      clearSelection();
+      reload();
+    } catch (err: any) {
+      const m = err?.response?.data?.message;
+      setBulkMsg(typeof m === 'string' ? m : Array.isArray(m) ? m.join(', ') : 'Action de masse impossible');
+    } finally {
+      setBulkBusy(false);
+      setTimeout(() => setBulkMsg(null), 4000);
+    }
+  };
+
+  const exportSelection = () => {
+    const rows = products.filter((p) => selected.has(p.id));
+    if (rows.length === 0) return;
+    const header = ['Nom', 'EAN', 'SKU', 'Categorie', 'Prix (EUR)', 'Stock'];
+    const csvRows = rows.map((p) => [p.name, p.ean, p.sku, catName(p.category), p.price.toFixed(2), String(p.stock)]);
+    const escapeCell = (v: string) => `"${v.replace(/"/g, '""')}"`;
+    const csv = [header, ...csvRows].map((r) => r.map(escapeCell).join(',')).join('\r\n');
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `selection-${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   /* ── Onboarding catalogue (PR #29) — import CSV serveur + modèle round-trip ── */
   interface ImportReport {
     total: number;
@@ -601,11 +659,40 @@ export function ProductsPage() {
         </div>
       </div>
 
+      {/* Barre d'actions de masse */}
+      {selected.size > 0 && (
+        <div className="bg-bo-accent/5 border border-bo-accent/30 rounded-2xl p-3 flex flex-wrap items-center gap-2">
+          <span className="text-sm font-semibold text-bo-text px-2">{selected.size} sélectionné{selected.size > 1 ? 's' : ''}</span>
+          <button disabled={bulkBusy} onClick={() => executeBulk('activate')} className="px-3 py-1.5 rounded-lg bg-white border border-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">Activer</button>
+          <button disabled={bulkBusy} onClick={() => executeBulk('deactivate')} className="px-3 py-1.5 rounded-lg bg-white border border-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">Désactiver</button>
+          <select disabled={bulkBusy} defaultValue="" onChange={(e) => { const v = e.target.value; e.currentTarget.value = ''; if (v) executeBulk('setCategory', { categoryId: v }); }} className="px-2 py-1.5 rounded-lg bg-white border border-gray-200 text-sm cursor-pointer">
+            <option value="">Catégorie…</option>
+            {categoryRefs.map((c) => <option key={c.id} value={c.id}>{c.parentId ? '— ' : ''}{c.name}</option>)}
+          </select>
+          <select disabled={bulkBusy} defaultValue="" onChange={(e) => { const v = e.target.value; e.currentTarget.value = ''; if (v) executeBulk('setSupplier', { supplierId: v }); }} className="px-2 py-1.5 rounded-lg bg-white border border-gray-200 text-sm cursor-pointer">
+            <option value="">Fournisseur…</option>
+            {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+          <select disabled={bulkBusy} defaultValue="" onChange={(e) => { const v = e.target.value; e.currentTarget.value = ''; if (v !== '') executeBulk('setTax', { taxRate: Number(v) }); }} className="px-2 py-1.5 rounded-lg bg-white border border-gray-200 text-sm cursor-pointer">
+            <option value="">TVA…</option>
+            {['0', '2.1', '5.5', '10', '20'].map((r) => <option key={r} value={r}>{r} %</option>)}
+          </select>
+          <button disabled={bulkBusy} onClick={exportSelection} className="px-3 py-1.5 rounded-lg bg-white border border-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-50">Exporter</button>
+          <div className="flex-1" />
+          {bulkBusy && <Loader2 size={16} className="animate-spin text-bo-accent" />}
+          {bulkMsg && <span className="text-sm text-bo-text">{bulkMsg}</span>}
+          <button onClick={clearSelection} className="p-1.5 rounded-lg text-gray-500 hover:bg-white" title="Désélectionner tout"><X size={16} /></button>
+        </div>
+      )}
+
       {/* Table serveur */}
       <div className="bg-white rounded-2xl shadow-soft border border-gray-100/50 overflow-x-auto">
         <table className="w-full min-w-[720px]">
           <thead>
             <tr className="border-b border-gray-100 bg-gray-50/50">
+              <th className="w-10 py-3.5 px-4">
+                <input type="checkbox" checked={allOnPageSelected} onChange={toggleSelectAllPage} className="accent-bo-accent" aria-label="Tout sélectionner" />
+              </th>
               <th className="text-left py-3.5 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer hover:text-bo-accent" onClick={() => toggleSort('name')}>
                 <span className="flex items-center gap-1">Produit <ArrowUpDown size={12} className={sortBy === 'name' ? 'text-bo-accent' : ''} /></span>
               </th>
@@ -637,11 +724,14 @@ export function ProductsPage() {
               const BadgeIcon = badge.icon;
               const ht = product.taxRate != null ? product.price / (1 + product.taxRate / 100) : null;
               const margin = ht != null && product.cost != null ? ht - product.cost : null;
-              const colCount = 2 + visibleCols.length;
+              const colCount = 3 + visibleCols.length;
               const st = STATUS_META[product.status] || { label: product.status, cls: 'bg-gray-100 text-gray-500' };
               return (
                 <React.Fragment key={product.id}>
                   <tr className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors group cursor-pointer" onClick={() => navigate(`/products/${product.id}`)}>
+                    <td className="py-3 px-4" onClick={(e) => e.stopPropagation()}>
+                      <input type="checkbox" checked={selected.has(product.id)} onChange={() => toggleSelect(product.id)} className="accent-bo-accent" aria-label={`Sélectionner ${product.name}`} />
+                    </td>
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-xl border border-gray-100 bg-gray-50 flex items-center justify-center overflow-hidden flex-shrink-0">

@@ -406,6 +406,66 @@ export class ProductsService {
     return { total, active, outOfStock, belowThreshold, noImage, noSupplier, noCategory };
   }
 
+  /**
+   * Action de masse tracée sur une sélection. Valide les références (catégorie /
+   * fournisseur / TVA) AVANT toute écriture ; applique produit par produit ;
+   * chaque produit hors magasin ou introuvable est reporté dans `failed`
+   * (jamais d'échec silencieux) ; chaque succès est audité individuellement.
+   */
+  async bulkAction(
+    storeId: string,
+    employeeId: string,
+    action: 'activate' | 'deactivate' | 'setCategory' | 'setSupplier' | 'setTax',
+    productIds: string[],
+    opts: { categoryId?: string; supplierId?: string; taxRate?: number },
+  ): Promise<{ action: string; requested: number; succeeded: number; failed: Array<{ id: string; reason: string }> }> {
+    if (action === 'setCategory') {
+      if (!opts.categoryId) throw new BadRequestException('categoryId requis pour setCategory');
+      await this.assertCategoryInStore(storeId, opts.categoryId);
+    }
+    if (action === 'setSupplier') {
+      if (!opts.supplierId) throw new BadRequestException('supplierId requis pour setSupplier');
+      const sup = await this.supplierRepo.findOne({ where: { id: opts.supplierId, storeId } });
+      if (!sup) throw new BadRequestException('Fournisseur introuvable dans ce magasin');
+    }
+    if (action === 'setTax' && (opts.taxRate == null || opts.taxRate < 0)) {
+      throw new BadRequestException('taxRate (>= 0) requis pour setTax');
+    }
+
+    const failed: Array<{ id: string; reason: string }> = [];
+    let succeeded = 0;
+    for (const id of productIds) {
+      try {
+        const product = await this.productRepo.findOne({ where: { id, storeId } });
+        if (!product) {
+          failed.push({ id, reason: 'introuvable ou autre magasin' });
+          continue;
+        }
+        const patch: Partial<ProductEntity> = {};
+        switch (action) {
+          case 'activate': patch.status = 'active'; patch.isActive = true; break;
+          case 'deactivate': patch.status = 'archived'; patch.isActive = false; break;
+          case 'setCategory': patch.categoryId = opts.categoryId!; break;
+          case 'setSupplier': patch.supplierId = opts.supplierId!; break;
+          case 'setTax': patch.taxRate = opts.taxRate!; break;
+        }
+        await this.productRepo.update(id, patch);
+        await this.auditService.log({
+          storeId,
+          employeeId,
+          action: 'product_bulk_update',
+          entityType: 'product',
+          entityId: id,
+          details: { bulkAction: action, ...opts },
+        });
+        succeeded++;
+      } catch (e: any) {
+        failed.push({ id, reason: e?.message || 'erreur' });
+      }
+    }
+    return { action, requested: productIds.length, succeeded, failed };
+  }
+
   async findByEan(
     ean: string,
     storeId: string,

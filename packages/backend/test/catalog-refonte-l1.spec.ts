@@ -249,4 +249,54 @@ describe('Catalogue refonte L1 — product enablement (no migration)', () => {
       expect(s.noCategory).toBe(1);
     });
   });
+
+  // ── Actions de masse (L1.5) ───────────────────────────────────────
+  describe('bulkAction', () => {
+    const S = uuidv4();
+    let ids: string[] = [];
+    beforeAll(async () => {
+      await ds.getRepository(StoreEntity).save({ id: S, name: 'L15', isActive: true, currencyCode: 'EUR' } as any);
+      const a = await svc.create({ ean: nextEan(), name: 'B1', priceMinorUnits: 100, taxRate: 20, storeId: S } as any, EMP);
+      const b = await svc.create({ ean: nextEan(), name: 'B2', priceMinorUnits: 200, taxRate: 20, storeId: S } as any, EMP);
+      ids = [a.id, b.id];
+    });
+
+    it('deactivate then activate flips status + isActive for the whole selection', async () => {
+      const off = await svc.bulkAction(S, EMP, 'deactivate', ids, {});
+      expect(off.succeeded).toBe(2);
+      expect(off.failed).toHaveLength(0);
+      for (const id of ids) {
+        const p = await svc.findOne(id, S);
+        expect(p.isActive).toBe(false);
+        expect(p.status).toBe('archived');
+      }
+      const on = await svc.bulkAction(S, EMP, 'activate', ids, {});
+      expect(on.succeeded).toBe(2);
+      const p = await svc.findOne(ids[0], S);
+      expect(p.isActive).toBe(true);
+      expect(p.status).toBe('active');
+    });
+
+    it('setTax applies the rate to the selection', async () => {
+      await svc.bulkAction(S, EMP, 'setTax', ids, { taxRate: 5.5 });
+      const p = await svc.findOne(ids[0], S);
+      expect(Number(p.taxRate)).toBe(5.5);
+    });
+
+    it('setCategory validates the category exists (rejects an unknown one before any write)', async () => {
+      await expect(svc.bulkAction(S, EMP, 'setCategory', ids, { categoryId: uuidv4() })).rejects.toThrow();
+      const cat = await svc.createCategory(S, 'BulkCat');
+      const r = await svc.bulkAction(S, EMP, 'setCategory', ids, { categoryId: cat.id });
+      expect(r.succeeded).toBe(2);
+      expect((await svc.findOne(ids[0], S)).categoryId).toBe(cat.id);
+    });
+
+    it('reports unknown / other-store ids in failed instead of throwing', async () => {
+      const r = await svc.bulkAction(S, EMP, 'activate', [ids[0], uuidv4()], {});
+      expect(r.requested).toBe(2);
+      expect(r.succeeded).toBe(1);
+      expect(r.failed).toHaveLength(1);
+      expect(r.failed[0].reason).toMatch(/introuvable/);
+    });
+  });
 });

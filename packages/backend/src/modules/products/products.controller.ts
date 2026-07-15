@@ -22,6 +22,7 @@ import {
   PaginationQueryDto,
   CreateCategoryDto,
   UpdateCategoryDto,
+  BulkProductActionDto,
 } from '../../common/dto';
 
 @ApiTags('products')
@@ -90,6 +91,19 @@ export class ProductsController {
     const effectiveStoreId =
       req.user.role === 'admin' && queryStoreId ? queryStoreId : req.user.storeId;
     return this.productsService.getCatalogStats(effectiveStoreId);
+  }
+
+  @Post('bulk')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'Bulk action on selected products (activate/deactivate/setCategory/setSupplier/setTax) — audited, returns per-id result' })
+  bulkAction(@Body() dto: BulkProductActionDto, @Request() req: any) {
+    return this.productsService.bulkAction(
+      req.user.storeId,
+      req.user.employeeId,
+      dto.action,
+      dto.productIds,
+      { categoryId: dto.categoryId, supplierId: dto.supplierId, taxRate: dto.taxRate },
+    );
   }
 
   // ── Brand / supplier reference data (decision 3) — static routes before :id ──
