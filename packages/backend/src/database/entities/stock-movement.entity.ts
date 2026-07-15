@@ -63,8 +63,13 @@ export class StockMovementEntity {
   @Column({ name: 'to_location_id', type: 'uuid', nullable: true })
   toLocationId: string | null;
 
+  // Always positive; direction is given by from/to_location or by movementType.
+  // EXCEPTION (ratifiée, F1b) : pour `inventory_adjust` UNIQUEMENT, `quantity` est
+  // le DELTA SIGNÉ (new − old) — un ajustement n'a pas de sens in/out intrinsèque
+  // (surtout en mode absolu) ; seul le delta est univoque et s'agrège directement
+  // dans la réconciliation.
   @Column({ type: 'integer' })
-  quantity: number; // Always positive. Direction determined by from/to.
+  quantity: number;
 
   // Reference document (BL, PO number, ticket number)
   @Column({ type: 'varchar', length: 100, nullable: true })

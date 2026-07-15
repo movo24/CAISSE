@@ -112,8 +112,22 @@ Statuts : OPEN · IN PROGRESS · BLOCKED (owner/accès) · CLOSED (PR retire l'e
 
 ---
 
-## D22 — Journal de stock unifié : couverture shadow PARTIELLE (F1) — la réconciliation n'est pas exhaustive
-**Status:** OPEN (par conception, gaté). **Since:** F1, 2026-07-16, branche `feat/stock-journal-nf525-on-main`.
+## D22 — Journal de stock unifié : couverture shadow — ✅ chemins caisse COUVERTS (F1+F1b+F2) ; reste le cutover F3 + le legacy système B
+**Status:** IN PROGRESS (rétréci). **Since:** F1, 2026-07-16, branche `feat/stock-journal-nf525-on-main`.
+
+**MISE À JOUR (F1b + F2 livrés, GO nominatif).** La moitié « couverture » de cette dette est
+**fermée** : `void` + composants (**F2**) et `inventory_adjust` (**F1b**) écrivent désormais leur
+mouvement. **Tous les chemins qui mutent le scalaire côté caisse sont journalisés** :
+vente/pack (F1), retour (F1), void/composants (F2), ajustement (F1b) — prouvé par
+`stock-reconciliation-readonly.pg.spec.ts` (le `gap` reste constant sur ces chemins).
+**Ce qui RESTE ouvert :** (a) le **système B legacy** (`syncLegacyStock`, réception/transfert/perte
+par emplacement) peut encore bouger le scalaire hors journal → fermé par **F4** ; (b) l'absence de
+**solde d'ouverture** rend le `gap` non nul en absolu → fermé par le **cutover F3**. Une correction
+manuelle en base reste par nature hors journal (l'instrument la révèle — dernier test du spec).
+Le texte historique ci-dessous documente l'état à la livraison de F1.
+
+---
+*(état à la livraison de F1 — conservé pour traçabilité)*
 > *Numérotation : D21 est volontairement réservée à la branche accès/activité non mergée (évite une
 > collision de numéro au merge) — même logique que le trou de migrations 1759→1766.*
 

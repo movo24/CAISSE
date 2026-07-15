@@ -14,12 +14,15 @@
  *                   inventory_adjust = +qty (delta signé, cf. F1b)
  *   gap           = scalar_stock − journal_sum
  *
- * PROPRIÉTÉ CLÉ (prouvée ici) : tant que seuls des chemins COUVERTS tournent
- * (vente, retour), `gap` reste CONSTANT (= le solde d'ouverture implicite). Toute
- * variation de `gap` mesure EXACTEMENT l'effet des chemins NON couverts (void tant
- * que F2 non livré, inventory_adjust tant que F1b non livré). C'est le critère de
- * bascule F3 : après cutover (solde d'ouverture) + couverture complète, gap → 0.
- * Voir la dette formalisée dans TECHNICAL_DEBT.md (couverture shadow partielle).
+ * PROPRIÉTÉ CLÉ (prouvée ici) : tant que seuls des chemins COUVERTS tournent, `gap`
+ * reste CONSTANT (= le solde d'ouverture implicite) ; toute variation de `gap` mesure
+ * EXACTEMENT l'effet d'un chemin NON journalisé.
+ * Couverture à jour : vente + pack + retour (F1), void + composants (F2), inventory_adjust
+ * (F1b) ⇒ tous les chemins scalaires côté caisse sont journalisés. Reste NON journalisé :
+ * le système B legacy (`syncLegacyStock`, réception/transfert/perte par emplacement) et
+ * toute correction manuelle en base — c'est ce que le dernier test démontre.
+ * C'est le critère de bascule F3 : après cutover (solde d'ouverture), gap → 0.
+ * Voir TECHNICAL_DEBT.md (D22).
  */
 import './helpers/env-setup';
 import { Test, TestingModule } from '@nestjs/testing';
@@ -138,15 +141,27 @@ d('Réconciliation scalaire vs SUM(mouvements) — lecture seule (real Postgres)
     expect(r.gap).toBe(100); // TOUJOURS constant tant que couvert
   }, 60000);
 
-  it('chemin NON couvert (inventory_adjust) : le gap varie EXACTEMENT de l\'effet non journalisé', async () => {
+  it('inventory_adjust est désormais COUVERT (F1b) : le gap reste CONSTANT', async () => {
     const before = await reconcile();
-    // Ajustement −5 : bouge le scalaire, N'écrit PAS de mouvement (F1b non livré).
+    // Avant F1b, cet ajustement bougeait le scalaire SANS écrire de mouvement et
+    // faisait varier le gap de −5. F1b l'a couvert : le journal suit maintenant.
     await stock.adjustStock(productId, -5, STORE, EMP, 'casse constatée', 'delta');
     const after = await reconcile();
     expect(after.scalar_stock).toBe(before.scalar_stock - 5);
+    expect(after.journal_sum).toBe(before.journal_sum - 5); // le journal suit le scalaire
+    expect(after.gap).toBe(before.gap); // CONSTANT — le trou est fermé
+  }, 60000);
+
+  it('mutation du scalaire HORS journal (chemin legacy) : le gap varie EXACTEMENT de l\'effet', async () => {
+    const before = await reconcile();
+    // Simule un chemin NON journalisé encore possible (ex. syncLegacyStock du système B,
+    // ou une correction manuelle en base) : le scalaire bouge sans mouvement.
+    // NB : écriture de MISE EN SCÈNE du test — l'instrument (RECONCILE_SQL) reste un SELECT pur.
+    await ds.query('UPDATE products SET stock_quantity = stock_quantity - 4 WHERE id = $1', [productId]);
+    const after = await reconcile();
+    expect(after.scalar_stock).toBe(before.scalar_stock - 4);
     expect(after.journal_sum).toBe(before.journal_sum); // journal inchangé
-    // L'instrument révèle l'écart : le gap a bougé de exactement −5 = l'effet non couvert.
-    expect(after.gap).toBe(before.gap - 5);
-    expect(after.gap).toBe(95);
+    // Propriété clé conservée : toute variation du gap = effet exact d'un chemin non journalisé.
+    expect(after.gap).toBe(before.gap - 4);
   }, 60000);
 });
