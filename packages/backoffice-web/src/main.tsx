@@ -32,6 +32,7 @@ import { ProductVariantsPage } from './pages/ProductVariantsPage';
 import { StorePricesPage } from './pages/StorePricesPage';
 import { BrandsSuppliersPage } from './pages/BrandsSuppliersPage';
 import { CategoriesAdminPage } from './pages/CategoriesAdminPage';
+import { ProductEditPage } from './pages/ProductEditPage';
 import { PromoCodesPage } from './pages/PromoCodesPage';
 import { CampaignsPage } from './pages/CampaignsPage';
 import { PendingPaymentsPage } from './pages/PendingPaymentsPage';
@@ -85,6 +86,8 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             {/* Couche 3: Exploitation magasin */}
             <Route path="/" element={<DashboardPage />} />
             <Route path="/products" element={<ProductsPage />} />
+            <Route path="/products/new" element={<ProductEditPage />} />
+            <Route path="/products/:id/edit" element={<ProductEditPage />} />
             <Route path="/catalog/variants" element={<ProductVariantsPage />} />
             <Route path="/catalog/store-prices" element={<StorePricesPage />} />
             <Route path="/catalog/brands-suppliers" element={<BrandsSuppliersPage />} />

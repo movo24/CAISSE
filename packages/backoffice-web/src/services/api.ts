@@ -172,6 +172,10 @@ export const productsApi = {
     supplierId?: string;
     status?: string;
     oldPriceMinorUnits?: number;
+    unitType?: string;
+    imageUrl?: string;
+    stockAlertThreshold?: number;
+    stockCriticalThreshold?: number;
   }) => api.post('/products', data),
   // Aligné sur UpdateProductDto : PAS de `ean` (immuable, absent du DTO →
   // rejeté par forbidNonWhitelisted), PAS de `storeId`.
@@ -190,6 +194,10 @@ export const productsApi = {
       supplierId?: string | null;
       status?: string;
       oldPriceMinorUnits?: number | null;
+      unitType?: string;
+      imageUrl?: string;
+      stockAlertThreshold?: number;
+      stockCriticalThreshold?: number;
       reason?: string;
       isActive?: boolean;
     },

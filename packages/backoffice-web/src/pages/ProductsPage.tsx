@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Search,
   Plus,
   Package,
   Pencil,
+  Zap,
   Trash2,
   ArrowUpDown,
   Filter,
@@ -72,6 +74,7 @@ function stockBadge(stock: number) {
 }
 
 export function ProductsPage() {
+  const navigate = useNavigate();
   const employee = useAuthStore((s) => s.employee);
   const storeId = useCurrentStoreId();
   const [products, setProducts] = useState<Product[]>([]);
@@ -250,8 +253,6 @@ export function ProductsPage() {
     setFormError(null);
   };
 
-  const openAdd = () => { resetForm(); setShowModal(true); };
-
   const [originalPrice, setOriginalPrice] = useState<number | null>(null);
   const [priceConfirm, setPriceConfirm] = useState(false);
 
@@ -397,7 +398,7 @@ export function ProductsPage() {
             Exporter
           </button>
           <button
-            onClick={openAdd}
+            onClick={() => navigate('/products/new')}
             className="flex items-center gap-2 bg-bo-accent text-white px-5 py-2.5 rounded-xl font-medium hover:bg-bo-accent/90 transition-colors shadow-lg shadow-bo-accent/25"
           >
             <Plus size={16} />
@@ -550,11 +551,18 @@ export function ProductsPage() {
                         <BarChart3 size={14} />
                       </button>
                       <button
-                        onClick={() => openEdit(product)}
+                        onClick={() => navigate(`/products/${product.id}/edit`)}
                         className="p-2 rounded-lg hover:bg-indigo-50 text-gray-400 hover:text-bo-accent transition-colors"
-                        title="Modifier"
+                        title="Fiche complète (modifier)"
                       >
                         <Pencil size={14} />
+                      </button>
+                      <button
+                        onClick={() => openEdit(product)}
+                        className="p-2 rounded-lg hover:bg-indigo-50 text-gray-400 hover:text-bo-accent transition-colors"
+                        title="Édition rapide (secondaire)"
+                      >
+                        <Zap size={14} />
                       </button>
                       <button
                         onClick={() => handleDelete(product.id)}
@@ -603,7 +611,8 @@ export function ProductsPage() {
           <div className="relative bg-white rounded-2xl shadow-elevated w-full max-w-2xl p-6 animate-slide-up max-h-[88vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-lg font-bold text-bo-text">
-                {editingId ? 'Modifier le produit' : 'Nouveau produit'}
+                Édition rapide
+                <span className="ml-2 text-xs font-normal text-gray-400">— fiche complète via l'icône crayon</span>
               </h3>
               <button
                 onClick={() => { setShowModal(false); resetForm(); }}
