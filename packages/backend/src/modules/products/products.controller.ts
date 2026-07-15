@@ -284,6 +284,28 @@ export class ProductsController {
     return this.productsService.removeComponent(id, componentRowId, req.user.storeId);
   }
 
+  // ── Produits liés (Lot E) ──
+
+  @Get(':id/links')
+  @ApiOperation({ summary: 'List related/cross-sell/substitute products' })
+  listLinks(@Param('id') id: string, @Request() req: any) {
+    return this.productsService.listLinks(id, req.user.storeId);
+  }
+
+  @Post(':id/links')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'Link a product (complementary | cross_sell | substitute)' })
+  addLink(@Param('id') id: string, @Body() body: { linkedProductId: string; linkType?: string }, @Request() req: any) {
+    return this.productsService.addLink(id, req.user.storeId, body?.linkedProductId ?? '', body?.linkType);
+  }
+
+  @Delete(':id/links/:linkId')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'Remove a product link' })
+  removeLink(@Param('id') id: string, @Param('linkId') linkId: string, @Request() req: any) {
+    return this.productsService.removeLink(id, req.user.storeId, linkId);
+  }
+
   // ── Fournisseurs multiples (Lot B) ──
 
   @Get(':id/suppliers')

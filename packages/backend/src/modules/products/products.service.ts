@@ -19,6 +19,7 @@ import { ProductDocumentEntity } from '../../database/entities/product-document.
 import { ProductBarcodeEntity } from '../../database/entities/product-barcode.entity';
 import { ProductSupplierEntity } from '../../database/entities/product-supplier.entity';
 import { ProductChangeLogEntity } from '../../database/entities/product-change-log.entity';
+import { ProductLinkEntity } from '../../database/entities/product-link.entity';
 import { AuditService } from '../audit/audit.service';
 import { PaginatedResult } from '../../common/dto/pagination.dto';
 import { computePriceVerdict, PriceVerdict } from './price-verdict';
@@ -66,7 +67,45 @@ export class ProductsService {
     private productSupplierRepo: Repository<ProductSupplierEntity>,
     @InjectRepository(ProductChangeLogEntity)
     private changeLogRepo: Repository<ProductChangeLogEntity>,
+    @InjectRepository(ProductLinkEntity)
+    private linkRepo: Repository<ProductLinkEntity>,
   ) {}
+
+  // ── Produits liés : complémentaires / ventes croisées / substitution (Lot E) ──
+
+  async listLinks(productId: string, storeId: string): Promise<Array<ProductLinkEntity & { linkedProduct?: any }>> {
+    await this.findOneForStore(productId, storeId);
+    const links = await this.linkRepo.find({ where: { productId, storeId }, order: { createdAt: 'ASC' } });
+    if (!links.length) return links;
+    const ids = [...new Set(links.map((l) => l.linkedProductId))];
+    const products = await this.productRepo.find({ where: ids.map((id) => ({ id, storeId })) });
+    const byId = new Map(products.map((p) => [p.id, p]));
+    return links.map((l) => ({ ...l, linkedProduct: byId.get(l.linkedProductId) ?? null }));
+  }
+
+  async addLink(
+    productId: string,
+    storeId: string,
+    linkedProductId: string,
+    linkType?: string,
+  ): Promise<ProductLinkEntity> {
+    await this.findOneForStore(productId, storeId);
+    if (!linkedProductId) throw new BadRequestException('Le produit lié est requis');
+    if (linkedProductId === productId) throw new BadRequestException('Un produit ne peut pas être lié à lui-même');
+    await this.findOneForStore(linkedProductId, storeId); // le produit lié doit appartenir au magasin
+    const type = (['complementary', 'cross_sell', 'substitute'] as const).includes(linkType as any)
+      ? (linkType as any)
+      : 'complementary';
+    const dup = await this.linkRepo.findOne({ where: { productId, linkedProductId, linkType: type } });
+    if (dup) throw new BusinessError('PRODUCT_LINK_EXISTS', 'Ce lien existe déjà.', HttpStatus.CONFLICT);
+    return this.linkRepo.save(this.linkRepo.create({ productId, storeId, linkedProductId, linkType: type }));
+  }
+
+  async removeLink(productId: string, storeId: string, linkId: string): Promise<{ message: string }> {
+    await this.findOneForStore(productId, storeId);
+    await this.linkRepo.delete({ id: linkId, productId, storeId });
+    return { message: 'Lien retiré.' };
+  }
 
   // ── Journal des modifications de la fiche (Lot D) ──
 
@@ -76,6 +115,7 @@ export class ProductsService {
     'taxRate', 'categoryId', 'brandId', 'supplierId', 'status', 'isActive', 'sku', 'internalRef',
     'supplierRef', 'productType', 'unitType', 'countryOfOrigin', 'leadTimeDays', 'minOrderQuantity',
     'weightGrams', 'widthMm', 'heightMm', 'depthMm', 'volumeMl', 'unitsPerCarton',
+    'isSeasonal', 'seasonStartMonth', 'seasonEndMonth',
   ];
 
   private async recordChangeLog(

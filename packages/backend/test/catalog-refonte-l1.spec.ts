@@ -24,6 +24,7 @@ import { ProductDocumentEntity } from '../src/database/entities/product-document
 import { ProductBarcodeEntity } from '../src/database/entities/product-barcode.entity';
 import { ProductSupplierEntity } from '../src/database/entities/product-supplier.entity';
 import { ProductChangeLogEntity } from '../src/database/entities/product-change-log.entity';
+import { ProductLinkEntity } from '../src/database/entities/product-link.entity';
 import { AuditEntryEntity } from '../src/database/entities/audit-entry.entity';
 import { AuditService } from '../src/modules/audit/audit.service';
 import { ProductsService } from '../src/modules/products/products.service';
@@ -56,6 +57,7 @@ describe('Catalogue refonte L1 — product enablement (no migration)', () => {
       ds.getRepository(ProductBarcodeEntity),
       ds.getRepository(ProductSupplierEntity),
       ds.getRepository(ProductChangeLogEntity),
+      ds.getRepository(ProductLinkEntity),
     );
   });
   afterAll(async () => {
@@ -555,6 +557,46 @@ describe('Catalogue refonte L1 — product enablement (no migration)', () => {
       await svc.update(pid, { name: 'Suivi v2' } as any, EMP, undefined, S); // identique → rien
       expect((await svc.getChangeLog(pid, S)).length).toBe(before);
       await expect(svc.getChangeLog(pid, uuidv4())).rejects.toThrow();
+    });
+  });
+
+  // ── Lot E — produits liés + saisonnalité ───────────────────────────
+  describe('Lot E — produits liés & saisonnalité', () => {
+    const S = uuidv4();
+    let a = '';
+    let b = '';
+    beforeAll(async () => {
+      await ds.getRepository(StoreEntity).save({ id: S, name: 'LE', isActive: true, currencyCode: 'EUR' } as any);
+      a = (await svc.create({ ean: nextEan(), name: 'Café', priceMinorUnits: 500, taxRate: 20, storeId: S } as any, EMP)).id;
+      b = (await svc.create({ ean: nextEan(), name: 'Sucre', priceMinorUnits: 200, taxRate: 20, storeId: S } as any, EMP)).id;
+    });
+
+    it('lie 2 produits, refuse self-link, refuse doublon, remove', async () => {
+      await svc.addLink(a, S, b, 'complementary');
+      const list = await svc.listLinks(a, S);
+      expect(list).toHaveLength(1);
+      expect(list[0].linkedProductId).toBe(b);
+      expect((list[0] as any).linkedProduct?.name).toBe('Sucre');
+      await expect(svc.addLink(a, S, a)).rejects.toThrow(); // self
+      await expect(svc.addLink(a, S, b, 'complementary')).rejects.toMatchObject({ code: 'PRODUCT_LINK_EXISTS' });
+      // un autre type est permis
+      await svc.addLink(a, S, b, 'substitute');
+      expect(await svc.listLinks(a, S)).toHaveLength(2);
+      await svc.removeLink(a, S, list[0].id);
+      expect(await svc.listLinks(a, S)).toHaveLength(1);
+    });
+
+    it('saisonnalité persistée + tracée dans le change-log', async () => {
+      await svc.update(a, { isSeasonal: true, seasonStartMonth: 11, seasonEndMonth: 1 } as any, EMP, undefined, S);
+      const p = await svc.findOne(a, S);
+      expect(p.isSeasonal).toBe(true);
+      expect(p.seasonStartMonth).toBe(11);
+      const log = await svc.getChangeLog(a, S);
+      expect(log.some((r) => r.field === 'isSeasonal')).toBe(true);
+    });
+
+    it('garde tenant sur les liens', async () => {
+      await expect(svc.listLinks(a, uuidv4())).rejects.toThrow();
     });
   });
 });

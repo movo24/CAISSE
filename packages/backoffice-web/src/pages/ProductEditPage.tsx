@@ -3,7 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   ScanBarcode, Save, ArrowLeft, Loader2, Package, Euro, Boxes, Truck,
   Layers, GitBranch, Image as ImageIcon, Ruler, BadgePercent, BarChart3,
-  History, Plus, Trash2, AlertCircle, CheckCircle2, Pencil,
+  History, Plus, Trash2, AlertCircle, CheckCircle2, Pencil, Link2,
 } from 'lucide-react';
 import { productsApi } from '../services/api';
 
@@ -28,7 +28,7 @@ import { productsApi } from '../services/api';
 
 type Tab =
   | 'general' | 'tarification' | 'stock' | 'fournisseurs' | 'packs'
-  | 'variantes' | 'images' | 'logistique' | 'promotions' | 'stats' | 'historique';
+  | 'variantes' | 'lies' | 'images' | 'logistique' | 'promotions' | 'stats' | 'historique';
 
 const TABS: { key: Tab; label: string; icon: React.ElementType }[] = [
   { key: 'general', label: 'Général', icon: Package },
@@ -37,12 +37,21 @@ const TABS: { key: Tab; label: string; icon: React.ElementType }[] = [
   { key: 'fournisseurs', label: 'Fournisseurs', icon: Truck },
   { key: 'packs', label: 'Packs', icon: Layers },
   { key: 'variantes', label: 'Variantes', icon: GitBranch },
+  { key: 'lies', label: 'Produits liés', icon: Link2 },
   { key: 'images', label: 'Images', icon: ImageIcon },
   { key: 'logistique', label: 'Logistique', icon: Ruler },
   { key: 'promotions', label: 'Promotions', icon: BadgePercent },
   { key: 'stats', label: 'Statistiques', icon: BarChart3 },
   { key: 'historique', label: 'Historique', icon: History },
 ];
+
+const LINK_LABEL: Record<string, string> = {
+  complementary: 'Complémentaire',
+  cross_sell: 'Vente croisée',
+  substitute: 'Substitution',
+};
+
+const MONTHS = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
 
 const eur = (m: number | null | undefined) =>
   m == null ? '—' : (m / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
@@ -111,6 +120,8 @@ export function ProductEditPage() {
     shortName: '', internalRef: '', supplierRef: '', productType: 'simple', countryOfOrigin: '',
     leadTimeDays: '', minOrderQuantity: '', weightGrams: '', widthMm: '', heightMm: '', depthMm: '',
     volumeMl: '', unitsPerCarton: '',
+    // Lot E — saisonnalité
+    isSeasonal: false, seasonStartMonth: '', seasonEndMonth: '',
   });
   const set = (k: keyof typeof form, v: any) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -139,6 +150,11 @@ export function ProductEditPage() {
   const [psForm, setPsForm] = useState({ supplierId: '', supplierRef: '', purchasePrice: '', currencyCode: 'EUR', leadTimeDays: '', minOrderQuantity: '', incoterm: '', isPrimary: false });
   // Lot D — journal des modifications
   const [changeLog, setChangeLog] = useState<any[]>([]);
+  // Lot E — produits liés
+  const [links, setLinks] = useState<any[]>([]);
+  const [linkQuery, setLinkQuery] = useState('');
+  const [linkResults, setLinkResults] = useState<any[]>([]);
+  const [linkType, setLinkType] = useState('complementary');
 
   const load = useCallback(async () => {
     try {
@@ -210,6 +226,9 @@ export function ProductEditPage() {
         depthMm: p.depthMm != null ? String(p.depthMm) : '',
         volumeMl: p.volumeMl != null ? String(p.volumeMl) : '',
         unitsPerCarton: p.unitsPerCarton != null ? String(p.unitsPerCarton) : '',
+        isSeasonal: p.isSeasonal === true,
+        seasonStartMonth: p.seasonStartMonth != null ? String(p.seasonStartMonth) : '',
+        seasonEndMonth: p.seasonEndMonth != null ? String(p.seasonEndMonth) : '',
       });
       // Chargements non bloquants des onglets (endpoints existants)
       productsApi.listComponents(id).then((r) => setComponents(r.data || [])).catch(() => {});
@@ -222,6 +241,7 @@ export function ProductEditPage() {
       productsApi.listBarcodes(id).then((r) => setBarcodes(r.data || [])).catch(() => {});
       productsApi.listProductSuppliers(id).then((r) => setProdSuppliers(r.data || [])).catch(() => {});
       productsApi.changeLog(id).then((r) => setChangeLog(r.data || [])).catch(() => {});
+      productsApi.listLinks(id).then((r) => setLinks(r.data || [])).catch(() => {});
     } catch (e: any) {
       setError(e?.response?.data?.message || 'Chargement impossible');
     } finally { setLoading(false); }
@@ -312,6 +332,9 @@ export function ProductEditPage() {
       depthMm: toInt(form.depthMm),
       volumeMl: toInt(form.volumeMl),
       unitsPerCarton: toInt(form.unitsPerCarton),
+      isSeasonal: form.isSeasonal,
+      seasonStartMonth: form.isSeasonal ? toInt(form.seasonStartMonth) : undefined,
+      seasonEndMonth: form.isSeasonal ? toInt(form.seasonEndMonth) : undefined,
     };
     setSaving(true);
     try {
@@ -444,6 +467,32 @@ export function ProductEditPage() {
     if (!id) return;
     await productsApi.removeDocument(id, did).catch(() => {});
     setDocuments((await productsApi.listDocuments(id)).data || []);
+  };
+
+  // ── Produits liés (Lot E) ──
+  useEffect(() => {
+    if (!id) return;
+    const t = setTimeout(async () => {
+      try {
+        const res = await productsApi.list({ search: linkQuery.trim() || undefined, limit: 8 });
+        const data: any[] = Array.isArray(res.data) ? res.data : (res.data?.data || res.data?.products || []);
+        setLinkResults(data.filter((p) => p.id !== id && !links.some((l) => l.linkedProductId === p.id)));
+      } catch { /* recherche silencieuse */ }
+    }, 250);
+    return () => clearTimeout(t);
+  }, [linkQuery, id, links]);
+  const addLink = async (linkedProductId: string) => {
+    if (!id) return;
+    try {
+      await productsApi.addLink(id, { linkedProductId, linkType });
+      setLinkQuery('');
+      setLinks((await productsApi.listLinks(id)).data || []);
+    } catch (e: any) { setError(e?.response?.data?.message || 'Lien impossible'); }
+  };
+  const removeLink = async (linkId: string) => {
+    if (!id) return;
+    await productsApi.removeLink(id, linkId).catch(() => {});
+    setLinks((await productsApi.listLinks(id)).data || []);
   };
 
   // ── Codes-barres multiples (Lot A) ──
@@ -693,7 +742,27 @@ export function ProductEditPage() {
               <Field label="Seuil d'alerte"><input className={inputCls} inputMode="numeric" value={form.alertThreshold} onChange={(e) => set('alertThreshold', e.target.value)} /></Field>
               <Field label="Seuil critique"><input className={inputCls} inputMode="numeric" value={form.criticalThreshold} onChange={(e) => set('criticalThreshold', e.target.value)} /></Field>
             </div>
-            <Phase2Notice fields="Stock minimum/maximum · quantité de réapprovisionnement · quantités carton/palette · emplacement · réserve · rayon (les emplacements physiques existent par ailleurs dans le module Stock Locations)" />
+            {/* Saisonnalité (Lot E) */}
+            <div className="rounded-xl border border-gray-100 p-4 space-y-3">
+              <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={form.isSeasonal} onChange={(e) => set('isSeasonal', e.target.checked)} className="accent-bo-accent" /> Produit saisonnier</label>
+              {form.isSeasonal && (
+                <div className="grid grid-cols-2 gap-3 max-w-md">
+                  <Field label="Mois de début">
+                    <select className={inputCls} value={form.seasonStartMonth} onChange={(e) => set('seasonStartMonth', e.target.value)}>
+                      <option value="">—</option>
+                      {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Mois de fin">
+                    <select className={inputCls} value={form.seasonEndMonth} onChange={(e) => set('seasonEndMonth', e.target.value)}>
+                      <option value="">—</option>
+                      {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+                    </select>
+                  </Field>
+                </div>
+              )}
+            </div>
+            <Phase2Notice fields="Stock minimum/maximum · quantité de réapprovisionnement · emplacement réserve/rayon (les emplacements physiques existent dans le module Stock Locations)" />
           </div>
         )}
 
@@ -847,6 +916,54 @@ export function ProductEditPage() {
                         <td className="text-right tabular-nums">{v.stockQuantity}</td>
                       </tr>
                     ))}</tbody>
+                  </table>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {tab === 'lies' && (
+          <div className="space-y-5">
+            {!isEdit ? <p className="text-sm text-gray-400">Enregistrez la fiche pour lier des produits.</p> : (
+              <>
+                <div className="rounded-xl bg-gray-50 p-3 space-y-2">
+                  <div className="flex gap-2 items-center">
+                    <select className={inputCls} style={{ maxWidth: 200 }} value={linkType} onChange={(e) => setLinkType(e.target.value)}>
+                      <option value="complementary">Complémentaire</option>
+                      <option value="cross_sell">Vente croisée</option>
+                      <option value="substitute">Substitution</option>
+                    </select>
+                    <input className={inputCls} value={linkQuery} onChange={(e) => setLinkQuery(e.target.value)} placeholder="Rechercher un produit à lier (nom / EAN / SKU)…" />
+                  </div>
+                  {linkResults.length > 0 && (
+                    <ul className="max-h-40 overflow-y-auto divide-y divide-gray-100 rounded-lg border border-gray-200 bg-white">
+                      {linkResults.map((p) => (
+                        <li key={p.id}>
+                          <button onClick={() => addLink(p.id)} className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50">
+                            <span className="font-medium text-bo-text">{p.name}</span>
+                            <span className="ml-2 text-gray-400 font-mono text-xs">{p.ean}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                {links.length === 0 ? (
+                  <p className="text-sm text-gray-400">Aucun produit lié. Ajoutez des produits complémentaires, de vente croisée ou de substitution.</p>
+                ) : (
+                  <table className="w-full text-sm">
+                    <thead><tr className="text-left text-[11px] uppercase text-gray-400 border-b border-gray-100"><th className="py-2">Produit lié</th><th>EAN</th><th>Type</th><th /></tr></thead>
+                    <tbody>
+                      {links.map((l) => (
+                        <tr key={l.id} className="border-b border-gray-50 hover:bg-gray-50 cursor-pointer" onClick={() => navigate(`/products/${l.linkedProductId}`)}>
+                          <td className="py-2 font-medium text-gray-700">{l.linkedProduct?.name || l.linkedProductId}</td>
+                          <td className="font-mono text-xs text-gray-400">{l.linkedProduct?.ean || '—'}</td>
+                          <td className="text-gray-500">{LINK_LABEL[l.linkType] || l.linkType}</td>
+                          <td className="text-right" onClick={(e) => e.stopPropagation()}><button onClick={() => removeLink(l.id)} className="p-1.5 text-red-400 hover:bg-red-50 rounded-lg"><Trash2 size={14} /></button></td>
+                        </tr>
+                      ))}
+                    </tbody>
                   </table>
                 )}
               </>

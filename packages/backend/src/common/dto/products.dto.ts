@@ -11,6 +11,7 @@ import {
   ArrayNotEmpty,
   ArrayMaxSize,
   Min,
+  Max,
   MaxLength,
   ValidateIf,
 } from 'class-validator';
@@ -175,6 +176,18 @@ export class CreateProductDto {
   @ApiPropertyOptional({ description: 'Unités par carton' })
   @IsOptional() @IsInt() @Min(0)
   unitsPerCarton?: number;
+
+  @ApiPropertyOptional({ description: 'Produit saisonnier' })
+  @IsOptional() @IsBoolean()
+  isSeasonal?: boolean;
+
+  @ApiPropertyOptional({ description: 'Mois de début de saison (1-12)' })
+  @IsOptional() @IsInt() @Min(1) @Max(12)
+  seasonStartMonth?: number;
+
+  @ApiPropertyOptional({ description: 'Mois de fin de saison (1-12)' })
+  @IsOptional() @IsInt() @Min(1) @Max(12)
+  seasonEndMonth?: number;
 }
 
 export class UpdateProductDto {
@@ -340,6 +353,18 @@ export class UpdateProductDto {
   @ApiPropertyOptional({ description: 'Unités par carton' })
   @IsOptional() @IsInt() @Min(0)
   unitsPerCarton?: number;
+
+  @ApiPropertyOptional({ description: 'Produit saisonnier' })
+  @IsOptional() @IsBoolean()
+  isSeasonal?: boolean;
+
+  @ApiPropertyOptional({ description: 'Mois de début de saison (1-12)' })
+  @IsOptional() @IsInt() @Min(1) @Max(12)
+  seasonStartMonth?: number;
+
+  @ApiPropertyOptional({ description: 'Mois de fin de saison (1-12)' })
+  @IsOptional() @IsInt() @Min(1) @Max(12)
+  seasonEndMonth?: number;
 }
 
 /** Hierarchical product category — create with an optional parent. */

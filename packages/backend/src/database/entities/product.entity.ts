@@ -129,6 +129,16 @@ export class ProductEntity {
   @Column({ name: 'units_per_carton', type: 'integer', nullable: true })
   unitsPerCarton: number | null;
 
+  // ── Lot E — saisonnalité (fenêtre par mois, récurrente) ──
+  @Column({ name: 'is_seasonal', type: 'boolean', default: false })
+  isSeasonal: boolean;
+
+  @Column({ name: 'season_start_month', type: 'integer', nullable: true })
+  seasonStartMonth: number | null;
+
+  @Column({ name: 'season_end_month', type: 'integer', nullable: true })
+  seasonEndMonth: number | null;
+
   @Column({ name: 'store_id' })
   storeId: string;
 

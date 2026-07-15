@@ -276,6 +276,10 @@ export const productsApi = {
     api.put(`/products/${id}/components/${componentRowId}`, data),
   removeComponent: (id: string, componentRowId: string) =>
     api.delete(`/products/${id}/components/${componentRowId}`),
+  // Produits liés (Lot E)
+  listLinks: (id: string) => api.get(`/products/${id}/links`),
+  addLink: (id: string, data: { linkedProductId: string; linkType?: string }) => api.post(`/products/${id}/links`, data),
+  removeLink: (id: string, linkId: string) => api.delete(`/products/${id}/links/${linkId}`),
   // Fournisseurs multiples (Lot B)
   listProductSuppliers: (id: string) => api.get(`/products/${id}/suppliers`),
   addProductSupplier: (id: string, data: any) => api.post(`/products/${id}/suppliers`, data),
