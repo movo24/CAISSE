@@ -14,6 +14,8 @@ import { BrandEntity } from '../../database/entities/brand.entity';
 import { SupplierEntity } from '../../database/entities/supplier.entity';
 import { StoreProductPriceEntity } from '../../database/entities/store-product-price.entity';
 import { ProductComponentEntity } from '../../database/entities/product-component.entity';
+import { ProductMediaEntity } from '../../database/entities/product-media.entity';
+import { ProductDocumentEntity } from '../../database/entities/product-document.entity';
 import { AuditService } from '../audit/audit.service';
 import { PaginatedResult } from '../../common/dto/pagination.dto';
 import { computePriceVerdict, PriceVerdict } from './price-verdict';
@@ -51,7 +53,52 @@ export class ProductsService {
     private storePriceRepo: Repository<StoreProductPriceEntity>,
     @InjectRepository(ProductComponentEntity)
     private componentRepo: Repository<ProductComponentEntity>,
+    @InjectRepository(ProductMediaEntity)
+    private mediaRepo: Repository<ProductMediaEntity>,
+    @InjectRepository(ProductDocumentEntity)
+    private documentRepo: Repository<ProductDocumentEntity>,
   ) {}
+
+  // ── Galerie d'images + documents (Lot 4, URLs externes) ──
+
+  async listMedia(productId: string, storeId: string): Promise<ProductMediaEntity[]> {
+    await this.findOneForStore(productId, storeId);
+    return this.mediaRepo.find({ where: { productId, storeId }, order: { sortOrder: 'ASC', createdAt: 'ASC' } });
+  }
+
+  async addMedia(productId: string, storeId: string, url: string): Promise<ProductMediaEntity> {
+    await this.findOneForStore(productId, storeId);
+    const clean = (url || '').trim();
+    if (!clean) throw new BadRequestException("L'URL de l'image est requise");
+    const count = await this.mediaRepo.count({ where: { productId, storeId } });
+    return this.mediaRepo.save(this.mediaRepo.create({ productId, storeId, url: clean, sortOrder: count }));
+  }
+
+  async removeMedia(productId: string, storeId: string, mediaId: string): Promise<{ message: string }> {
+    await this.findOneForStore(productId, storeId);
+    await this.mediaRepo.delete({ id: mediaId, productId, storeId });
+    return { message: 'Image retirée.' };
+  }
+
+  async listDocuments(productId: string, storeId: string): Promise<ProductDocumentEntity[]> {
+    await this.findOneForStore(productId, storeId);
+    return this.documentRepo.find({ where: { productId, storeId }, order: { createdAt: 'ASC' } });
+  }
+
+  async addDocument(productId: string, storeId: string, name: string, url: string): Promise<ProductDocumentEntity> {
+    await this.findOneForStore(productId, storeId);
+    const cleanUrl = (url || '').trim();
+    const cleanName = (name || '').trim();
+    if (!cleanUrl) throw new BadRequestException("L'URL du document est requise");
+    if (!cleanName) throw new BadRequestException('Le nom du document est requis');
+    return this.documentRepo.save(this.documentRepo.create({ productId, storeId, name: cleanName, url: cleanUrl }));
+  }
+
+  async removeDocument(productId: string, storeId: string, documentId: string): Promise<{ message: string }> {
+    await this.findOneForStore(productId, storeId);
+    await this.documentRepo.delete({ id: documentId, productId, storeId });
+    return { message: 'Document retiré.' };
+  }
 
   // ── Per-store price override (decision 4) ──
 

@@ -124,6 +124,12 @@ export function ProductEditPage() {
   const [priceHistory, setPriceHistory] = useState<any[]>([]);
   const [analytics, setAnalytics] = useState<any | null>(null);
   const [reason, setReason] = useState('');
+  // Lot 4 — galerie & documents
+  const [media, setMedia] = useState<any[]>([]);
+  const [documents, setDocuments] = useState<any[]>([]);
+  const [newMediaUrl, setNewMediaUrl] = useState('');
+  const [newDocName, setNewDocName] = useState('');
+  const [newDocUrl, setNewDocUrl] = useState('');
 
   const load = useCallback(async () => {
     try {
@@ -202,6 +208,8 @@ export function ProductEditPage() {
       productsApi.getStorePrice(id).then((r) => setStorePrice(r.data || null)).catch(() => setStorePrice(null));
       productsApi.priceHistory(id).then((r) => setPriceHistory(r.data || [])).catch(() => {});
       productsApi.priceAnalytics(id).then((r) => setAnalytics(r.data || null)).catch(() => {});
+      productsApi.listMedia(id).then((r) => setMedia(r.data || [])).catch(() => {});
+      productsApi.listDocuments(id).then((r) => setDocuments(r.data || [])).catch(() => {});
     } catch (e: any) {
       setError(e?.response?.data?.message || 'Chargement impossible');
     } finally { setLoading(false); }
@@ -375,6 +383,34 @@ export function ProductEditPage() {
     if (!id) return;
     await productsApi.clearStorePrice(id).catch(() => {});
     setStorePrice(null);
+  };
+
+  // ── Galerie & documents (Lot 4) ──
+  const addMedia = async () => {
+    if (!id || !newMediaUrl.trim()) return;
+    try {
+      await productsApi.addMedia(id, newMediaUrl.trim());
+      setNewMediaUrl('');
+      setMedia((await productsApi.listMedia(id)).data || []);
+    } catch (e: any) { setError(e?.response?.data?.message || 'Ajout image impossible'); }
+  };
+  const removeMedia = async (mid: string) => {
+    if (!id) return;
+    await productsApi.removeMedia(id, mid).catch(() => {});
+    setMedia((await productsApi.listMedia(id)).data || []);
+  };
+  const addDocument = async () => {
+    if (!id || !newDocUrl.trim() || !newDocName.trim()) return;
+    try {
+      await productsApi.addDocument(id, newDocName.trim(), newDocUrl.trim());
+      setNewDocName(''); setNewDocUrl('');
+      setDocuments((await productsApi.listDocuments(id)).data || []);
+    } catch (e: any) { setError(e?.response?.data?.message || 'Ajout document impossible'); }
+  };
+  const removeDocument = async (did: string) => {
+    if (!id) return;
+    await productsApi.removeDocument(id, did).catch(() => {});
+    setDocuments((await productsApi.listDocuments(id)).data || []);
   };
 
   // ══════════ PORTE SCANNER (création) ══════════
@@ -656,7 +692,51 @@ export function ProductEditPage() {
                 {form.imageUrl ? <img src={form.imageUrl} alt="" className="max-h-48 max-w-full object-contain rounded-lg" /> : <p className="text-xs text-gray-300">Aperçu</p>}
               </div>
             </div>
-            <Phase2Notice fields="Photos secondaires multiples · glisser-déposer · recadrage (nécessite table product_images + stockage objet)" />
+            {!isEdit ? (
+              <p className="text-sm text-gray-400">Enregistrez la fiche pour gérer la galerie et les documents.</p>
+            ) : (
+              <>
+                {/* Galerie (photos secondaires — URLs) */}
+                <div className="space-y-3 border-t border-gray-100 pt-4">
+                  <p className="text-sm font-semibold text-bo-text">Galerie ({media.length})</p>
+                  <div className="flex gap-2">
+                    <input className={inputCls} value={newMediaUrl} onChange={(e) => setNewMediaUrl(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addMedia()} placeholder="URL d'une image…" />
+                    <button onClick={addMedia} className="px-4 py-2.5 rounded-xl bg-bo-accent text-white text-sm font-semibold whitespace-nowrap flex items-center gap-1.5"><Plus size={14} /> Ajouter</button>
+                  </div>
+                  {media.length > 0 && (
+                    <div className="flex flex-wrap gap-3">
+                      {media.map((m) => (
+                        <div key={m.id} className="relative w-24 h-24 rounded-xl border border-gray-100 bg-gray-50 overflow-hidden group">
+                          <img src={m.url} alt="" className="w-full h-full object-contain" />
+                          <button onClick={() => removeMedia(m.id)} className="absolute top-1 right-1 p-1 rounded-lg bg-white/90 text-red-500 opacity-0 group-hover:opacity-100"><Trash2 size={13} /></button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Documents (notices, fiches, certificats — URLs) */}
+                <div className="space-y-3 border-t border-gray-100 pt-4">
+                  <p className="text-sm font-semibold text-bo-text">Documents ({documents.length})</p>
+                  <div className="grid grid-cols-1 md:grid-cols-[1fr_2fr_auto] gap-2">
+                    <input className={inputCls} value={newDocName} onChange={(e) => setNewDocName(e.target.value)} placeholder="Nom (ex : Notice)" />
+                    <input className={inputCls} value={newDocUrl} onChange={(e) => setNewDocUrl(e.target.value)} placeholder="URL du document (PDF…)" />
+                    <button onClick={addDocument} className="px-4 py-2.5 rounded-xl bg-bo-accent text-white text-sm font-semibold flex items-center gap-1.5"><Plus size={14} /> Ajouter</button>
+                  </div>
+                  {documents.length > 0 && (
+                    <ul className="divide-y divide-gray-50">
+                      {documents.map((d) => (
+                        <li key={d.id} className="py-2 flex items-center gap-2 text-sm">
+                          <a href={d.url} target="_blank" rel="noreferrer" className="text-bo-accent hover:underline font-medium">{d.name}</a>
+                          <span className="text-gray-400 font-mono text-xs truncate flex-1">{d.url}</span>
+                          <button onClick={() => removeDocument(d.id)} className="p-1.5 rounded-lg text-red-400 hover:bg-red-50"><Trash2 size={14} /></button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         )}
 

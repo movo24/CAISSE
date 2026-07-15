@@ -19,6 +19,8 @@ import { BrandEntity } from '../src/database/entities/brand.entity';
 import { SupplierEntity } from '../src/database/entities/supplier.entity';
 import { StoreProductPriceEntity } from '../src/database/entities/store-product-price.entity';
 import { ProductComponentEntity } from '../src/database/entities/product-component.entity';
+import { ProductMediaEntity } from '../src/database/entities/product-media.entity';
+import { ProductDocumentEntity } from '../src/database/entities/product-document.entity';
 import { AuditEntryEntity } from '../src/database/entities/audit-entry.entity';
 import { AuditService } from '../src/modules/audit/audit.service';
 import { ProductsService } from '../src/modules/products/products.service';
@@ -46,6 +48,8 @@ describe('Catalogue refonte L1 — product enablement (no migration)', () => {
       ds.getRepository(SupplierEntity),
       ds.getRepository(StoreProductPriceEntity),
       ds.getRepository(ProductComponentEntity),
+      ds.getRepository(ProductMediaEntity),
+      ds.getRepository(ProductDocumentEntity),
     );
   });
   afterAll(async () => {
@@ -361,6 +365,42 @@ describe('Catalogue refonte L1 — product enablement (no migration)', () => {
       // champs non touchés préservés
       expect(up.internalRef).toBe('INT-001');
       expect(up.countryOfOrigin).toBe('France');
+    });
+  });
+
+  // ── Lot 4 — galerie & documents (URLs, tenant-safe) ────────────────
+  describe('Lot 4 — galerie & documents', () => {
+    const S = uuidv4();
+    let pid = '';
+    beforeAll(async () => {
+      await ds.getRepository(StoreEntity).save({ id: S, name: 'L4', isActive: true, currencyCode: 'EUR' } as any);
+      pid = (await svc.create({ ean: nextEan(), name: 'Média', priceMinorUnits: 100, taxRate: 20, storeId: S } as any, EMP)).id;
+    });
+
+    it('add/list/remove media (URLs) en gardant l’ordre', async () => {
+      await svc.addMedia(pid, S, 'http://x/1.png');
+      await svc.addMedia(pid, S, 'http://x/2.png');
+      let list = await svc.listMedia(pid, S);
+      expect(list.map((m) => m.url)).toEqual(['http://x/1.png', 'http://x/2.png']);
+      await svc.removeMedia(pid, S, list[0].id);
+      list = await svc.listMedia(pid, S);
+      expect(list.map((m) => m.url)).toEqual(['http://x/2.png']);
+      await expect(svc.addMedia(pid, S, '  ')).rejects.toThrow();
+    });
+
+    it('add/list/remove documents (nom + URL requis)', async () => {
+      await svc.addDocument(pid, S, 'Notice', 'http://x/n.pdf');
+      const docs = await svc.listDocuments(pid, S);
+      expect(docs).toHaveLength(1);
+      expect(docs[0].name).toBe('Notice');
+      await expect(svc.addDocument(pid, S, '', 'http://x/x.pdf')).rejects.toThrow();
+      await expect(svc.addDocument(pid, S, 'X', '')).rejects.toThrow();
+      await svc.removeDocument(pid, S, docs[0].id);
+      expect(await svc.listDocuments(pid, S)).toHaveLength(0);
+    });
+
+    it('la galerie d’un autre magasin est inaccessible (garde tenant)', async () => {
+      await expect(svc.listMedia(pid, uuidv4())).rejects.toThrow();
     });
   });
 });

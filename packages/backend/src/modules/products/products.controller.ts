@@ -271,6 +271,48 @@ export class ProductsController {
     return this.productsService.removeComponent(id, componentRowId, req.user.storeId);
   }
 
+  // ── Galerie d'images + documents (Lot 4, URLs externes) ──
+
+  @Get(':id/media')
+  @ApiOperation({ summary: 'List product image gallery (external URLs)' })
+  listMedia(@Param('id') id: string, @Request() req: any) {
+    return this.productsService.listMedia(id, req.user.storeId);
+  }
+
+  @Post(':id/media')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'Add an image URL to the gallery' })
+  addMedia(@Param('id') id: string, @Body() body: { url: string }, @Request() req: any) {
+    return this.productsService.addMedia(id, req.user.storeId, body?.url ?? '');
+  }
+
+  @Delete(':id/media/:mediaId')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'Remove an image from the gallery' })
+  removeMedia(@Param('id') id: string, @Param('mediaId') mediaId: string, @Request() req: any) {
+    return this.productsService.removeMedia(id, req.user.storeId, mediaId);
+  }
+
+  @Get(':id/documents')
+  @ApiOperation({ summary: 'List product documents (external URLs)' })
+  listDocuments(@Param('id') id: string, @Request() req: any) {
+    return this.productsService.listDocuments(id, req.user.storeId);
+  }
+
+  @Post(':id/documents')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'Add a document (name + URL)' })
+  addDocument(@Param('id') id: string, @Body() body: { name: string; url: string }, @Request() req: any) {
+    return this.productsService.addDocument(id, req.user.storeId, body?.name ?? '', body?.url ?? '');
+  }
+
+  @Delete(':id/documents/:documentId')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'Remove a document' })
+  removeDocument(@Param('id') id: string, @Param('documentId') documentId: string, @Request() req: any) {
+    return this.productsService.removeDocument(id, req.user.storeId, documentId);
+  }
+
   // ── Per-store price override (decision 4) ──
 
   @Get(':id/store-price')

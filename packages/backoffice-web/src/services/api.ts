@@ -273,6 +273,13 @@ export const productsApi = {
     api.put(`/products/${id}/components/${componentRowId}`, data),
   removeComponent: (id: string, componentRowId: string) =>
     api.delete(`/products/${id}/components/${componentRowId}`),
+  // Galerie & documents (Lot 4 — URLs externes)
+  listMedia: (id: string) => api.get(`/products/${id}/media`),
+  addMedia: (id: string, url: string) => api.post(`/products/${id}/media`, { url }),
+  removeMedia: (id: string, mediaId: string) => api.delete(`/products/${id}/media/${mediaId}`),
+  listDocuments: (id: string) => api.get(`/products/${id}/documents`),
+  addDocument: (id: string, name: string, url: string) => api.post(`/products/${id}/documents`, { name, url }),
+  removeDocument: (id: string, documentId: string) => api.delete(`/products/${id}/documents/${documentId}`),
 };
 
 // Intégration produit — scan code-barres inconnu (création sécurisée
