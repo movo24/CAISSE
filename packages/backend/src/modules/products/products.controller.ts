@@ -229,6 +229,19 @@ export class ProductsController {
     return this.productsService.createVariant(id, req.user.storeId, body, req.user.employeeId);
   }
 
+  @Post(':id/variants/generate')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'Generate variants from attributes (cartesian product, e.g. size × color)' })
+  generateVariants(
+    @Param('id') id: string,
+    @Body() body: { attributes: Array<{ name: string; values: string[] }>; priceMinorUnits?: number },
+    @Request() req: any,
+  ) {
+    return this.productsService.generateVariants(id, req.user.storeId, body?.attributes ?? [], req.user.employeeId, {
+      priceMinorUnits: body?.priceMinorUnits,
+    });
+  }
+
   // ── Product Packs — composition d'un produit composé (GO owner 2026-07-09) ──
 
   @Get(':id/components')

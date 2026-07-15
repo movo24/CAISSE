@@ -246,6 +246,8 @@ export const productsApi = {
   listVariants: (id: string) => api.get(`/products/${id}/variants`),
   createVariant: (id: string, data: { ean: string; variantName: string; priceMinorUnits: number; sku?: string; stockQuantity?: number; taxRate?: number; costMinorUnits?: number }) =>
     api.post(`/products/${id}/variants`, data),
+  generateVariants: (id: string, data: { attributes: Array<{ name: string; values: string[] }>; priceMinorUnits?: number }) =>
+    api.post(`/products/${id}/variants/generate`, data),
   // Per-store price override (decision 4)
   getStorePrice: (id: string) => api.get(`/products/${id}/store-price`),
   setStorePrice: (id: string, data: { priceMinorUnits: number; startsAt?: string; endsAt?: string }) => api.put(`/products/${id}/store-price`, data),

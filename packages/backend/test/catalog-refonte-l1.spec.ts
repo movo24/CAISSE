@@ -488,4 +488,44 @@ describe('Catalogue refonte L1 — product enablement (no migration)', () => {
       await expect(svc.listProductSuppliers(pid, uuidv4())).rejects.toThrow();
     });
   });
+
+  // ── Lot C — générateur de variantes par attributs ──────────────────
+  describe('Lot C — générateur de variantes', () => {
+    const S = uuidv4();
+    let pid = '';
+    beforeAll(async () => {
+      await ds.getRepository(StoreEntity).save({ id: S, name: 'LC', isActive: true, currencyCode: 'EUR' } as any);
+      pid = (await svc.create({ ean: nextEan(), name: 'T-Shirt', priceMinorUnits: 1500, taxRate: 20, storeId: S } as any, EMP)).id;
+    });
+
+    it('produit cartésien Taille×Couleur = 6 variantes, EAN uniques, idempotent', async () => {
+      const res = await svc.generateVariants(pid, S, [
+        { name: 'Taille', values: ['S', 'M', 'L'] },
+        { name: 'Couleur', values: ['Noir', 'Blanc'] },
+      ], EMP);
+      expect(res.created).toBe(6);
+      const list = await svc.listVariants(pid, S);
+      expect(list).toHaveLength(6);
+      expect(list.map((v) => v.variantName).sort()).toEqual(
+        ['L / Blanc', 'L / Noir', 'M / Blanc', 'M / Noir', 'S / Blanc', 'S / Noir'].sort(),
+      );
+      // EAN uniques et internes
+      const eans = list.map((v) => v.ean);
+      expect(new Set(eans).size).toBe(6);
+      expect(eans.every((e) => e.startsWith('290'))).toBe(true);
+      // ré-exécution : tout est skippé (idempotent)
+      const again = await svc.generateVariants(pid, S, [
+        { name: 'Taille', values: ['S', 'M', 'L'] },
+        { name: 'Couleur', values: ['Noir', 'Blanc'] },
+      ], EMP);
+      expect(again.created).toBe(0);
+      expect(again.skipped).toHaveLength(6);
+    });
+
+    it('refuse sans attribut et refuse une variante de variante', async () => {
+      await expect(svc.generateVariants(pid, S, [], EMP)).rejects.toThrow();
+      const variant = (await svc.listVariants(pid, S))[0];
+      await expect(svc.generateVariants(variant.id, S, [{ name: 'X', values: ['a'] }], EMP)).rejects.toThrow();
+    });
+  });
 });

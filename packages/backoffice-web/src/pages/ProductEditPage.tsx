@@ -361,6 +361,27 @@ export function ProductEditPage() {
 
   // ── Onglet Variantes ──
   const [vName, setVName] = useState(''); const [vEan, setVEan] = useState(''); const [vPrice, setVPrice] = useState('');
+  // Lot C — générateur de variantes par attributs
+  const [genAttributes, setGenAttributes] = useState<Array<{ name: string; values: string }>>([
+    { name: 'Taille', values: '' },
+    { name: 'Couleur', values: '' },
+  ]);
+  const [genBusy, setGenBusy] = useState(false);
+  const [genMsg, setGenMsg] = useState<string | null>(null);
+  const runGenerateVariants = async () => {
+    if (!id) return;
+    const attributes = genAttributes
+      .map((a) => ({ name: a.name.trim(), values: a.values.split(',').map((v) => v.trim()).filter(Boolean) }))
+      .filter((a) => a.values.length > 0);
+    if (attributes.length === 0) { setError('Renseignez au moins un attribut avec des valeurs (séparées par des virgules).'); return; }
+    setGenBusy(true); setGenMsg(null);
+    try {
+      const r = await productsApi.generateVariants(id, { attributes });
+      setGenMsg(`${r.data.created} variante(s) créée(s)${r.data.skipped?.length ? `, ${r.data.skipped.length} déjà existante(s)` : ''}.`);
+      setVariants((await productsApi.listVariants(id)).data || []);
+    } catch (e: any) { setError(e?.response?.data?.message || 'Génération impossible'); }
+    finally { setGenBusy(false); }
+  };
   const addVariant = async () => {
     if (!id) return;
     const pm = toMinor(vPrice);
@@ -784,6 +805,27 @@ export function ProductEditPage() {
               <p className="text-sm text-gray-400">Cette fiche est elle-même une variante — les variantes se gèrent sur la fiche parente.</p>
             ) : (
               <>
+                {/* Générateur par attributs (Lot C) */}
+                <div className="rounded-xl border border-gray-100 bg-gray-50/60 p-4 space-y-3">
+                  <p className="text-sm font-semibold text-bo-text">Générer par attributs (taille × couleur × parfum…)</p>
+                  {genAttributes.map((a, i) => (
+                    <div key={i} className="flex gap-2 items-center">
+                      <input className={`${inputCls} max-w-[160px]`} value={a.name} placeholder="Attribut (ex : Taille)" onChange={(e) => setGenAttributes(genAttributes.map((x, j) => j === i ? { ...x, name: e.target.value } : x))} />
+                      <input className={inputCls} value={a.values} placeholder="Valeurs séparées par des virgules (S, M, L)" onChange={(e) => setGenAttributes(genAttributes.map((x, j) => j === i ? { ...x, values: e.target.value } : x))} />
+                      {genAttributes.length > 1 && <button onClick={() => setGenAttributes(genAttributes.filter((_, j) => j !== i))} className="p-2 text-red-400 hover:bg-red-50 rounded-lg"><Trash2 size={14} /></button>}
+                    </div>
+                  ))}
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => setGenAttributes([...genAttributes, { name: '', values: '' }])} className="text-xs text-bo-accent hover:underline flex items-center gap-1"><Plus size={13} /> Ajouter un attribut</button>
+                    <div className="flex-1" />
+                    {genMsg && <span className="text-xs text-bo-text">{genMsg}</span>}
+                    <button onClick={runGenerateVariants} disabled={genBusy} className="px-4 py-2 rounded-lg bg-bo-accent text-white text-sm font-semibold disabled:opacity-50 flex items-center gap-1.5">
+                      {genBusy && <Loader2 size={13} className="animate-spin" />} Générer les variantes
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-gray-400">Chaque combinaison devient une variante avec un EAN interne généré. Les combinaisons déjà présentes sont ignorées.</p>
+                </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
                   <Field label="Nom de la variante"><input className={inputCls} value={vName} onChange={(e) => setVName(e.target.value)} placeholder="ex : 500g / Rouge / Fraise" /></Field>
                   <Field label="EAN de la variante"><input className={`${inputCls} font-mono`} value={vEan} onChange={(e) => setVEan(e.target.value)} /></Field>

@@ -354,6 +354,73 @@ export class ProductsService {
     return this.productRepo.find({ where: { parentProductId: parentId, storeId }, order: { name: 'ASC' } });
   }
 
+  /** EAN-13 interne unique (préfixe 290 + clé de contrôle) — pour variantes auto. */
+  private async generateInternalEan(storeId: string): Promise<string> {
+    for (let attempt = 0; attempt < 20; attempt++) {
+      const random = String(Math.floor(Math.random() * 1_000_000_000)).padStart(9, '0');
+      const partial = `290${random}`;
+      let sum = 0;
+      for (let i = 0; i < 12; i++) sum += parseInt(partial[i], 10) * (i % 2 === 0 ? 1 : 3);
+      const ean = `${partial}${(10 - (sum % 10)) % 10}`;
+      if (!(await this.productRepo.findOne({ where: { ean, storeId } }))) return ean;
+    }
+    throw new BadRequestException('Impossible de générer un EAN interne unique. Réessayez.');
+  }
+
+  /**
+   * Générateur de variantes par attributs (Lot C) : produit cartésien des valeurs
+   * (ex. Taille[S,M,L] × Couleur[Noir,Blanc] → 6 variantes). Chaque combinaison
+   * devient une variante (ligne enfant) avec un EAN interne généré. Idempotent :
+   * une combinaison dont le `variantName` existe déjà est ignorée (skipped).
+   */
+  async generateVariants(
+    parentId: string,
+    storeId: string,
+    attributes: Array<{ name: string; values: string[] }>,
+    employeeId: string,
+    options?: { priceMinorUnits?: number },
+  ): Promise<{ created: number; skipped: string[]; variants: ProductEntity[] }> {
+    const parent = await this.findOneForStore(parentId, storeId);
+    if (parent.parentProductId) throw new BadRequestException('Impossible de générer des variantes sur une variante.');
+
+    const axes = (attributes || [])
+      .map((a) => (a?.values || []).map((v) => (v || '').trim()).filter(Boolean))
+      .filter((vals) => vals.length > 0);
+    if (axes.length === 0) throw new BadRequestException('Fournissez au moins un attribut avec des valeurs.');
+
+    // Produit cartésien des axes.
+    let combos: string[][] = [[]];
+    for (const vals of axes) {
+      const next: string[][] = [];
+      for (const c of combos) for (const v of vals) next.push([...c, v]);
+      combos = next;
+    }
+    if (combos.length > 200) throw new BadRequestException('Trop de combinaisons (max 200). Réduisez les attributs.');
+
+    const existing = await this.listVariants(parentId, storeId);
+    const existingNames = new Set(existing.map((v) => (v.variantName || '').toLowerCase()));
+
+    const variants: ProductEntity[] = [];
+    const skipped: string[] = [];
+    for (const combo of combos) {
+      const variantName = combo.join(' / ');
+      if (existingNames.has(variantName.toLowerCase())) {
+        skipped.push(variantName);
+        continue;
+      }
+      const ean = await this.generateInternalEan(storeId);
+      const created = await this.createVariant(
+        parentId,
+        storeId,
+        { ean, variantName, priceMinorUnits: options?.priceMinorUnits ?? parent.priceMinorUnits },
+        employeeId,
+      );
+      existingNames.add(variantName.toLowerCase());
+      variants.push(created);
+    }
+    return { created: variants.length, skipped, variants };
+  }
+
   // ── Brand / supplier reference data (decision 3) ──
 
   async listBrands(storeId: string): Promise<BrandEntity[]> {
