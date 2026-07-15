@@ -188,6 +188,43 @@ export class CreateProductDto {
   @ApiPropertyOptional({ description: 'Mois de fin de saison (1-12)' })
   @IsOptional() @IsInt() @Min(1) @Max(12)
   seasonEndMonth?: number;
+
+  // ── Lot I — prix encadrés, conditionnement, réglementaire ──
+  @ApiPropertyOptional({ description: 'Prix minimum autorisé (centimes)' })
+  @IsOptional() @IsInt() @Min(0)
+  minPriceMinorUnits?: number;
+
+  @ApiPropertyOptional({ description: 'Prix conseillé (centimes)' })
+  @IsOptional() @IsInt() @Min(0)
+  recommendedPriceMinorUnits?: number;
+
+  @ApiPropertyOptional({ description: 'Unités par colis' })
+  @IsOptional() @IsInt() @Min(0)
+  unitsPerPack?: number;
+
+  @ApiPropertyOptional({ description: 'Cartons par palette' })
+  @IsOptional() @IsInt() @Min(0)
+  cartonsPerPallet?: number;
+
+  @ApiPropertyOptional({ description: 'Allergènes' })
+  @IsOptional() @IsString() @MaxLength(1000)
+  allergens?: string;
+
+  @ApiPropertyOptional({ description: 'Ingrédients' })
+  @IsOptional() @IsString() @MaxLength(2000)
+  ingredients?: string;
+
+  @ApiPropertyOptional({ description: 'DDM (date de durabilité minimale, ISO)' })
+  @IsOptional() @IsString() @MaxLength(10)
+  bestBeforeDate?: string;
+
+  @ApiPropertyOptional({ description: 'DLC (date limite de consommation, ISO)' })
+  @IsOptional() @IsString() @MaxLength(10)
+  useByDate?: string;
+
+  @ApiPropertyOptional({ description: 'Numéro de lot' })
+  @IsOptional() @IsString() @MaxLength(60)
+  lotNumber?: string;
 }
 
 export class UpdateProductDto {
@@ -365,6 +402,43 @@ export class UpdateProductDto {
   @ApiPropertyOptional({ description: 'Mois de fin de saison (1-12)' })
   @IsOptional() @IsInt() @Min(1) @Max(12)
   seasonEndMonth?: number;
+
+  // ── Lot I — prix encadrés, conditionnement, réglementaire ──
+  @ApiPropertyOptional({ description: 'Prix minimum autorisé (centimes)' })
+  @IsOptional() @IsInt() @Min(0)
+  minPriceMinorUnits?: number;
+
+  @ApiPropertyOptional({ description: 'Prix conseillé (centimes)' })
+  @IsOptional() @IsInt() @Min(0)
+  recommendedPriceMinorUnits?: number;
+
+  @ApiPropertyOptional({ description: 'Unités par colis' })
+  @IsOptional() @IsInt() @Min(0)
+  unitsPerPack?: number;
+
+  @ApiPropertyOptional({ description: 'Cartons par palette' })
+  @IsOptional() @IsInt() @Min(0)
+  cartonsPerPallet?: number;
+
+  @ApiPropertyOptional({ description: 'Allergènes' })
+  @IsOptional() @IsString() @MaxLength(1000)
+  allergens?: string;
+
+  @ApiPropertyOptional({ description: 'Ingrédients' })
+  @IsOptional() @IsString() @MaxLength(2000)
+  ingredients?: string;
+
+  @ApiPropertyOptional({ description: 'DDM (date de durabilité minimale, ISO)' })
+  @IsOptional() @IsString() @MaxLength(10)
+  bestBeforeDate?: string;
+
+  @ApiPropertyOptional({ description: 'DLC (date limite de consommation, ISO)' })
+  @IsOptional() @IsString() @MaxLength(10)
+  useByDate?: string;
+
+  @ApiPropertyOptional({ description: 'Numéro de lot' })
+  @IsOptional() @IsString() @MaxLength(60)
+  lotNumber?: string;
 }
 
 /** Hierarchical product category — create with an optional parent. */

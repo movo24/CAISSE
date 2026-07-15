@@ -116,6 +116,7 @@ export class ProductsService {
     'supplierRef', 'productType', 'unitType', 'countryOfOrigin', 'leadTimeDays', 'minOrderQuantity',
     'weightGrams', 'widthMm', 'heightMm', 'depthMm', 'volumeMl', 'unitsPerCarton',
     'isSeasonal', 'seasonStartMonth', 'seasonEndMonth',
+    'minPriceMinorUnits', 'recommendedPriceMinorUnits', 'unitsPerPack', 'cartonsPerPallet', 'lotNumber',
   ];
 
   private async recordChangeLog(

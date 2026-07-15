@@ -139,6 +139,34 @@ export class ProductEntity {
   @Column({ name: 'season_end_month', type: 'integer', nullable: true })
   seasonEndMonth: number | null;
 
+  // ── Lot I — prix encadrés, conditionnement, réglementaire alimentaire ──
+  @Column({ name: 'min_price_minor_units', type: 'integer', nullable: true })
+  minPriceMinorUnits: number | null;
+
+  @Column({ name: 'recommended_price_minor_units', type: 'integer', nullable: true })
+  recommendedPriceMinorUnits: number | null;
+
+  @Column({ name: 'units_per_pack', type: 'integer', nullable: true })
+  unitsPerPack: number | null;
+
+  @Column({ name: 'cartons_per_pallet', type: 'integer', nullable: true })
+  cartonsPerPallet: number | null;
+
+  @Column({ type: 'text', nullable: true })
+  allergens: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  ingredients: string | null;
+
+  @Column({ name: 'best_before_date', type: 'date', nullable: true })
+  bestBeforeDate: string | null;
+
+  @Column({ name: 'use_by_date', type: 'date', nullable: true })
+  useByDate: string | null;
+
+  @Column({ name: 'lot_number', type: 'varchar', length: 60, nullable: true })
+  lotNumber: string | null;
+
   @Column({ name: 'store_id' })
   storeId: string;
 

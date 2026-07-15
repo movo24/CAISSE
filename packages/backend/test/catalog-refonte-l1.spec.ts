@@ -649,4 +649,32 @@ describe('Catalogue refonte L1 — product enablement (no migration)', () => {
       await expect(svc.duplicateProduct(src, uuidv4(), EMP)).rejects.toThrow();
     });
   });
+
+  // ── Lot I — prix encadrés, conditionnement, réglementaire ──────────
+  describe('Lot I — champs ERP restants', () => {
+    const S = uuidv4();
+    beforeAll(async () => {
+      await ds.getRepository(StoreEntity).save({ id: S, name: 'LI', isActive: true, currencyCode: 'EUR' } as any);
+    });
+
+    it('persiste prix min/conseillé, colis/palette, allergènes/DDM/DLC/lot', async () => {
+      const p = await svc.create({
+        ean: nextEan(), name: 'ERP', priceMinorUnits: 500, taxRate: 5.5, storeId: S,
+        minPriceMinorUnits: 400, recommendedPriceMinorUnits: 550, unitsPerPack: 6, cartonsPerPallet: 40,
+        allergens: 'gluten', ingredients: 'farine, sucre', bestBeforeDate: '2027-01-31', lotNumber: 'LOT-A',
+      } as any, EMP);
+      expect(p.minPriceMinorUnits).toBe(400);
+      expect(p.recommendedPriceMinorUnits).toBe(550);
+      expect(p.unitsPerPack).toBe(6);
+      expect(p.cartonsPerPallet).toBe(40);
+      expect(p.allergens).toBe('gluten');
+      expect(p.lotNumber).toBe('LOT-A');
+      expect(String(p.bestBeforeDate)).toContain('2027-01-31');
+
+      const up = await svc.update(p.id, { minPriceMinorUnits: 420, useByDate: '2026-06-30' } as any, EMP, undefined, S);
+      expect(up.minPriceMinorUnits).toBe(420);
+      const log = await svc.getChangeLog(p.id, S);
+      expect(log.some((r) => r.field === 'minPriceMinorUnits')).toBe(true);
+    });
+  });
 });

@@ -122,6 +122,9 @@ export function ProductEditPage() {
     volumeMl: '', unitsPerCarton: '',
     // Lot E — saisonnalité
     isSeasonal: false, seasonStartMonth: '', seasonEndMonth: '',
+    // Lot I — prix encadrés, conditionnement, réglementaire
+    minPrice: '', recommendedPrice: '', unitsPerPack: '', cartonsPerPallet: '',
+    allergens: '', ingredients: '', bestBeforeDate: '', useByDate: '', lotNumber: '',
   });
   const set = (k: keyof typeof form, v: any) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -230,6 +233,14 @@ export function ProductEditPage() {
         isSeasonal: p.isSeasonal === true,
         seasonStartMonth: p.seasonStartMonth != null ? String(p.seasonStartMonth) : '',
         seasonEndMonth: p.seasonEndMonth != null ? String(p.seasonEndMonth) : '',
+        minPrice: p.minPriceMinorUnits != null ? (p.minPriceMinorUnits / 100).toFixed(2) : '',
+        recommendedPrice: p.recommendedPriceMinorUnits != null ? (p.recommendedPriceMinorUnits / 100).toFixed(2) : '',
+        unitsPerPack: p.unitsPerPack != null ? String(p.unitsPerPack) : '',
+        cartonsPerPallet: p.cartonsPerPallet != null ? String(p.cartonsPerPallet) : '',
+        allergens: p.allergens || '', ingredients: p.ingredients || '',
+        bestBeforeDate: p.bestBeforeDate ? String(p.bestBeforeDate).slice(0, 10) : '',
+        useByDate: p.useByDate ? String(p.useByDate).slice(0, 10) : '',
+        lotNumber: p.lotNumber || '',
       });
       // Chargements non bloquants des onglets (endpoints existants)
       productsApi.listComponents(id).then((r) => setComponents(r.data || [])).catch(() => {});
@@ -336,6 +347,16 @@ export function ProductEditPage() {
       isSeasonal: form.isSeasonal,
       seasonStartMonth: form.isSeasonal ? toInt(form.seasonStartMonth) : undefined,
       seasonEndMonth: form.isSeasonal ? toInt(form.seasonEndMonth) : undefined,
+      // Lot I
+      minPriceMinorUnits: toMinor(form.minPrice) ?? undefined,
+      recommendedPriceMinorUnits: toMinor(form.recommendedPrice) ?? undefined,
+      unitsPerPack: toInt(form.unitsPerPack),
+      cartonsPerPallet: toInt(form.cartonsPerPallet),
+      allergens: form.allergens.trim() || undefined,
+      ingredients: form.ingredients.trim() || undefined,
+      bestBeforeDate: form.bestBeforeDate || undefined,
+      useByDate: form.useByDate || undefined,
+      lotNumber: form.lotNumber.trim() || undefined,
     };
     setSaving(true);
     try {
@@ -740,7 +761,17 @@ export function ProductEditPage() {
                 <input className={inputCls} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="ex : hausse fournisseur" />
               </Field>
             )}
-            <Phase2Notice fields="Prix minimum autorisé · prix conseillé · devise d'achat (le prix promotionnel + dates existe déjà : onglet Promotions)" />
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-5">
+              <Field label="Prix minimum autorisé (€)" hint="Le PV ne devrait pas descendre en dessous."><input className={inputCls} inputMode="decimal" value={form.minPrice} onChange={(e) => set('minPrice', e.target.value)} /></Field>
+              <Field label="Prix conseillé (€)"><input className={inputCls} inputMode="decimal" value={form.recommendedPrice} onChange={(e) => set('recommendedPrice', e.target.value)} /></Field>
+            </div>
+            {(() => {
+              const ttc = toMinor(form.priceTtc); const min = toMinor(form.minPrice);
+              if (ttc != null && min != null && ttc < min) {
+                return <div className="rounded-xl bg-amber-50 border border-amber-200 px-4 py-2.5 text-xs text-amber-800">⚠️ Prix de vente ({eur(ttc)}) inférieur au minimum autorisé ({eur(min)}).</div>;
+              }
+              return null;
+            })()}
           </div>
         )}
 
@@ -1069,7 +1100,25 @@ export function ProductEditPage() {
               <Field label="Volume (ml)"><input className={inputCls} inputMode="numeric" value={form.volumeMl} onChange={(e) => set('volumeMl', e.target.value)} /></Field>
               <Field label="Unités / carton"><input className={inputCls} inputMode="numeric" value={form.unitsPerCarton} onChange={(e) => set('unitsPerCarton', e.target.value)} /></Field>
             </div>
-            <Phase2Notice fields="Cartons par palette · emplacement réserve/rayon · matière · allergènes / ingrédients · péremption / lot réglementaire — à venir" />
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-5">
+              <Field label="Unités / colis"><input className={inputCls} inputMode="numeric" value={form.unitsPerPack} onChange={(e) => set('unitsPerPack', e.target.value)} /></Field>
+              <Field label="Cartons / palette"><input className={inputCls} inputMode="numeric" value={form.cartonsPerPallet} onChange={(e) => set('cartonsPerPallet', e.target.value)} /></Field>
+            </div>
+
+            {/* Réglementaire / alimentaire (selon le type de produit) */}
+            <div className="border-t border-gray-100 pt-4 space-y-4">
+              <p className="text-sm font-semibold text-bo-text">Réglementaire / alimentaire</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <Field label="Allergènes"><textarea rows={2} className={inputCls} value={form.allergens} onChange={(e) => set('allergens', e.target.value)} placeholder="ex : gluten, fruits à coque…" /></Field>
+                <Field label="Ingrédients"><textarea rows={2} className={inputCls} value={form.ingredients} onChange={(e) => set('ingredients', e.target.value)} /></Field>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-5">
+                <Field label="DDM (durabilité min.)"><input type="date" className={inputCls} value={form.bestBeforeDate} onChange={(e) => set('bestBeforeDate', e.target.value)} /></Field>
+                <Field label="DLC (limite consommation)"><input type="date" className={inputCls} value={form.useByDate} onChange={(e) => set('useByDate', e.target.value)} /></Field>
+                <Field label="Numéro de lot"><input className={`${inputCls} font-mono`} value={form.lotNumber} onChange={(e) => set('lotNumber', e.target.value)} /></Field>
+              </div>
+            </div>
+            <Phase2Notice fields="Emplacement réserve/rayon (module Stock Locations) · matière — à venir" />
           </div>
         )}
 
