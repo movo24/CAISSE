@@ -13,6 +13,7 @@ import { SalesModule } from './modules/sales/sales.module';
 import { PosSessionModule } from './modules/pos-session/pos-session.module';
 import { ReturnsModule } from './modules/returns/returns.module';
 import { PilotageAccessModule } from './modules/pilotage-access/pilotage-access.module';
+import { ActivityAuditModule } from './modules/activity-audit/activity-audit.module';
 import { CustomersModule } from './modules/customers/customers.module';
 import { StoresModule } from './modules/stores/stores.module';
 import { ReportsModule } from './modules/reports/reports.module';
@@ -151,6 +152,8 @@ const isProd = process.env.NODE_ENV === 'production';
     ReturnsModule,
     // Pilotage — RBAC applicatif (accès magasins + périmètre + permissions)
     PilotageAccessModule,
+    // Télémétrie — connexions, sessions, consultations
+    ActivityAuditModule,
   ],
   providers: [
     // Apply rate limiting globally to ALL endpoints
