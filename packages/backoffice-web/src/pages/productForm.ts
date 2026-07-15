@@ -11,6 +11,7 @@
  *  - montants en centimes entiers (euros × 100, arrondis).
  */
 
+/** Statuts backend valides (validés serveur via @IsIn) — pour l'UI des sélecteurs. */
 export type ProductStatus = 'draft' | 'pending_validation' | 'active' | 'rejected' | 'archived';
 
 export interface ProductFormValues {
@@ -26,7 +27,7 @@ export interface ProductFormValues {
   sku?: string;
   brandId?: string;
   supplierId?: string;
-  status?: ProductStatus;
+  status?: string; // l'un de ProductStatus ; validé serveur
   oldPrice?: string; // euros — prix barré / de référence
 }
 
@@ -42,7 +43,7 @@ export interface CreateProductPayload {
   sku?: string;
   brandId?: string;
   supplierId?: string;
-  status?: ProductStatus;
+  status?: string;
   oldPriceMinorUnits?: number;
 }
 
@@ -57,7 +58,7 @@ export interface UpdateProductPayload {
   sku?: string;
   brandId?: string | null;
   supplierId?: string | null;
-  status?: ProductStatus;
+  status?: string;
   oldPriceMinorUnits?: number | null;
   reason?: string;
 }

@@ -36,6 +36,16 @@ interface Product {
   description: string;
   cost: number | null; // prix d'achat en euros (null si non renseigné)
   taxRate: number | null; // % TVA
+  sku: string;
+  brandId: string;
+  supplierId: string;
+  status: string;
+  oldPrice: number | null; // prix barré en euros (null si non renseigné)
+}
+
+interface RefItem {
+  id: string;
+  name: string;
 }
 
 const avatarColors = [
@@ -76,16 +86,22 @@ export function ProductsPage() {
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ name: '', ean: '', price: '', stock: '', category: '', description: '', cost: '', taxRate: '' });
+  const [form, setForm] = useState({ name: '', ean: '', price: '', stock: '', category: '', description: '', cost: '', taxRate: '', sku: '', brandId: '', supplierId: '', status: 'active', oldPrice: '' });
   const [formError, setFormError] = useState<string | null>(null);
 
   // Price analytics panel
   const [analyticsProductId, setAnalyticsProductId] = useState<string | null>(null);
 
+  // Référentiels (marques / fournisseurs / catégories) pour les sélecteurs de la fiche.
+  const [brands, setBrands] = useState<RefItem[]>([]);
+  const [suppliers, setSuppliers] = useState<RefItem[]>([]);
+  const [categoryRefs, setCategoryRefs] = useState<RefItem[]>([]);
+
   const fetchProducts = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await productsApi.list({ storeId });
+      // limit 100 (plafond serveur) — au-delà, la pagination serveur prend le relais.
+      const res = await productsApi.list({ storeId, limit: 100 });
       const data: any[] = Array.isArray(res.data) ? res.data : (res.data?.data || res.data?.products || []);
       setProducts(
         data.map((p: any) => ({
@@ -99,6 +115,11 @@ export function ProductsPage() {
           description: typeof p.description === 'string' ? p.description : '',
           cost: typeof p.costMinorUnits === 'number' ? p.costMinorUnits / 100 : null,
           taxRate: typeof p.taxRate === 'number' ? p.taxRate : (p.taxRate != null ? Number(p.taxRate) : null),
+          sku: typeof p.sku === 'string' ? p.sku : '',
+          brandId: typeof p.brandId === 'string' ? p.brandId : '',
+          supplierId: typeof p.supplierId === 'string' ? p.supplierId : '',
+          status: typeof p.status === 'string' ? p.status : 'active',
+          oldPrice: typeof p.oldPriceMinorUnits === 'number' ? p.oldPriceMinorUnits / 100 : null,
         })),
       );
       setError(null);
@@ -110,9 +131,25 @@ export function ProductsPage() {
     }
   }, [storeId]);
 
+  const fetchRefs = useCallback(async () => {
+    try {
+      const [b, s, c] = await Promise.all([
+        productsApi.listBrands(),
+        productsApi.listSuppliers(),
+        productsApi.listCategories(),
+      ]);
+      setBrands((b.data || []).map((x: any) => ({ id: x.id, name: x.name })));
+      setSuppliers((s.data || []).map((x: any) => ({ id: x.id, name: x.name })));
+      setCategoryRefs((c.data || []).map((x: any) => ({ id: x.id, name: x.name })));
+    } catch {
+      /* référentiels non bloquants : la fiche fonctionne sans eux */
+    }
+  }, []);
+
   useEffect(() => {
     fetchProducts();
-  }, [fetchProducts]);
+    fetchRefs();
+  }, [fetchProducts, fetchRefs]);
 
   const categories = [...new Set(products.map((p) => p.category))];
 
@@ -208,7 +245,7 @@ export function ProductsPage() {
   };
 
   const resetForm = () => {
-    setForm({ name: '', ean: '', price: '', stock: '', category: '', description: '', cost: '', taxRate: '' });
+    setForm({ name: '', ean: '', price: '', stock: '', category: '', description: '', cost: '', taxRate: '', sku: '', brandId: '', supplierId: '', status: 'active', oldPrice: '' });
     setEditingId(null);
     setFormError(null);
   };
@@ -228,6 +265,11 @@ export function ProductsPage() {
       description: p.description,
       cost: p.cost != null ? String(p.cost) : '',
       taxRate: p.taxRate != null ? String(p.taxRate) : '',
+      sku: p.sku,
+      brandId: p.brandId,
+      supplierId: p.supplierId,
+      status: p.status || 'active',
+      oldPrice: p.oldPrice != null ? String(p.oldPrice) : '',
     });
     setOriginalPrice(p.price);
     setEditingId(p.id);
@@ -558,7 +600,7 @@ export function ProductsPage() {
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => { setShowModal(false); resetForm(); }} />
-          <div className="relative bg-white rounded-2xl shadow-elevated w-full max-w-lg p-6 animate-slide-up max-h-[88vh] overflow-y-auto">
+          <div className="relative bg-white rounded-2xl shadow-elevated w-full max-w-2xl p-6 animate-slide-up max-h-[88vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-lg font-bold text-bo-text">
                 {editingId ? 'Modifier le produit' : 'Nouveau produit'}
@@ -571,95 +613,222 @@ export function ProductsPage() {
               </button>
             </div>
 
-            <div className="space-y-4">
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1.5">Nom du produit *</label>
-                <input
-                  type="text"
-                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-bo-accent/30 focus:border-bo-accent"
-                  placeholder="T-Shirt Blanc"
-                  value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-5">
+              {/* ── Identification ── */}
+              <section className="space-y-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">Identification</p>
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1.5">
-                    Code EAN {editingId ? '' : '*'}
-                  </label>
-                  <input
-                    type="text"
-                    disabled={editingId !== null}
-                    className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-bo-accent/30 focus:border-bo-accent disabled:bg-gray-50 disabled:text-gray-400"
-                    placeholder="3760001000001"
-                    value={form.ean}
-                    onChange={(e) => setForm({ ...form, ean: e.target.value })}
-                  />
-                  {editingId && <p className="mt-1 text-[11px] text-gray-400">Le code EAN n'est pas modifiable.</p>}
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1.5">Categorie</label>
+                  <label className="block text-xs font-medium text-gray-500 mb-1.5">Nom du produit *</label>
                   <input
                     type="text"
                     className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-bo-accent/30 focus:border-bo-accent"
-                    placeholder="Haut"
-                    value={form.category}
-                    onChange={(e) => setForm({ ...form, category: e.target.value })}
+                    placeholder="T-Shirt Blanc"
+                    value={form.name}
+                    onChange={(e) => setForm({ ...form, name: e.target.value })}
                   />
                 </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1.5">Prix TTC (EUR)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-bo-accent/30 focus:border-bo-accent"
-                    placeholder="29.90"
-                    value={form.price}
-                    onChange={(e) => setForm({ ...form, price: e.target.value })}
-                  />
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1.5">
+                      Code EAN {editingId ? '' : '*'}
+                    </label>
+                    <input
+                      type="text"
+                      disabled={editingId !== null}
+                      className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-bo-accent/30 focus:border-bo-accent disabled:bg-gray-50 disabled:text-gray-400"
+                      placeholder="3760001000001"
+                      value={form.ean}
+                      onChange={(e) => setForm({ ...form, ean: e.target.value })}
+                    />
+                    {editingId && <p className="mt-1 text-[11px] text-gray-400">Le code EAN n'est pas modifiable.</p>}
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1.5">SKU / Référence interne</label>
+                    <input
+                      type="text"
+                      className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-bo-accent/30 focus:border-bo-accent"
+                      placeholder="REF-0001"
+                      value={form.sku}
+                      onChange={(e) => setForm({ ...form, sku: e.target.value })}
+                    />
+                    <p className="mt-1 text-[11px] text-gray-400">Unique par magasin.</p>
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1.5">Stock</label>
-                  <input
-                    type="number"
-                    min="0"
-                    className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-bo-accent/30 focus:border-bo-accent"
-                    placeholder="50"
-                    value={form.stock}
-                    onChange={(e) => setForm({ ...form, stock: e.target.value })}
-                  />
+              </section>
+
+              {/* ── Classification ── */}
+              <section className="space-y-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">Classification</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1.5">Catégorie</label>
+                    <select
+                      className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-bo-accent/30 focus:border-bo-accent"
+                      value={form.category}
+                      onChange={(e) => setForm({ ...form, category: e.target.value })}
+                    >
+                      <option value="">— Aucune —</option>
+                      {categoryRefs.map((c) => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                      {form.category && !categoryRefs.some((c) => c.id === form.category) && (
+                        <option value={form.category}>{form.category} (actuel)</option>
+                      )}
+                    </select>
+                    <p className="mt-1 text-[11px] text-gray-400">Gérées dans Catalogue &gt; Catégories.</p>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1.5">Statut</label>
+                    <select
+                      className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-bo-accent/30 focus:border-bo-accent"
+                      value={form.status}
+                      onChange={(e) => setForm({ ...form, status: e.target.value })}
+                    >
+                      <option value="active">Actif</option>
+                      <option value="draft">Brouillon</option>
+                      <option value="archived">Archivé</option>
+                      {['pending_validation', 'rejected'].includes(form.status) && (
+                        <option value={form.status}>{form.status}</option>
+                      )}
+                    </select>
+                    <p className="mt-1 text-[11px] text-gray-400">Seul « Actif » est vendable en caisse.</p>
+                  </div>
                 </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1.5">Prix d'achat (EUR)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-bo-accent/30 focus:border-bo-accent"
-                    placeholder="12.50"
-                    value={form.cost}
-                    onChange={(e) => setForm({ ...form, cost: e.target.value })}
-                  />
-                  <p className="mt-1 text-[11px] text-gray-400">Nécessaire au calcul de la marge.</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1.5">Marque</label>
+                    <select
+                      className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-bo-accent/30 focus:border-bo-accent"
+                      value={form.brandId}
+                      onChange={(e) => setForm({ ...form, brandId: e.target.value })}
+                    >
+                      <option value="">— Aucune —</option>
+                      {brands.map((b) => (
+                        <option key={b.id} value={b.id}>{b.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1.5">Fournisseur</label>
+                    <select
+                      className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-bo-accent/30 focus:border-bo-accent"
+                      value={form.supplierId}
+                      onChange={(e) => setForm({ ...form, supplierId: e.target.value })}
+                    >
+                      <option value="">— Aucun —</option>
+                      {suppliers.map((s) => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1.5">TVA (%)</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    min="0"
-                    className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-bo-accent/30 focus:border-bo-accent"
-                    placeholder="20"
-                    value={form.taxRate}
-                    onChange={(e) => setForm({ ...form, taxRate: e.target.value })}
-                  />
+              </section>
+
+              {/* ── Prix & fiscalité ── */}
+              <section className="space-y-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">Prix &amp; fiscalité</p>
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1.5">Prix TTC (EUR)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-bo-accent/30 focus:border-bo-accent"
+                      placeholder="29.90"
+                      value={form.price}
+                      onChange={(e) => setForm({ ...form, price: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1.5">Prix barré (EUR)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-bo-accent/30 focus:border-bo-accent"
+                      placeholder="39.90"
+                      value={form.oldPrice}
+                      onChange={(e) => setForm({ ...form, oldPrice: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1.5">TVA (%)</label>
+                    <select
+                      className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-bo-accent/30 focus:border-bo-accent"
+                      value={form.taxRate === '' ? '' : String(form.taxRate)}
+                      onChange={(e) => setForm({ ...form, taxRate: e.target.value })}
+                    >
+                      <option value="">—</option>
+                      {['0', '2.1', '5.5', '10', '20'].map((r) => (
+                        <option key={r} value={r}>{r} %</option>
+                      ))}
+                      {form.taxRate !== '' && !['0', '2.1', '5.5', '10', '20'].includes(String(form.taxRate)) && (
+                        <option value={String(form.taxRate)}>{form.taxRate} %</option>
+                      )}
+                    </select>
+                  </div>
                 </div>
-              </div>
+                {(() => {
+                  const ttc = parseFloat(form.price);
+                  const rate = parseFloat(form.taxRate);
+                  if (!Number.isFinite(ttc) || ttc <= 0 || !Number.isFinite(rate)) return null;
+                  const ht = ttc / (1 + rate / 100);
+                  const tva = ttc - ht;
+                  return (
+                    <p className="text-[11px] text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
+                      HT <strong>{ht.toFixed(2)} €</strong> · TVA <strong>{tva.toFixed(2)} €</strong> · TTC <strong>{ttc.toFixed(2)} €</strong>
+                    </p>
+                  );
+                })()}
+              </section>
+
+              {/* ── Achat & stock ── */}
+              <section className="space-y-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">Achat &amp; stock</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1.5">Prix d'achat (EUR)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-bo-accent/30 focus:border-bo-accent"
+                      placeholder="12.50"
+                      value={form.cost}
+                      onChange={(e) => setForm({ ...form, cost: e.target.value })}
+                    />
+                    <p className="mt-1 text-[11px] text-gray-400">Nécessaire au calcul de la marge.</p>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1.5">Stock</label>
+                    <input
+                      type="number"
+                      min="0"
+                      className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-bo-accent/30 focus:border-bo-accent"
+                      placeholder="50"
+                      value={form.stock}
+                      onChange={(e) => setForm({ ...form, stock: e.target.value })}
+                    />
+                  </div>
+                </div>
+                {(() => {
+                  const ttc = parseFloat(form.price);
+                  const cost = parseFloat(form.cost);
+                  if (!Number.isFinite(ttc) || !Number.isFinite(cost) || cost <= 0) return null;
+                  const margin = ttc - cost;
+                  const pct = ttc > 0 ? (margin / ttc) * 100 : 0;
+                  const negative = margin < 0;
+                  return (
+                    <p className={`text-[11px] rounded-lg px-3 py-2 ${negative ? 'bg-red-50 text-red-600' : 'bg-gray-50 text-gray-500'}`}>
+                      Marge <strong>{margin.toFixed(2)} €</strong> ({pct.toFixed(1)} %)
+                      {negative && ' — prix de vente inférieur au prix d\'achat'}
+                    </p>
+                  );
+                })()}
+              </section>
+
+              {/* ── Description ── */}
               <div>
                 <label className="block text-xs font-medium text-gray-500 mb-1.5">Description</label>
                 <textarea
