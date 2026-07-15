@@ -20,6 +20,7 @@ import {
   RotateCcw,
   ChevronLeft,
   ChevronRight,
+  Bookmark,
 } from 'lucide-react';
 import { productsApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
@@ -155,6 +156,17 @@ export function ProductsPage() {
   const toggleCol = (k: string) =>
     setVisibleCols((cols) => (cols.includes(k) ? cols.filter((c) => c !== k) : [...cols, k]));
 
+  // Vues enregistrables (filtres + colonnes) — persistées (Lot J)
+  const [savedViews, setSavedViews] = useState<Array<{ name: string; v: any }>>(() => {
+    try { const s = localStorage.getItem('catalog.views'); if (s) return JSON.parse(s); } catch { /* noop */ }
+    return [];
+  });
+  const [showViewsMenu, setShowViewsMenu] = useState(false);
+  const persistViews = (views: Array<{ name: string; v: any }>) => {
+    setSavedViews(views);
+    try { localStorage.setItem('catalog.views', JSON.stringify(views)); } catch { /* noop */ }
+  };
+
   // Modal state (édition rapide secondaire)
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -262,6 +274,30 @@ export function ProductsPage() {
     setFOutOfStock(false); setFBelowThreshold(false); setFNoImage(false); setFNoSupplier(false); setFNoCategory(false);
     setSortBy('name'); setSortDir('ASC'); setPage(1);
   };
+
+  const captureView = () => ({
+    search, fStatus, fBrand, fSupplier, fCategory, fTax,
+    fOutOfStock, fBelowThreshold, fNoImage, fNoSupplier, fNoCategory,
+    sortBy, sortDir, visibleCols,
+  });
+  const saveCurrentView = () => {
+    const name = window.prompt('Nom de la vue :')?.trim();
+    if (!name) return;
+    persistViews([...savedViews.filter((x) => x.name !== name), { name, v: captureView() }]);
+    setShowViewsMenu(false);
+  };
+  const applyView = (view: { name: string; v: any }) => {
+    const v = view.v || {};
+    setSearch(v.search ?? ''); setDebouncedSearch(v.search ?? '');
+    setFStatus(v.fStatus ?? 'active'); setFBrand(v.fBrand ?? ''); setFSupplier(v.fSupplier ?? '');
+    setFCategory(v.fCategory ?? ''); setFTax(v.fTax ?? '');
+    setFOutOfStock(!!v.fOutOfStock); setFBelowThreshold(!!v.fBelowThreshold); setFNoImage(!!v.fNoImage);
+    setFNoSupplier(!!v.fNoSupplier); setFNoCategory(!!v.fNoCategory);
+    setSortBy(v.sortBy ?? 'name'); setSortDir(v.sortDir ?? 'ASC');
+    if (Array.isArray(v.visibleCols)) setVisibleCols(v.visibleCols);
+    setPage(1); setShowViewsMenu(false);
+  };
+  const deleteView = (name: string) => persistViews(savedViews.filter((x) => x.name !== name));
 
   const toggleSort = (key: 'name' | 'price' | 'stock' | 'updatedAt') => {
     if (sortBy === key) setSortDir(sortDir === 'ASC' ? 'DESC' : 'ASC');
@@ -635,6 +671,26 @@ export function ProductsPage() {
                     <label key={c.key} className="flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm text-gray-700 hover:bg-gray-50 cursor-pointer">
                       <input type="checkbox" checked={colOn(c.key)} onChange={() => toggleCol(c.key)} className="accent-bo-accent" /> {c.label}
                     </label>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+          {/* Vues enregistrables (Lot J) */}
+          <div className="relative">
+            <button onClick={() => setShowViewsMenu((v) => !v)} className="flex items-center gap-1.5 py-2.5 px-3 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50"><Bookmark size={15} /> Vues{savedViews.length > 0 ? ` (${savedViews.length})` : ''}</button>
+            {showViewsMenu && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setShowViewsMenu(false)} />
+                <div className="absolute right-0 mt-1 z-20 bg-white rounded-xl border border-gray-100 shadow-elevated p-2 w-64">
+                  <button onClick={saveCurrentView} className="w-full text-left px-2 py-1.5 rounded-lg text-sm text-bo-accent hover:bg-gray-50 flex items-center gap-1.5"><Plus size={14} /> Sauvegarder la vue actuelle</button>
+                  {savedViews.length > 0 && <div className="border-t border-gray-50 my-1" />}
+                  {savedViews.length === 0 && <p className="px-2 py-1.5 text-xs text-gray-400">Aucune vue enregistrée.</p>}
+                  {savedViews.map((view) => (
+                    <div key={view.name} className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-gray-50 group">
+                      <button onClick={() => applyView(view)} className="flex-1 text-left text-sm text-gray-700 truncate">{view.name}</button>
+                      <button onClick={() => deleteView(view.name)} className="p-1 text-red-400 hover:bg-red-50 rounded opacity-0 group-hover:opacity-100"><Trash2 size={13} /></button>
+                    </div>
                   ))}
                 </div>
               </>
