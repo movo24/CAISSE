@@ -314,6 +314,12 @@ export class ProductsService {
       categoryId?: string;
       /** Lifecycle filter. Omitted → active only (POS-safe). 'all' → every status. */
       status?: string;
+      taxRate?: number;
+      outOfStock?: boolean;
+      belowThreshold?: boolean;
+      noImage?: boolean;
+      noSupplier?: boolean;
+      noCategory?: boolean;
       sortBy?: string;
       sortDir?: string;
       topLevelOnly?: boolean;
@@ -345,6 +351,12 @@ export class ProductsService {
     if (options?.brandId) qb.andWhere('p.brand_id = :brandId', { brandId: options.brandId });
     if (options?.supplierId) qb.andWhere('p.supplier_id = :supplierId', { supplierId: options.supplierId });
     if (options?.categoryId) qb.andWhere('p.category_id = :categoryId', { categoryId: options.categoryId });
+    if (options?.taxRate !== undefined) qb.andWhere('p.tax_rate = :taxRate', { taxRate: options.taxRate });
+    if (options?.outOfStock) qb.andWhere('p.stock_quantity = 0');
+    if (options?.belowThreshold) qb.andWhere('p.stock_quantity <= p.stock_alert_threshold');
+    if (options?.noImage) qb.andWhere("(p.image_url IS NULL OR p.image_url = '')");
+    if (options?.noSupplier) qb.andWhere('p.supplier_id IS NULL');
+    if (options?.noCategory) qb.andWhere("(p.category_id IS NULL OR p.category_id = '')");
     if (options?.topLevelOnly) qb.andWhere('p.parent_product_id IS NULL'); // exclude variants
 
     const sortCol = ProductsService.PRODUCT_SORT_COLUMNS[options?.sortBy ?? 'name'] ?? 'p.name';
@@ -362,6 +374,36 @@ export class ProductsService {
         totalPages: Math.ceil(total / limit),
       },
     };
+  }
+
+  /**
+   * En-tête du catalogue : compteurs réels (aucune valeur simulée).
+   * `total` = toutes fiches du magasin ; les autres compteurs portent sur les
+   * produits actifs (cohérent avec la liste par défaut).
+   */
+  async getCatalogStats(storeId: string): Promise<{
+    total: number;
+    active: number;
+    outOfStock: number;
+    belowThreshold: number;
+    noImage: number;
+    noSupplier: number;
+    noCategory: number;
+  }> {
+    const base = () =>
+      this.productRepo.createQueryBuilder('p').where('p.store_id = :storeId', { storeId });
+    const activeBase = () => base().andWhere('p.is_active = true');
+    const [total, active, outOfStock, belowThreshold, noImage, noSupplier, noCategory] =
+      await Promise.all([
+        base().getCount(),
+        activeBase().getCount(),
+        activeBase().andWhere('p.stock_quantity = 0').getCount(),
+        activeBase().andWhere('p.stock_quantity <= p.stock_alert_threshold').getCount(),
+        activeBase().andWhere("(p.image_url IS NULL OR p.image_url = '')").getCount(),
+        activeBase().andWhere('p.supplier_id IS NULL').getCount(),
+        activeBase().andWhere("(p.category_id IS NULL OR p.category_id = '')").getCount(),
+      ]);
+    return { total, active, outOfStock, belowThreshold, noImage, noSupplier, noCategory };
   }
 
   async findByEan(

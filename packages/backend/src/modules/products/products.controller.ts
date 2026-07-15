@@ -53,6 +53,12 @@ export class ProductsController {
     @Query('supplierId') supplierId?: string,
     @Query('categoryId') categoryId?: string,
     @Query('status') status?: string,
+    @Query('taxRate') taxRate?: string,
+    @Query('outOfStock') outOfStock?: string,
+    @Query('belowThreshold') belowThreshold?: string,
+    @Query('noImage') noImage?: string,
+    @Query('noSupplier') noSupplier?: string,
+    @Query('noCategory') noCategory?: string,
     @Query('sortBy') sortBy?: string,
     @Query('sortDir') sortDir?: string,
   ) {
@@ -67,9 +73,23 @@ export class ProductsController {
       supplierId,
       categoryId,
       status,
+      taxRate: taxRate !== undefined && taxRate !== '' ? Number(taxRate) : undefined,
+      outOfStock: outOfStock === 'true',
+      belowThreshold: belowThreshold === 'true',
+      noImage: noImage === 'true',
+      noSupplier: noSupplier === 'true',
+      noCategory: noCategory === 'true',
       sortBy,
       sortDir,
     });
+  }
+
+  @Get('catalog-stats')
+  @ApiOperation({ summary: 'Catalog header counts (total, active, out-of-stock, below-threshold, missing data)' })
+  catalogStats(@Request() req: any, @Query('storeId') queryStoreId?: string) {
+    const effectiveStoreId =
+      req.user.role === 'admin' && queryStoreId ? queryStoreId : req.user.storeId;
+    return this.productsService.getCatalogStats(effectiveStoreId);
   }
 
   // ── Brand / supplier reference data (decision 3) — static routes before :id ──

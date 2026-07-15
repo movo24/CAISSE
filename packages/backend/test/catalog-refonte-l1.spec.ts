@@ -200,4 +200,53 @@ describe('Catalogue refonte L1 — product enablement (no migration)', () => {
       expect(tree.some((c) => c.id === child.id)).toBe(false);
     });
   });
+
+  // ── findAll data-quality filters + catalog stats (L1.4) ───────────
+  describe('findAll data-quality filters + getCatalogStats', () => {
+    const S = uuidv4();
+    let supId = '';
+    let catId = '';
+    beforeAll(async () => {
+      await ds.getRepository(StoreEntity).save({ id: S, name: 'L14', isActive: true, currencyCode: 'EUR' } as any);
+      supId = (await svc.getOrCreateSupplier(S, 'Frs A')).id;
+      catId = (await svc.createCategory(S, 'Cat A')).id;
+      // p1: rupture, sans image/fournisseur/catégorie, TVA 20
+      await svc.create({ ean: nextEan(), name: 'P1 vide', priceMinorUnits: 100, taxRate: 20, storeId: S, stockQuantity: 0, stockAlertThreshold: 10 } as any, EMP);
+      // p2: sous seuil (3<=10), complet, TVA 5.5
+      await svc.create({ ean: nextEan(), name: 'P2 bas', priceMinorUnits: 200, taxRate: 5.5, storeId: S, stockQuantity: 3, stockAlertThreshold: 10, imageUrl: 'http://x/y.png', supplierId: supId, categoryId: catId } as any, EMP);
+      // p3: stock ok, complet, TVA 20
+      await svc.create({ ean: nextEan(), name: 'P3 ok', priceMinorUnits: 300, taxRate: 20, storeId: S, stockQuantity: 100, stockAlertThreshold: 10, imageUrl: 'http://x/z.png', supplierId: supId, categoryId: catId } as any, EMP);
+      // p4: archivé
+      await svc.create({ ean: nextEan(), name: 'P4 arch', priceMinorUnits: 400, taxRate: 20, storeId: S, status: 'archived' } as any, EMP);
+    });
+
+    it('outOfStock isolates ruptures; belowThreshold includes low stock', async () => {
+      const out = await svc.findAll(S, { outOfStock: true, limit: 100 });
+      expect(out.data.map((p) => p.name).sort()).toEqual(['P1 vide']);
+      const below = await svc.findAll(S, { belowThreshold: true, limit: 100 });
+      expect(below.data.map((p) => p.name).sort()).toEqual(['P1 vide', 'P2 bas']);
+    });
+
+    it('noImage / noSupplier / noCategory isolate incomplete products', async () => {
+      expect((await svc.findAll(S, { noImage: true, limit: 100 })).data.map((p) => p.name)).toEqual(['P1 vide']);
+      expect((await svc.findAll(S, { noSupplier: true, limit: 100 })).data.map((p) => p.name)).toEqual(['P1 vide']);
+      expect((await svc.findAll(S, { noCategory: true, limit: 100 })).data.map((p) => p.name)).toEqual(['P1 vide']);
+    });
+
+    it('filters by exact TVA rate', async () => {
+      const r = await svc.findAll(S, { taxRate: 5.5, limit: 100 });
+      expect(r.data.map((p) => p.name)).toEqual(['P2 bas']);
+    });
+
+    it('getCatalogStats returns real counts', async () => {
+      const s = await svc.getCatalogStats(S);
+      expect(s.total).toBe(4); // incl. archivé
+      expect(s.active).toBe(3);
+      expect(s.outOfStock).toBe(1);
+      expect(s.belowThreshold).toBe(2);
+      expect(s.noImage).toBe(1);
+      expect(s.noSupplier).toBe(1);
+      expect(s.noCategory).toBe(1);
+    });
+  });
 });
