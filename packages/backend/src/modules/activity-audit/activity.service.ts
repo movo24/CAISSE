@@ -3,7 +3,32 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
 import { UserLoginEventEntity } from '../../database/entities/user-login-event.entity';
 import { UserSessionEntity } from '../../database/entities/user-session.entity';
-import { AuthMethod, LoginEventType, hashIp, sanitizeFailureReason } from './activity.constants';
+import { UserViewEventEntity } from '../../database/entities/user-view-event.entity';
+import {
+  AuthMethod,
+  LoginEventType,
+  hashIp,
+  sanitizeFailureReason,
+  isAllowedViewAction,
+  scrubMetadata,
+} from './activity.constants';
+
+export interface RecordViewParams {
+  employeeId?: string | null;
+  userId?: string | null;
+  sessionId?: string | null;
+  storeId?: string | null;
+  module?: string | null;
+  screen?: string | null;
+  entityType?: string | null;
+  entityId?: string | null;
+  action: string;
+  sourceRoute?: string | null;
+  durationMs?: number | null;
+  metadata?: unknown;
+  ipAddress?: string | null;
+  deviceType?: string | null;
+}
 
 export interface DeviceContext {
   ipAddress?: string | null;
@@ -40,7 +65,58 @@ export class ActivityService {
     private readonly loginRepo: Repository<UserLoginEventEntity>,
     @InjectRepository(UserSessionEntity)
     private readonly sessionRepo: Repository<UserSessionEntity>,
+    @InjectRepository(UserViewEventEntity)
+    private readonly viewRepo: Repository<UserViewEventEntity>,
   ) {}
+
+  /**
+   * Journalise une consultation. NON BLOQUANT. Refuse toute action hors liste blanche
+   * (retourne false sans écrire) et NETTOIE la métadonnée (clés sensibles retirées + bornée).
+   */
+  async recordView(p: RecordViewParams): Promise<boolean> {
+    if (!p.action || !isAllowedViewAction(p.action)) return false; // anti-injection (§15)
+    try {
+      await this.viewRepo.save(
+        this.viewRepo.create({
+          employeeId: p.employeeId ?? null,
+          userId: p.userId ?? null,
+          sessionId: p.sessionId ?? null,
+          storeId: p.storeId ?? null,
+          module: p.module ?? null,
+          screen: p.screen ?? null,
+          entityType: p.entityType ?? null,
+          entityId: p.entityId ?? null,
+          action: p.action.slice(0, 64),
+          sourceRoute: p.sourceRoute ?? null,
+          durationMs: typeof p.durationMs === 'number' ? p.durationMs : null,
+          metadataJson: p.metadata != null ? scrubMetadata(p.metadata) : null,
+          ipAddress: p.ipAddress ?? null,
+          deviceType: p.deviceType ?? null,
+        }),
+      );
+      return true;
+    } catch (e) {
+      this.logger.warn(`[ACTIVITY] recordView failed (non-blocking): ${(e as Error)?.message}`);
+      return false;
+    }
+  }
+
+  async listViewEvents(
+    filters: { employeeId?: string; storeId?: string; module?: string; action?: string; from?: Date; to?: Date } = {},
+    page = 1,
+    limit = 50,
+  ): Promise<{ data: UserViewEventEntity[]; total: number; page: number; limit: number }> {
+    const qb = this.viewRepo.createQueryBuilder('v');
+    if (filters.employeeId) qb.andWhere('v.employeeId = :eid', { eid: filters.employeeId });
+    if (filters.storeId) qb.andWhere('v.storeId = :sid', { sid: filters.storeId });
+    if (filters.module) qb.andWhere('v.module = :m', { m: filters.module });
+    if (filters.action) qb.andWhere('v.action = :a', { a: filters.action });
+    if (filters.from) qb.andWhere('v.occurredAt >= :from', { from: filters.from });
+    if (filters.to) qb.andWhere('v.occurredAt <= :to', { to: filters.to });
+    qb.orderBy('v.occurredAt', 'DESC').skip((page - 1) * limit).take(limit);
+    const [data, total] = await qb.getManyAndCount();
+    return { data, total, page, limit };
+  }
 
   // ─────────────────────────── WRITE (non-throwing) ───────────────────────────
 

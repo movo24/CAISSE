@@ -26,6 +26,36 @@ export const LOGIN_EVENT_TYPES = [
 ] as const;
 export type LoginEventType = (typeof LOGIN_EVENT_TYPES)[number];
 
+/** Actions de consultation énumérées (spec §8). */
+export const VIEW_ACTIONS = [
+  'PAGE_VIEW',
+  'MODULE_OPEN',
+  'STORE_SELECTED',
+  'STORE_COMPARE',
+  'TAB_OPEN',
+  'FILTER_APPLIED',
+  'SEARCH_PERFORMED',
+  'EXPORT_REQUESTED',
+  'DETAIL_OPENED',
+  'ALERT_OPENED',
+  'EMPLOYEE_PROFILE_VIEWED',
+  'FINANCIAL_DATA_VIEWED',
+  'SESSION_HISTORY_VIEWED',
+  'ACCESS_DENIED',
+] as const;
+export type ViewAction = (typeof VIEW_ACTIONS)[number];
+
+/** Nom d'événement métier stable en notation pointée (ex. dashboard.kpi.revenue.open). */
+const BUSINESS_EVENT_RE = /^[a-z][a-z0-9]*(\.[a-z0-9_]+){1,4}$/;
+
+/**
+ * Liste blanche : une action de consultation est acceptée si c'est une action énumérée
+ * OU un nom métier pointé valide. Toute autre valeur est REFUSÉE (anti-injection §15).
+ */
+export function isAllowedViewAction(action: string): boolean {
+  return (VIEW_ACTIONS as readonly string[]).includes(action) || BUSINESS_EVENT_RE.test(action);
+}
+
 /** Hash d'IP pour vues masquées (spec §15) — jamais l'IP en clair dans les vues standard. */
 export function hashIp(ip: string): string {
   return createHash('sha256').update(ip).digest('hex').slice(0, 32);

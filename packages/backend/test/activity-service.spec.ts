@@ -10,6 +10,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { createPgMemDataSource } from './helpers/pgmem';
 import { UserLoginEventEntity } from '../src/database/entities/user-login-event.entity';
 import { UserSessionEntity } from '../src/database/entities/user-session.entity';
+import { UserViewEventEntity } from '../src/database/entities/user-view-event.entity';
 import { ActivityService } from '../src/modules/activity-audit/activity.service';
 
 describe('Lot 6 — ActivityService', () => {
@@ -23,7 +24,7 @@ describe('Lot 6 — ActivityService', () => {
     ds = dataSource.isInitialized ? dataSource : await dataSource.initialize();
     loginRepo = ds.getRepository(UserLoginEventEntity);
     sessionRepo = ds.getRepository(UserSessionEntity);
-    svc = new ActivityService(loginRepo as any, sessionRepo as any);
+    svc = new ActivityService(loginRepo as any, sessionRepo as any, ds.getRepository(UserViewEventEntity) as any);
   });
   afterAll(async () => {
     await ds?.destroy();

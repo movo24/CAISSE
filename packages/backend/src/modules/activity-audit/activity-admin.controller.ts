@@ -53,6 +53,32 @@ export class ActivityAdminController {
     return this.activity.listSessions({ employeeId, activeOnly: activeOnly === 'true' });
   }
 
+  @Get('view-events')
+  @ApiOperation({ summary: 'Journal des consultations (filtres + pagination)' })
+  viewEvents(
+    @Query('employeeId') employeeId?: string,
+    @Query('storeId') storeId?: string,
+    @Query('module') module?: string,
+    @Query('action') action?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.activity.listViewEvents(
+      {
+        employeeId,
+        storeId,
+        module,
+        action,
+        from: from ? new Date(from) : undefined,
+        to: to ? new Date(to) : undefined,
+      },
+      page ? +page : 1,
+      limit ? +limit : 50,
+    );
+  }
+
   @Get('employees/:employeeId/stats')
   @ApiOperation({ summary: 'Statistiques de connexion d’un employé' })
   stats(@Param('employeeId') employeeId: string) {
