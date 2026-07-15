@@ -6,7 +6,7 @@ import {
   AlertTriangle, Building2, Network, Plug, CreditCard, Tag, Warehouse,
   BarChart3, Users, ShieldAlert, Database, Wallet, CalendarClock, Undo2,
   Boxes, Coins, Ticket, ClipboardCheck, Factory, ScanBarcode, Banknote,
-  ReceiptText, MonitorPlay, MonitorSmartphone, ShieldCheck,
+  ReceiptText, MonitorPlay, MonitorSmartphone, ShieldCheck, FolderTree,
 } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 import { useAppScope } from '../hooks/useAppScope';
@@ -60,6 +60,7 @@ const navItems: NavItem[] = [
   { path: '/catalog/variants', label: 'Variantes', icon: Boxes, minRole: 'manager', scope: 'store' },
   { path: '/catalog/store-prices', label: 'Prix magasin', icon: Coins, minRole: 'manager', scope: 'store' },
   { path: '/catalog/brands-suppliers', label: 'Marques & Fournisseurs', icon: Factory, minRole: 'manager', scope: 'store' },
+  { path: '/catalog/categories', label: 'Catégories', icon: FolderTree, minRole: 'manager', scope: 'store' },
   { path: '/promo-codes', label: 'Codes promo', icon: Ticket, minRole: 'manager', scope: 'store' },
   { path: '/campaigns', label: 'Campagnes écran client', icon: MonitorPlay, minRole: 'manager', scope: 'store' },
   { path: '/pending-payments', label: 'Paiements à régulariser', icon: CreditCard, minRole: 'manager', scope: 'store' },

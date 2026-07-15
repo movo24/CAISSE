@@ -31,6 +31,7 @@ import { NetworkDashboardPage } from './pages/NetworkDashboardPage';
 import { ProductVariantsPage } from './pages/ProductVariantsPage';
 import { StorePricesPage } from './pages/StorePricesPage';
 import { BrandsSuppliersPage } from './pages/BrandsSuppliersPage';
+import { CategoriesAdminPage } from './pages/CategoriesAdminPage';
 import { PromoCodesPage } from './pages/PromoCodesPage';
 import { CampaignsPage } from './pages/CampaignsPage';
 import { PendingPaymentsPage } from './pages/PendingPaymentsPage';
@@ -87,6 +88,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             <Route path="/catalog/variants" element={<ProductVariantsPage />} />
             <Route path="/catalog/store-prices" element={<StorePricesPage />} />
             <Route path="/catalog/brands-suppliers" element={<BrandsSuppliersPage />} />
+            <Route path="/catalog/categories" element={<CategoriesAdminPage />} />
             <Route path="/promo-codes" element={<PromoCodesPage />} />
             <Route path="/campaigns" element={<CampaignsPage />} />
             <Route path="/pending-payments" element={<PendingPaymentsPage />} />

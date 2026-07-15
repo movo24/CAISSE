@@ -143,8 +143,18 @@ export const authApi = {
 // Products
 // ---------------------------------------------------------------------------
 export const productsApi = {
-  list: (params?: { storeId?: string; brandId?: string; supplierId?: string; search?: string; page?: number; limit?: number }) =>
-    api.get('/products', { params }),
+  list: (params?: {
+    storeId?: string;
+    brandId?: string;
+    supplierId?: string;
+    categoryId?: string;
+    status?: string;
+    search?: string;
+    sortBy?: string;
+    sortDir?: 'ASC' | 'DESC';
+    page?: number;
+    limit?: number;
+  }) => api.get('/products', { params }),
   get: (id: string) => api.get(`/products/${id}`),
   // Aligné sur CreateProductDto : ean+name+priceMinorUnits obligatoires, le
   // storeId est forcé serveur depuis le JWT (jamais envoyé par le client).
@@ -157,6 +167,11 @@ export const productsApi = {
     description?: string;
     costMinorUnits?: number;
     taxRate?: number;
+    sku?: string;
+    brandId?: string;
+    supplierId?: string;
+    status?: string;
+    oldPriceMinorUnits?: number;
   }) => api.post('/products', data),
   // Aligné sur UpdateProductDto : PAS de `ean` (immuable, absent du DTO →
   // rejeté par forbidNonWhitelisted), PAS de `storeId`.
@@ -170,6 +185,11 @@ export const productsApi = {
       description?: string;
       costMinorUnits?: number;
       taxRate?: number;
+      sku?: string;
+      brandId?: string | null;
+      supplierId?: string | null;
+      status?: string;
+      oldPriceMinorUnits?: number | null;
       reason?: string;
       isActive?: boolean;
     },
@@ -193,6 +213,13 @@ export const productsApi = {
   createBrand: (name: string) => api.post('/products/brands', { name }),
   listSuppliers: () => api.get('/products/suppliers'),
   createSupplier: (name: string) => api.post('/products/suppliers', { name }),
+  // Catégories hiérarchiques (Lot 1) — arbre id/name/parentId/productCount
+  listCategories: () => api.get('/products/categories'),
+  createCategory: (data: { name: string; parentId?: string | null }) =>
+    api.post('/products/categories', data),
+  updateCategory: (id: string, data: { name?: string; parentId?: string | null }) =>
+    api.put(`/products/categories/${id}`, data),
+  deleteCategory: (id: string) => api.delete(`/products/categories/${id}`),
   // CSV (Bloc 4i)
   exportCsv: () => api.get('/products/export', { responseType: 'text' }),
   importCsv: (csv: string) => api.post('/products/import', { csv }),
