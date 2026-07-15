@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Package, FileBarChart, Settings, LogOut,
@@ -6,10 +6,11 @@ import {
   AlertTriangle, Building2, Network, Plug, CreditCard, Tag, Warehouse,
   BarChart3, Users, ShieldAlert, Database, Wallet, CalendarClock, Undo2,
   Boxes, Coins, Ticket, ClipboardCheck, Factory, ScanBarcode, Banknote,
-  ReceiptText, MonitorPlay, MonitorSmartphone,
+  ReceiptText, MonitorPlay, MonitorSmartphone, ShieldCheck,
 } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 import { useAppScope } from '../hooks/useAppScope';
+import { trackView } from '../services/telemetry';
 
 /* ══════════════════════════════════════════════════════════════
    ARCHITECTURE PAR COUCHES METIER
@@ -105,6 +106,7 @@ const adminGroup: NavGroup = {
     { path: '/stores', label: 'Magasins', icon: StoreIcon },
     { path: '/connected-apps', label: 'Applications', icon: Plug },
     { path: '/airtable-ops', label: 'Airtable Ops', icon: Database },
+    { path: '/security', label: 'Sécurité et accès', icon: ShieldCheck },
   ],
 };
 
@@ -123,6 +125,11 @@ export function Layout() {
   const [adminOpen, setAdminOpen] = useState(() =>
     adminGroup.items.some((i) => location.pathname === i.path),
   );
+
+  // Télémétrie de consultation : une vue de page par navigation (non bloquant).
+  useEffect(() => {
+    trackView({ action: 'PAGE_VIEW', sourceRoute: location.pathname });
+  }, [location.pathname]);
 
   const handleLogout = () => {
     logout();

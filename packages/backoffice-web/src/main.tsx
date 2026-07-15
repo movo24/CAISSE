@@ -23,6 +23,7 @@ import { PlanningPage } from './pages/PlanningPage';
 import { ReturnsPage } from './pages/ReturnsPage';
 import { ConnectedAppsPage } from './pages/ConnectedAppsPage';
 import { AirtableOpsPage } from './pages/AirtableOpsPage';
+import { SecurityAccessPage } from './pages/SecurityAccessPage';
 import { SalesGuardsPage } from './pages/SalesGuardsPage';
 import { BillingPage } from './pages/BillingPage';
 import { ComingSoonPage } from './pages/ComingSoonPage';
@@ -113,6 +114,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             <Route path="/pos-enrollment" element={<PosEnrollmentPage />} />
             <Route path="/connected-apps" element={<ConnectedAppsPage />} />
             <Route path="/airtable-ops" element={<AirtableOpsPage />} />
+            <Route path="/security" element={<SecurityAccessPage />} />
 
             {/* Couche 4: Equipes / RH */}
             <Route path="/employees" element={<EmployeesPage />} />

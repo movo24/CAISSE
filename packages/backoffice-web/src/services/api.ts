@@ -693,4 +693,48 @@ export const enrollmentApi = {
   revoke: (id: string, reason: string) => api.post(`/pos/enrollment/${id}/revoke`, { reason }),
 };
 
+// ---------------------------------------------------------------------------
+// Sécurité & accès (pilotage RBAC + audit des droits)
+// ---------------------------------------------------------------------------
+export const securityApi = {
+  /** Périmètre magasin effectif du demandeur. */
+  myScope: () => api.get('/pilotage/access/me'),
+  grantApplicationAccess: (
+    employeeId: string,
+    body: { applicationRole: string; applicationEnabled?: boolean; validFrom?: string; validUntil?: string; reason?: string },
+  ) => api.post(`/pilotage/admin/employees/${employeeId}/application-access`, body),
+  suspend: (employeeId: string, reason?: string) =>
+    api.post(`/pilotage/admin/employees/${employeeId}/suspend`, { reason }),
+  reactivate: (employeeId: string) =>
+    api.post(`/pilotage/admin/employees/${employeeId}/reactivate`, {}),
+  grantStore: (
+    employeeId: string,
+    storeId: string,
+    body: { accessRole?: string; canViewDashboard?: boolean; canViewFinancials?: boolean; canViewEmployees?: boolean; canViewAlerts?: boolean; canCompare?: boolean; validFrom?: string; validUntil?: string; reason?: string },
+  ) => api.put(`/pilotage/admin/employees/${employeeId}/stores/${storeId}`, body),
+  revokeStore: (employeeId: string, storeId: string, reason?: string) =>
+    api.delete(`/pilotage/admin/employees/${employeeId}/stores/${storeId}`, { data: { reason } }),
+  auditList: (params?: { scope?: string; limit?: number; offset?: number }) =>
+    api.get('/pilotage/admin/access-audit', { params }),
+  auditVerify: (scope?: string) =>
+    api.get('/pilotage/admin/access-audit/verify', { params: scope ? { scope } : {} }),
+};
+
+// ---------------------------------------------------------------------------
+// Journal d'activité (connexions / sessions / consultations)
+// ---------------------------------------------------------------------------
+export const activityApi = {
+  loginEvents: (params?: { employeeId?: string; success?: boolean; method?: string; from?: string; to?: string; page?: number; limit?: number }) =>
+    api.get('/activity/login-events', { params }),
+  sessions: (params?: { employeeId?: string; activeOnly?: boolean }) =>
+    api.get('/activity/sessions', { params }),
+  viewEvents: (params?: { employeeId?: string; storeId?: string; module?: string; action?: string; from?: string; to?: string; page?: number; limit?: number }) =>
+    api.get('/activity/view-events', { params }),
+  stats: (employeeId: string) => api.get(`/activity/employees/${employeeId}/stats`),
+  revokeSession: (sessionId: string, reason?: string) =>
+    api.post(`/activity/sessions/${sessionId}/revoke`, { reason }),
+  revokeAll: (employeeId: string, reason?: string) =>
+    api.post(`/activity/employees/${employeeId}/revoke-sessions`, { reason }),
+};
+
 export default api;
