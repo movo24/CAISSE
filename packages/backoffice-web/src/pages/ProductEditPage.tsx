@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   ScanBarcode, Save, ArrowLeft, Loader2, Package, Euro, Boxes, Truck,
   Layers, GitBranch, Image as ImageIcon, Ruler, BadgePercent, BarChart3,
@@ -78,10 +78,13 @@ function Phase2Notice({ fields }: { fields: string }) {
 export function ProductEditPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const duplicateFrom = searchParams.get('from'); // /products/new?from=<id> → duplication
   const isEdit = Boolean(id);
 
-  // ── Porte « scanner d'abord » (création) ──
-  const [gate, setGate] = useState(!isEdit);
+  // ── Porte « scanner d'abord » (création). En duplication, on passe la porte
+  //    (les champs sont pré-remplis depuis la source) mais l'EAN reste à saisir. ──
+  const [gate, setGate] = useState(!isEdit && !duplicateFrom);
   const [gateEan, setGateEan] = useState('');
   const [gateBusy, setGateBusy] = useState(false);
   const [gateExisting, setGateExisting] = useState<any | null>(null);
@@ -122,7 +125,35 @@ export function ProductEditPage() {
       ]);
       setBrands(b.data || []); setSuppliers(s.data || []);
       setCategories((c.data || []).map((x: any) => ({ id: x.id, name: x.name, parentId: x.parentId ?? null })));
-      if (!id) { setLoading(false); return; }
+      if (!id) {
+        if (duplicateFrom) {
+          try {
+            const src = (await productsApi.get(duplicateFrom)).data;
+            // Duplication : on reprend tout SAUF les identifiants uniques (EAN, SKU)
+            // et le stock ; statut brouillon pour forcer une revue avant activation.
+            setForm((f) => ({
+              ...f,
+              ean: '',
+              name: src.name ? `${src.name} (copie)` : '',
+              description: src.description || '',
+              categoryId: src.categoryId || '',
+              unitType: src.unitType || 'unit',
+              sku: '',
+              brandId: src.brandId || '',
+              supplierId: src.supplierId || '',
+              priceTtc: src.priceMinorUnits != null ? (src.priceMinorUnits / 100).toFixed(2) : '',
+              cost: src.costMinorUnits != null ? (src.costMinorUnits / 100).toFixed(2) : '',
+              taxRate: String(src.taxRate ?? 20),
+              stock: '0',
+              alertThreshold: String(src.stockAlertThreshold ?? 10),
+              criticalThreshold: String(src.stockCriticalThreshold ?? 5),
+              imageUrl: src.imageUrl || '',
+              status: 'draft',
+            }));
+          } catch { /* source introuvable → création vierge */ }
+        }
+        setLoading(false); return;
+      }
       const p = (await productsApi.get(id)).data;
       setOriginal(p);
       setForm({
@@ -145,7 +176,7 @@ export function ProductEditPage() {
     } catch (e: any) {
       setError(e?.response?.data?.message || 'Chargement impossible');
     } finally { setLoading(false); }
-  }, [id]);
+  }, [id, duplicateFrom]);
   useEffect(() => { load(); }, [load]);
 
   // ── Scanner d'abord : vérifie l'existence de l'EAN ──
