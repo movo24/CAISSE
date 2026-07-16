@@ -477,6 +477,12 @@ export class ProductsController {
     return this.productsService.getPriceAnalytics(id, req.user.storeId);
   }
 
+  @Get(':id/stats')
+  @ApiOperation({ summary: 'Real product stats from completed sales (units, CA, avg basket, margin, rank, 12-week series)' })
+  stats(@Param('id') id: string, @Request() req: any) {
+    return this.productsService.getProductStats(id, req.user.storeId);
+  }
+
   @Put(':id')
   @Roles('admin', 'manager')
   @ApiOperation({ summary: 'Update a product' })

@@ -209,6 +209,7 @@ export function ProductEditPage() {
   const [storePrice, setStorePrice] = useState<any | null>(null);
   const [priceHistory, setPriceHistory] = useState<any[]>([]);
   const [analytics, setAnalytics] = useState<any | null>(null);
+  const [stats, setStats] = useState<any | null>(null);
   const [reason, setReason] = useState('');
   // Lot 4 — galerie & documents
   const [media, setMedia] = useState<any[]>([]);
@@ -337,6 +338,7 @@ export function ProductEditPage() {
       productsApi.getStorePrice(id).then((r) => setStorePrice(r.data || null)).catch(() => setStorePrice(null));
       productsApi.priceHistory(id).then((r) => setPriceHistory(r.data || [])).catch(() => {});
       productsApi.priceAnalytics(id).then((r) => setAnalytics(r.data || null)).catch(() => {});
+      productsApi.productStats(id).then((r) => setStats(r.data || null)).catch(() => {});
       productsApi.listMedia(id).then((r) => setMedia(r.data || [])).catch(() => {});
       productsApi.listDocuments(id).then((r) => setDocuments(r.data || [])).catch(() => {});
       productsApi.listBarcodes(id).then((r) => setBarcodes(r.data || [])).catch(() => {});
@@ -1324,10 +1326,54 @@ export function ProductEditPage() {
                     <div key={l as string} className="rounded-xl bg-gray-50 border border-gray-100 px-4 py-3"><p className="text-[11px] font-semibold text-gray-400">{l}</p><p className="text-lg font-bold text-bo-text tabular-nums">{v}</p></div>
                   ))}
                 </div>
-                {analytics ? (
-                  <pre className="text-xs bg-gray-50 border border-gray-100 rounded-xl p-4 overflow-auto max-h-64">{JSON.stringify(analytics, null, 2)}</pre>
-                ) : <p className="text-sm text-gray-400">Analytics d'impact prix : aucune donnée pour ce produit (ou endpoint indisponible).</p>}
-                <p className="text-[11px] text-gray-400">Ventes / CA / rotation réseau : Rapports → Analytics produits (données réelles agrégées). Date de dernier achat : nécessite le module réceptions (inexistant — jamais simulé).</p>
+                {/* Statistiques RÉELLES depuis les ventes complétées (P-D) */}
+                {stats && stats.totalUnits > 0 ? (
+                  <>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      {[
+                        ['Ventes', String(stats.salesCount)],
+                        ['Unités vendues', String(stats.totalUnits)],
+                        ['CA (TTC)', eur(stats.totalRevenueMinorUnits)],
+                        ['Panier moyen', eur(stats.avgBasketMinorUnits)],
+                        ['Marge estimée', stats.estimatedMarginMinorUnits != null ? eur(stats.estimatedMarginMinorUnits) : '—'],
+                        ['Rang CA magasin', stats.rank != null ? `${stats.rank} / ${stats.rankedProducts}` : '—'],
+                        ['Première vente', stats.firstSaleAt ? new Date(stats.firstSaleAt).toLocaleDateString('fr-FR') : '—'],
+                        ['Dernière vente', stats.lastSaleAt ? new Date(stats.lastSaleAt).toLocaleDateString('fr-FR') : '—'],
+                      ].map(([l, v]) => (
+                        <div key={l as string} className="rounded-xl bg-gray-50 border border-gray-100 px-4 py-3"><p className="text-[11px] font-semibold text-gray-400">{l}</p><p className="text-lg font-bold text-bo-text tabular-nums">{v}</p></div>
+                      ))}
+                    </div>
+                    {stats.estimatedMarginMinorUnits != null && stats.costBasis === 'current' && (
+                      <p className="text-[11px] text-amber-600">Marge estimée sur le coût d'achat COURANT (pas d'historique de coût) — approximation.</p>
+                    )}
+                    {/* Série 12 semaines (CA hebdo) */}
+                    {stats.weekly?.length > 0 && (() => {
+                      const maxRev = Math.max(...stats.weekly.map((w: any) => w.revenueMinorUnits), 1);
+                      return (
+                        <div className="rounded-xl border border-gray-100 p-4">
+                          <p className="text-sm font-semibold text-bo-text mb-3">CA des 12 dernières semaines</p>
+                          <div className="flex items-end gap-1.5 h-32">
+                            {stats.weekly.map((w: any) => (
+                              <div key={w.weekStart} className="flex-1 flex flex-col items-center justify-end group" title={`Semaine du ${new Date(w.weekStart).toLocaleDateString('fr-FR')} — ${eur(w.revenueMinorUnits)} · ${w.units} u.`}>
+                                <div className="w-full rounded-t bg-bo-accent/70 group-hover:bg-bo-accent transition-colors" style={{ height: `${Math.max(4, (w.revenueMinorUnits / maxRev) * 100)}%` }} />
+                                <span className="text-[9px] text-gray-400 mt-1">{new Date(w.weekStart).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </>
+                ) : (
+                  <p className="text-sm text-gray-400">Aucune vente complétée pour ce produit — statistiques à 0 (jamais simulées).</p>
+                )}
+                {/* Impact prix par période (secondaire, données réelles) */}
+                {analytics && (
+                  <details className="rounded-xl bg-gray-50 border border-gray-100 p-3">
+                    <summary className="text-xs font-semibold text-gray-500 cursor-pointer">Impact prix par période (avancé)</summary>
+                    <pre className="text-xs mt-2 overflow-auto max-h-64">{JSON.stringify(analytics, null, 2)}</pre>
+                  </details>
+                )}
               </>
             )}
           </div>

@@ -160,6 +160,102 @@ export class ProductsService {
     return this.changeLogRepo.find({ where: { productId, storeId }, order: { createdAt: 'DESC' }, take: 200 });
   }
 
+  /**
+   * Statistiques produit RÉELLES (P-D) — agrégées depuis les ventes **complétées**
+   * (`sale_line_items JOIN sales status='completed'`). Aucune donnée simulée : sans
+   * vente, tout est à 0 / null / série vide. La marge est estimée sur le **coût
+   * courant** (pas d'historique de coût) → `costBasis` l'indique explicitement.
+   */
+  async getProductStats(
+    productId: string,
+    storeId: string,
+  ): Promise<{
+    salesCount: number;
+    totalUnits: number;
+    totalRevenueMinorUnits: number;
+    avgBasketMinorUnits: number;
+    estimatedMarginMinorUnits: number | null;
+    costBasis: 'current' | 'unavailable';
+    firstSaleAt: string | null;
+    lastSaleAt: string | null;
+    rank: number | null;
+    rankedProducts: number;
+    weekly: Array<{ weekStart: string; units: number; revenueMinorUnits: number }>;
+  }> {
+    const product = await this.findOneForStore(productId, storeId);
+    const mgr = this.productRepo.manager;
+
+    const [summary] = await mgr.query(
+      `SELECT COUNT(DISTINCT li.sale_id)::int AS sales_count,
+              COALESCE(SUM(li.quantity),0)::int AS total_units,
+              COALESCE(SUM(li.line_total_minor_units),0)::bigint AS total_revenue,
+              COALESCE(SUM(li.line_total_minor_units / (1 + li.tax_rate/100.0)),0)::bigint AS revenue_ht,
+              MIN(s.created_at) AS first_sale, MAX(s.created_at) AS last_sale
+         FROM sale_line_items li JOIN sales s ON s.id = li.sale_id
+        WHERE li.product_id = $1 AND s.store_id = $2 AND s.status = 'completed'`,
+      [productId, storeId],
+    );
+
+    const totalUnits = Number(summary?.total_units || 0);
+    const revenueHt = Number(summary?.revenue_ht || 0);
+    const cost = product.costMinorUnits ?? 0;
+    const costAvailable = cost > 0 && totalUnits > 0;
+    const estimatedMarginMinorUnits = costAvailable ? Math.round(revenueHt - cost * totalUnits) : null;
+
+    const [basket] = await mgr.query(
+      `SELECT COALESCE(AVG(s.total_minor_units),0)::bigint AS avg_basket
+         FROM sales s
+        WHERE s.store_id = $2 AND s.status = 'completed'
+          AND EXISTS (SELECT 1 FROM sale_line_items li WHERE li.sale_id = s.id AND li.product_id = $1)`,
+      [productId, storeId],
+    );
+
+    // Rang par CA parmi les produits vendus du magasin — borné (aucun chargement de masse).
+    const [ranking] = await mgr.query(
+      `WITH totals AS (
+         SELECT li.product_id AS pid, SUM(li.line_total_minor_units) AS rev
+           FROM sale_line_items li JOIN sales s ON s.id = li.sale_id
+          WHERE s.store_id = $2 AND s.status = 'completed'
+          GROUP BY li.product_id
+       )
+       SELECT (SELECT COUNT(*)::int FROM totals) AS ranked,
+              (SELECT rev FROM totals WHERE pid = $1) AS my_rev,
+              (SELECT 1 + COUNT(*)::int FROM totals t
+                 WHERE t.rev > (SELECT rev FROM totals WHERE pid = $1)) AS rnk`,
+      [productId, storeId],
+    );
+    const rank = ranking?.my_rev != null ? Number(ranking.rnk) : null;
+
+    const weekRows = await mgr.query(
+      `SELECT to_char(date_trunc('week', s.created_at), 'YYYY-MM-DD') AS wk,
+              SUM(li.quantity)::int AS units,
+              SUM(li.line_total_minor_units)::bigint AS revenue
+         FROM sale_line_items li JOIN sales s ON s.id = li.sale_id
+        WHERE li.product_id = $1 AND s.store_id = $2 AND s.status = 'completed'
+          AND s.created_at >= now() - interval '12 weeks'
+        GROUP BY 1 ORDER BY 1`,
+      [productId, storeId],
+    );
+
+    return {
+      salesCount: Number(summary?.sales_count || 0),
+      totalUnits,
+      totalRevenueMinorUnits: Number(summary?.total_revenue || 0),
+      avgBasketMinorUnits: Number(basket?.avg_basket || 0),
+      estimatedMarginMinorUnits,
+      costBasis: costAvailable ? 'current' : 'unavailable',
+      firstSaleAt: summary?.first_sale ? new Date(summary.first_sale).toISOString() : null,
+      lastSaleAt: summary?.last_sale ? new Date(summary.last_sale).toISOString() : null,
+      rank,
+      rankedProducts: Number(ranking?.ranked || 0),
+      weekly: (weekRows || []).map((r: any) => ({
+        weekStart: r.wk,
+        units: Number(r.units),
+        revenueMinorUnits: Number(r.revenue),
+      })),
+    };
+  }
+
   // ── Fournisseurs multiples par produit (Lot B) ──
 
   async listProductSuppliers(productId: string, storeId: string): Promise<ProductSupplierEntity[]> {
