@@ -72,3 +72,6 @@ export { SaleComponentMovementEntity } from './sale-component-movement.entity';
 // ── Attract (mode veille écran client : campagnes + playlists) ─────
 export { AttractCampaignEntity } from './attract-campaign.entity';
 export { AttractMediaEntity } from './attract-media.entity';
+
+// ── Vues/filtres enregistrables par employé (P-D / M-G) ─────
+export { UserSavedFilterEntity } from './user-saved-filter.entity';

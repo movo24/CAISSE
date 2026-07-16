@@ -301,6 +301,10 @@ export const productsApi = {
   listDocuments: (id: string) => api.get(`/products/${id}/documents`),
   addDocument: (id: string, name: string, url: string) => api.post(`/products/${id}/documents`, { name, url }),
   removeDocument: (id: string, documentId: string) => api.delete(`/products/${id}/documents/${documentId}`),
+  // Vues/filtres enregistrables côté serveur (P-D / M-G — /me/saved-filters)
+  listSavedFilters: (page: string) => api.get('/me/saved-filters', { params: { page } }),
+  saveFilter: (page: string, name: string, config: unknown) => api.post('/me/saved-filters', { page, name, config }),
+  deleteSavedFilter: (id: string) => api.delete(`/me/saved-filters/${id}`),
 };
 
 // Intégration produit — scan code-barres inconnu (création sécurisée

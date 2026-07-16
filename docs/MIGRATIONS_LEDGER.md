@@ -42,7 +42,8 @@
 | **1767000000000** | AddStockMovementSaleLinkage | fiscal stock-journal | ✅ **mergé `main`** (`a7f6f59`) | — |
 | **1768000000000** | CompleteProductErpFieldsMA | `feat/product-sheet-erp-pa` | 🔶 non mergé | après catalogue |
 | **1769000000000** | ProductMediaKindAndCategoryUnique | `feat/product-sheet-erp-pa` | 🔶 non mergé | après catalogue |
-| _libre_ | prochain numéro disponible | — | ⬜ | ≥ **1770000000000** |
+| **1770000000000** | CreateUserSavedFilters | `feat/product-sheet-erp-pa` (P-D/M-G) | 🔶 non mergé | après catalogue |
+| _libre_ | prochain numéro disponible | — | ⬜ | ≥ **1771000000000** |
 
 ## ⚠️ Piège d'ordre d'exécution (1767 vs 1759-1766)
 

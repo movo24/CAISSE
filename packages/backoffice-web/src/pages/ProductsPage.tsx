@@ -156,17 +156,28 @@ export function ProductsPage() {
   const toggleCol = (k: string) =>
     setVisibleCols((cols) => (cols.includes(k) ? cols.filter((c) => c !== k) : [...cols, k]));
 
-  // Vues enregistrables (filtres + colonnes) — persistées (Lot J)
-  const [savedViews, setSavedViews] = useState<Array<{ name: string; v: any }>>(() => {
+  // Vues enregistrables (filtres + colonnes) — persistées SERVEUR (P-D/M-G),
+  // avec repli localStorage gracieux (offline / erreur réseau). Lot J = cache local initial.
+  const [savedViews, setSavedViews] = useState<Array<{ id?: string; name: string; v: any }>>(() => {
     try { const s = localStorage.getItem('catalog.views'); if (s) return JSON.parse(s); } catch { /* noop */ }
     return [];
   });
   const [showViewsMenu, setShowViewsMenu] = useState(false);
   const [newViewName, setNewViewName] = useState('');
-  const persistViews = (views: Array<{ name: string; v: any }>) => {
+  const persistViews = (views: Array<{ id?: string; name: string; v: any }>) => {
     setSavedViews(views);
     try { localStorage.setItem('catalog.views', JSON.stringify(views)); } catch { /* noop */ }
   };
+  // Source de vérité = serveur ; le cache local est rafraîchi à chaque chargement réussi.
+  const reloadServerViews = useCallback(async (): Promise<boolean> => {
+    try {
+      const r = await productsApi.listSavedFilters('products');
+      const rows = (r.data || []).map((x: any) => ({ id: x.id, name: x.name, v: x.config || {} }));
+      persistViews(rows);
+      return true;
+    } catch { return false; }
+  }, []);
+  useEffect(() => { reloadServerViews(); }, [reloadServerViews]);
 
   // Modal state (édition rapide secondaire)
   const [showModal, setShowModal] = useState(false);
@@ -281,10 +292,17 @@ export function ProductsPage() {
     fOutOfStock, fBelowThreshold, fNoImage, fNoSupplier, fNoCategory,
     sortBy, sortDir, visibleCols,
   });
-  const saveCurrentView = () => {
+  const saveCurrentView = async () => {
     const name = newViewName.trim();
     if (!name) return;
-    persistViews([...savedViews.filter((x) => x.name !== name), { name, v: captureView() }]);
+    const config = captureView();
+    try {
+      await productsApi.saveFilter('products', name, config);
+      await reloadServerViews();
+    } catch {
+      // Repli local si le serveur est injoignable.
+      persistViews([...savedViews.filter((x) => x.name !== name), { name, v: config }]);
+    }
     setNewViewName('');
   };
   const applyView = (view: { name: string; v: any }) => {
@@ -298,7 +316,12 @@ export function ProductsPage() {
     if (Array.isArray(v.visibleCols)) setVisibleCols(v.visibleCols);
     setPage(1); setShowViewsMenu(false);
   };
-  const deleteView = (name: string) => persistViews(savedViews.filter((x) => x.name !== name));
+  const deleteView = async (view: { id?: string; name: string }) => {
+    if (view.id) {
+      try { await productsApi.deleteSavedFilter(view.id); await reloadServerViews(); return; } catch { /* repli local */ }
+    }
+    persistViews(savedViews.filter((x) => x.name !== view.name));
+  };
 
   const toggleSort = (key: 'name' | 'price' | 'stock' | 'updatedAt') => {
     if (sortBy === key) setSortDir(sortDir === 'ASC' ? 'DESC' : 'ASC');
@@ -704,7 +727,7 @@ export function ProductsPage() {
                   {savedViews.map((view) => (
                     <div key={view.name} className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-gray-50 group">
                       <button onClick={() => applyView(view)} className="flex-1 text-left text-sm text-gray-700 truncate">{view.name}</button>
-                      <button onClick={() => deleteView(view.name)} className="p-1 text-red-400 hover:bg-red-50 rounded opacity-0 group-hover:opacity-100"><Trash2 size={13} /></button>
+                      <button onClick={() => deleteView(view)} className="p-1 text-red-400 hover:bg-red-50 rounded opacity-0 group-hover:opacity-100"><Trash2 size={13} /></button>
                     </div>
                   ))}
                 </div>

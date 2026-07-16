@@ -25,6 +25,7 @@ import { SyncModule } from './modules/sync/sync.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
 import { OccupancyModule } from './modules/occupancy/occupancy.module';
+import { SavedFiltersModule } from './modules/saved-filters/saved-filters.module';
 import { JackpotModule } from './modules/jackpot/jackpot.module';
 import { HealthModule } from './modules/health/health.module';
 import { CacheModule } from './common/cache/cache.module';
@@ -116,6 +117,7 @@ const isProd = process.env.NODE_ENV === 'production';
     NotificationsModule,
     SubscriptionsModule,
     OccupancyModule,
+    SavedFiltersModule,
     JackpotModule,
     HealthModule,
     OrganizationsModule,
