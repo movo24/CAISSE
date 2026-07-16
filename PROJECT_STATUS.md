@@ -198,3 +198,14 @@ validation WisePad 3 + clé Stripe prod (GO owner), DNS cutover + déploiement R
 `TEST_DATABASE_URL` pour les specs pg/e2e en CI (décision infra), rotations de secrets D6/D8,
 réconciliation stock one-shot (écrit le stock réel — validation prod), **certificat de signature `.exe`**.
 Chaque action attend son GO nommé — aucune ne s'ouvre sur un « continue » générique (charte §0).
+
+
+## File des GO en attente (2026-07-16) — un GO couvre ce qu'il nomme, rien d'autre
+| GO attendu | Débloque | Dépend de |
+|---|---|---|
+| merge #84 | Dashboard identité + fiche produit P1 + fixes création + entité ESA (répare le step PG de main si cause commune) | CI verte (ea04289 ✅) |
+| Redeploy Railway backoffice (clic owner ou serviceId) | Disparition du bug terrain « Erreur de validation » ; parcours création testable navigateur (14 scénarios) | runbook docs/runbooks/redeploy-backoffice-railway.md |
+| D-FP1..D-FP5 (dossier de décision transmis) | M-B/M-D → sélecteur catégories hiérarchique, fournisseur enrichi | schéma docs/design/product-sheet-erp.md |
+| Lot 1 accès (migration 1759) | colonnes révocation/validité employee_store_access | Lot 0 validé ✅ |
+| GO P0/P1 Payment Engine | implémentation moteur | choix partenaire monétique (contrat+specs) |
+| Écriture sur main | — | toujours gated |
