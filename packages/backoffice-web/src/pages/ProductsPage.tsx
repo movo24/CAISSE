@@ -21,7 +21,7 @@ import { productsApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
 import { useCurrentStoreId } from '../hooks/useCurrentStoreId';
 import { PriceAnalyticsPanel } from '../components/PriceAnalyticsPanel';
-import { validateProductForm, buildCreatePayload, buildUpdatePayload } from './productForm';
+import { validateProductForm, apiErrorMessage, buildCreatePayload, buildUpdatePayload } from './productForm';
 
 type SortKey = 'name' | 'price' | 'stock' | 'category';
 type SortDir = 'asc' | 'desc';

@@ -6,6 +6,7 @@ import {
   History, Plus, Trash2, AlertCircle, CheckCircle2, Pencil,
 } from 'lucide-react';
 import { productsApi } from '../services/api';
+import { apiErrorMessage } from './productForm';
 
 /**
  * Fiche produit PROFESSIONNELLE (page complète — remplace la popup minimaliste).
@@ -137,7 +138,7 @@ export function ProductEditPage() {
       productsApi.priceHistory(id).then((r) => setPriceHistory(r.data || [])).catch(() => {});
       productsApi.priceAnalytics(id).then((r) => setAnalytics(r.data || null)).catch(() => {});
     } catch (e: any) {
-      setError(e?.response?.data?.message || 'Chargement impossible');
+      setError(apiErrorMessage(e));
     } finally { setLoading(false); }
   }, [id]);
   useEffect(() => { load(); }, [load]);
@@ -207,7 +208,7 @@ export function ProductEditPage() {
         navigate(`/products/${r.data.id}/edit`, { replace: true });
       }
     } catch (e: any) {
-      setError(e?.response?.data?.message || 'Enregistrement impossible');
+      setError(apiErrorMessage(e));
     } finally { setSaving(false); }
   };
 

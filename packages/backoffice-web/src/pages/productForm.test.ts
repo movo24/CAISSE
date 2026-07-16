@@ -119,3 +119,43 @@ describe('validateProductForm', () => {
     expect(validateProductForm({ ...base, taxRate: '-5' }, false)).toMatch(/TVA/i);
   });
 });
+
+/* ── Bug terrain 2026-07-15 : « Erreur de validation » générique + virgule FR ── */
+import { parseFr, extractFieldErrors, apiErrorMessage } from './productForm';
+
+describe('parseFr — nombres français', () => {
+  it('accepte la virgule décimale (12,50 → 12.5, plus jamais 12)', () => {
+    expect(parseFr('12,50')).toBe(12.5);
+    expect(parseFr('5,5')).toBe(5.5);
+    expect(parseFr('1 250,99')).toBe(1250.99);
+    expect(parseFr('12.50')).toBe(12.5);
+  });
+  it('buildCreatePayload convertit 12,50 € en 1250 centimes', () => {
+    const p = buildCreatePayload({ name: 'X', ean: '1', price: '12,50', stock: '', category: '', description: '', cost: '5,25', taxRate: '5,5' });
+    expect(p.priceMinorUnits).toBe(1250);
+    expect(p.costMinorUnits).toBe(525);
+    expect(p.taxRate).toBe(5.5);
+  });
+});
+
+describe('extractFieldErrors — plus de générique muet', () => {
+  it('mappe les details class-validator sur des champs libellés', () => {
+    const errs = extractFieldErrors({
+      code: 'VALIDATION_ERROR', message: 'Erreur de validation.',
+      details: ['property price should not exist', 'priceMinorUnits must be an integer number', 'taxRate must not be less than 0'],
+    });
+    expect(errs).toHaveLength(3);
+    expect(errs[0].field).toBe('price');
+    expect(errs[0].message).toMatch(/obsolète/);
+    expect(errs[1].message).toBe('Prix de vente : nombre invalide.');
+    expect(errs[2].message).toBe('TVA : doit être positif ou nul.');
+  });
+  it("apiErrorMessage n'affiche jamais le générique quand des details existent", () => {
+    const msg = apiErrorMessage({ response: { data: { message: 'Erreur de validation.', details: ['name should not be empty'] } } });
+    expect(msg).toBe('Nom : obligatoire.');
+  });
+  it('apiErrorMessage relaie les messages métier précis (ex. EAN déjà utilisé)', () => {
+    const msg = apiErrorMessage({ response: { data: { message: 'Un produit existe déjà avec ce code-barres (123) : Coca.' } } });
+    expect(msg).toMatch(/existe déjà/);
+  });
+});
