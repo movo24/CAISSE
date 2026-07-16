@@ -149,3 +149,20 @@ Mission owner : RBAC pilotage par magasin + journal d'activité (connexions/sess
 - Captures : en session (pane), pas PNG disque (limitation outil de capture). `.env`/launch.json restaurés.
 
 **Verdict : TERMINÉ ET VALIDÉ** (réserves : merge `main` = Tier-2 GO owner ; captures = session). D21 CLOSED.
+
+### 2026-07-16 — Fiche produit ERP P-A + P-B (branche `feat/product-sheet-erp-pa`, poussée `origin`)
+- Spec `bd4179b` retrouvée (branche `origin/claude/customer-display-vertical-eolixp`) ; arbitrages
+  owner **D-FP1→D-FP5** = validation de la section 5 de la spec (proposition → validée).
+- **P-A/M-A** (`ffbc4a1` schéma mig `1768` additif + entité + DTO + `TRACKED_FIELDS` ; `e007664`
+  fiche backoffice + tests) : 14 champs `products`. **P-B** (`8665e96`, mig `1769`) : `product_media.kind`
+  + index unique partiel `uq_product_media_main` (1 principale/produit) ; `uq_product_categories_store_parent_name` ;
+  CategoryPicker (recherche chemin + création inline) ; arbre illimité **sans colonne `level`**.
+- **Vérif exacte** : tsc BE/FE 0 ; lint 0 (fichiers touchés + `eslint src`) ; jest **1084/10 skipped/0 échec** ;
+  vitest **84/0** ; `1768`/`1769` `up/down/up` sur PG local isolé (bases jetables supprimées, `caisse_liveverify`
+  intacte) ; contraintes DB **prouvées par rejet** (2ᵉ `main`, catégorie dupliquée).
+- **Registre migrations** créé (`docs/MIGRATIONS_LEDGER.md`, anti-P372) : lignées 1758→1769, règle d'or,
+  piège d'ordre 1767 vs 1759-1766, ordre de merge catalogue→ERP. Dépendance catalogue **prouvée** (fichiers
+  absents d'`origin/main`).
+- **Réserve honnête** : **parcours clic-à-clic live NON fait** (pile backend+DB+auth non montée) — fiche
+  ajoutée aux surfaces à vérifier (`docs/design/product-sheet-erp-live-verification.md`).
+- **Gated** : P-C (prix caisse — `GO_PC_PACKAGE.md`), exécution base partagée, merge `main`. Aucun merge/déploiement.

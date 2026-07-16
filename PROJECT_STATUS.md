@@ -215,3 +215,24 @@ propre. **12 commits · aucun merge (Tier-2, GO requis).**
 - **Verdict : TERMINÉ ET VALIDÉ** (réserves : merge `main` = Tier-2 GO owner ; captures = fichiers en session,
   pas PNG disque — limitation outil). Détails : `docs/design/access-activity-audit-deliverables.md`.
 - Rôle POS `cashier/manager/admin` **inchangé** ; `application_role` = dimension séparée.
+
+## Fiche produit ERP — P-A + P-B (2026-07-16)
+
+Branche `feat/product-sheet-erp-pa` (**poussée sur `origin`**), stackée sur `feat/catalog-refonte`.
+Spec : `docs/design/product-sheet-erp.md` (`bd4179b`), arbitrages **D-FP1→D-FP5** validés.
+
+- **P-A/M-A** (mig `1768`) : 14 champs `products` (cycle de vie commercial distinct du statut,
+  fabricant, libellé ticket, désignation longue, poids net, planif. stock, emplacement, étiquettes)
+  + fiche backoffice câblée + journal M-E. **P-B** (mig `1769`) : `product_media.kind` + **1 image
+  principale/produit** (index unique partiel) ; **unicité catégorie** (store/parent/nom) en renfort ;
+  arbre **illimité SANS colonne `level`** ; CategoryPicker (recherche chemin + création inline).
+- **Vérif** : backend **1084/0**, frontend **84/0**, typecheck/lint 0 ; `1768`/`1769` `up/down/up`
+  sur PG réel isolé, contraintes prouvées par rejet. **3 commits** (`ffbc4a1`,`e007664`,`8665e96`),
+  **aucun merge**.
+- **Ordre de merge requis** : `feat/catalog-refonte` (1759-1766) **→** `feat/product-sheet-erp-pa`
+  (1768-1769). Dépendance prouvée (fichiers catalogue absents d'`origin/main`). Registre :
+  `docs/MIGRATIONS_LEDGER.md`. ⚠️ `feat/catalog-refonte` **pas encore sur le remote** (à pousser en 1er).
+- **Reste gated (Tier-2, GO nominatif)** : **P-C** (`product_promotions` + prix caisse) → dossier
+  `GO_PC_PACKAGE.md` ; exécution migration sur base partagée ; merge `main`.
+- **Vérif LIVE clic-à-clic : NON FAITE** — fiche produit ajoutée aux surfaces à parcourir
+  (`docs/design/product-sheet-erp-live-verification.md`).
