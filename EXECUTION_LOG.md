@@ -182,3 +182,22 @@ activation du flag hors test local, tout merge.
 - **Vérifs globales** (vrai PG, exit 0) : pg-mem 967/0 ; F0 3/3 ; F1 5/5 ; F2 5/5 ; F1b 4/4 ;
   réconciliation 4/4 ; non-régression gated (packs 2/2, avoir-atomicité 1/1, fiscal-e2e 1/1, anti-survente 1/1).
 - **7 commits** sur `origin/main`. Restent gatés : activation flag hors test, F3, F4, tout merge.
+
+## 2026-07-17 — Branding ADDX Pilote (icônes app permanentes) + reprise backlog
+
+### Livraison icônes ADDX Pilote — worktree isolé, branche `feat/addx-pilote-icon`, commit `b11c322`
+- Icône d'install/PWA refaite à partir du **logo officiel ADDX** (`pos-desktop/src/renderer/assets/addx-logo.png`,
+  repris tel quel) + mention « Pilote » en **Inter** (police officielle). Aucune icône inventée.
+- **Vrais fichiers aux dimensions annoncées** (pas un 1024 multi-déclaré) : `apple-touch-icon.png` 180²,
+  `icon-192.png` 192², `icon-512.png` 512², `icon-maskable-512.png` 512² (zone de sécurité vérifiée, contenu
+  centré ~55 %), `favicon.png` 48², `icons/app-icon.png` 512² (sidebar). `manifest.webmanifest` (name
+  « ADDX Pilote », short « Pilote », maskable) + balises iOS + liens **versionnés** `?v=20260715a` (anti-cache iOS).
+- **Ancienne miniature QR éliminée** : diff `apple-touch-icon.png Bin 620829→27065`, `icons/app-icon.png
+  620829→96007` ; scan du `dist/` construit = **0 fichier de 620 829 o**.
+- **WORKTREE isolé** (`git worktree`, off origin/main) — jamais touché au checkout d'une autre session.
+  Testé après **build PROPRE** (pas d'injection proxy), servi sur `:8100`, login réel `200`.
+- **Push** `origin/feat/addx-pilote-icon` (local == remote sur `b11c322`).
+- **PR : blocage traité dans les règles** — `gh pr create` refusé (`GraphQL: must be a collaborator`, limite
+  cross-compte connue de `movo24/CAISSE`). **Signalé + documenté + lien prêt** pour le clic humain
+  (`https://github.com/movo24/CAISSE/pull/new/feat/addx-pilote-icon`), **aucun contournement par la clé SSH**.
+  Ouverture/merge PR = gaté (owner). Serveur d'injection `:8099` **éteint** (n'est plus une livraison).

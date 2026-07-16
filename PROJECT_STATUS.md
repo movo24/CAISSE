@@ -231,6 +231,19 @@ ARCHIVE** — ne plus l'utiliser comme véhicule de GO ni de merge.
   prêts dans `GO_F2_PACKAGE.md`. **F3 est aussi bloqué physiquement** tant que le flag n'a pas tourné
   en double-run (journal vide → bascule = stock 0).
 - **Gaté, GO nominatif** — **activation du flag hors test local**, **F3**, **F4**, **tout merge**.
+
+## Branding ADDX Pilote + file d'attente (2026-07-17)
+- **Livré** (branche `feat/addx-pilote-icon`, commit `b11c322`, poussée sur origin) : icône app **permanente et
+  versionnée** = logo officiel ADDX + « Pilote » (Inter) ; vraies tailles 180 / 192 / 512 / maskable-512 / 48 /
+  512-sidebar ; `manifest.webmanifest` (name « ADDX Pilote », short « Pilote », maskable) ; balises iOS +
+  versionnement anti-cache ; **ancienne QR supprimée du build**. Détails : `EXECUTION_LOG.md` 2026-07-17.
+- **Recette (OUTIL, pas une livraison)** : build permanent servi sur `http://192.168.1.191:8100/` (LAN) pour
+  tests iPhone/iPad. **À éteindre proprement en fin de session** (pas de service orphelin). `:8099` déjà éteint.
+- **File d'attente — clics / GO owner (gatés ; je n'ouvre ni ne merge)** :
+  1. **PR icônes** `feat/addx-pilote-icon` → `https://github.com/movo24/CAISSE/pull/new/feat/addx-pilote-icon`
+  2. **PR access-audit** `feat/mobile-access-and-activity-audit` (livré + vérifié live, non mergé)
+  3. Déjà en attente : **DNS cutover**, **redeploy Railway**, **D-FP1..D-FP5**, **Lot 1 accès**,
+     **P0/P1 Payment Engine**, activation flag stock-journal + **F3/F4**, rotations secrets D6/D8.
 - **Dette D22 (rétrécie)** — moitié « couverture » fermée par F1b+F2 (tous les chemins caisse
   journalisés). Reste : legacy système B → F4, et solde d'ouverture → cutover F3. D21 réservée
   à la branche accès non mergée.
