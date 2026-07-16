@@ -204,21 +204,33 @@ Chaque action attend son GO nommé — aucune ne s'ouvre sur un « continue » g
 > `GO_F2_PACKAGE.md` · Dette : **D22**. **Aucun merge (Tier-2, GO owner).**
 
 **Véhicule canonique du GO : `feat/stock-journal-nf525-on-main`** — branchée sur `origin/main`,
-**3 commits**, indépendante du catalogue (prouvé : intersection = 3 docs de suivi, aucun fichier de
+**7 commits**, indépendante du catalogue (prouvé : intersection = 3 docs de suivi, aucun fichier de
 code ; toutes les tables requises sur `origin/main`). Mergeable **seule**, sans embarquer la refonte
 catalogue. ⚠️ **La branche empilée `feat/stock-journal-nf525` (stack de 40 commits catalogue) est
 ARCHIVE** — ne plus l'utiliser comme véhicule de GO ni de merge.
+> Écart pg-mem 1072 (stacked) → 967 (on-main) = **105 tests**, entièrement la différence de base :
+> 104 tests dans 11 specs catalogue+accès + 1 test `csv-util` (Lot H). Aucun test manquant.
 
-- **F0** — mig 1767 additive : `stock_movements` += liaison vente (store_id/sale_id/sale_line_item_id/
-  occurred_at) + index + unique partiel. ZÉRO comportement. Base vierge : 40 migrations, **tête = 1767**
-  (au-dessus de 1758 ; trou 1759→1766 = accès+catalogue absents, sans effet). ✅
-- **F1** — écriture double *shadow*, flag `STOCK_JOURNAL_SHADOW` **OFF par défaut**. Vente+retour →
-  mouvements, lecture caisse inchangée. **Hash de vente inchangé** (recalcul canonique prouvé). ✅
-- **Vérifs (vrai PG, base jetable, exit 0)** — pg-mem **967/0** ; F0 gated **3/3** ; F1 gated **5/5** ;
-  4 specs fiscales flag OFF (avoir-atomicité 1/1, fiscal-e2e 1/1, packs 2/2, anti-survente 1/1) ;
-  réconciliation **3/3**.
-- **Gaté, GO nominatif** — **F2** (void inverse + fix G3), **F1b** (`inventory_adjust` shadow ;
-  recommandation *delta signé* motivée + test), **F3** (bascule lecture + cutover solde d'ouverture),
-  **F4** (retrait legacy), **activation du flag hors test local**, **tout merge**.
-- **Dette D22** — couverture shadow partielle (vente+retour seulement) ⇒ réconciliation **non
-  exhaustive** tant que F1b/F2 non livrés. D21 réservée à la branche accès non mergée.
+- **F0** — mig 1767 additive : liaison vente sur `stock_movements` + index + unique partiel. ZÉRO
+  comportement. Base vierge : 40 migrations, **tête = 1767**. ✅
+- **F1** — écriture double *shadow*, flag **OFF par défaut**. Vente+retour → mouvements. Hash inchangé. ✅
+- **F1b** — `inventory_adjust` shadow, `quantity` = **delta signé** (convention ratifiée). ✅
+- **F2** — void restitue les composants de pack (**correctif G3**, preuve rouge→vert jouée) +
+  mouvements inverses `void`. Hash de la vente d'origine inchangé. ✅
+- **Couverture caisse COMPLÈTE** : tous les chemins qui mutent le scalaire (vente/pack/retour/void/
+  ajustement) écrivent le journal sous flag. Reste hors journal : système B legacy → F4.
+- **Instrument exécutable** — `scripts/stock-reconcile.js` : CLI **lecture seule stricte**
+  (`BEGIN TRANSACTION READ ONLY`), rapport par produit/magasin + Δgap, exit 0/2/1 vérifiés.
+- **Runbook** — `STOCK_JOURNAL_ACTIVATION_RUNBOOK.md` : activation mécanique (variable, ordre
+  local→sandbox→[prod interdite], surveillance, rollback, critère N motivé par le volume).
+- **Vérifs (vrai PG, base jetable, exit 0)** — pg-mem **967/0** ; F0 **3/3** ; F1 **5/5** ;
+  **F1b 4/4** ; **F2 5/5** ; réconciliation **4/4** ; non-régression fiscale (avoir 1/1, fiscal-e2e 1/1,
+  packs 2/2, anti-survente 1/1).
+- **En attente de DÉCISIONS owner (pas un « GO » — un choix)** — **F3** : (a) projection-cache vs
+  bascule littérale, (b) cutover script vs migration, (c) N jours ; **F4** : Option A vs B. Dossiers
+  prêts dans `GO_F2_PACKAGE.md`. **F3 est aussi bloqué physiquement** tant que le flag n'a pas tourné
+  en double-run (journal vide → bascule = stock 0).
+- **Gaté, GO nominatif** — **activation du flag hors test local**, **F3**, **F4**, **tout merge**.
+- **Dette D22 (rétrécie)** — moitié « couverture » fermée par F1b+F2 (tous les chemins caisse
+  journalisés). Reste : legacy système B → F4, et solde d'ouverture → cutover F3. D21 réservée
+  à la branche accès non mergée.

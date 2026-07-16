@@ -157,3 +157,28 @@ Safe restant : audit read-only des modules ⚠️ (jackpot/loyalty/etc.) → con
 
 **Restent gatés (GO nominatif)** : F2, F1b, F3 (bascule lecture + cutover), F4 (retrait legacy),
 activation du flag hors test local, tout merge.
+
+### 2026-07-16 (suite) — F2 + F1b livrés (GO nominatif), dossiers F3/F4, runbook + instrument
+- **F2** (`94fc362`) — void restitue les composants de pack (correctif G3) depuis le snapshot figé
+  `sale_component_movements` + mouvements inverses `void` (parent+composants, sous flag). Hash de
+  vente inchangé. **Preuve rouge→vert RÉELLEMENT jouée** : le spec contre le `voidSale` d'avant-F2
+  est rouge (4 échecs/5, composant jamais recrédité), vert après. `stock-journal-void-f2.pg.spec.ts` 5/5.
+- **F1b** (`fe888a4`) — `inventory_adjust` en shadow, `quantity` = **delta signé** (convention ratifiée) ;
+  ferme la couverture caisse (tous les chemins scalaires sont journalisés). `stock-journal-adjust-f1b.pg.spec.ts` 4/4.
+  **Correction honnête** : le 3e test de réconciliation (adjust non couvert → gap varie) avait sa prémisse
+  invalidée par F1b → réécrit (adjust couvert → gap constant) + nouveau test conservant la propriété via
+  un chemin réellement non journalisé (mutation scalaire legacy). D22 rétrécie.
+- **Dossiers F3/F4** (`2250ed1`) : F3 précondition BLOQUANTE (flag OFF partout → journal vide →
+  bascule = stock 0) ; décisions (a) projection-cache vs bascule littérale, (b) cutover script vs
+  migration, (c) N jours ; F4 Option A (ops entrepôt écrivent le journal) vs B.
+- **Résolution 1072→967** (comptabilité exacte, aucun test manquant) : 104 tests dans 11 specs
+  catalogue+accès présents seulement sur la branche stackée + 1 test ajouté à `csv-util.spec.ts`
+  par le catalogue (Lot H) = **105** = 1072−967. La branche on-main ne porte pas ces suites, c'est correct.
+- **Runbook + instrument (périmètre auto)** : `STOCK_JOURNAL_ACTIVATION_RUNBOOK.md` (variable exacte,
+  ordre local→sandbox→[prod interdite], effet, surveillance, rollback, critère N motivé par le volume) ;
+  `packages/backend/scripts/stock-reconcile.js` — CLI **lecture seule stricte** (`BEGIN TRANSACTION
+  READ ONLY`), rapport par produit/magasin + Δgap, codes retour 0/2/1 tous vérifiés (dont exit 2 sur
+  mutation non journalisée), écriture refusée en READ ONLY prouvée.
+- **Vérifs globales** (vrai PG, exit 0) : pg-mem 967/0 ; F0 3/3 ; F1 5/5 ; F2 5/5 ; F1b 4/4 ;
+  réconciliation 4/4 ; non-régression gated (packs 2/2, avoir-atomicité 1/1, fiscal-e2e 1/1, anti-survente 1/1).
+- **7 commits** sur `origin/main`. Restent gatés : activation flag hors test, F3, F4, tout merge.
