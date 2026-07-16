@@ -23,6 +23,10 @@ import { PRODUCT_STATUSES, ProductStatus } from './product-integration.dto';
 export const PRODUCT_TYPES = ['simple', 'variant', 'pack', 'service', 'deposit', 'gift_card'] as const;
 export type ProductType = (typeof PRODUCT_TYPES)[number];
 
+/** Cycle de vie COMMERCIAL (P-A/M-A) — distinct du workflow `status`. */
+export const PRODUCT_LIFECYCLE_STATUSES = ['active', 'inactive', 'discontinued', 'seasonal'] as const;
+export type ProductLifecycleStatus = (typeof PRODUCT_LIFECYCLE_STATUSES)[number];
+
 export class CreateProductDto {
   @ApiProperty({ example: '3760123456789' })
   @IsString()
@@ -225,6 +229,63 @@ export class CreateProductDto {
   @ApiPropertyOptional({ description: 'Numéro de lot' })
   @IsOptional() @IsString() @MaxLength(60)
   lotNumber?: string;
+
+  // ── P-A / M-A — complétion « fiche produit ERP » (colonnes migration 1768) ──
+  @ApiPropertyOptional({ description: 'Désignation commerciale longue (≤300)' })
+  @IsOptional() @IsString() @MaxLength(300)
+  longDesignation?: string;
+
+  @ApiPropertyOptional({ description: 'Description interne (non publique)' })
+  @IsOptional() @IsString() @MaxLength(5000)
+  internalDescription?: string;
+
+  @ApiPropertyOptional({ description: 'Libellé imprimé sur le ticket (≤80)' })
+  @IsOptional() @IsString() @MaxLength(80)
+  receiptDescription?: string;
+
+  @ApiPropertyOptional({ description: 'Fabricant' })
+  @IsOptional() @IsString() @MaxLength(120)
+  manufacturer?: string;
+
+  @ApiPropertyOptional({ enum: PRODUCT_LIFECYCLE_STATUSES, description: 'Cycle de vie commercial' })
+  @IsOptional() @IsIn(PRODUCT_LIFECYCLE_STATUSES)
+  lifecycleStatus?: ProductLifecycleStatus;
+
+  @ApiPropertyOptional({ description: 'Poids net (grammes) — weightGrams = poids brut' })
+  @IsOptional() @IsInt() @Min(0)
+  weightNetG?: number;
+
+  @ApiPropertyOptional({ description: 'Stock réservé (planification ERP)' })
+  @IsOptional() @IsInt() @Min(0)
+  stockReserved?: number;
+
+  @ApiPropertyOptional({ description: 'Stock minimum cible (planification ERP)' })
+  @IsOptional() @IsInt() @Min(0)
+  stockMin?: number;
+
+  @ApiPropertyOptional({ description: 'Stock maximum cible (planification ERP)' })
+  @IsOptional() @IsInt() @Min(0)
+  stockMax?: number;
+
+  @ApiPropertyOptional({ description: 'Stock de sécurité (planification ERP)' })
+  @IsOptional() @IsInt() @Min(0)
+  stockSafety?: number;
+
+  @ApiPropertyOptional({ description: 'Allée / rayon (marquage magasin)' })
+  @IsOptional() @IsString() @MaxLength(40)
+  aisle?: string;
+
+  @ApiPropertyOptional({ description: 'Étagère (marquage magasin)' })
+  @IsOptional() @IsString() @MaxLength(40)
+  shelf?: string;
+
+  @ApiPropertyOptional({ description: 'Niveau (marquage magasin)' })
+  @IsOptional() @IsString() @MaxLength(40)
+  level?: string;
+
+  @ApiPropertyOptional({ description: 'Étiquettes libres', type: [String] })
+  @IsOptional() @IsArray() @ArrayMaxSize(50) @IsString({ each: true }) @MaxLength(40, { each: true })
+  tags?: string[];
 }
 
 export class UpdateProductDto {
@@ -439,6 +500,63 @@ export class UpdateProductDto {
   @ApiPropertyOptional({ description: 'Numéro de lot' })
   @IsOptional() @IsString() @MaxLength(60)
   lotNumber?: string;
+
+  // ── P-A / M-A — complétion « fiche produit ERP » (colonnes migration 1768) ──
+  @ApiPropertyOptional({ description: 'Désignation commerciale longue (≤300)' })
+  @IsOptional() @IsString() @MaxLength(300)
+  longDesignation?: string;
+
+  @ApiPropertyOptional({ description: 'Description interne (non publique)' })
+  @IsOptional() @IsString() @MaxLength(5000)
+  internalDescription?: string;
+
+  @ApiPropertyOptional({ description: 'Libellé imprimé sur le ticket (≤80)' })
+  @IsOptional() @IsString() @MaxLength(80)
+  receiptDescription?: string;
+
+  @ApiPropertyOptional({ description: 'Fabricant' })
+  @IsOptional() @IsString() @MaxLength(120)
+  manufacturer?: string;
+
+  @ApiPropertyOptional({ enum: PRODUCT_LIFECYCLE_STATUSES, description: 'Cycle de vie commercial' })
+  @IsOptional() @IsIn(PRODUCT_LIFECYCLE_STATUSES)
+  lifecycleStatus?: ProductLifecycleStatus;
+
+  @ApiPropertyOptional({ description: 'Poids net (grammes) — weightGrams = poids brut' })
+  @IsOptional() @IsInt() @Min(0)
+  weightNetG?: number;
+
+  @ApiPropertyOptional({ description: 'Stock réservé (planification ERP)' })
+  @IsOptional() @IsInt() @Min(0)
+  stockReserved?: number;
+
+  @ApiPropertyOptional({ description: 'Stock minimum cible (planification ERP)' })
+  @IsOptional() @IsInt() @Min(0)
+  stockMin?: number;
+
+  @ApiPropertyOptional({ description: 'Stock maximum cible (planification ERP)' })
+  @IsOptional() @IsInt() @Min(0)
+  stockMax?: number;
+
+  @ApiPropertyOptional({ description: 'Stock de sécurité (planification ERP)' })
+  @IsOptional() @IsInt() @Min(0)
+  stockSafety?: number;
+
+  @ApiPropertyOptional({ description: 'Allée / rayon (marquage magasin)' })
+  @IsOptional() @IsString() @MaxLength(40)
+  aisle?: string;
+
+  @ApiPropertyOptional({ description: 'Étagère (marquage magasin)' })
+  @IsOptional() @IsString() @MaxLength(40)
+  shelf?: string;
+
+  @ApiPropertyOptional({ description: 'Niveau (marquage magasin)' })
+  @IsOptional() @IsString() @MaxLength(40)
+  level?: string;
+
+  @ApiPropertyOptional({ description: 'Étiquettes libres', type: [String] })
+  @IsOptional() @IsArray() @ArrayMaxSize(50) @IsString({ each: true }) @MaxLength(40, { each: true })
+  tags?: string[];
 }
 
 /** Hierarchical product category — create with an optional parent. */

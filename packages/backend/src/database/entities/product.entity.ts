@@ -167,6 +167,60 @@ export class ProductEntity {
   @Column({ name: 'lot_number', type: 'varchar', length: 60, nullable: true })
   lotNumber: string | null;
 
+  // ── P-A / M-A — complétion « fiche produit ERP » (migration 1768, tous additifs) ──
+  /** Désignation commerciale longue (≤300). Distincte de `shortName` (libellé court catalogue). */
+  @Column({ name: 'long_designation', type: 'varchar', length: 300, nullable: true })
+  longDesignation: string | null;
+
+  /** Description interne (non publique). `description` reste la description publique. */
+  @Column({ name: 'internal_description', type: 'text', nullable: true })
+  internalDescription: string | null;
+
+  /** Libellé exact imprimé sur le ticket (contrainte largeur imprimante, ≤80). */
+  @Column({ name: 'receipt_description', type: 'varchar', length: 80, nullable: true })
+  receiptDescription: string | null;
+
+  @Column({ name: 'manufacturer', type: 'varchar', length: 120, nullable: true })
+  manufacturer: string | null;
+
+  /**
+   * Cycle de vie COMMERCIAL — orthogonal au `status` workflow ci-dessus.
+   * `status` = validation (draft/pending_validation/active/rejected/archived) ;
+   * `lifecycleStatus` = commercialisation (un produit validé peut être `discontinued`).
+   */
+  @Column({ name: 'lifecycle_status', type: 'varchar', length: 20, default: 'active' })
+  lifecycleStatus: 'active' | 'inactive' | 'discontinued' | 'seasonal';
+
+  /** Poids net. `weightGrams` existant = poids brut (emballage compris). */
+  @Column({ name: 'weight_net_g', type: 'integer', nullable: true })
+  weightNetG: number | null;
+
+  // Planification de stock ERP (distincte des seuils d'alerte POS existants).
+  @Column({ name: 'stock_reserved', type: 'integer', default: 0 })
+  stockReserved: number;
+
+  @Column({ name: 'stock_min', type: 'integer', nullable: true })
+  stockMin: number | null;
+
+  @Column({ name: 'stock_max', type: 'integer', nullable: true })
+  stockMax: number | null;
+
+  @Column({ name: 'stock_safety', type: 'integer', nullable: true })
+  stockSafety: number | null;
+
+  // Emplacement magasin — marquage texte court (complémentaire à stock_locations).
+  @Column({ name: 'aisle', type: 'varchar', length: 40, nullable: true })
+  aisle: string | null;
+
+  @Column({ name: 'shelf', type: 'varchar', length: 40, nullable: true })
+  shelf: string | null;
+
+  @Column({ name: 'level', type: 'varchar', length: 40, nullable: true })
+  level: string | null;
+
+  @Column({ name: 'tags', type: 'jsonb', default: () => "'[]'" })
+  tags: string[];
+
   @Column({ name: 'store_id' })
   storeId: string;
 

@@ -117,6 +117,9 @@ export class ProductsService {
     'weightGrams', 'widthMm', 'heightMm', 'depthMm', 'volumeMl', 'unitsPerCarton',
     'isSeasonal', 'seasonStartMonth', 'seasonEndMonth',
     'minPriceMinorUnits', 'recommendedPriceMinorUnits', 'unitsPerPack', 'cartonsPerPallet', 'lotNumber',
+    // P-A / M-A — complétion « fiche produit ERP » (migration 1768).
+    'longDesignation', 'internalDescription', 'receiptDescription', 'manufacturer', 'lifecycleStatus',
+    'weightNetG', 'stockReserved', 'stockMin', 'stockMax', 'stockSafety', 'aisle', 'shelf', 'level', 'tags',
   ];
 
   private async recordChangeLog(
