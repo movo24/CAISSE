@@ -236,3 +236,11 @@ Spec : `docs/design/product-sheet-erp.md` (`bd4179b`), arbitrages **D-FP1→D-FP
   `GO_PC_PACKAGE.md` ; exécution migration sur base partagée ; merge `main`.
 - **Vérif LIVE clic-à-clic : NON FAITE** — fiche produit ajoutée aux surfaces à parcourir
   (`docs/design/product-sheet-erp-live-verification.md`).
+
+### Fiche produit ERP — P-D (périmètre réduit, 2026-07-17)
+- ✅ **M-G vues serveur** (mig `1770`) : `user_saved_filters` + `/me/saved-filters` ; `ProductsPage`
+  persiste côté serveur (repli local). ✅ **Stats réelles** : `GET /products/:id/stats` (ventes/CA/panier/
+  marge/rang/série 12 s. depuis ventes complétées) + onglet Statistiques réécrit.
+- Commits `ab5c6e5` (M-G), `cec3f53` (stats). BE **1091/0**, FE **84/0**, build OK. **Aucun merge.**
+- ⏸️ **Scan multi-sources exclu** (D-FP3 = décision produit ouverte, gaté). Registre : 1770 = M-G.
+- `feat/catalog-refonte` désormais **poussée** (`1fc932f`) — ordre de merge catalogue→ERP inchangé.

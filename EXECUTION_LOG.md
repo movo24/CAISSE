@@ -166,3 +166,18 @@ Mission owner : RBAC pilotage par magasin + journal d'activité (connexions/sess
 - **Réserve honnête** : **parcours clic-à-clic live NON fait** (pile backend+DB+auth non montée) — fiche
   ajoutée aux surfaces à vérifier (`docs/design/product-sheet-erp-live-verification.md`).
 - **Gated** : P-C (prix caisse — `GO_PC_PACKAGE.md`), exécution base partagée, merge `main`. Aucun merge/déploiement.
+
+### 2026-07-17 — Fiche produit ERP P-D (périmètre réduit, sans scan D-FP3)
+- **Prérequis** : `feat/catalog-refonte` **poussée sur origin** (`1fc932f`, local==remote) — la lignée
+  porteuse de 1759-1766 n'existait que localement. Registre mis à jour.
+- **P-D ① M-G** (`ab5c6e5`, mig `1770` — numéro vérifié libre sur toutes les refs, ligne registre même
+  commit) : table `user_saved_filters` (employee/page/name/config jsonb) + unicité (employee,page,name) ;
+  module `SavedFilters` (`GET/POST/DELETE /me/saved-filters`, JwtAuthGuard) ; front `ProductsPage` bascule
+  du localStorage vers le serveur (repli local gracieux). `up/down/up` PG isolé + unicité prouvée par rejet.
+- **P-D ② stats réelles** (`cec3f53`, aucune migration) : `getProductStats` + `GET /products/:id/stats` —
+  agrégats depuis ventes complétées (nb ventes, unités, CA, panier moyen, marge coût-courant labellisée,
+  rang borné, série 12 s.). Onglet Statistiques réécrit (cartes + histogramme). SQL **prouvé sur données
+  réelles seedées** (PG isolé) : résumé 2/10/12000/HT 10000, panier 6000, rang 1/2, série correcte.
+- **Vérif exacte** : tsc BE/FE 0 ; lint 0 ; jest **1091/10 skipped/0 échec** ; vitest **84/0** ; build FE OK.
+- **Exclu** : scan multi-sources (D-FP3 — décision produit ouverte, gaté). **Gated** : P-C (prix caisse,
+  `GO_PC_PACKAGE.md`), exécution base partagée, merge `main`. Aucun merge/déploiement.

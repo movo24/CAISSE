@@ -19,6 +19,8 @@ La fiche produit ERP (`ProductEditPage`) s'ajoute à la **liste des surfaces à 
 3. **Logistique** : poids brut vs net.
 4. **Images** : sélecteur de type par image ; unicité « principale » observée à l'écran ; réordonnancement.
 5. **Transversal** : valeurs nulles (champs omis), journal des modifications (M-E) alimenté, duplication reprenant les champs M-A.
+6. **Catalogue (P-D/M-G)** : enregistrer une vue depuis `ProductsPage`, recharger la page/changer de poste → la vue **persiste côté serveur** ; supprimer une vue ; comportement en cas de coupure réseau (repli local).
+7. **Statistiques (P-D)** : onglet Statistiques d'un produit ayant des ventes réelles → cartes (ventes/CA/panier/marge/rang) et histogramme 12 semaines cohérents ; produit sans vente → tout à 0 (jamais simulé).
 
 **Attendu du parcours** : aucune régression console/réseau, payloads conformes aux DTO, journal `product_change_log` alimenté pour les champs M-A.
 
