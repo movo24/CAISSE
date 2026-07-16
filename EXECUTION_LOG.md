@@ -201,3 +201,16 @@ activation du flag hors test local, tout merge.
   cross-compte connue de `movo24/CAISSE`). **Signalé + documenté + lien prêt** pour le clic humain
   (`https://github.com/movo24/CAISSE/pull/new/feat/addx-pilote-icon`), **aucun contournement par la clé SSH**.
   Ouverture/merge PR = gaté (owner). Serveur d'injection `:8099` **éteint** (n'est plus une livraison).
+
+### HT ↔ TTC bidirectionnel (backlog, logique pure) — branche `feat/pos-ht-ttc-2026-07`
+- **Item non livré confirmé** (grep code + PROJECT_STATUS) : seul `extractTax` (TTC→HT) existait dans
+  `shared/utils/money.ts` ; pas de HT→TTC ni d'API bidirectionnelle.
+- **Ajouté (additif, foyer canonique `shared/utils/money.ts`)** : `HtTtc` + `htToTtc(ht, taux)` +
+  `ttcToHt(ttc, taux)` (réutilise `extractTax`). Entiers en centimes, invariant `ht+tva===ttc` **par
+  construction** (jamais de perte d'arrondi).
+- **Tests (`packages/backend/test/vat-httc.spec.ts`, importé en relatif → couvert par `npm run test:backend`
+  en CI, moduleNameMapper `@caisse/shared` mappe vers le shared d'un autre checkout dans le worktree)** :
+  valeurs connues (20/5.5/10/0 %), **arrondis** au centime (demi vers le haut), invariant sur large plage ×
+  taux France, **virgule française** (`formatMoney` → « 12,00 € », « 12 345,67 € »), et **CYCLE SANS DÉRIVE**
+  (aller-retour HT→TTC→HT ×1000 : point fixe dès le 2e cycle, écart ≤ 1 centime ; round-trip TTC exact). **12/12**.
+- **Vérifs** : tsc backend 0, eslint 0, non-régression money/currency 42 verts.

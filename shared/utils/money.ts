@@ -53,3 +53,31 @@ export function extractTax(
   const tax = grossMinorUnits - net;
   return { netMinorUnits: net, taxMinorUnits: tax };
 }
+
+/**
+ * Répartition HT / TVA / TTC, tout en **centimes entiers**.
+ * Invariant garanti par construction : `htMinorUnits + taxMinorUnits === ttcMinorUnits`.
+ */
+export interface HtTtc {
+  htMinorUnits: number;
+  taxMinorUnits: number;
+  ttcMinorUnits: number;
+}
+
+/**
+ * HT (hors taxes) → TTC. Prix en centimes entiers, taux en pourcent (ex. `20`, `5.5`).
+ * Arrondi au centime le plus proche (demi vers le haut). Garantit ht + tax === ttc.
+ */
+export function htToTtc(htMinorUnits: number, taxRatePercent: number): HtTtc {
+  const ttc = Math.round(htMinorUnits * (1 + taxRatePercent / 100));
+  return { htMinorUnits, taxMinorUnits: ttc - htMinorUnits, ttcMinorUnits: ttc };
+}
+
+/**
+ * TTC (toutes taxes comprises) → HT. Réutilise `extractTax`
+ * (net = round(ttc / (1 + taux))). Garantit ht + tax === ttc.
+ */
+export function ttcToHt(ttcMinorUnits: number, taxRatePercent: number): HtTtc {
+  const { netMinorUnits, taxMinorUnits } = extractTax(ttcMinorUnits, taxRatePercent);
+  return { htMinorUnits: netMinorUnits, taxMinorUnits, ttcMinorUnits };
+}
