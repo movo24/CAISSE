@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { productsApi } from '../services/api';
 import { apiErrorMessage } from './productForm';
+import { ttcFromHt, eurosInputToMinor, minorToEurosInput, parseTaxRate } from './pricingMath';
 
 /**
  * Fiche produit PROFESSIONNELLE (page complète — remplace la popup minimaliste).
@@ -112,6 +113,8 @@ export function ProductEditPage() {
   const [priceHistory, setPriceHistory] = useState<any[]>([]);
   const [analytics, setAnalytics] = useState<any | null>(null);
   const [reason, setReason] = useState('');
+  // Saisie HT en cours (source de vérité tant que l'utilisateur tape côté HT)
+  const [htInput, setHtInput] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -386,16 +389,47 @@ export function ProductEditPage() {
 
         {tab === 'tarification' && (
           <div className="space-y-6">
+            {/* Saisie BIDIRECTIONNELLE : HT édité → TTC recalculé ; TTC édité →
+                HT dérivé ; TVA changée → TTC recalculé depuis le HT affiché.
+                Cycle sans dérive prouvé par pricingMath.test (balayage exhaustif). */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
               <Field label="Prix d'achat HT (€)"><input className={inputCls} inputMode="decimal" value={form.cost} onChange={(e) => set('cost', e.target.value)} /></Field>
-              <Field label="Prix d'achat TTC (calc.)"><input className={`${inputCls} bg-gray-50`} disabled value={eur(calc.costTtc)} /></Field>
-              <Field label="Prix de vente TTC (€) *"><input className={inputCls} inputMode="decimal" value={form.priceTtc} onChange={(e) => set('priceTtc', e.target.value)} /></Field>
-              <Field label="TVA (%)"><input className={inputCls} inputMode="decimal" value={form.taxRate} onChange={(e) => set('taxRate', e.target.value)} /></Field>
+              <Field label="Prix de vente HT (€)">
+                <input
+                  className={inputCls} inputMode="decimal"
+                  value={htInput !== null ? htInput : (calc.ht != null ? minorToEurosInput(calc.ht) : '')}
+                  onChange={(e) => {
+                    setHtInput(e.target.value);
+                    const ht = eurosInputToMinor(e.target.value);
+                    const t = parseTaxRate(form.taxRate);
+                    if (ht != null && t != null) set('priceTtc', minorToEurosInput(ttcFromHt(ht, t)));
+                  }}
+                />
+              </Field>
+              <Field label="Prix de vente TTC (€) *">
+                <input
+                  className={inputCls} inputMode="decimal" value={form.priceTtc}
+                  onChange={(e) => { setHtInput(null); set('priceTtc', e.target.value); }}
+                />
+              </Field>
+              <Field label="TVA (%)">
+                <input
+                  className={inputCls} inputMode="decimal" value={form.taxRate}
+                  onChange={(e) => {
+                    const newRate = e.target.value;
+                    set('taxRate', newRate);
+                    // HT en cours d'édition → il reste maître : TTC recalculé au nouveau taux.
+                    const ht = htInput !== null ? eurosInputToMinor(htInput) : null;
+                    const t = parseTaxRate(newRate);
+                    if (ht != null && t != null) set('priceTtc', minorToEurosInput(ttcFromHt(ht, t)));
+                  }}
+                />
+              </Field>
             </div>
             {/* Marges automatiques */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {[
-                ['Prix de vente HT', eur(calc.ht)],
+                ["Prix d'achat TTC", eur(calc.costTtc)],
                 ['Marge (€ HT)', eur(calc.margeM)],
                 ['Taux de marge (/PA)', calc.tauxMarge != null ? calc.tauxMarge.toFixed(1) + ' %' : '—'],
                 ['Taux de marque (/PV HT)', calc.tauxMarque != null ? calc.tauxMarque.toFixed(1) + ' %' : '—'],
