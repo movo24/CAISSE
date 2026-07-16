@@ -54,11 +54,29 @@ jobs:
       # SÉRIE (--runInBand) : les 3 suites partagent la base et construisent leur
       # schéma via synchronize. TEST_DATABASE_URL est scopée à CETTE étape : la
       # suite pg-mem ci-dessus ne la voit pas (les 3 specs y restent skipped).
-      - name: Backend PG specs (real Postgres, serial)
-        env:
-          TEST_DATABASE_URL: postgresql://caisse:ci_throwaway_not_a_secret@localhost:5432/caisse_test
-        run: npx jest --runInBand --forceExit --testPathPattern '\.pg\.spec\.ts$'
+      # D23 — isolation PAR spec : chaque *.pg.spec.ts tourne sur sa PROPRE base
+      # jetable (creee/detruite ici), au lieu d'une base partagee entre specs
+      # `synchronize` et `runMigrations`. Rend le harnais robuste independamment
+      # de la vigilance de chaque auteur (incident 2026-07-16, cf. TECHNICAL_DEBT D23).
+      - name: Backend PG specs (real Postgres, one DB per spec)
         working-directory: packages/backend
+        env:
+          PGHOST: localhost
+          PGPORT: "5432"
+          PGUSER: caisse
+          PGPASSWORD: ci_throwaway_not_a_secret
+        run: |
+          set -uo pipefail
+          fail=0
+          for f in $(find test -name '*.pg.spec.ts' | sort); do
+            db="ci_$(basename "$f" .pg.spec.ts | tr -c 'a-z0-9' '_')"
+            dropdb --if-exists "$db"; createdb "$db"
+            echo "PG spec $f -> base $db"
+            if ! TEST_DATABASE_URL="postgresql://caisse:ci_throwaway_not_a_secret@localhost:5432/$db" \
+                 npx jest --forceExit "$f"; then fail=1; fi
+            dropdb --if-exists "$db"
+          done
+          exit $fail
 
       - name: POS desktop tests (vitest)
         run: npm run test --workspace=@caisse/pos-desktop
