@@ -16,6 +16,10 @@ export class ProductMediaEntity {
   @Column({ type: 'text' })
   url: string;
 
+  /** Type d'image (M-C). Au plus un `main` par produit (index unique partiel). */
+  @Column({ type: 'varchar', length: 12, default: 'other' })
+  kind: 'main' | 'front' | 'back' | 'detail' | 'other';
+
   @Column({ name: 'sort_order', type: 'integer', default: 0 })
   sortOrder: number;
 

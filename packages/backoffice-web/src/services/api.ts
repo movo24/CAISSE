@@ -294,7 +294,8 @@ export const productsApi = {
   removeBarcode: (id: string, barcodeId: string) => api.delete(`/products/${id}/barcodes/${barcodeId}`),
   // Galerie & documents (Lot 4 — URLs externes)
   listMedia: (id: string) => api.get(`/products/${id}/media`),
-  addMedia: (id: string, url: string) => api.post(`/products/${id}/media`, { url }),
+  addMedia: (id: string, url: string, kind?: string) => api.post(`/products/${id}/media`, { url, kind }),
+  setMediaKind: (id: string, mediaId: string, kind: string) => api.put(`/products/${id}/media/${mediaId}/kind`, { kind }),
   removeMedia: (id: string, mediaId: string) => api.delete(`/products/${id}/media/${mediaId}`),
   reorderMedia: (id: string, orderedIds: string[]) => api.put(`/products/${id}/media/reorder`, { orderedIds }),
   listDocuments: (id: string) => api.get(`/products/${id}/documents`),

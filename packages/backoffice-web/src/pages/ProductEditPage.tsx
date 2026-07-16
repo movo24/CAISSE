@@ -3,10 +3,10 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   ScanBarcode, Save, ArrowLeft, Loader2, Package, Euro, Boxes, Truck,
   Layers, GitBranch, Image as ImageIcon, Ruler, BadgePercent, BarChart3,
-  History, Plus, Trash2, AlertCircle, CheckCircle2, Pencil, Link2,
+  History, Plus, Trash2, AlertCircle, CheckCircle2, Pencil, Link2, ChevronsUpDown,
 } from 'lucide-react';
 import { productsApi } from '../services/api';
-import { parseTags, formatTags } from './productForm';
+import { parseTags, formatTags, categoryFullPath, type CategoryNode } from './productForm';
 
 /**
  * Fiche produit PROFESSIONNELLE (page complète — remplace la popup minimaliste).
@@ -86,6 +86,73 @@ function Phase2Notice({ fields }: { fields: string }) {
       <p className="font-semibold mb-0.5">Phase 2 — champs non encore persistés en base</p>
       <p>{fields}</p>
       <p className="mt-1 text-amber-600">Nécessite une migration de la table produits (validation owner). Aucune donnée fictive n'est affichée.</p>
+    </div>
+  );
+}
+
+/**
+ * Sélecteur de catégorie (P-B / M-B) : recherche par chemin complet, rattachement
+ * à un vrai nœud, et création inline (racine ou sous la sélection) sans quitter la fiche.
+ * L'arbre est illimité (profondeur dérivée de parentId, jamais stockée).
+ */
+function CategoryPicker({
+  categories, value, onChange, onCreate,
+}: {
+  categories: CategoryNode[];
+  value: string;
+  onChange: (id: string) => void;
+  onCreate: (name: string, parentId: string | null) => Promise<string | null>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [busy, setBusy] = useState(false);
+  const selectedPath = categoryFullPath(categories, value);
+  const q = query.trim().toLowerCase();
+  const matches = categories
+    .map((c) => ({ c, path: categoryFullPath(categories, c.id) }))
+    .filter(({ path }) => !q || path.toLowerCase().includes(q))
+    .sort((a, b) => a.path.localeCompare(b.path))
+    .slice(0, 50);
+  const exists = categories.some((c) => c.name.trim().toLowerCase() === q);
+  const create = async (parentId: string | null) => {
+    if (!query.trim()) return;
+    setBusy(true);
+    const id = await onCreate(query.trim(), parentId);
+    setBusy(false);
+    if (id) { onChange(id); setQuery(''); setOpen(false); }
+  };
+  return (
+    <div className="relative">
+      <button type="button" onClick={() => setOpen((o) => !o)} className={`${inputCls} text-left flex items-center justify-between gap-2`}>
+        <span className={`truncate ${selectedPath ? 'text-bo-text' : 'text-gray-400'}`}>{selectedPath || '— Aucune —'}</span>
+        <ChevronsUpDown size={14} className="text-gray-400 shrink-0" />
+      </button>
+      {open && (
+        <div className="absolute z-20 mt-1 w-full rounded-xl border border-gray-200 bg-white shadow-lg p-2 space-y-1">
+          <input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Rechercher ou créer une catégorie…" className={inputCls} />
+          <div className="max-h-56 overflow-y-auto">
+            <button type="button" onClick={() => { onChange(''); setQuery(''); setOpen(false); }} className="w-full text-left px-2 py-1.5 text-sm rounded-lg hover:bg-gray-50 text-gray-400">— Aucune —</button>
+            {matches.map(({ c, path }) => (
+              <button key={c.id} type="button" onClick={() => { onChange(c.id); setQuery(''); setOpen(false); }}
+                className={`w-full text-left px-2 py-1.5 text-sm rounded-lg hover:bg-gray-50 ${c.id === value ? 'text-bo-accent font-semibold' : 'text-gray-700'}`}>
+                {path}
+              </button>
+            ))}
+            {query.trim() && !exists && (
+              <div className="border-t border-gray-100 mt-1 pt-1 space-y-1">
+                <button type="button" disabled={busy} onClick={() => create(null)} className="w-full text-left px-2 py-1.5 text-sm rounded-lg hover:bg-bo-accent/5 text-bo-accent disabled:opacity-50">
+                  ＋ Créer « {query.trim()} » à la racine
+                </button>
+                {value && (
+                  <button type="button" disabled={busy} onClick={() => create(value)} className="w-full text-left px-2 py-1.5 text-sm rounded-lg hover:bg-bo-accent/5 text-bo-accent disabled:opacity-50">
+                    ＋ Créer « {query.trim()} » sous « {selectedPath} »
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -309,26 +376,6 @@ export function ProductEditPage() {
     return { ttc, ht, cost, costTtc, margeM, tauxMarge, tauxMarque };
   }, [form.priceTtc, form.cost, form.taxRate]);
 
-  // ── Options catégories (arbre hiérarchique aplati, indenté) ──
-  const catOptions = useMemo(() => {
-    const byParent = new Map<string | null, typeof categories>();
-    for (const c of categories) {
-      const k = c.parentId ?? null;
-      if (!byParent.has(k)) byParent.set(k, []);
-      byParent.get(k)!.push(c);
-    }
-    for (const l of byParent.values()) l.sort((a, b) => a.name.localeCompare(b.name));
-    const out: Array<{ id: string; label: string }> = [];
-    const walk = (pid: string | null, depth: number) => {
-      for (const c of byParent.get(pid) ?? []) {
-        out.push({ id: c.id, label: `${'  '.repeat(depth)}${c.name}` });
-        walk(c.id, depth + 1);
-      }
-    };
-    walk(null, 0);
-    return out;
-  }, [categories]);
-
   // ── Sauvegarde ──
   const save = async () => {
     setError(null); setSaved(false);
@@ -427,6 +474,19 @@ export function ProductEditPage() {
     const r = await productsApi.createSupplier(name).catch(() => null);
     if (r?.data) { setSuppliers((s) => [...s, r.data]); set('supplierId', r.data.id); }
   };
+  // P-B / M-B — création d'une catégorie sans quitter la fiche.
+  const createCategoryInline = async (name: string, parentId: string | null): Promise<string | null> => {
+    try {
+      const created = (await productsApi.createCategory({ name, parentId })).data;
+      setCategories((cs) => (cs.some((c) => c.id === created.id)
+        ? cs.map((c) => (c.id === created.id ? { id: created.id, name: created.name, parentId: created.parentId ?? null } : c))
+        : [...cs, { id: created.id, name: created.name, parentId: created.parentId ?? null }]));
+      return created.id;
+    } catch (e: any) {
+      setError(e?.response?.data?.message || 'Création de catégorie impossible');
+      return null;
+    }
+  };
 
   // ── Onglet Packs ──
   const [compEan, setCompEan] = useState(''); const [compQty, setCompQty] = useState('1');
@@ -515,6 +575,12 @@ export function ProductEditPage() {
     if (!id) return;
     await productsApi.removeMedia(id, mid).catch(() => {});
     setMedia((await productsApi.listMedia(id)).data || []);
+  };
+  const setMediaKind = async (mid: string, kind: string) => {
+    if (!id) return;
+    try {
+      setMedia((await productsApi.setMediaKind(id, mid, kind)).data || []);
+    } catch (e: any) { setError(e?.response?.data?.message || 'Changement de type impossible'); }
   };
   const moveMedia = async (from: number, to: number) => {
     if (!id || from === to || from == null) return;
@@ -693,14 +759,13 @@ export function ProductEditPage() {
             </Field>
             <Field label="Désignation / description"><textarea rows={3} className={inputCls} value={form.description} onChange={(e) => set('description', e.target.value)} /></Field>
             <div className="space-y-5">
-              <Field label="Catégorie" hint="Arborescence gérée dans Catalogue › Catégories.">
-                <select className={inputCls} value={form.categoryId} onChange={(e) => set('categoryId', e.target.value)}>
-                  <option value="">— Aucune —</option>
-                  {catOptions.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
-                  {form.categoryId && !categories.some((c) => c.id === form.categoryId) && (
-                    <option value={form.categoryId}>{form.categoryId} (actuel)</option>
-                  )}
-                </select>
+              <Field label="Catégorie" hint="Recherche par chemin complet ; création directe (racine ou sous-catégorie) sans quitter la fiche.">
+                <CategoryPicker
+                  categories={categories}
+                  value={form.categoryId}
+                  onChange={(cid) => set('categoryId', cid)}
+                  onCreate={createCategoryInline}
+                />
               </Field>
               <Field label="SKU interne"><input className={`${inputCls} font-mono`} value={form.sku} onChange={(e) => set('sku', e.target.value)} placeholder="SKU-001" /></Field>
             </div>
@@ -1135,21 +1200,29 @@ export function ProductEditPage() {
                     <>
                       <div className="flex flex-wrap gap-3">
                         {media.map((m, idx) => (
-                          <div
-                            key={m.id}
-                            draggable
-                            onDragStart={() => setDragMediaIdx(idx)}
-                            onDragOver={(e) => e.preventDefault()}
-                            onDrop={() => { if (dragMediaIdx !== null) moveMedia(dragMediaIdx, idx); setDragMediaIdx(null); }}
-                            className={`relative w-24 h-24 rounded-xl border bg-gray-50 overflow-hidden group cursor-move ${dragMediaIdx === idx ? 'border-bo-accent opacity-60' : 'border-gray-100'}`}
-                          >
-                            <img src={m.url} alt="" className="w-full h-full object-contain pointer-events-none" />
-                            {idx === 0 && <span className="absolute bottom-1 left-1 text-[9px] font-semibold bg-white/90 text-bo-accent px-1 rounded">principale</span>}
-                            <button onClick={() => removeMedia(m.id)} className="absolute top-1 right-1 p-1 rounded-lg bg-white/90 text-red-500 opacity-0 group-hover:opacity-100"><Trash2 size={13} /></button>
+                          <div key={m.id} className="w-28 space-y-1">
+                            <div
+                              draggable
+                              onDragStart={() => setDragMediaIdx(idx)}
+                              onDragOver={(e) => e.preventDefault()}
+                              onDrop={() => { if (dragMediaIdx !== null) moveMedia(dragMediaIdx, idx); setDragMediaIdx(null); }}
+                              className={`relative w-28 h-28 rounded-xl border bg-gray-50 overflow-hidden group cursor-move ${dragMediaIdx === idx ? 'border-bo-accent opacity-60' : m.kind === 'main' ? 'border-bo-accent' : 'border-gray-100'}`}
+                            >
+                              <img src={m.url} alt="" className="w-full h-full object-contain pointer-events-none" />
+                              {m.kind === 'main' && <span className="absolute bottom-1 left-1 text-[9px] font-semibold bg-white/90 text-bo-accent px-1 rounded">principale</span>}
+                              <button onClick={() => removeMedia(m.id)} className="absolute top-1 right-1 p-1 rounded-lg bg-white/90 text-red-500 opacity-0 group-hover:opacity-100"><Trash2 size={13} /></button>
+                            </div>
+                            <select value={m.kind || 'other'} onChange={(e) => setMediaKind(m.id, e.target.value)} className="w-full text-[11px] px-1.5 py-1 rounded-lg border border-gray-200 bg-white">
+                              <option value="main">Principale</option>
+                              <option value="front">Face</option>
+                              <option value="back">Dos</option>
+                              <option value="detail">Détail</option>
+                              <option value="other">Autre</option>
+                            </select>
                           </div>
                         ))}
                       </div>
-                      <p className="text-[11px] text-gray-400">Glissez-déposez pour réordonner ; la première image est la principale.</p>
+                      <p className="text-[11px] text-gray-400">Glissez-déposez pour réordonner ; le type &laquo;&nbsp;Principale&nbsp;&raquo; (unique par produit) est l’image mise en avant.</p>
                     </>
                   )}
                 </div>

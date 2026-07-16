@@ -80,6 +80,36 @@ export function formatTags(tags: unknown): string {
   return Array.isArray(tags) ? tags.filter((t): t is string => typeof t === 'string').join(', ') : '';
 }
 
+/** Nœud d'arbre catégories (P-B / M-B). */
+export interface CategoryNode {
+  id: string;
+  name: string;
+  parentId: string | null;
+}
+
+/**
+ * Chemin complet d'une catégorie (« Racine › Parent › Feuille ») calculé depuis
+ * `parentId` — la profondeur n'est JAMAIS stockée (arbre réellement illimité).
+ * Tolère les références cassées et les cycles (garde anti-boucle).
+ */
+export function categoryFullPath(
+  categories: CategoryNode[],
+  id: string | null | undefined,
+  sep = ' › ',
+): string {
+  if (!id) return '';
+  const byId = new Map(categories.map((c) => [c.id, c]));
+  const parts: string[] = [];
+  const guard = new Set<string>();
+  let cur = byId.get(id);
+  while (cur && !guard.has(cur.id)) {
+    guard.add(cur.id);
+    parts.unshift(cur.name);
+    cur = cur.parentId ? byId.get(cur.parentId) : undefined;
+  }
+  return parts.join(sep);
+}
+
 /** Renvoie un message d'erreur, ou null si le formulaire est valide. */
 export function validateProductForm(form: ProductFormValues, isEdit: boolean): string | null {
   if (!form.name.trim()) return 'Le nom du produit est obligatoire.';

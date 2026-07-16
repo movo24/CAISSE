@@ -379,9 +379,16 @@ export class ProductsController {
 
   @Post(':id/media')
   @Roles('admin', 'manager')
-  @ApiOperation({ summary: 'Add an image URL to the gallery' })
-  addMedia(@Param('id') id: string, @Body() body: { url: string }, @Request() req: any) {
-    return this.productsService.addMedia(id, req.user.storeId, body?.url ?? '');
+  @ApiOperation({ summary: 'Add an image URL to the gallery (optional kind: main|front|back|detail|other)' })
+  addMedia(@Param('id') id: string, @Body() body: { url: string; kind?: any }, @Request() req: any) {
+    return this.productsService.addMedia(id, req.user.storeId, body?.url ?? '', body?.kind);
+  }
+
+  @Put(':id/media/:mediaId/kind')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'Set the kind of an image (main|front|back|detail|other) — setting main unsets the previous main' })
+  setMediaKind(@Param('id') id: string, @Param('mediaId') mediaId: string, @Body() body: { kind: any }, @Request() req: any) {
+    return this.productsService.setMediaKind(id, req.user.storeId, mediaId, body?.kind);
   }
 
   @Delete(':id/media/:mediaId')

@@ -5,6 +5,8 @@ import {
   buildUpdatePayload,
   parseTags,
   formatTags,
+  categoryFullPath,
+  type CategoryNode,
   type ProductFormValues,
 } from './productForm';
 
@@ -140,5 +142,35 @@ describe('parseTags / formatTags (P-A / M-A — étiquettes jsonb)', () => {
 
   it('aller-retour parse ∘ format est stable', () => {
     expect(parseTags(formatTags(['a', 'b', 'c']))).toEqual(['a', 'b', 'c']);
+  });
+});
+
+describe('categoryFullPath (P-B / M-B — chemin complet, arbre illimité)', () => {
+  const tree: CategoryNode[] = [
+    { id: 'a', name: 'Alimentaire', parentId: null },
+    { id: 'b', name: 'Boissons', parentId: 'a' },
+    { id: 'c', name: 'Sodas', parentId: 'b' },
+    { id: 'd', name: 'Colas', parentId: 'c' }, // profondeur 4 — aucune limite
+  ];
+
+  it('construit le chemin racine → feuille sans stocker la profondeur', () => {
+    expect(categoryFullPath(tree, 'd')).toBe('Alimentaire › Boissons › Sodas › Colas');
+    expect(categoryFullPath(tree, 'a')).toBe('Alimentaire');
+  });
+
+  it('renvoie une chaîne vide pour id absent/nul', () => {
+    expect(categoryFullPath(tree, null)).toBe('');
+    expect(categoryFullPath(tree, undefined)).toBe('');
+    expect(categoryFullPath(tree, 'zzz')).toBe('');
+  });
+
+  it('ne boucle pas en présence d\'un cycle (parenté cassée)', () => {
+    const cyclic: CategoryNode[] = [
+      { id: 'x', name: 'X', parentId: 'y' },
+      { id: 'y', name: 'Y', parentId: 'x' },
+    ];
+    const path = categoryFullPath(cyclic, 'x');
+    expect(path).toContain('X');
+    expect(path.split(' › ').length).toBeLessThanOrEqual(2); // garde anti-boucle
   });
 });

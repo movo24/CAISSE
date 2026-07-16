@@ -281,17 +281,64 @@ export class ProductsService {
     return this.mediaRepo.find({ where: { productId, storeId }, order: { sortOrder: 'ASC', createdAt: 'ASC' } });
   }
 
-  async addMedia(productId: string, storeId: string, url: string): Promise<ProductMediaEntity> {
+  /** Types d'image autorisés (M-C). */
+  static readonly MEDIA_KINDS = ['main', 'front', 'back', 'detail', 'other'] as const;
+
+  async addMedia(
+    productId: string,
+    storeId: string,
+    url: string,
+    kind?: ProductMediaEntity['kind'],
+  ): Promise<ProductMediaEntity> {
     await this.findOneForStore(productId, storeId);
     const clean = (url || '').trim();
     if (!clean) throw new BadRequestException("L'URL de l'image est requise");
+    if (kind && !(ProductsService.MEDIA_KINDS as readonly string[]).includes(kind)) {
+      throw new BadRequestException("Type d'image invalide");
+    }
     const count = await this.mediaRepo.count({ where: { productId, storeId } });
-    return this.mediaRepo.save(this.mediaRepo.create({ productId, storeId, url: clean, sortOrder: count }));
+    // Première image d'un produit → principale par défaut ; sinon `other`.
+    const resolvedKind = kind ?? (count === 0 ? 'main' : 'other');
+    // Une seule principale par produit (respecte l'index unique partiel).
+    if (resolvedKind === 'main' && count > 0) {
+      await this.mediaRepo.update({ productId, storeId, kind: 'main' }, { kind: 'other' });
+    }
+    return this.mediaRepo.save(
+      this.mediaRepo.create({ productId, storeId, url: clean, sortOrder: count, kind: resolvedKind }),
+    );
+  }
+
+  /** Change le type d'une image ; définir `main` retire la principale précédente. */
+  async setMediaKind(
+    productId: string,
+    storeId: string,
+    mediaId: string,
+    kind: ProductMediaEntity['kind'],
+  ): Promise<ProductMediaEntity[]> {
+    await this.findOneForStore(productId, storeId);
+    if (!(ProductsService.MEDIA_KINDS as readonly string[]).includes(kind)) {
+      throw new BadRequestException("Type d'image invalide");
+    }
+    const row = await this.mediaRepo.findOne({ where: { id: mediaId, productId, storeId } });
+    if (!row) throw new NotFoundException('Image introuvable');
+    if (kind === 'main') {
+      await this.mediaRepo.update({ productId, storeId, kind: 'main' }, { kind: 'other' });
+    }
+    await this.mediaRepo.update({ id: mediaId, productId, storeId }, { kind });
+    return this.listMedia(productId, storeId);
   }
 
   async removeMedia(productId: string, storeId: string, mediaId: string): Promise<{ message: string }> {
     await this.findOneForStore(productId, storeId);
     await this.mediaRepo.delete({ id: mediaId, productId, storeId });
+    // Garantit qu'il reste une principale s'il reste des images.
+    const remaining = await this.mediaRepo.find({
+      where: { productId, storeId },
+      order: { sortOrder: 'ASC', createdAt: 'ASC' },
+    });
+    if (remaining.length && !remaining.some((r) => r.kind === 'main')) {
+      await this.mediaRepo.update({ id: remaining[0].id }, { kind: 'main' });
+    }
     return { message: 'Image retirée.' };
   }
 
@@ -942,7 +989,7 @@ export class ProductsService {
     }
     // Galerie + documents.
     const media = await this.mediaRepo.find({ where: { productId: sourceId, storeId } });
-    for (const m of media) await this.mediaRepo.save(this.mediaRepo.create({ productId: clone.id, storeId, url: m.url, sortOrder: m.sortOrder }));
+    for (const m of media) await this.mediaRepo.save(this.mediaRepo.create({ productId: clone.id, storeId, url: m.url, sortOrder: m.sortOrder, kind: m.kind }));
     const docs = await this.documentRepo.find({ where: { productId: sourceId, storeId } });
     for (const d of docs) await this.documentRepo.save(this.documentRepo.create({ productId: clone.id, storeId, name: d.name, url: d.url }));
     // Fournisseurs + liens.
