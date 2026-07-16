@@ -47,6 +47,12 @@ Never touch another session's uncommitted WIP (no stash / pop / discard without 
 OK); never commit `node_modules`; never force-push a shared branch; never delete branches
 without explicit OK.
 
+**No direct write to `main` — ever.** No push / revert / reset / ref-update on `main`, whatever
+key is technically available. The SSH `movo24` key (repo owner) pushes feature branches only;
+`main` changes go through a PR gated by owner GO. **A PR that cannot be created or merged (missing
+rights) is a BLOCKER to surface — never a licence to reach `main` by another technical path.**
+Technical possibility ≠ authorization. (Ratified after incident 2026-07-16.)
+
 ## §6 — Critical-bug sequence (applies only in the §2 space)
 branch → tests-as-spec (red ok) → brief fix-design → fix → targeted + relevant suite →
 commit → report. A critical bug on a **Tier-2 surface** (payment / auth / fiscal) →

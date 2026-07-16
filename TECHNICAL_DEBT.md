@@ -154,3 +154,30 @@ bascule **F3** (0 divergence après cutover + couverture complète).
 d'ouverture) atteint `gap → 0`. **Cross-refs.** `PRODUCTS_FISCAL_STOCK_SYNTHESIS.md`,
 `GO_F2_PACKAGE.md`, `stock-journal-shadow.pg.spec.ts`, `stock-reconciliation-readonly.pg.spec.ts`.
 **Rappel :** F1b/F2/F3/F4, activation du flag hors test local, et tout merge = Tier-2 (GO explicite).
+
+---
+
+## D23 — Harnais CI PG fragile : base UNIQUE partagée entre specs `synchronize` et `runMigrations`
+**Status:** OPEN (harnais CI) · **P2.** **Since:** incident 2026-07-16.
+
+**Contexte / incident.** `ci.yml` exécute tous les `*.pg.spec.ts` en `--runInBand` sur **UNE seule
+base** (`caisse_test`). Les specs `synchronize:true` y coexistent (idempotents, UUID uniques). Un
+spec `runMigrations()` (qui exige une base VIERGE) y a été introduit
+(`stock-movement-linkage-migration.pg.spec.ts`, lot fiscal) → il a rejoué la lignée sur un schéma
+déjà bâti par `synchronize` → `AddEmployeeStoreAccess1711` a échoué (`column "employee_id" does not
+exist`) → **`main` CI rouge** (main était verte en continu avant). Le code produit était sain
+(boot 200, migrations OK, flag OFF 967/0) ; défaut **purement de test/harnais**.
+
+**Correctif immédiat (branche `fix/ci-pg-spec-isolation`).** Le spec migration crée/détruit
+désormais sa **propre base dédiée jetable** (`caisse_mig_f0_<pid>`), donc CI-safe. Preuve : run
+CI-simulé (tous les pg specs `--runInBand` sur une base partagée) **vert, 28/28, exit 0**. Règle
+ajoutée (`CLAUDE.md` Pre-Modification Workflow §8, Security Rules 10-11 ; charte §5).
+
+**Dette résiduelle (harnais).** La robustesse repose sur la discipline « chaque spec migration
+s'isole ». **Plus robuste : isoler la base PAR spec côté `ci.yml`** (une base éphémère par fichier,
+ou `--runInBand` avec reset de schéma entre fichiers), pour que le harnais ne dépende plus de la
+vigilance de chaque auteur. **Ferme :** proposition d'évolution `ci.yml` (isolation par spec) +
+GO owner (modif workflow).
+
+**Cross-refs.** `stock-movement-linkage-migration.pg.spec.ts`, `.github/workflows/ci.yml`,
+`CLAUDE.md` (Security Rules 10-11, Pre-Modification §8), `.claude/rules/continuity.md` §5.

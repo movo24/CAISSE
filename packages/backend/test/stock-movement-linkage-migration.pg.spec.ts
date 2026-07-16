@@ -1,9 +1,14 @@
 /**
  * Non-régression migration F0 (liaison vente sur stock_movements) sur un VRAI Postgres.
  * Gated sur TEST_DATABASE_URL — skippé sinon (la suite pg-mem normale n'est pas affectée).
- * ⚠️ Pointer TEST_DATABASE_URL vers une base VIERGE dédiée (le run applique toute la lignée).
  *
- *   TEST_DATABASE_URL=postgresql://user@localhost:5432/caisse_mig_verify \
+ * CI-SAFE : ce spec applique TOUTE la lignée de migrations (runMigrations), donc il exige
+ * une base VIERGE — incompatible avec la base PARTAGÉE que `ci.yml` réutilise entre tous les
+ * `*.pg.spec.ts` (peuplée par les specs `synchronize`). Il crée donc lui-même une base
+ * DÉDIÉE jetable (à partir de la connexion TEST_DATABASE_URL) et la détruit en fin de run.
+ * Correctif de l'incident CI 2026-07-16 (collision runMigrations ↔ schéma synchronize).
+ *
+ *   TEST_DATABASE_URL=postgresql://user@localhost:5432/caisse_test \
  *     npx jest --forceExit test/stock-movement-linkage-migration.pg.spec.ts
  *
  * Prouve, pour le bloc F0 (PRODUCTS_FISCAL_STOCK_SYNTHESIS.md) :
@@ -15,10 +20,13 @@
  */
 import * as path from 'path';
 import { DataSource } from 'typeorm';
+import { Client } from 'pg';
 import { loadAllEntities } from './helpers/pgmem';
 
 const TEST_DB = process.env.TEST_DATABASE_URL;
 const d = TEST_DB ? describe : describe.skip;
+// Base dédiée jetable, propre à ce process (unique en --runInBand comme en parallèle).
+const DEDICATED = `caisse_mig_f0_${process.pid}`;
 
 const MIGRATION = 'AddStockMovementSaleLinkage1767000000000';
 const NEW_COLUMNS = ['store_id', 'sale_id', 'sale_line_item_id', 'occurred_at'];
@@ -34,6 +42,7 @@ const FISCAL_TABLES = ['sales', 'fiscal_journal', 'credit_notes', 'audit_entries
 
 d('Migration F0 stock_movements liaison vente up/down (real Postgres)', () => {
   let ds: DataSource;
+  let admin: Client;
 
   const columns = async (t: string): Promise<string[]> =>
     (await ds.query('SELECT column_name FROM information_schema.columns WHERE table_name=$1', [t])).map((r: any) => r.column_name);
@@ -45,9 +54,17 @@ d('Migration F0 stock_movements liaison vente up/down (real Postgres)', () => {
     (await ds.query(`SELECT to_regclass('public.${t}') IS NOT NULL AS e`))[0].e === true;
 
   beforeAll(async () => {
+    // 1) Créer une base DÉDIÉE jetable via la connexion fournie (base partagée en CI).
+    admin = new Client({ connectionString: TEST_DB });
+    await admin.connect();
+    await admin.query(`DROP DATABASE IF EXISTS ${DEDICATED} WITH (FORCE)`);
+    await admin.query(`CREATE DATABASE ${DEDICATED}`);
+    // 2) Pointer la DataSource migrations sur cette base dédiée (URL = même serveur, autre db).
+    const u = new URL(TEST_DB as string);
+    u.pathname = `/${DEDICATED}`;
     ds = new DataSource({
       type: 'postgres',
-      url: TEST_DB,
+      url: u.toString(),
       entities: loadAllEntities() as any,
       migrations: [path.join(__dirname, '../src/database/migrations/*.ts')],
       synchronize: false,
@@ -58,7 +75,11 @@ d('Migration F0 stock_movements liaison vente up/down (real Postgres)', () => {
   }, 120000);
 
   afterAll(async () => {
-    await ds?.destroy();
+    await ds?.destroy(); // ferme les connexions avant le DROP
+    if (admin) {
+      await admin.query(`DROP DATABASE IF EXISTS ${DEDICATED} WITH (FORCE)`);
+      await admin.end();
+    }
   });
 
   it('up : colonnes de liaison + index (dont unique partielle), colonnes legacy préservées', async () => {

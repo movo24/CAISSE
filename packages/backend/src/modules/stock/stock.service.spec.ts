@@ -18,6 +18,10 @@ describe('StockService — adjustStock', () => {
     manager = {
       findOne: jest.fn().mockResolvedValue(product()),
       save: jest.fn().mockImplementation((p: any) => Promise.resolve(p)),
+      // Journal de stock unifié (F1b) : adjustStock insère un mouvement dans la
+      // MÊME tx quand STOCK_JOURNAL_SHADOW=true. Le mock doit fournir `insert`
+      // sinon la matrice flag-ON casse (piège latent — cf. audit CI 2026-07-16).
+      insert: jest.fn().mockResolvedValue({ identifiers: [], generatedMaps: [], raw: [] }),
     };
     const dataSource = { transaction: (fn: any) => fn(manager) } as unknown as DataSource;
     audit = { log: jest.fn().mockResolvedValue(undefined) };

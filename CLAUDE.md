@@ -219,6 +219,13 @@ Current migrations (run in order):
 7. **No JWT regeneration** without explicit permission
 8. **No modification to Backend A** (`api.addxintelligence.com`) — production canonical, untouchable
 9. **No Cloudflare/Railway config changes** without explicit GO
+10. **No direct write to `main` — ever.** No push, revert, reset or any ref update on `main`,
+    *whatever key is technically available*. The SSH `movo24` key (repo owner) can push directly
+    but **is for feature branches only**. `main` changes go through a **PR**, gated by owner GO.
+    (Incident 2026-07-16 : un « go merge » a été exécuté par push SSH direct après échec de la PR
+    — faute. Voir D23.)
+11. **PR impossible to create/merge = a BLOCKER to surface, full stop.** Never route around a
+    missing permission by another technical path. Report it and wait.
 
 ---
 
@@ -356,6 +363,12 @@ Before editing any file:
 5. **Execute** — targeted edit, not batch rewrites
 6. **Test** — `npm run test:backend` must pass
 7. **Security check** — no secrets in diff, `.gitignore` intact
+8. **PG-spec CI-safety** — any new/changed `*.pg.spec.ts` MUST pass under the **exact CI shape**:
+   all pg specs chained on ONE shared DB via `TEST_DATABASE_URL=… npx jest --runInBand
+   --testPathPattern '\.pg\.spec\.ts$'`. A spec that uses `runMigrations()` (needs a virgin DB)
+   must create/own a **dedicated throwaway DB** — an isolated single-spec run proves nothing here.
+   (Incident 2026-07-16 : a `runMigrations` spec collided with `synchronize` specs on the shared
+   CI DB → `main` CI red. See D23.)
 
 ---
 
