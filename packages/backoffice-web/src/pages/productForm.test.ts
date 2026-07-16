@@ -3,6 +3,8 @@ import {
   validateProductForm,
   buildCreatePayload,
   buildUpdatePayload,
+  parseTags,
+  formatTags,
   type ProductFormValues,
 } from './productForm';
 
@@ -117,5 +119,26 @@ describe('validateProductForm', () => {
     expect(validateProductForm({ ...base, stock: '-2' }, false)).toMatch(/stock/i);
     expect(validateProductForm({ ...base, cost: '-1' }, false)).toMatch(/achat/i);
     expect(validateProductForm({ ...base, taxRate: '-5' }, false)).toMatch(/TVA/i);
+  });
+});
+
+describe('parseTags / formatTags (P-A / M-A — étiquettes jsonb)', () => {
+  it('parse une chaîne CSV en tableau nettoyé (trim, sans vides)', () => {
+    expect(parseTags('bio, promo ,  , local')).toEqual(['bio', 'promo', 'local']);
+    expect(parseTags('')).toEqual([]);
+    expect(parseTags('   ')).toEqual([]);
+    expect(parseTags('unique')).toEqual(['unique']);
+  });
+
+  it('formate un tableau en chaîne CSV et tolère les valeurs non-tableau', () => {
+    expect(formatTags(['bio', 'local'])).toBe('bio, local');
+    expect(formatTags([])).toBe('');
+    expect(formatTags(null)).toBe('');
+    expect(formatTags(undefined)).toBe('');
+    expect(formatTags(['ok', 3, null])).toBe('ok'); // ignore le bruit non-string
+  });
+
+  it('aller-retour parse ∘ format est stable', () => {
+    expect(parseTags(formatTags(['a', 'b', 'c']))).toEqual(['a', 'b', 'c']);
   });
 });

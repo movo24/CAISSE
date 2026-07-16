@@ -6,6 +6,7 @@ import {
   History, Plus, Trash2, AlertCircle, CheckCircle2, Pencil, Link2,
 } from 'lucide-react';
 import { productsApi } from '../services/api';
+import { parseTags, formatTags } from './productForm';
 
 /**
  * Fiche produit PROFESSIONNELLE (page complète — remplace la popup minimaliste).
@@ -125,6 +126,10 @@ export function ProductEditPage() {
     // Lot I — prix encadrés, conditionnement, réglementaire
     minPrice: '', recommendedPrice: '', unitsPerPack: '', cartonsPerPallet: '',
     allergens: '', ingredients: '', bestBeforeDate: '', useByDate: '', lotNumber: '',
+    // P-A / M-A — complétion « fiche produit ERP » (colonnes migration 1768)
+    longDesignation: '', receiptDescription: '', manufacturer: '', lifecycleStatus: 'active',
+    weightNetG: '', stockReserved: '', stockMin: '', stockMax: '', stockSafety: '',
+    aisle: '', shelf: '', level: '', tags: '',
   });
   const set = (k: keyof typeof form, v: any) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -203,6 +208,14 @@ export function ProductEditPage() {
               depthMm: src.depthMm != null ? String(src.depthMm) : '',
               volumeMl: src.volumeMl != null ? String(src.volumeMl) : '',
               unitsPerCarton: src.unitsPerCarton != null ? String(src.unitsPerCarton) : '',
+              longDesignation: src.longDesignation || '', receiptDescription: src.receiptDescription || '',
+              manufacturer: src.manufacturer || '', lifecycleStatus: src.lifecycleStatus || 'active',
+              weightNetG: src.weightNetG != null ? String(src.weightNetG) : '',
+              stockMin: src.stockMin != null ? String(src.stockMin) : '',
+              stockMax: src.stockMax != null ? String(src.stockMax) : '',
+              stockSafety: src.stockSafety != null ? String(src.stockSafety) : '',
+              aisle: src.aisle || '', shelf: src.shelf || '', level: src.level || '',
+              tags: formatTags(src.tags),
             }));
           } catch { /* source introuvable → création vierge */ }
         }
@@ -241,6 +254,15 @@ export function ProductEditPage() {
         bestBeforeDate: p.bestBeforeDate ? String(p.bestBeforeDate).slice(0, 10) : '',
         useByDate: p.useByDate ? String(p.useByDate).slice(0, 10) : '',
         lotNumber: p.lotNumber || '',
+        longDesignation: p.longDesignation || '', receiptDescription: p.receiptDescription || '',
+        manufacturer: p.manufacturer || '', lifecycleStatus: p.lifecycleStatus || 'active',
+        weightNetG: p.weightNetG != null ? String(p.weightNetG) : '',
+        stockReserved: p.stockReserved != null ? String(p.stockReserved) : '',
+        stockMin: p.stockMin != null ? String(p.stockMin) : '',
+        stockMax: p.stockMax != null ? String(p.stockMax) : '',
+        stockSafety: p.stockSafety != null ? String(p.stockSafety) : '',
+        aisle: p.aisle || '', shelf: p.shelf || '', level: p.level || '',
+        tags: formatTags(p.tags),
       });
       // Chargements non bloquants des onglets (endpoints existants)
       productsApi.listComponents(id).then((r) => setComponents(r.data || [])).catch(() => {});
@@ -357,6 +379,23 @@ export function ProductEditPage() {
       bestBeforeDate: form.bestBeforeDate || undefined,
       useByDate: form.useByDate || undefined,
       lotNumber: form.lotNumber.trim() || undefined,
+      // P-A / M-A — complétion fiche ERP
+      longDesignation: form.longDesignation.trim() || undefined,
+      receiptDescription: form.receiptDescription.trim() || undefined,
+      manufacturer: form.manufacturer.trim() || undefined,
+      lifecycleStatus: form.lifecycleStatus || undefined,
+      weightNetG: toInt(form.weightNetG),
+      stockReserved: toInt(form.stockReserved),
+      stockMin: toInt(form.stockMin),
+      stockMax: toInt(form.stockMax),
+      stockSafety: toInt(form.stockSafety),
+      aisle: form.aisle.trim() || undefined,
+      shelf: form.shelf.trim() || undefined,
+      level: form.level.trim() || undefined,
+      tags: (() => {
+        const t = parseTags(form.tags);
+        return t.length ? t : undefined;
+      })(),
     };
     setSaving(true);
     try {
@@ -701,6 +740,28 @@ export function ProductEditPage() {
                 <option value="gift_card">Carte cadeau</option>
               </select>
             </Field>
+            <Field label="Cycle de vie commercial" hint="Distinct du statut de validation ci-dessus (commercialisation du produit).">
+              <select className={inputCls} value={form.lifecycleStatus} onChange={(e) => set('lifecycleStatus', e.target.value)}>
+                <option value="active">Actif (commercialisé)</option>
+                <option value="inactive">Inactif</option>
+                <option value="discontinued">Arrêté / fin de vie</option>
+                <option value="seasonal">Saisonnier</option>
+              </select>
+            </Field>
+            <Field label="Fabricant"><input className={inputCls} value={form.manufacturer} onChange={(e) => set('manufacturer', e.target.value)} placeholder="ex : Coca-Cola Company" /></Field>
+            <Field label="Libellé ticket (≤80)" hint="Ligne imprimée sur le reçu (contrainte largeur imprimante).">
+              <input className={inputCls} maxLength={80} value={form.receiptDescription} onChange={(e) => set('receiptDescription', e.target.value)} placeholder="ex : COCA 33CL" />
+            </Field>
+            <div className="md:col-span-2">
+              <Field label="Désignation commerciale longue (≤300)">
+                <textarea rows={2} maxLength={300} className={inputCls} value={form.longDesignation} onChange={(e) => set('longDesignation', e.target.value)} placeholder="Libellé complet catalogue / e-commerce" />
+              </Field>
+            </div>
+            <div className="md:col-span-2">
+              <Field label="Étiquettes" hint="Mots-clés séparés par des virgules (ex : bio, promo, local).">
+                <input className={inputCls} value={form.tags} onChange={(e) => set('tags', e.target.value)} placeholder="bio, sans gluten, local" />
+              </Field>
+            </div>
             {isEdit ? (
               <div className="md:col-span-2 space-y-2">
                 <label className={labelCls}>Codes-barres additionnels ({barcodes.length})</label>
@@ -802,7 +863,35 @@ export function ProductEditPage() {
                 </div>
               )}
             </div>
-            <Phase2Notice fields="Stock minimum/maximum · quantité de réapprovisionnement · emplacement réserve/rayon (les emplacements physiques existent dans le module Stock Locations)" />
+            {/* Planification de stock ERP (P-A / M-A) */}
+            <div className="rounded-xl border border-gray-100 p-4 space-y-4">
+              <p className="text-sm font-semibold text-bo-text">Planification (réappro.)</p>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
+                <Field label="Stock réservé" hint="Engagé (commandes/retraits à venir)."><input className={inputCls} inputMode="numeric" value={form.stockReserved} onChange={(e) => set('stockReserved', e.target.value)} placeholder="0" /></Field>
+                <Field label="Stock minimum"><input className={inputCls} inputMode="numeric" value={form.stockMin} onChange={(e) => set('stockMin', e.target.value)} /></Field>
+                <Field label="Stock de sécurité"><input className={inputCls} inputMode="numeric" value={form.stockSafety} onChange={(e) => set('stockSafety', e.target.value)} /></Field>
+                <Field label="Stock maximum"><input className={inputCls} inputMode="numeric" value={form.stockMax} onChange={(e) => set('stockMax', e.target.value)} /></Field>
+              </div>
+              {(() => {
+                const cur = toInt(form.stock) ?? 0; const res = toInt(form.stockReserved) ?? 0;
+                return (
+                  <div className="rounded-xl bg-gray-50 border border-gray-100 px-4 py-3 inline-block">
+                    <p className="text-[11px] font-semibold text-gray-400">Stock disponible (calculé)</p>
+                    <p className="text-lg font-bold text-bo-text tabular-nums">{cur - res}</p>
+                    <p className="text-[11px] text-gray-400">= stock actuel ({cur}) − réservé ({res})</p>
+                  </div>
+                );
+              })()}
+            </div>
+            {/* Emplacement magasin — marquage texte court (complémentaire au module Stock Locations) */}
+            <div className="rounded-xl border border-gray-100 p-4 space-y-3">
+              <p className="text-sm font-semibold text-bo-text">Emplacement magasin</p>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-5">
+                <Field label="Allée / rayon"><input className={inputCls} value={form.aisle} onChange={(e) => set('aisle', e.target.value)} placeholder="ex : A3" /></Field>
+                <Field label="Étagère"><input className={inputCls} value={form.shelf} onChange={(e) => set('shelf', e.target.value)} placeholder="ex : 2" /></Field>
+                <Field label="Niveau"><input className={inputCls} value={form.level} onChange={(e) => set('level', e.target.value)} placeholder="ex : haut" /></Field>
+              </div>
+            </div>
           </div>
         )}
 
@@ -1093,7 +1182,8 @@ export function ProductEditPage() {
         {tab === 'logistique' && (
           <div className="space-y-6">
             <div className="grid grid-cols-2 md:grid-cols-3 gap-5">
-              <Field label="Poids (g)"><input className={inputCls} inputMode="numeric" value={form.weightGrams} onChange={(e) => set('weightGrams', e.target.value)} /></Field>
+              <Field label="Poids brut (g)" hint="Emballage compris."><input className={inputCls} inputMode="numeric" value={form.weightGrams} onChange={(e) => set('weightGrams', e.target.value)} /></Field>
+              <Field label="Poids net (g)"><input className={inputCls} inputMode="numeric" value={form.weightNetG} onChange={(e) => set('weightNetG', e.target.value)} /></Field>
               <Field label="Largeur (mm)"><input className={inputCls} inputMode="numeric" value={form.widthMm} onChange={(e) => set('widthMm', e.target.value)} /></Field>
               <Field label="Hauteur (mm)"><input className={inputCls} inputMode="numeric" value={form.heightMm} onChange={(e) => set('heightMm', e.target.value)} /></Field>
               <Field label="Profondeur (mm)"><input className={inputCls} inputMode="numeric" value={form.depthMm} onChange={(e) => set('depthMm', e.target.value)} /></Field>
@@ -1118,7 +1208,6 @@ export function ProductEditPage() {
                 <Field label="Numéro de lot"><input className={`${inputCls} font-mono`} value={form.lotNumber} onChange={(e) => set('lotNumber', e.target.value)} /></Field>
               </div>
             </div>
-            <Phase2Notice fields="Emplacement réserve/rayon (module Stock Locations) · matière — à venir" />
           </div>
         )}
 

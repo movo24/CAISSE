@@ -65,6 +65,21 @@ export interface UpdateProductPayload {
 
 const eurosToCents = (v: string): number => Math.round(parseFloat(v) * 100);
 
+/**
+ * Étiquettes produit (P-A / M-A — colonne `tags` jsonb). Conversion UI ↔ payload :
+ * l'UI saisit une chaîne « a, b, c » ; le DTO backend attend `string[]`.
+ */
+export function parseTags(input: string): string[] {
+  return input
+    .split(',')
+    .map((t) => t.trim())
+    .filter(Boolean);
+}
+
+export function formatTags(tags: unknown): string {
+  return Array.isArray(tags) ? tags.filter((t): t is string => typeof t === 'string').join(', ') : '';
+}
+
 /** Renvoie un message d'erreur, ou null si le formulaire est valide. */
 export function validateProductForm(form: ProductFormValues, isEdit: boolean): string | null {
   if (!form.name.trim()) return 'Le nom du produit est obligatoire.';
