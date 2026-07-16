@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* eslint-disable @typescript-eslint/no-var-requires -- script CLI Node autonome (CommonJS) */
 /**
  * stock-reconcile.js — instrument de réconciliation LECTURE SEULE (double-run F1→F3).
  *
