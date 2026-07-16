@@ -65,7 +65,7 @@ main (1767 déjà présent)
 - La fiche ERP **dépend réellement** du catalogue : `product-media/supplier/change-log`
   entities, migration `1760`, `ProductEditPage.tsx` sont **absents d'`origin/main`** (prouvé par
   `git cat-file -e origin/main:<file>` → absent). Pas de découplage possible.
-- ⚠️ `feat/catalog-refonte` **n'existe pas comme branche sur `origin`** (local seulement) ; ses
-  commits ne sont sur le remote que via l'historique de `feat/product-sheet-erp-pa`. Avant tout
-  merge, pousser `feat/catalog-refonte` et lui ouvrir sa propre PR **en premier**.
+- ✅ `feat/catalog-refonte` est désormais **poussée sur `origin`** (2026-07-17, tip `1fc932f`,
+  local == remote). Sa PR (à créer par l'owner) doit être mergée **en premier**, avant celle de
+  `feat/product-sheet-erp-pa`.
 - Tout merge vers `main` = **Tier-2, GO owner nominatif**.
