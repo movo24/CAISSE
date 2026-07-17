@@ -149,3 +149,75 @@ Mission owner : RBAC pilotage par magasin + journal d'activité (connexions/sess
 - Captures : en session (pane), pas PNG disque (limitation outil de capture). `.env`/launch.json restaurés.
 
 **Verdict : TERMINÉ ET VALIDÉ** (réserves : merge `main` = Tier-2 GO owner ; captures = session). D21 CLOSED.
+## 2026-07-16 — Journal de stock unifié / NF525 : F0 + F1 (GO owner nommé) — branche `feat/stock-journal-nf525-on-main`
+
+### Synthèse décisionnelle (avant tout code)
+- Reprise de `PRODUCTS_FISCAL_STOCK_ARCHITECTURE.md`, vérifiée fichier:ligne contre le code réel
+  (4 explorations // : vente+void, journal fiscal+retours, sync/offline, session/terminal/employé).
+- Livré `PRODUCTS_FISCAL_STOCK_SYNTHESIS.md` : 11 décisions + diagramme + inventaire schéma/endpoints.
+- **GO owner en canal** : périmètre **F0 puis F1**, `store_id` sur le mouvement, `occurred_at`=oui,
+  fix G3→**F2** (GO propre). Le « go » nu ne suffit pas (charte §0/§3) — décisions explicites exigées.
+
+### F0 — liaison additive
+- Migration `1767` additive/réversible : `stock_movements +=` store_id/sale_id/sale_line_item_id/occurred_at
+  + index sale/store + **index unique partiel** `(sale_line_item_id, product_id, movement_type) WHERE sale_id NOT NULL`.
+  Entité alignée (4 colonnes nullable). ZÉRO comportement, ZÉRO DDL fiscal.
+
+### F1 — écriture double shadow
+- Flag `STOCK_JOURNAL_SHADOW` **OFF par défaut**. ON : vente → `sale`(ligne)+`pack_consumption`(composant) ;
+  retour → `return_customer` ; même tx ; lecture caisse inchangée. Vente = `sale_id` (idempotent via index F0) ;
+  retour = lié par reference+note (retour partiel répété légitime). Union `movementType += 'pack_consumption'`.
+
+### Découplage du catalogue (2026-07-16) — la branche de ce lot
+- **Analyse de dépendance par diff** : intersection lot fiscal ∩ catalogue = **3 docs de suivi
+  uniquement, aucun fichier de code**. Inventaire des tables : toutes présentes sur `origin/main`
+  (stock_movements/1735, product_components+sale_component_movements/1754, fiscal_journal/1717,
+  credit_notes/1714, audit/1744) ⇒ **lot fonctionnellement indépendant**.
+- **Découplé** : branche `feat/stock-journal-nf525-on-main` depuis `origin/main`, cherry-pick des
+  3 commits de code **sans conflit** (confirme l'indépendance), docs rejouées sur les versions main.
+  L'ancienne branche empilée `feat/stock-journal-nf525` (43 commits, stack catalogue) reste **archive**.
+- **Ordonnancement migrations vérifié** : base vierge → **40 migrations**, tête =
+  `AddStockMovementSaleLinkage1767000000000` au-dessus de `1758` (trou 1759→1766 = accès+catalogue absents, sans effet).
+
+### Vérifs (toutes sur cette branche, vrai Postgres base jetable, codes retour réels)
+- pg-mem backend : **967 passed / 0** · exit 0 (112 suites ; les 11 suites catalogue/accès n'existent pas sur main).
+- `stock-movement-linkage-migration` (F0 up/down/re-run) : **3/3** · exit 0.
+- `stock-journal-shadow` (F1) : **5/5** · exit 0 — dont **HASH DE VENTE INCHANGÉ** (recalcul canonique stock-exclu == hash stocké).
+- Non-régression fiscale flag OFF : `avoir-d14-atomicity` **1/1**, `fiscal-e2e` **1/1**,
+  `product-packs-concurrency` **2/2**, `sales-stock-concurrency` **1/1** · exit 0.
+- Instrument F3 `stock-reconciliation-readonly` : **3/3** · exit 0.
+
+### Outils livrés (docs / lecture seule, sans GO)
+- **`GO_F2_PACKAGE.md`** : dossiers de décision F2 (void inverse + G3, avant/après concret) et F1b
+  (`inventory_adjust` shadow) — recommandation **delta signé** motivée + le test qui la prouve ;
+  note d'indépendance/ordre de merge (aucun ordre catalogue→fiscal imposé).
+- **`stock-reconciliation-readonly.pg.spec.ts`** : instrument de mesure F3, SELECT PUR.
+- **Dette D22** (couverture shadow partielle ; D21 réservée à la branche accès non mergée).
+
+**Restent gatés (GO nominatif)** : F2, F1b, F3 (bascule lecture + cutover), F4 (retrait legacy),
+activation du flag hors test local, tout merge.
+
+### 2026-07-16 (suite) — F2 + F1b livrés (GO nominatif), dossiers F3/F4, runbook + instrument
+- **F2** (`94fc362`) — void restitue les composants de pack (correctif G3) depuis le snapshot figé
+  `sale_component_movements` + mouvements inverses `void` (parent+composants, sous flag). Hash de
+  vente inchangé. **Preuve rouge→vert RÉELLEMENT jouée** : le spec contre le `voidSale` d'avant-F2
+  est rouge (4 échecs/5, composant jamais recrédité), vert après. `stock-journal-void-f2.pg.spec.ts` 5/5.
+- **F1b** (`fe888a4`) — `inventory_adjust` en shadow, `quantity` = **delta signé** (convention ratifiée) ;
+  ferme la couverture caisse (tous les chemins scalaires sont journalisés). `stock-journal-adjust-f1b.pg.spec.ts` 4/4.
+  **Correction honnête** : le 3e test de réconciliation (adjust non couvert → gap varie) avait sa prémisse
+  invalidée par F1b → réécrit (adjust couvert → gap constant) + nouveau test conservant la propriété via
+  un chemin réellement non journalisé (mutation scalaire legacy). D22 rétrécie.
+- **Dossiers F3/F4** (`2250ed1`) : F3 précondition BLOQUANTE (flag OFF partout → journal vide →
+  bascule = stock 0) ; décisions (a) projection-cache vs bascule littérale, (b) cutover script vs
+  migration, (c) N jours ; F4 Option A (ops entrepôt écrivent le journal) vs B.
+- **Résolution 1072→967** (comptabilité exacte, aucun test manquant) : 104 tests dans 11 specs
+  catalogue+accès présents seulement sur la branche stackée + 1 test ajouté à `csv-util.spec.ts`
+  par le catalogue (Lot H) = **105** = 1072−967. La branche on-main ne porte pas ces suites, c'est correct.
+- **Runbook + instrument (périmètre auto)** : `STOCK_JOURNAL_ACTIVATION_RUNBOOK.md` (variable exacte,
+  ordre local→sandbox→[prod interdite], effet, surveillance, rollback, critère N motivé par le volume) ;
+  `packages/backend/scripts/stock-reconcile.js` — CLI **lecture seule stricte** (`BEGIN TRANSACTION
+  READ ONLY`), rapport par produit/magasin + Δgap, codes retour 0/2/1 tous vérifiés (dont exit 2 sur
+  mutation non journalisée), écriture refusée en READ ONLY prouvée.
+- **Vérifs globales** (vrai PG, exit 0) : pg-mem 967/0 ; F0 3/3 ; F1 5/5 ; F2 5/5 ; F1b 4/4 ;
+  réconciliation 4/4 ; non-régression gated (packs 2/2, avoir-atomicité 1/1, fiscal-e2e 1/1, anti-survente 1/1).
+- **7 commits** sur `origin/main`. Restent gatés : activation flag hors test, F3, F4, tout merge.

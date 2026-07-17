@@ -23,6 +23,7 @@ import { ProductEntity } from '../../database/entities/product.entity';
 import { FiscalJournalEntity } from '../../database/entities/fiscal-journal.entity';
 import { PosSessionEntity } from '../../database/entities/pos-session.entity';
 import { SaleComponentMovementEntity } from '../../database/entities/sale-component-movement.entity';
+import { StockMovementEntity } from '../../database/entities/stock-movement.entity';
 import { StoreEntity } from '../../database/entities/store.entity';
 import { PosMachineEntity } from '../../database/entities/pos-machine.entity';
 import { evaluateEnrollmentGate } from '../machine-enrollment/machine-enrollment.service';
@@ -846,6 +847,14 @@ export class SalesService {
         }
       }
 
+      // --- Journal de stock unifié — bloc F1 (shadow). Flag OFF par défaut :
+      //     AUCUN mouvement écrit, comportement identique (prouvé par la suite).
+      //     ON : écriture double dans la MÊME tx ; la caisse lit toujours le
+      //     scalaire (lecture inchangée). Les mouvements sont HORS empreinte de
+      //     hash (déjà calculée ligne 745) — aucun hash de vente n'est modifié.
+      const stockJournalShadow = process.env.STOCK_JOURNAL_SHADOW === 'true';
+      const shadowEmployeeName = sale.employeeNameSnapshot || employeeId;
+
       // --- Product Packs (GO owner 2026-07-09) : composants dans la MÊME tx ---
       // Le parent reste la seule ligne commerciale (CA/ticket inchangés). Chaque
       // composant ACTIF sort du stock avec le même décrément conditionnel
@@ -892,6 +901,43 @@ export class SalesService {
             employeeId,
             sessionId: registerBinding.sessionId,
             terminalId: registerBinding.terminalId,
+          });
+          if (stockJournalShadow) {
+            await queryRunner.manager.insert(StockMovementEntity, {
+              productId: comp.component_product_id,
+              movementType: 'pack_consumption',
+              fromLocationId: null,
+              toLocationId: null,
+              quantity: consumed,
+              reference: ticketNumber,
+              employeeId,
+              employeeName: shadowEmployeeName,
+              storeId,
+              saleId: sale.id,
+              saleLineItemId: li.id,
+              occurredAt: completedAt,
+            });
+          }
+        }
+      }
+
+      // Mouvement 'sale' par ligne (parent facturé) — même tx, idempotent via
+      // l'index unique partiel (F0). N'entre dans aucun hash.
+      if (stockJournalShadow) {
+        for (const li of lineItems) {
+          await queryRunner.manager.insert(StockMovementEntity, {
+            productId: li.productId,
+            movementType: 'sale',
+            fromLocationId: null,
+            toLocationId: null,
+            quantity: li.quantity,
+            reference: ticketNumber,
+            employeeId,
+            employeeName: shadowEmployeeName,
+            storeId,
+            saleId: sale.id,
+            saleLineItemId: li.id,
+            occurredAt: completedAt,
           });
         }
       }
@@ -1496,7 +1542,13 @@ export class SalesService {
       sale.status = 'voided';
       const saved = await queryRunner.manager.save(SaleEntity, sale);
 
-      // Restore stock atomically
+      // Restore stock atomically (produits parents facturés)
+      // Journal de stock unifié — F2 : sous flag, chaque restitution écrit AUSSI
+      // son mouvement inverse 'void' dans la MÊME tx. Hors empreinte de hash (le
+      // hash de la vente d'origine reste intact : le void est un maillon append-only).
+      const stockJournalShadow = process.env.STOCK_JOURNAL_SHADOW === 'true';
+      // Ce chemin ne dispose pas d'un snapshot de nom : l'acteur est l'employé qui annule.
+      const shadowEmployeeName = employeeId;
       for (const item of sale.lineItems) {
         await queryRunner.query(
           `UPDATE products
@@ -1504,6 +1556,59 @@ export class SalesService {
            WHERE id = $2 AND store_id = $3`,
           [item.quantity, item.productId, storeId],
         );
+        if (stockJournalShadow) {
+          await queryRunner.manager.insert(StockMovementEntity, {
+            productId: item.productId,
+            movementType: 'void',
+            fromLocationId: null,
+            toLocationId: null,
+            quantity: item.quantity,
+            reference: sale.ticketNumber,
+            employeeId,
+            employeeName: shadowEmployeeName,
+            storeId,
+            saleId: sale.id,
+            saleLineItemId: item.id,
+          });
+        }
+      }
+
+      // --- F2 / correctif G3 : restituer AUSSI les composants de pack, depuis le
+      // SNAPSHOT FIGÉ de la vente (`sale_component_movements`), jamais depuis la
+      // composition courante — miroir exact de `createReturn`. AVANT ce bloc, le
+      // void recréditait le parent mais PERDAIT définitivement les composants
+      // (fuite de stock permanente = bug G3). Même tx que le statut + le maillon
+      // fiscal : tout réussit ou rien. Idempotent via la garde void-once + la clé. ---
+      const componentRows = await queryRunner.query(
+        `SELECT sale_line_item_id, component_product_id, quantity_consumed
+           FROM sale_component_movements
+          WHERE sale_id = $1 AND store_id = $2`,
+        [sale.id, storeId],
+      );
+      for (const cm of Array.isArray(componentRows) ? componentRows : []) {
+        const restoreQty = Number(cm.quantity_consumed);
+        if (!(restoreQty > 0)) continue;
+        await queryRunner.query(
+          `UPDATE products
+           SET stock_quantity = stock_quantity + $1, updated_at = NOW()
+           WHERE id = $2 AND store_id = $3`,
+          [restoreQty, cm.component_product_id, storeId],
+        );
+        if (stockJournalShadow) {
+          await queryRunner.manager.insert(StockMovementEntity, {
+            productId: cm.component_product_id,
+            movementType: 'void',
+            fromLocationId: null,
+            toLocationId: null,
+            quantity: restoreQty,
+            reference: sale.ticketNumber,
+            employeeId,
+            employeeName: shadowEmployeeName,
+            storeId,
+            saleId: sale.id,
+            saleLineItemId: cm.sale_line_item_id,
+          });
+        }
       }
 
       // --- M3: restore store-credit avoirs consumed by this sale. Voiding must NOT
