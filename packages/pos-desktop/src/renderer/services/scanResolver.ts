@@ -41,8 +41,14 @@ export interface ScanDedupState {
   ts: number;
 }
 
-/** Fenêtre par défaut (ms) : bloque le double-envoi d'un scan, autorise une re-lecture volontaire. */
-export const SCAN_DEDUP_WINDOW_MS = 200;
+/**
+ * Fenêtre par défaut (ms). VOLONTAIREMENT COURTE : elle ne doit capter qu'un
+ * double-envoi *instantané* d'un SEUL scan (certaines douchettes ré-émettent le
+ * code en quelques ms), JAMAIS un 2ᵉ scan volontaire du même article. Sur l'E655
+ * (scanner de bureau à présentation), re-présenter le même article prend ≥300 ms —
+ * bien au-delà de 50 ms — donc une re-lecture délibérée (→ quantité +1) n'est jamais bloquée.
+ */
+export const SCAN_DEDUP_WINDOW_MS = 50;
 
 /**
  * Un même code re-émis dans la fenêtre = double-ajout accidentel d'un seul scan → à ignorer.

@@ -1,16 +1,24 @@
 /**
  * Décodeur « keyboard wedge » PUR (testable sans DOM).
  *
- * La douchette USB Lenvii E655 (et assimilées) se comporte comme un CLAVIER :
- * elle « tape » les caractères du code très vite puis envoie `Entrée`. Ce
- * décodeur distingue un SCAN d'une saisie humaine par la **vitesse** : les
- * caractères d'un scan arrivent à quelques ms d'intervalle ; dès qu'un écart
- * dépasse `maxInterKeyMs`, le tampon est réinitialisé (frappe humaine) et ne
- * pourra jamais produire un faux scan.
+ * La douchette USB Lenvii E655 se comporte comme un CLAVIER : elle « tape » les
+ * caractères du code très vite puis envoie `Entrée`. On distingue un SCAN d'une
+ * frappe humaine par la VITESSE (écart entre touches).
  *
- * Le décodeur ne touche PAS au DOM : l'appelant (peripheralBridge) lui passe la
- * touche + un horodatage. Ceci le rend testable en reproduisant exactement la
- * séquence clavier de la douchette.
+ * ⚠️ Point clé (corrige un faux-sens antérieur) : « ignorer » un événement quand un
+ * champ a le focus ne l'empêche PAS d'être écrit dans le champ — une douchette USB
+ * agit comme un clavier. Pour empêcher la pollution d'un champ, l'appelant écoute en
+ * PHASE DE CAPTURE et **avale** (`preventDefault`) les touches d'une rafale reconnue.
+ * Ce décodeur renvoie donc, pour chaque touche, l'action que l'appelant doit prendre :
+ *   - `passthrough` : laisser la touche atteindre le champ (frappe humaine, ou 1er
+ *      caractère d'une séquence — indéterminable avant d'avoir un timing) ;
+ *   - `swallow`     : touche d'une rafale reconnue → l'appelant fait preventDefault ;
+ *   - `scan`        : `Entrée` terminant un scan → preventDefault + router vers le panier ;
+ *   - `none`        : touche hors périmètre (Entrée humaine, touche non imprimable).
+ *
+ * Limite honnête : sans préfixe configuré sur la douchette, le 1er caractère d'un
+ * scan ne peut pas être distingué d'une frappe humaine et reste en `passthrough`.
+ * Un préfixe (configurable sur l'E655) le rendrait déterministe (zéro fuite).
  */
 export interface WedgeDecoderOptions {
   /** Nombre minimal de caractères avant qu'un `Entrée` compte comme un scan. */
@@ -19,24 +27,11 @@ export interface WedgeDecoderOptions {
   maxInterKeyMs?: number;
 }
 
-export interface DecodedBarcode {
-  code: string;
-  format: string;
-}
-
-/**
- * Cible d'événement « éditable » : un champ de saisie qui doit recevoir la frappe
- * lui-même. Quand la cible est éditable, la douchette globale NE capture PAS (le
- * scan n'est jamais injecté ailleurs, et le clavier normal fonctionne). Pur : prend
- * une forme minimale, pas de dépendance DOM.
- */
-export function isEditableTarget(
-  el: { tagName?: string; isContentEditable?: boolean } | null | undefined,
-): boolean {
-  if (!el) return false;
-  const tag = (el.tagName || '').toUpperCase();
-  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable === true;
-}
+export type WedgeFeed =
+  | { kind: 'none' }
+  | { kind: 'passthrough' }
+  | { kind: 'swallow' }
+  | { kind: 'scan'; code: string; format: string };
 
 /** Format déclaratif d'après la longueur (EAN-8/13, UPC-A, GTIN-14, sinon CODE-128). */
 export function barcodeFormat(code: string): string {
@@ -54,45 +49,78 @@ export function barcodeFormat(code: string): string {
   }
 }
 
+/**
+ * Cible d'événement « éditable » (champ de saisie). Utilitaire pur (sans DOM) — sert
+ * à l'appelant pour ne se soucier de la pollution que lorsqu'un champ peut recevoir
+ * la frappe.
+ */
+export function isEditableTarget(
+  el: { tagName?: string; isContentEditable?: boolean } | null | undefined,
+): boolean {
+  if (!el) return false;
+  const tag = (el.tagName || '').toUpperCase();
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable === true;
+}
+
 export class WedgeDecoder {
   private buffer = '';
   private lastTs = 0;
+  private burst = false;
   private readonly minLength: number;
   private readonly maxInterKeyMs: number;
 
   constructor(opts: WedgeDecoderOptions = {}) {
     this.minLength = opts.minLength ?? 4;
-    this.maxInterKeyMs = opts.maxInterKeyMs ?? 80;
+    this.maxInterKeyMs = opts.maxInterKeyMs ?? 50;
   }
 
-  /** Réinitialise le tampon (ex. focus passé dans un champ de saisie). */
+  /** Réinitialise l'état interne. */
   reset(): void {
     this.buffer = '';
     this.lastTs = 0;
+    this.burst = false;
   }
 
   /**
-   * Consomme une touche. `now` = horodatage ms. Renvoie un code-barres UNIQUEMENT
-   * sur `Entrée` terminant une séquence assez rapide d'au moins `minLength` caractères.
+   * Consomme une touche imprimable ou `Entrée`. `now` = horodatage ms.
+   * L'appelant NE doit PAS passer les combinaisons avec Ctrl/Meta/Alt (raccourcis).
    */
-  feed(key: string, now: number): DecodedBarcode | null {
+  feed(key: string, now: number): WedgeFeed {
     if (key === 'Enter') {
       const code = this.buffer;
-      this.buffer = '';
-      this.lastTs = 0;
-      if (code.length >= this.minLength) return { code, format: barcodeFormat(code) };
-      return null;
-    }
-    if (key.length === 1) {
-      // Écart trop grand depuis la touche précédente → saisie humaine : on repart de zéro.
-      if (this.lastTs !== 0 && now - this.lastTs > this.maxInterKeyMs) {
-        this.buffer = '';
+      const wasBurst = this.burst;
+      this.reset();
+      if (wasBurst && code.length >= this.minLength) {
+        return { kind: 'scan', code, format: barcodeFormat(code) };
       }
-      this.buffer += key;
-      this.lastTs = now;
-      return null;
+      // Entrée « humaine » (aucune rafale) → laissée au champ/formulaire.
+      return { kind: 'none' };
     }
-    // Touches de modification/navigation (Shift, Tab…) : ignorées, tampon conservé.
-    return null;
+
+    if (key.length === 1) {
+      if (this.lastTs === 0) {
+        // 1er caractère : timing inconnu → on laisse au champ (passthrough).
+        this.buffer = key;
+        this.lastTs = now;
+        this.burst = false;
+        return { kind: 'passthrough' };
+      }
+      const gap = now - this.lastTs;
+      if (gap <= this.maxInterKeyMs) {
+        // Assez rapide → rafale (scan) → l'appelant avale ce caractère.
+        this.buffer += key;
+        this.lastTs = now;
+        this.burst = true;
+        return { kind: 'swallow' };
+      }
+      // Trop lent → frappe humaine : on repart avec ce caractère, laissé au champ.
+      this.buffer = key;
+      this.lastTs = now;
+      this.burst = false;
+      return { kind: 'passthrough' };
+    }
+
+    // Touches non imprimables (modificateurs, navigation, F-keys…) : hors périmètre.
+    return { kind: 'none' };
   }
 }

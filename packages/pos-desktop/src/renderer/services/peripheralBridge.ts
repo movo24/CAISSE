@@ -8,7 +8,7 @@
  */
 
 import { DevicePlatform } from '../hooks/useDeviceProfile';
-import { WedgeDecoder, isEditableTarget } from './wedgeDecoder';
+import { WedgeDecoder } from './wedgeDecoder';
 
 /* ═══════════════════════════════════════════════════
    TYPES
@@ -480,26 +480,30 @@ class PeripheralBridge {
     // Décodeur pur (détection par la vitesse des caractères) — cf. wedgeDecoder.ts.
     const decoder = new WedgeDecoder();
 
+    // PHASE DE CAPTURE : on voit la touche AVANT le champ. Une rafale reconnue est
+    // AVALÉE (preventDefault) → le code n'est jamais écrit dans un champ actif, tout
+    // en étant routé vers le panier. La frappe humaine (lente) passe intacte : le
+    // clavier normal continue de fonctionner partout.
     const handler = (e: KeyboardEvent) => {
-      // Cible éditable (champ de saisie) : la frappe lui appartient — la douchette
-      // globale ne capture pas et n'injecte jamais le code ailleurs.
-      if (isEditableTarget(e.target as HTMLElement | null)) {
-        decoder.reset();
+      // Raccourcis (Ctrl/Meta/Alt) : jamais interceptés.
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+      const r = decoder.feed(e.key, Date.now());
+      if (r.kind === 'swallow') {
+        e.preventDefault();
+        e.stopPropagation();
         return;
       }
-      const decoded = decoder.feed(e.key, Date.now());
-      if (decoded) {
-        const result: BarcodeResult = {
-          code: decoded.code,
-          format: decoded.format,
-          timestamp: Date.now(),
-        };
-        this.barcodeCallbacks.forEach(cb => cb(result));
+      if (r.kind === 'scan') {
         e.preventDefault();
+        e.stopPropagation();
+        const result: BarcodeResult = { code: r.code, format: r.format, timestamp: Date.now() };
+        this.barcodeCallbacks.forEach(cb => cb(result));
       }
+      // 'passthrough' / 'none' → laissé au champ (frappe humaine / 1er caractère).
     };
 
-    document.addEventListener('keydown', handler);
+    document.addEventListener('keydown', handler, { capture: true });
     (this as any)._keyboardHandler = handler;
   }
 
@@ -545,7 +549,7 @@ class PeripheralBridge {
 
   private stopBarcodeListener(): void {
     if ((this as any)._keyboardHandler) {
-      document.removeEventListener('keydown', (this as any)._keyboardHandler);
+      document.removeEventListener('keydown', (this as any)._keyboardHandler, { capture: true });
       (this as any)._keyboardListenerActive = false;
     }
     this.stopCameraScanner();

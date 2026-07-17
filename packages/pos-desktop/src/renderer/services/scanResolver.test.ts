@@ -29,17 +29,18 @@ describe('resolveLocalScan (catalogue local, hors-ligne)', () => {
   });
 });
 
-describe('isDuplicateScan (anti-double-ajout d\'un seul scan)', () => {
-  it('même code ré-émis dans la fenêtre → doublon (bloqué)', () => {
-    expect(isDuplicateScan({ code: 'X', ts: 1000 }, 'X', 1050)).toBe(true); // +50 ms
+describe('isDuplicateScan (anti-double-ajout d\'un SEUL scan, fenêtre courte)', () => {
+  it('double-envoi instantané du même code (≤50 ms) → doublon bloqué', () => {
+    expect(isDuplicateScan({ code: 'X', ts: 1000 }, 'X', 1010)).toBe(true); // +10 ms = ré-émission
   });
 
-  it('même code après la fenêtre → autorisé (re-scan volontaire → +1)', () => {
+  it('2ᵉ scan volontaire du même article (≥300 ms) → AUTORISÉ (→ quantité +1)', () => {
     expect(isDuplicateScan({ code: 'X', ts: 1000 }, 'X', 1300)).toBe(false); // +300 ms
+    expect(isDuplicateScan({ code: 'X', ts: 1000 }, 'X', 1080)).toBe(false); // +80 ms > fenêtre 50
   });
 
   it('code différent → toujours autorisé (scans rapides successifs)', () => {
-    expect(isDuplicateScan({ code: 'X', ts: 1000 }, 'Y', 1010)).toBe(false);
+    expect(isDuplicateScan({ code: 'X', ts: 1000 }, 'Y', 1005)).toBe(false);
   });
 
   it('aucun scan précédent → autorisé', () => {
