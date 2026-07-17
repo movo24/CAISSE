@@ -16,6 +16,7 @@
 import * as path from 'path';
 import { DataSource } from 'typeorm';
 import { loadAllEntities } from './helpers/pgmem';
+import { revertToMigration } from './helpers/revert-to-migration';
 
 const TEST_DB = process.env.TEST_DATABASE_URL;
 const d = TEST_DB ? describe : describe.skip;
@@ -83,7 +84,10 @@ d('Migration F0 stock_movements liaison vente up/down (real Postgres)', () => {
   }, 120000);
 
   it('down : colonnes ET index retirés, table conservée', async () => {
-    await ds.undoLastMigration({ transaction: 'each' });
+    // Cible PAR NOM, jamais par comptage : sur une lignée où d'autres migrations
+    // sont empilées au-dessus de 1767 (ex. 1768-1770 côté ERP), un undo unique
+    // déroulerait la mauvaise migration et laisserait les colonnes en place.
+    await revertToMigration(ds, MIGRATION);
     const cols = await columns('stock_movements');
     for (const c of NEW_COLUMNS) expect(cols).not.toContain(c);
     for (const c of LEGACY_COLUMNS) expect(cols).toContain(c); // le reste survit
