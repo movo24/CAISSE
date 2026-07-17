@@ -105,6 +105,11 @@ se combinent (par sync de branche aujourd'hui, par merge dans `main` demain) :
   `1768-1770` sont au-dessus de `1767`, le revert déroule `1770` au lieu de `1767`
   (vérifié : `store_id` encore présent après undo). Ce rouge apparaîtra à l'identique sur
   `main` au moment du merge de la lignée ERP — ce n'est PAS un artefact de la sync.
-Correctif de fond (décision des fils propriétaires des specs) : reverter jusqu'à une
-migration CIBLE (par nom) au lieu de compter, ou monter une lignée bornée dans le spec.
-Les down() eux-mêmes sont sains — c'est la fenêtre de revert des tests qui est fausse.
+**RÈGLE (2026-07-17, corrigé) : un spec de migration ne compte JAMAIS ses reverts — il
+cible PAR NOM via `test/helpers/revert-to-migration.ts` (`revertToMigration(ds, 'Nom')`,
+garde anti-boucle).** Correctifs livrés : `stock-movement-linkage` sur la branche
+`fix/pg-specs-revert-by-name` (base `main`, PR à merger) ; `access-activity` directement
+sur `feat/catalog-refonte` (`3dc502f` — le spec ne vit que sur cette lignée). Preuves
+(vrai PG, bases vierges) : lignée main spec 3/3 ; catalogue 11/11 ; pile ERP 11/11 en
+rejeu worktree (les deux ex-rouges compris). Les down() de 1767 et 1766→1760 exercés
+par le revert par nom : sains. La pile ERP hérite des correctifs par ses syncs normales.
