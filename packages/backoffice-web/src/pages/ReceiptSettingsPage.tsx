@@ -556,7 +556,9 @@ function TicketPreview({
       acc[k] = { ttc: (acc[k]?.ttc || 0) + cents, tva: (acc[k]?.tva || 0) + tva };
       return acc;
     }, {}),
-  ).map(([rate, v]) => ({ rate, ht: (v.ttc - v.tva) / 100, tva: v.tva / 100, ttc: v.ttc / 100 }));
+  )
+    .map(([rate, v]) => ({ rate, ht: (v.ttc - v.tva) / 100, tva: v.tva / 100, ttc: v.ttc / 100 }))
+    .sort((a, b) => parseFloat(a.rate) - parseFloat(b.rate));
 
   const dash = <div style={{ borderTop: '1px dashed #000', margin: '4px 0' }} />;
   const center: React.CSSProperties = { textAlign: 'center' };

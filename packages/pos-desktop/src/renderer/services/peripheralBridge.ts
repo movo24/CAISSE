@@ -424,7 +424,8 @@ class PeripheralBridge {
     const style = doc.createElement('style');
     style.textContent = `
       @page { size: ${width}mm auto; margin: 0; }
-      body { font-family: 'Courier New', monospace; font-size: ${width === 58 ? 10 : 12}px; width: ${bodyMm}mm; margin: 3mm auto; color: #000; }
+      :root { color-scheme: light; }
+      body { font-family: 'Courier New', monospace; font-size: ${width === 58 ? 10 : 12}px; width: ${bodyMm}mm; margin: 3mm auto; color: #000; background: #fff; }
       .center { text-align: center; }
       .bold { font-weight: bold; }
       .small { font-size: ${width === 58 ? 8 : 9}px; }
