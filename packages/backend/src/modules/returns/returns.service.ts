@@ -9,6 +9,7 @@ import { SaleEntity } from '../../database/entities/sale.entity';
 import { IdempotencyKeyEntity } from '../../database/entities/idempotency-key.entity';
 import { PosSessionEntity } from '../../database/entities/pos-session.entity';
 import { FiscalJournalEntity } from '../../database/entities/fiscal-journal.entity';
+import { StockMovementEntity } from '../../database/entities/stock-movement.entity';
 import { AuditService } from '../audit/audit.service';
 import { EmployeeScoreService } from '../employee-score/employee-score.service';
 import { PaginatedResult } from '../../common/dto/pagination.dto';
@@ -261,6 +262,30 @@ export class ReturnsService {
           );
         }
 
+        // --- Journal de stock unifié — bloc F1 (shadow, flag OFF par défaut).
+        //     Le retour est un ENTRANT (mouvement inverse de la vente). Événement
+        //     propre de l'avoir : lié par reference (code) + note (vente d'origine),
+        //     PAS par sale_id (idempotence gérée par la clé du endpoint retour, et
+        //     un retour partiel répété est légitime). N'entre dans aucun hash. ---
+        const stockJournalShadow = process.env.STOCK_JOURNAL_SHADOW === 'true';
+        const shadowEmployeeName = employeeName || employeeId;
+        if (stockJournalShadow) {
+          for (const l of returnLines) {
+            await qr.manager.insert(StockMovementEntity, {
+              productId: l.productId,
+              movementType: 'return_customer',
+              fromLocationId: null,
+              toLocationId: null,
+              quantity: l.quantity,
+              reference: code,
+              note: sale.id,
+              employeeId,
+              employeeName: shadowEmployeeName,
+              storeId,
+            });
+          }
+        }
+
         // ── Product Packs (GO owner 2026-07-09) : restauration des composants
         // selon le SNAPSHOT de la vente (sale_component_movements), jamais selon
         // la composition courante — une composition modifiée après la vente ne
@@ -291,6 +316,20 @@ export class ReturnsService {
               componentProductId: m.component_product_id,
               quantity: restoreQty,
             });
+            if (stockJournalShadow) {
+              await qr.manager.insert(StockMovementEntity, {
+                productId: m.component_product_id,
+                movementType: 'return_customer',
+                fromLocationId: null,
+                toLocationId: null,
+                quantity: restoreQty,
+                reference: code,
+                note: sale.id,
+                employeeId,
+                employeeName: shadowEmployeeName,
+                storeId,
+              });
+            }
           }
         }
 
