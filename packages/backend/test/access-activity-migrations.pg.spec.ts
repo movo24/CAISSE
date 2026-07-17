@@ -12,6 +12,7 @@
 import * as path from 'path';
 import { DataSource } from 'typeorm';
 import { loadAllEntities } from './helpers/pgmem';
+import { revertToMigration } from './helpers/revert-to-migration';
 
 const TEST_DB = process.env.TEST_DATABASE_URL;
 const d = TEST_DB ? describe : describe.skip;
@@ -64,8 +65,11 @@ d('Migrations accès+activité up/down (real Postgres)', () => {
     );
   }, 120000);
 
-  it('revert ×6 déroule les down() (tables + colonnes retirées)', async () => {
-    for (let i = 0; i < 6; i++) await ds.undoLastMigration({ transaction: 'each' });
+  it('revert par NOM vers la 1re migration accès (jamais par comptage) — déroule les down()', async () => {
+    // Cible PAR NOM : « revert ×6 » supposait que les 6 migrations accès étaient les
+    // dernières de la lignée — faux dès que 1760-1766 (catalogue) et 1767 (fiscal)
+    // sont empilées au-dessus ; tout ce qui est au-dessus est déroulé aussi.
+    await revertToMigration(ds, 'EnrichEmployeeStoreAccess1759000000000');
     for (const t of NEW_TABLES) expect(await tableExists(t)).toBe(false);
     expect(await columns('employee_store_access')).not.toContain('can_view_financials');
     const applied = await appliedNames();
