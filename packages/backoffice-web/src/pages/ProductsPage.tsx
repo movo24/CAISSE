@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Search,
@@ -20,7 +21,7 @@ import { productsApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
 import { useCurrentStoreId } from '../hooks/useCurrentStoreId';
 import { PriceAnalyticsPanel } from '../components/PriceAnalyticsPanel';
-import { validateProductForm, buildCreatePayload, buildUpdatePayload } from './productForm';
+import { validateProductForm, apiErrorMessage, buildCreatePayload, buildUpdatePayload } from './productForm';
 
 type SortKey = 'name' | 'price' | 'stock' | 'category';
 type SortDir = 'asc' | 'desc';
@@ -62,6 +63,7 @@ function stockBadge(stock: number) {
 }
 
 export function ProductsPage() {
+  const navigate = useNavigate();
   const employee = useAuthStore((s) => s.employee);
   const storeId = useCurrentStoreId();
   const [products, setProducts] = useState<Product[]>([]);
@@ -213,7 +215,7 @@ export function ProductsPage() {
     setFormError(null);
   };
 
-  const openAdd = () => { resetForm(); setShowModal(true); };
+  const _openAdd = () => { resetForm(); setShowModal(true); };
 
   const [originalPrice, setOriginalPrice] = useState<number | null>(null);
   const [priceConfirm, setPriceConfirm] = useState(false);
@@ -355,7 +357,7 @@ export function ProductsPage() {
             Exporter
           </button>
           <button
-            onClick={openAdd}
+            onClick={() => navigate('/products/new')}
             className="flex items-center gap-2 bg-bo-accent text-white px-5 py-2.5 rounded-xl font-medium hover:bg-bo-accent/90 transition-colors shadow-lg shadow-bo-accent/25"
           >
             <Plus size={16} />

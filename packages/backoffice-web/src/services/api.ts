@@ -157,6 +157,13 @@ export const productsApi = {
     description?: string;
     costMinorUnits?: number;
     taxRate?: number;
+    unitType?: string;
+    imageUrl?: string;
+    stockAlertThreshold?: number;
+    stockCriticalThreshold?: number;
+    brandId?: string;
+    supplierId?: string;
+    sku?: string;
   }) => api.post('/products', data),
   // Aligné sur UpdateProductDto : PAS de `ean` (immuable, absent du DTO →
   // rejeté par forbidNonWhitelisted), PAS de `storeId`.
@@ -170,6 +177,13 @@ export const productsApi = {
       description?: string;
       costMinorUnits?: number;
       taxRate?: number;
+      unitType?: string;
+      imageUrl?: string;
+      stockAlertThreshold?: number;
+      stockCriticalThreshold?: number;
+      brandId?: string;
+      supplierId?: string;
+      sku?: string;
       reason?: string;
       isActive?: boolean;
     },

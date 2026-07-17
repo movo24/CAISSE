@@ -7,6 +7,7 @@ import { LoginPage } from './pages/LoginPage';
 import { StoreSelectPage } from './pages/StoreSelectPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { ProductsPage } from './pages/ProductsPage';
+import { ProductEditPage } from './pages/ProductEditPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { StockAlertsPage } from './pages/StockAlertsPage';
@@ -83,6 +84,8 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             {/* Couche 3: Exploitation magasin */}
             <Route path="/" element={<DashboardPage />} />
             <Route path="/products" element={<ProductsPage />} />
+            <Route path="/products/new" element={<ProductEditPage />} />
+            <Route path="/products/:id/edit" element={<ProductEditPage />} />
             <Route path="/catalog/variants" element={<ProductVariantsPage />} />
             <Route path="/catalog/store-prices" element={<StorePricesPage />} />
             <Route path="/catalog/brands-suppliers" element={<BrandsSuppliersPage />} />

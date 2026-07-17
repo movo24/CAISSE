@@ -108,6 +108,14 @@ Revue adversariale de TOUS les fixes de la campagne (chaque agent tente de RÉFU
 ### Prochaine action automatique (continuité)
 Safe restant : audit read-only des modules ⚠️ (jackpot/loyalty/etc.) → confirmer/infirmer, garde-fous additifs + tests si bug évident. Vrais blocages : M107 réconciliation prod / décision A-B-C, D16-D17 archi, secrets/prod (#3, D6/D8/D7), Stripe parqué.
 
+
+### Session POS/backoffice — 2026-07-16 (fil « caisse terrain »)
+- **v1.1.0 livrée** (merge #80 + release, parc auto-update) ; docs Payment Engine mergés (#82, #83 : architecture validée owner, GO P0/P1 fermé en attente partenaire).
+- **PR #84 (draft)** : Dashboard identité ADDX×Wesley (a4124d4) · fiche produit page 11 onglets scan-first Phase 1 (0eba794) · schéma ERP produits À VALIDER D-FP1..D-FP5 (bd4179b) · fix erreurs-par-champ + virgule FR (602ca50, cause prouvée : build déployé obsolète + double masquage) · réalignement entité employee_store_access sur migration 1711 (ea04289, mécanisme prouvé par micro-test SQL ; PG 5 specs série ×2 ordres exit 0 en local) · HT↔TTC bidirectionnel anti-dérive (70f9164, balayage exhaustif).
+- **Chantier accès & activité** : Lot 0 VALIDÉ (f06403f sur feat/mobile-access-rebuild-2026-07) ; ancien chantier prouvé perdu (ls-remote/cat-file/reflog vides).
+- **Correction de discipline (owner)** : GO M-B indûment étendu par l'agent → annulé ; AUCUN code/migration n'avait été écrit (vérifié). Règle réaffirmée : un GO couvre ce qu'il nomme.
+- **main@a7f6f59 : CI rouge** (step PG serial) — re-run lancé pour discriminer flake vs cause réelle ; non reproduit localement en conditions CI exactes.
+
 ---
 
 ## 2026-07-16 — Journal de stock unifié / NF525 : F0 + F1 (GO owner nommé) — branche `feat/stock-journal-nf525-on-main`
