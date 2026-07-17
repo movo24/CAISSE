@@ -5,7 +5,7 @@
 > pas — le lot suivant peut la sauter. Ce registre est la source unique du **qui possède quel
 > numéro**, de l'**ordre de merge**, et des **pièges d'ordre d'exécution**.
 >
-> Dernière mise à jour : **2026-07-16** (lot fiche produit ERP P-A/P-B).
+> Dernière mise à jour : **2026-07-17** (passage d'hygiène : sync main, vérif ordre de merge, pièges post-#84).
 
 ## Règle d'or (obligatoire avant de réserver un numéro)
 
@@ -70,3 +70,41 @@ main (1767 déjà présent)
   local == remote). Sa PR (à créer par l'owner) doit être mergée **en premier**, avant celle de
   `feat/product-sheet-erp-pa`.
 - Tout merge vers `main` = **Tier-2, GO owner nominatif**.
+
+## Passage d'hygiène 2026-07-17 (fil caisse terrain, ordre owner)
+
+**Table ci-dessus re-vérifiée contre `main@a7f6f59` réelle** : lignée `…1757, 1758, 1767`
+confirmée par `git ls-tree` — aucun changement de numérotation requis, statuts exacts.
+
+**Synchronisation des branches en attente** (elles étaient passées en conflit avec `main`
+comme la PR #84) : merge de `main` dans `feat/catalog-refonte` (`1fc932f` → `cbeeacf`), puis
+répercussion sur la pile `feat/product-sheet-erp-pa`. Conflits = journaux de session
+uniquement (`EXECUTION_LOG` / `PROJECT_STATUS` / `TECHNICAL_DEBT`), union stricte, aucun
+fichier de code en conflit, push normal (jamais de force). L'ordre de merge requis
+ci-dessus **tient toujours**.
+
+### ⚠️ Nouveau piège post-#84 (chevauchement de CODE, pas de numérotation)
+La PR **#84** (`claude/customer-display-vertical-eolixp`, fiche produit Phase 1 sans
+migration) touche **7 fichiers aussi modifiés par `feat/catalog-refonte`** :
+`products.dto.ts`, `employee-store-access.entity.ts`, `main.tsx`, `ProductEditPage.tsx`,
+`ProductsPage.tsx`, `productForm.ts`, `services/api.ts`. **Dès que #84 sera mergée dans
+`main`, la lignée catalogue passera en conflit de code — non trivial → résolution Tier-2,
+GO owner** (en particulier : l'entité ESA devra rester alignée 1711 + 1759, et
+`ProductEditPage.tsx` existera sur `main` en version Phase 1, invalidant la preuve
+« absent d'origin/main » de la note de dépendance ci-dessus).
+
+### ⚠️ Piège de test « revert par comptage » (classe entière, down() jamais en cause)
+Deux specs de migration font `undoLastMigration ×N` en supposant que **leurs** migrations
+sont les dernières de la lignée — hypothèse structurellement cassée dès que des lignées
+se combinent (par sync de branche aujourd'hui, par merge dans `main` demain) :
+- `access-activity-migrations.pg.spec.ts` › « revert ×6 » — ROUGE sur la branche catalogue,
+  **préexistant** (vérifié à l'identique sur `1fc932f` non mergé ET après merge, base
+  vierge) : `1760-1766` puis `1767` sont au-dessus des `1759x`.
+- `stock-movement-linkage-migration.pg.spec.ts` › « down » — VERT sur `main` et sur la
+  branche catalogue synchronisée, mais ROUGE sur `feat/product-sheet-erp-pa` synchronisée :
+  `1768-1770` sont au-dessus de `1767`, le revert déroule `1770` au lieu de `1767`
+  (vérifié : `store_id` encore présent après undo). Ce rouge apparaîtra à l'identique sur
+  `main` au moment du merge de la lignée ERP — ce n'est PAS un artefact de la sync.
+Correctif de fond (décision des fils propriétaires des specs) : reverter jusqu'à une
+migration CIBLE (par nom) au lieu de compter, ou monter une lignée bornée dans le spec.
+Les down() eux-mêmes sont sains — c'est la fenêtre de revert des tests qui est fausse.
