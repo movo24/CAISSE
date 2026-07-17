@@ -1,5 +1,6 @@
 import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, Index } from 'typeorm';
 import { SaleEntity } from './sale.entity';
+import { decimalToNumber } from '../transformers/decimal-to-number.transformer';
 
 @Entity('sale_line_items')
 @Index(['saleId'])
@@ -32,7 +33,7 @@ export class SaleLineItemEntity {
   @Column({ name: 'promo_id', nullable: true })
   promoId: string;
 
-  @Column({ name: 'tax_rate', type: 'decimal', default: 20 })
+  @Column({ name: 'tax_rate', type: 'decimal', default: 20, transformer: decimalToNumber })
   taxRate: number;
 
   @Column({ name: 'line_total_minor_units', type: 'integer' })

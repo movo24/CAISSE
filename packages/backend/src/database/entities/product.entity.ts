@@ -9,6 +9,7 @@ import {
   Index,
 } from 'typeorm';
 import { StoreEntity } from './store.entity';
+import { decimalToNumber } from '../transformers/decimal-to-number.transformer';
 
 @Entity('products')
 @Index(['ean', 'storeId'], { unique: true })
@@ -63,7 +64,7 @@ export class ProductEntity {
   @Column({ name: 'cost_minor_units', type: 'integer', nullable: true })
   costMinorUnits: number;
 
-  @Column({ name: 'tax_rate', type: 'decimal', default: 20.0 })
+  @Column({ name: 'tax_rate', type: 'decimal', default: 20.0, transformer: decimalToNumber })
   taxRate: number;
 
   @Column({ name: 'image_url', nullable: true, type: 'text' })

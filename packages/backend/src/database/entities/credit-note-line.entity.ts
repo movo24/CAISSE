@@ -1,5 +1,6 @@
 import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, Index } from 'typeorm';
 import { CreditNoteEntity } from './credit-note.entity';
+import { decimalToNumber } from '../transformers/decimal-to-number.transformer';
 
 /** A single returned line within a credit note (supports partial returns). */
 @Entity('credit_note_lines')
@@ -33,7 +34,7 @@ export class CreditNoteLineEntity {
   @Column({ name: 'line_total_minor_units', type: 'integer' })
   lineTotalMinorUnits: number;
 
-  @Column({ name: 'tax_rate', type: 'decimal', default: 20 })
+  @Column({ name: 'tax_rate', type: 'decimal', default: 20, transformer: decimalToNumber })
   taxRate: number;
 
   @ManyToOne(() => CreditNoteEntity, (cn) => cn.lines)
