@@ -102,6 +102,7 @@ export function useCart() {
         ean: product.ean,
         name: `${product.name} (${weightKg.toFixed(3)} kg)`,
         unitPriceMinorUnits: priceMinor,
+        taxRate: Number.isFinite(Number(product.taxRate)) ? Number(product.taxRate) : undefined,
       });
     } else {
       store.addToCart({
@@ -109,6 +110,7 @@ export function useCart() {
         ean: product.ean,
         name: product.name,
         unitPriceMinorUnits: product.priceMinorUnits,
+        taxRate: Number.isFinite(Number(product.taxRate)) ? Number(product.taxRate) : undefined,
       });
     }
     setScanValue('');
@@ -171,7 +173,7 @@ export function useCart() {
       } else {
         const res = await productsApi.scan(value);
         if (res.data) {
-          store.addToCart({ productId: res.data.id, ean: res.data.ean, name: res.data.name, unitPriceMinorUnits: res.data.priceMinorUnits });
+          store.addToCart({ productId: res.data.id, ean: res.data.ean, name: res.data.name, unitPriceMinorUnits: res.data.priceMinorUnits, taxRate: Number.isFinite(Number(res.data.taxRate)) ? Number(res.data.taxRate) : undefined });
         } else { await reportUnknownProduct(value.trim()); }
       }
     } catch (e: any) {

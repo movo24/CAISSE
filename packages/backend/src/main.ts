@@ -271,7 +271,11 @@ async function bootstrap() {
   });
 
   // --- Global prefix ---
-  app.setGlobalPrefix('api');
+  // Le ticket numérique public vit HORS /api : l'URL imprimée dans le QR du
+  // ticket papier est https://<domaine>/ticket/<jeton> (courte, scannable).
+  app.setGlobalPrefix('api', {
+    exclude: ['ticket/:token', 'ticket/:token/data', 'ticket/:token/pdf'],
+  });
 
   // --- Global pipes ---
   app.useGlobalPipes(

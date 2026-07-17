@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Printer, Inbox, RefreshCw, CheckCircle2, XCircle, Loader2,
 } from 'lucide-react';
-import { peripheralBridge } from '../services/peripheralBridge';
+import { peripheralBridge, getPaperWidthMm, setPaperWidthMm, type PaperWidthMm } from '../services/peripheralBridge';
 
 /**
  * Écran diagnostic périphériques (desktop Windows). Permet, sur le poste, de :
@@ -27,6 +27,7 @@ export function PrinterDiagnosticsPage() {
   const [printBusy, setPrintBusy] = useState(false);
   const [drawerBusy, setDrawerBusy] = useState(false);
   const [printResult, setPrintResult] = useState<TestResult>(null);
+  const [paperWidth, setPaperWidth] = useState<PaperWidthMm>(getPaperWidthMm());
   const [drawerResult, setDrawerResult] = useState<TestResult>(null);
 
   const isDesktop = typeof window !== 'undefined' && (window as any).electronAPI?.getPrinters;
@@ -61,15 +62,17 @@ export function PrinterDiagnosticsPage() {
     try {
       const ok = await peripheralBridge.printTicket(
         {
-          storeName: 'POS CAISSE — TEST',
+          storeName: 'POS CAISSE',
           storeAddress: '', siret: '', tvaIntracom: '',
           ticketNumber: 'TEST-IMPRESSION',
           date: new Date().toLocaleString('fr-FR'),
           cashierName: 'Diagnostic',
-          items: [{ name: 'Impression de test', quantity: 1, unitPrice: 0, total: 0 }],
+          items: [{ name: 'Impression de test — éàçùî', quantity: 1, unitPrice: 0, total: 0 }],
           subtotal: 0, discount: 0, total: 0,
           payments: [], change: 0,
           footer: 'Test imprimante OK', nifCaisse: '', softwareVersion: '1.0',
+          // Marquage explicite : jamais confondable avec un ticket de vente.
+          testMarker: 'TEST — SANS VALEUR FISCALE',
         },
         { allowBrowserFallback: false },
       );
@@ -160,6 +163,29 @@ export function PrinterDiagnosticsPage() {
                   ))}
                 </div>
               )}
+            </div>
+
+            {/* Largeur papier (58 / 80 mm) */}
+            <div className="rounded-2xl border border-pos-border/30 p-4 bg-white/5">
+              <h2 className="text-sm font-bold uppercase tracking-wide text-pos-muted mb-3">Largeur papier</h2>
+              <div className="flex gap-3">
+                {([58, 80] as const).map((w) => (
+                  <button
+                    key={w}
+                    onClick={() => { setPaperWidthMm(w); setPaperWidth(w); }}
+                    className={`px-4 py-2.5 rounded-xl border text-sm font-semibold ${
+                      paperWidth === w
+                        ? 'border-emerald-400 bg-emerald-400/10'
+                        : 'border-pos-border/30 hover:bg-pos-subtle'
+                    }`}
+                  >
+                    {w} mm
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-pos-muted mt-2">
+                Appliquée à tous les tickets de cette caisse (mise en page et colonnes ESC/POS).
+              </p>
             </div>
 
             {/* Tests */}

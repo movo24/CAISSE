@@ -18,6 +18,7 @@ import {
   type DrawerStatus,
 } from '../services/salePeripherals';
 import { newIdempotencyKey } from '../services/idempotency';
+import { buildTicketUrl, makeTicketQrDataUrl } from '../services/ticketQr';
 import { toWirePayments, toSaleDiscountFields } from '../services/salePayload';
 import { validateManualDiscount } from '../services/discount-policy';
 import { useOfflineStore } from '../stores/offlineStore';
@@ -542,6 +543,7 @@ export function POSPage() {
         ean: product.ean,
         name: `${product.name} (${kg.toFixed(3)} kg)`,
         unitPriceMinorUnits: priceMinor,
+        taxRate: Number.isFinite(Number(product.taxRate)) ? Number(product.taxRate) : undefined,
       });
     } else {
       store.addToCart({
@@ -549,6 +551,7 @@ export function POSPage() {
         ean: product.ean,
         name: product.name,
         unitPriceMinorUnits: product.priceMinorUnits,
+        taxRate: Number.isFinite(Number(product.taxRate)) ? Number(product.taxRate) : undefined,
       });
     }
     setScanValue('');
@@ -594,7 +597,7 @@ export function POSPage() {
       } else {
         const res = await productsApi.scan(value);
         if (res.data) {
-          store.addToCart({ productId: res.data.id, ean: res.data.ean, name: res.data.name, unitPriceMinorUnits: res.data.priceMinorUnits });
+          store.addToCart({ productId: res.data.id, ean: res.data.ean, name: res.data.name, unitPriceMinorUnits: res.data.priceMinorUnits, taxRate: Number.isFinite(Number(res.data.taxRate)) ? Number(res.data.taxRate) : undefined });
         } else { openUnknownProduct(value.trim()); }
       }
     } catch (e: any) {
@@ -861,6 +864,9 @@ export function POSPage() {
       : 'mixed';
 
     let ticketNumber = '';
+    // Jeton public du ticket numérique (généré SERVEUR à la vente). Hors ligne :
+    // null — la vente reste finalisable, le jeton arrivera à la synchronisation.
+    let publicToken: string | null = null;
 
     // Stable idempotency key for this checkout — a double-click / retry reuses it,
     // so the backend dedupes instead of creating a second sale + cash-in.
@@ -876,6 +882,7 @@ export function POSPage() {
         payments: toWirePayments(payments),
       }, idempotencyKey);
       ticketNumber = res.data.ticketNumber || `T-${Date.now().toString().slice(-6)}`;
+      publicToken = res.data.publicToken || null;
       saleIdemKeyRef.current = null; // confirmed online → next sale gets a fresh key
       if (res.data.jackpotResult) store.setJackpotResult(res.data.jackpotResult);
     } catch (err: any) {
@@ -959,6 +966,8 @@ export function POSPage() {
       customerName: store.customer ? `${store.customer.firstName} ${store.customer.lastName}` : undefined,
       reprintCount: 0,
       reprintLog: [],
+      // Réimpression = MÊME jeton → exactement le même QR (jamais régénéré).
+      publicToken,
     });
 
     // Record performance metrics (silent tracking)
@@ -1006,38 +1015,70 @@ export function POSPage() {
     // vente. Idempotent par `saleId` (idempotency key) ET par action, persisté :
     // ni double ticket ni double tiroir sur double-clic / retry / remontage /
     // redémarrage. (`ticketNumber` reste la référence FISCALE affichée.)
-    const ticketData = buildTicketData({
-      storeName: store.storeInfo?.storeName,
-      storeAddress: store.storeInfo?.address,
-      siret: store.storeInfo?.siret,
-      tvaIntracom: store.storeInfo?.tvaIntracom,
-      nifCaisse: store.storeInfo?.nifCaisse,
-      ticketNumber,
-      date: timestamp,
-      cashierName,
-      items: store.cartItems.map((i) => ({
-        name: i.name,
-        quantity: i.quantity,
-        unitPriceMinorUnits: i.unitPriceMinorUnits,
-        discountMinorUnits: i.discountMinorUnits,
-      })),
-      subtotalMinorUnits: store.subtotal(),
-      discountMinorUnits: store.totalDiscount(),
-      totalMinorUnits: totalAmount,
-      payments: payments.map((p) => ({ method: p.method, amountMinorUnits: p.amountMinorUnits })),
-      changeMinorUnits: changeMinor,
-    });
+    const si = store.storeInfo;
+    // QR du ticket numérique : URL = base publique (config Dashboard) + jeton
+    // serveur. Hors ligne / QR désactivé / base absente → pas de QR (note claire
+    // hors ligne) — l'encaissement ne dépend JAMAIS du site Internet.
+    const qrEnabled = si?.receiptQrEnabled !== false;
+    const ticketUrl = qrEnabled ? buildTicketUrl(si?.receiptPublicBaseUrl, publicToken) : null;
+    const cartSnapshot = store.cartItems.map((i) => ({
+      name: i.name,
+      quantity: i.quantity,
+      unitPriceMinorUnits: i.unitPriceMinorUnits,
+      discountMinorUnits: i.discountMinorUnits,
+      taxRate: i.taxRate,
+    }));
+    const buildTicket = (qrDataUrl: string | null) =>
+      buildTicketData({
+        storeName: si?.storeName,
+        storeAddress: si?.address,
+        addressLine2: [si?.postalCode, si?.city].filter(Boolean).join(' ') || undefined,
+        operatingCompanyName: si?.operatingCompanyName || undefined,
+        siret: si?.siret,
+        tvaIntracom: si?.tvaIntracom,
+        rcs: si?.rcs || undefined,
+        capitalSocial: si?.capitalSocial || undefined,
+        phone: si?.phone || undefined,
+        website: si?.websiteUrl || undefined,
+        headerMessage: si?.headerMessage || undefined,
+        nifCaisse: si?.nifCaisse,
+        softwareVersion: si?.softwareVersion || undefined,
+        logoDataUrl: si?.receiptLogoUrl || null,
+        ticketNumber,
+        date: timestamp,
+        cashierName,
+        items: cartSnapshot,
+        subtotalMinorUnits: store.subtotal(),
+        discountMinorUnits: store.totalDiscount(),
+        totalMinorUnits: totalAmount,
+        payments: payments.map((p) => ({ method: p.method, amountMinorUnits: p.amountMinorUnits })),
+        changeMinorUnits: changeMinor,
+        footer: si?.footerMessage || undefined,
+        finalMessage: si?.receiptFinalMessage || undefined,
+        qrDataUrl,
+        qrContent: qrDataUrl ? ticketUrl : null,
+        qrText: qrDataUrl
+          ? si?.receiptQrText || 'Scannez pour retrouver votre ticket et découvrir nos nouveautés'
+          : undefined,
+        offlineNote:
+          qrEnabled && !publicToken
+            ? 'Ticket numérique disponible après synchronisation'
+            : undefined,
+      });
     setLastPrintStatus(null);
     setLastDrawerStatus(null);
-    void finalizeSalePeripherals({
-      // Identité STABLE de la vente = idempotency key (sale-<uuid>), jamais le
-      // ticketNumber (séquentiel par magasin côté serveur, instable côté client).
-      saleId: idempotencyKey,
-      ticketData,
-      payments: payments.map((p) => ({ method: p.method, amountMinorUnits: p.amountMinorUnits })),
-      saleValidated: true,
-      guard: salePeripheralGuard,
-    }).then((r) => {
+    void (async () => {
+      const qrDataUrl = ticketUrl ? await makeTicketQrDataUrl(ticketUrl) : null;
+      return finalizeSalePeripherals({
+        // Identité STABLE de la vente = idempotency key (sale-<uuid>), jamais le
+        // ticketNumber (séquentiel par magasin côté serveur, instable côté client).
+        saleId: idempotencyKey,
+        ticketData: buildTicket(qrDataUrl),
+        payments: payments.map((p) => ({ method: p.method, amountMinorUnits: p.amountMinorUnits })),
+        saleValidated: true,
+        guard: salePeripheralGuard,
+      });
+    })().then((r) => {
       // Trois statuts distincts, jamais fusionnés (règle owner).
       setLastPrintStatus(r.printStatus);
       setLastDrawerStatus(r.drawerStatus);

@@ -9,9 +9,14 @@ export function mapStoreEntityToStoreInfo(store: StoreEntity) {
   return {
     storeName: store.name,
     address: store.address || '',
+    addressExtra: store.addressExtra || '',
     postalCode: store.postalCode || '',
     city: store.city || '',
+    country: store.country || '',
     phone: store.phone || '',
+    email: store.email || '',
+    websiteUrl: store.websiteUrl || '',
+    operatingCompanyName: store.operatingCompanyName || '',
 
     siret: store.siret || '',
     siren: store.siren || '',
@@ -27,5 +32,12 @@ export function mapStoreEntityToStoreInfo(store: StoreEntity) {
 
     headerMessage: store.headerMessage || null,
     footerMessage: store.footerMessage || null,
+
+    // Refonte ticket The Wesley — réglages pilotés par le Dashboard.
+    receiptLogoUrl: store.receiptLogoUrl || null,
+    receiptQrEnabled: store.receiptQrEnabled ?? true,
+    receiptQrText: store.receiptQrText || null,
+    receiptFinalMessage: store.receiptFinalMessage || null,
+    receiptPublicBaseUrl: store.receiptPublicBaseUrl || null,
   };
 }

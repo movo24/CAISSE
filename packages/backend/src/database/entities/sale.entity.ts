@@ -59,6 +59,18 @@ export class SaleEntity {
   @Column({ name: 'terminal_id', type: 'varchar', nullable: true })
   terminalId: string | null;
 
+  /**
+   * Jeton public opaque du ticket numérique (page /ticket/:token), généré
+   * serveur à la finalisation (crypto, non devinable). Nullable & additive :
+   * les ventes antérieures restent sans jeton (jamais d'UPDATE sur une vente
+   * validée). DÉLIBÉRÉMENT HORS de l'empreinte de hash fiscale (v1/v2), comme
+   * sessionId/terminalId — aucune vente existante n'est rehashée. Une
+   * réimpression réutilise ce même jeton ; une nouvelle vente en génère un
+   * nouveau.
+   */
+  @Column({ name: 'public_token', type: 'varchar', length: 64, nullable: true })
+  publicToken: string | null;
+
   @Column({ default: 'pending' })
   status: string;
 
