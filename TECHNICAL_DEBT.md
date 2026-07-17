@@ -109,3 +109,48 @@ Statuts : OPEN · IN PROGRESS · BLOCKED (owner/accès) · CLOSED (PR retire l'e
 - ✅ **Déjà résolus (dérive du registre, vérifiés)** : `migration:run` utilise `typeorm-ts-node-commonjs` (plus de `typeorm/cli.js` inexistant) ; `promo-codes` & `stock-reconciliation` **sont** documentés dans la table des modules.
 
 **Résiduel (non fait — évite d'introduire une NOUVELLE incohérence)** : les en-têtes `## Backend Modules (42)` (réel 46) et `## TypeORM Entities (55)` (réel 62) sont suivis de **tables énumérées** ; bumper le seul chiffre sans réconcilier la table crée un écart pire → réconciliation complète des tables = passe dédiée. Restent aussi : barrel `entities/index.ts` (inoffensif), seeds PIN `1234/5678` littéraux, colonnes date Z vs KPI. **Ferme :** réconcilier les 2 tables énumérées + les 3 nits restants.
+
+---
+
+## D22 — Journal de stock unifié : couverture shadow — ✅ chemins caisse COUVERTS (F1+F1b+F2) ; reste le cutover F3 + le legacy système B
+**Status:** IN PROGRESS (rétréci). **Since:** F1, 2026-07-16, branche `feat/stock-journal-nf525-on-main`.
+
+**MISE À JOUR (F1b + F2 livrés, GO nominatif).** La moitié « couverture » de cette dette est
+**fermée** : `void` + composants (**F2**) et `inventory_adjust` (**F1b**) écrivent désormais leur
+mouvement. **Tous les chemins qui mutent le scalaire côté caisse sont journalisés** :
+vente/pack (F1), retour (F1), void/composants (F2), ajustement (F1b) — prouvé par
+`stock-reconciliation-readonly.pg.spec.ts` (le `gap` reste constant sur ces chemins).
+**Ce qui RESTE ouvert :** (a) le **système B legacy** (`syncLegacyStock`, réception/transfert/perte
+par emplacement) peut encore bouger le scalaire hors journal → fermé par **F4** ; (b) l'absence de
+**solde d'ouverture** rend le `gap` non nul en absolu → fermé par le **cutover F3**. Une correction
+manuelle en base reste par nature hors journal (l'instrument la révèle — dernier test du spec).
+Le texte historique ci-dessous documente l'état à la livraison de F1.
+
+---
+*(état à la livraison de F1 — conservé pour traçabilité)*
+> *Numérotation : D21 est volontairement réservée à la branche accès/activité non mergée (évite une
+> collision de numéro au merge) — même logique que le trou de migrations 1759→1766.*
+
+**Contexte.** Le journal de stock unifié (`stock_movements` = source unique cible ; voir
+`PRODUCTS_FISCAL_STOCK_SYNTHESIS.md`) est livré en **F0** (schéma additif, mig 1767) + **F1**
+(écriture double *shadow*, flag `STOCK_JOURNAL_SHADOW` **OFF par défaut**). Le flag ON écrit les
+mouvements **uniquement pour la vente et le retour**.
+
+**Ce qui n'est PAS couvert (conscient, nommé).** Deux chemins mutent encore le scalaire
+`products.stock_quantity` **sans** écrire de mouvement : (a) **`voidSale`** (mouvement inverse
+`void` + fix G3 = bloc **F2**) ; (b) **`stock.adjustStock`** (`inventory_adjust` = bloc **F1b**).
+**Conséquence directe :** tant que F1b + F2 ne sont pas livrés, une réconciliation
+`scalaire vs SUM(mouvements)` **n'est pas exhaustive** — un écart non nul est *attendu* et
+*explicable* par ces deux chemins (+ l'absence de solde d'ouverture avant le cutover F3).
+
+**Instrument de mesure (livré, lecture seule).** `test/stock-reconciliation-readonly.pg.spec.ts`
++ la requête `RECONCILE_SQL` : par (magasin, produit), `gap = scalaire − SUM(mouvements signés)`.
+**Propriété prouvée :** tant que seuls des chemins couverts tournent, `gap` reste constant ;
+toute variation de `gap` = exactement l'effet des chemins non couverts. C'est le critère de
+bascule **F3** (0 divergence après cutover + couverture complète).
+
+**Ce qui la ferme.** Livraison de **F1b** (adjust shadow) + **F2** (void inverse) sous GO nominatifs
+(dossier prêt : `GO_F2_PACKAGE.md`) → la réconciliation devient exhaustive → puis F3 (cutover solde
+d'ouverture) atteint `gap → 0`. **Cross-refs.** `PRODUCTS_FISCAL_STOCK_SYNTHESIS.md`,
+`GO_F2_PACKAGE.md`, `stock-journal-shadow.pg.spec.ts`, `stock-reconciliation-readonly.pg.spec.ts`.
+**Rappel :** F1b/F2/F3/F4, activation du flag hors test local, et tout merge = Tier-2 (GO explicite).

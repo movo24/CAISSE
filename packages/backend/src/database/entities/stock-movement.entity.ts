@@ -45,6 +45,8 @@ export class StockMovementEntity {
     | 'supplier_receipt'
     | 'transfer'
     | 'sale'
+    | 'pack_consumption'
+    | 'void'
     | 'return_customer'
     | 'return_supplier'
     | 'inventory_adjust'
@@ -61,8 +63,13 @@ export class StockMovementEntity {
   @Column({ name: 'to_location_id', type: 'uuid', nullable: true })
   toLocationId: string | null;
 
+  // Always positive; direction is given by from/to_location or by movementType.
+  // EXCEPTION (ratifiée, F1b) : pour `inventory_adjust` UNIQUEMENT, `quantity` est
+  // le DELTA SIGNÉ (new − old) — un ajustement n'a pas de sens in/out intrinsèque
+  // (surtout en mode absolu) ; seul le delta est univoque et s'agrège directement
+  // dans la réconciliation.
   @Column({ type: 'integer' })
-  quantity: number; // Always positive. Direction determined by from/to.
+  quantity: number;
 
   // Reference document (BL, PO number, ticket number)
   @Column({ type: 'varchar', length: 100, nullable: true })
@@ -80,6 +87,22 @@ export class StockMovementEntity {
 
   @Column({ name: 'employee_name', type: 'varchar', length: 200 })
   employeeName: string;
+
+  // ── Liaison vente (bloc F0, additif — renseigné à partir de F1) ──
+  // Sale/return/void movements carry these; warehouse movements leave them NULL.
+  @Column({ name: 'store_id', type: 'uuid', nullable: true })
+  storeId: string | null;
+
+  @Column({ name: 'sale_id', type: 'uuid', nullable: true })
+  saleId: string | null;
+
+  @Column({ name: 'sale_line_item_id', type: 'uuid', nullable: true })
+  saleLineItemId: string | null;
+
+  // Business time of the operation (e.g. real time of an offline sale replayed
+  // later), distinct from created_at (server record time).
+  @Column({ name: 'occurred_at', type: 'timestamp', nullable: true })
+  occurredAt: Date | null;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

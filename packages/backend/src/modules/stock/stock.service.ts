@@ -6,6 +6,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { ProductEntity } from '../../database/entities/product.entity';
+import { StockMovementEntity } from '../../database/entities/stock-movement.entity';
 import { AuditService } from '../audit/audit.service';
 
 @Injectable()
@@ -142,6 +143,32 @@ export class StockService {
       }
 
       const saved = await manager.save(product);
+
+      // --- Journal de stock unifié — bloc F1b (shadow, flag OFF par défaut).
+      // L'ajustement écrit son mouvement dans la MÊME tx que le scalaire (jamais
+      // d'ajustement committé sans son mouvement, ni l'inverse).
+      // CONVENTION RATIFIÉE (GO owner) : `quantity` = DELTA SIGNÉ (new − old) —
+      // exception UNIQUE et documentée à la règle « quantity toujours positif ».
+      // Motif : un ajustement n'a pas de sens in/out intrinsèque (surtout en mode
+      // absolu) ; seul le delta est univoque, et la réconciliation l'agrège tel quel
+      // (`inventory_adjust` → `+quantity`). Un delta nul n'écrit rien (aucun
+      // mouvement réel ; l'audit trace déjà la tentative). ---
+      if (process.env.STOCK_JOURNAL_SHADOW === 'true') {
+        const delta = (saved.stockQuantity ?? 0) - oldQty;
+        if (delta !== 0) {
+          await manager.insert(StockMovementEntity, {
+            productId,
+            movementType: 'inventory_adjust',
+            fromLocationId: null,
+            toLocationId: null,
+            quantity: delta,
+            reason,
+            employeeId,
+            employeeName: employeeId, // ce chemin ne dispose pas d'un snapshot de nom
+            storeId,
+          });
+        }
+      }
 
       this.logger.log(
         `Stock adjusted: ${product.name} (${product.ean}) ${oldQty} → ${saved.stockQuantity} (mode=${mode}, value=${quantity}, reason=${reason})`,
