@@ -56,8 +56,10 @@ describe('POSPage — câblage de la douchette wedge globale (source guards)', (
     expect(posPage).toMatch(/const off = peripheralBridge\.startBarcodeListener/);
   });
 
-  it('les scans globaux sont filtrés par shouldAcceptWedgeScan avant handleScan', () => {
+  it('les scans globaux sont filtrés par shouldAcceptWedgeScan, dédoublonnés, puis routés vers handleScan', () => {
     expect(posPage).toMatch(/shouldAcceptWedgeScan\(\{/);
-    expect(posPage).toMatch(/if \(accept\) void handleScan\(code\)/);
+    expect(posPage).toMatch(/if \(!accept\) return/);
+    expect(posPage).toMatch(/isDuplicateScan\(lastWedgeScan\.current, code, now\)/);
+    expect(posPage).toMatch(/void handleScan\(code\)/);
   });
 });

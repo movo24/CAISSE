@@ -8,6 +8,7 @@
  */
 
 import { DevicePlatform } from '../hooks/useDeviceProfile';
+import { WedgeDecoder, isEditableTarget } from './wedgeDecoder';
 
 /* ═══════════════════════════════════════════════════
    TYPES
@@ -70,8 +71,6 @@ class PeripheralBridge {
   private barcodeCallbacks: Set<BarcodeCallback> = new Set();
   private _btPrintFn: ((data: TicketData) => Promise<boolean>) | null = null;
   private _btDrawerFn: (() => Promise<boolean>) | null = null;
-  private keyboardBuffer = '';
-  private keyboardTimeout: ReturnType<typeof setTimeout> | null = null;
   private cameraStream: MediaStream | null = null;
   private scanInterval: ReturnType<typeof setInterval> | null = null;
 
@@ -478,27 +477,25 @@ class PeripheralBridge {
     if ((this as any)._keyboardListenerActive) return;
     (this as any)._keyboardListenerActive = true;
 
-    const handler = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement;
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
+    // Décodeur pur (détection par la vitesse des caractères) — cf. wedgeDecoder.ts.
+    const decoder = new WedgeDecoder();
 
-      if (e.key === 'Enter' && this.keyboardBuffer.length >= 4) {
-        const code = this.keyboardBuffer;
-        this.keyboardBuffer = '';
+    const handler = (e: KeyboardEvent) => {
+      // Cible éditable (champ de saisie) : la frappe lui appartient — la douchette
+      // globale ne capture pas et n'injecte jamais le code ailleurs.
+      if (isEditableTarget(e.target as HTMLElement | null)) {
+        decoder.reset();
+        return;
+      }
+      const decoded = decoder.feed(e.key, Date.now());
+      if (decoded) {
         const result: BarcodeResult = {
-          code,
-          format: code.length === 13 ? 'EAN-13' : code.length === 8 ? 'EAN-8' : 'CODE-128',
+          code: decoded.code,
+          format: decoded.format,
           timestamp: Date.now(),
         };
         this.barcodeCallbacks.forEach(cb => cb(result));
         e.preventDefault();
-        return;
-      }
-
-      if (e.key.length === 1) {
-        this.keyboardBuffer += e.key;
-        if (this.keyboardTimeout) clearTimeout(this.keyboardTimeout);
-        this.keyboardTimeout = setTimeout(() => { this.keyboardBuffer = ''; }, 80);
       }
     };
 
