@@ -4,6 +4,8 @@ import {
   CircleDot, Bell, CheckCircle2,
 } from 'lucide-react';
 import { posSessionsApi, employeeScoreApi } from '../services/api';
+import { useAuthStore } from '../stores/authStore';
+import { buildSessionListParams } from './cashSessionsFilters';
 
 interface Session {
   id: string;
@@ -73,13 +75,17 @@ export function CashSessionsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [withCashOnly, setWithCashOnly] = useState(false);
+  // Ciblage magasin (ADMIN uniquement — le serveur n'accepte ?storeId= que pour lui).
+  const isAdmin = useAuthStore((s) => s.employee?.role === 'admin');
+  const stores = useAuthStore((s) => s.stores);
+  const [storeFilter, setStoreFilter] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const [sRes, aRes] = await Promise.all([
-        posSessionsApi.list({ limit: 100, withCashCountOnly: withCashOnly }),
+        posSessionsApi.list(buildSessionListParams({ isAdmin, selectedStoreId: storeFilter, withCashCountOnly: withCashOnly })),
         employeeScoreApi.alerts(72),
       ]);
       setSessions(Array.isArray(sRes.data) ? sRes.data : []);
@@ -89,7 +95,7 @@ export function CashSessionsPage() {
     } finally {
       setLoading(false);
     }
-  }, [withCashOnly]);
+  }, [withCashOnly, isAdmin, storeFilter]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -144,10 +150,25 @@ export function CashSessionsPage() {
         <div className="lg:col-span-2">
           <div className="flex items-center justify-between mb-2">
             <h2 className="text-sm font-semibold text-gray-700">Sessions récentes</h2>
-            <label className="flex items-center gap-2 text-xs text-gray-500">
-              <input type="checkbox" checked={withCashOnly} onChange={(e) => setWithCashOnly(e.target.checked)} />
-              Comptées uniquement
-            </label>
+            <div className="flex items-center gap-3">
+              {isAdmin && stores.length > 0 && (
+                <select
+                  value={storeFilter}
+                  onChange={(e) => setStoreFilter(e.target.value)}
+                  className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs text-gray-600"
+                  title="Cibler un magasin (admin) — les sessions listées sont celles du magasin choisi"
+                >
+                  <option value="">Mon magasin</option>
+                  {stores.map((st) => (
+                    <option key={st.id} value={st.id}>{st.name || st.storeCode || st.id.slice(0, 8)}</option>
+                  ))}
+                </select>
+              )}
+              <label className="flex items-center gap-2 text-xs text-gray-500">
+                <input type="checkbox" checked={withCashOnly} onChange={(e) => setWithCashOnly(e.target.checked)} />
+                Comptées uniquement
+              </label>
+            </div>
           </div>
           <div className="overflow-x-auto rounded-xl border border-gray-100 bg-white">
             <table className="min-w-full text-sm">
