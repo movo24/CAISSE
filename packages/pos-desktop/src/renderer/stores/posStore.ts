@@ -190,6 +190,9 @@ interface POSState {
   // Actions
   setEmployee: (employee: Employee, token: string) => void;
   setPosSession: (session: PosSession | null) => void;
+  /** Vrai quand l'ouverture de session serveur a échoué (open + récupération
+   *  active) : la caisse tourne alors SANS session — état affiché, jamais tu. */
+  posSessionOpenFailed: boolean;
   openPosSession: () => Promise<void>;
   /** Changement de caissier explicite : ferme la session précédente, ouvre une
    *  nouvelle et journalise EMPLOYEE_SWITCHED (jamais de switch silencieux). */
@@ -251,6 +254,7 @@ export const usePOSStore = create<POSState>((set, get) => ({
   lockRequested: false,
   cashCountOpen: false,
   openingCashRequired: false,
+  posSessionOpenFailed: false,
   cartItems: [],
   customerQrCode: null,
   customer: null,
@@ -334,6 +338,7 @@ export const usePOSStore = create<POSState>((set, get) => ({
   },
 
   openPosSession: async () => {
+    set({ posSessionOpenFailed: false });
     try {
       const res = await posSessionApi.open();
       const s = res.data;
@@ -342,7 +347,11 @@ export const usePOSStore = create<POSState>((set, get) => ({
           posSession: { id: s.id, openedAt: s.openedAt || new Date().toISOString(), terminalId: s.terminalId ?? null },
           // Fond non déclaré → on demande la saisie à l'ouverture.
           openingCashRequired: s.openingCashMinorUnits == null,
+          posSessionOpenFailed: false,
         });
+      } else {
+        // Réponse sans id : la session n'existe pas côté serveur — état visible.
+        set({ posSession: null, posSessionOpenFailed: true });
       }
     } catch (e: any) {
       // 409 = une session est déjà active sur ce terminal → on la récupère.
@@ -354,10 +363,16 @@ export const usePOSStore = create<POSState>((set, get) => ({
             posSession: { id: s.id, openedAt: s.openedAt || new Date().toISOString(), terminalId: s.terminalId ?? null },
             // Session récupérée : ne redemande que si le fond n'a jamais été déclaré.
             openingCashRequired: s.openingCashMinorUnits == null,
+            posSessionOpenFailed: false,
           });
+        } else {
+          set({ posSession: null, posSessionOpenFailed: true });
         }
       } catch {
-        set({ posSession: null });
+        // Échec TOTAL (réseau/serveur) : la caisse continue mais SANS session —
+        // les ventes partiront avec session_id NULL (hors comptage de caisse).
+        // Cet état ne doit JAMAIS être silencieux : le bandeau l'affiche.
+        set({ posSession: null, posSessionOpenFailed: true });
       }
     }
   },
