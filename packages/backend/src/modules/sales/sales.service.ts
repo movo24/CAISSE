@@ -625,9 +625,19 @@ export class SalesService {
     const totalAfterDiscount = subtotal - totalDiscount;
     let taxTotal = 0;
     for (const li of lineItems) {
-      // Extract tax from gross (TTC → TVA component)
+      // Extract tax from gross (TTC → TVA component).
+      // DÉFENSE FISCALE : le taux est normalisé en number AU SITE DE CALCUL,
+      // quel que soit ce que fournit l'amont. Le driver pg renvoie les colonnes
+      // `decimal` en STRING ; sans ceci, `100 + '20.00'` concatène ('10020.00')
+      // et la TVA scellée dans le hash v2 sort ~100× trop faible (bug réel
+      // constaté sur vrai Postgres, invisible avec des mocks numériques). Le
+      // transformer decimalToNumber corrige les entités relues ; cette
+      // normalisation-ci garantit le calcul même si une source future
+      // réintroduit une string.
+      const rate = Number(li.taxRate);
+      const safeRate = Number.isFinite(rate) && rate >= 0 ? rate : 0;
       const taxAmount = Math.round(
-        li.lineTotalMinorUnits * (li.taxRate / (100 + li.taxRate)),
+        li.lineTotalMinorUnits * (safeRate / (100 + safeRate)),
       );
       taxTotal += taxAmount;
     }
