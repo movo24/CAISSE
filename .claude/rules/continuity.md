@@ -67,3 +67,18 @@ jamais après — une ratification a posteriori régularise le résultat, pas la
 Note de canal : dans les sessions Claude Code cloud, `gh` est indisponible ; les
 opérations GitHub (PRs, merges) passent par le serveur GitHub MCP (GitHub App autorisée,
 auteur affiché = compte du propriétaire) — ce canal obéit au présent §8 comme les autres.
+
+## §9 — Capacité minimale de l'agent (ratifié 2026-07-19)
+Corollaire strict de §8 : la sécurité vient du **minimum de capacité côté agent**, pas de
+la confiance dans l'usage. L'agent **ne détient aucun credential** lui permettant d'écrire
+sur `main` ou de publier une release — pas d'authentification device-code `gh`, pas de
+token d'écriture au nom du propriétaire. Autoriser un tel credential créerait un pouvoir
+d'écriture permanent de trop entre les mains de l'agent ; c'est refusé **par principe**,
+indépendamment de toute autorisation ponctuelle.
+- Les **PRs s'ouvrent par les clics du propriétaire** ; la **publication** d'une release
+  passe par le **bouton Run workflow du propriétaire**, jamais par un canal côté agent.
+- **Device codes = non définitif.** Au premier code non saisi, l'agent s'arrête et attend ;
+  il ne régénère aucun code. Même si le propriétaire écrit « code » ensuite, **la réponse
+  reste non** — la règle a été durcie précisément parce que la capacité fut le problème.
+- **Relance : une seule par action humaine attendue, puis silence** jusqu'au retour du
+  propriétaire (quatre codes générés/expirés = trois de trop).
