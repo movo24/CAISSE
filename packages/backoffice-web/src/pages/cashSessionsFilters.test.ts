@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildSessionListParams } from './cashSessionsFilters';
+import { buildSessionListParams, buildOffSessionParams } from './cashSessionsFilters';
 
 describe('cashSessionsFilters — buildSessionListParams', () => {
   it('admin + magasin choisi → storeId transmis', () => {
@@ -26,5 +26,17 @@ describe('cashSessionsFilters — buildSessionListParams', () => {
   it('limit par défaut 100, surchargable', () => {
     expect(buildSessionListParams({ isAdmin: false, selectedStoreId: '', withCashCountOnly: false }).limit).toBe(100);
     expect(buildSessionListParams({ isAdmin: false, selectedStoreId: '', withCashCountOnly: false, limit: 25 }).limit).toBe(25);
+  });
+});
+
+describe('cashSessionsFilters — buildOffSessionParams', () => {
+  it('admin + magasin choisi → storeId transmis, days par défaut 14', () => {
+    expect(buildOffSessionParams({ isAdmin: true, selectedStoreId: 'store-b' })).toEqual({ days: 14, storeId: 'store-b' });
+  });
+  it('non-admin → storeId jamais transmis', () => {
+    expect(buildOffSessionParams({ isAdmin: false, selectedStoreId: 'store-b', days: 7 })).toEqual({ days: 7 });
+  });
+  it('admin sans choix → storeId absent', () => {
+    expect(buildOffSessionParams({ isAdmin: true, selectedStoreId: '' }).storeId).toBeUndefined();
   });
 });

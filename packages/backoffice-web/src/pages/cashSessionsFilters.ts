@@ -27,3 +27,15 @@ export function buildSessionListParams(opts: {
   if (opts.isAdmin && chosen) params.storeId = chosen;
   return params;
 }
+
+/** Params du listing « ventes hors session » — même règle de ciblage admin. */
+export function buildOffSessionParams(opts: {
+  isAdmin: boolean;
+  selectedStoreId: string;
+  days?: number;
+}): { days: number; storeId?: string } {
+  const params: { days: number; storeId?: string } = { days: opts.days ?? 14 };
+  const chosen = opts.selectedStoreId.trim();
+  if (opts.isAdmin && chosen) params.storeId = chosen;
+  return params;
+}

@@ -638,6 +638,9 @@ export const salesGuardsApi = {
 export const posSessionsApi = {
   list: (params?: { limit?: number; activeOnly?: boolean; withCashCountOnly?: boolean; storeId?: string }) =>
     api.get('/pos-sessions', { params }),
+  // Ventes hors session (angle mort du comptage) — lecture seule, manager/admin.
+  offSession: (params?: { days?: number; storeId?: string }) =>
+    api.get('/pos-sessions/off-session', { params }),
 };
 
 // ---------------------------------------------------------------------------
