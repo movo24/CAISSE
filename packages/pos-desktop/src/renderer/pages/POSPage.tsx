@@ -19,6 +19,7 @@ import {
 } from '../services/salePeripherals';
 import { newIdempotencyKey } from '../services/idempotency';
 import { buildTicketUrl, makeTicketQrDataUrl } from '../services/ticketQr';
+import { getBrandLogoDataUrl } from '../services/brandLogo';
 import { toWirePayments, toSaleDiscountFields } from '../services/salePayload';
 import { validateManualDiscount } from '../services/discount-policy';
 import { useOfflineStore } from '../stores/offlineStore';
@@ -1037,7 +1038,9 @@ export function POSPage() {
       headerMessage: si?.headerMessage || undefined,
       nifCaisse: si?.nifCaisse,
       softwareVersion: si?.softwareVersion || undefined,
-      logoDataUrl: si?.receiptLogoUrl || null,
+      // Logo : config Dashboard d'abord ; sinon repli = logo officiel The
+      // Wesley embarqué dans la caisse (jamais un ticket sans marque).
+      logoDataUrl: si?.receiptLogoUrl || getBrandLogoDataUrl(),
       ticketNumber,
       date: timestamp,
       cashierName,

@@ -15,6 +15,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Loader2, Printer, Save, Store as StoreIcon, Upload, X } from 'lucide-react';
 import api, { storesApi } from '../services/api';
+import officialLogoUrl from '../assets/wesleys-logo-official.png';
 
 interface ReceiptSettings {
   websiteUrl: string | null;
@@ -196,6 +197,18 @@ export function ReceiptSettingsPage() {
     }
   };
 
+  /** Applique le logo OFFICIEL The Wesley embarqué dans l'application. */
+  const useOfficialLogo = async () => {
+    try {
+      const blob = await (await fetch(officialLogoUrl)).blob();
+      const file = new File([blob], 'wesleys-logo-official.png', { type: blob.type || 'image/png' });
+      const dataUrl = await fileToLogoDataUrl(file);
+      set('receiptLogoUrl', dataUrl);
+    } catch (e: any) {
+      setMessage({ ok: false, text: e?.message || 'Logo officiel indisponible.' });
+    }
+  };
+
   const printTest = () => {
     // Impression du ticket de TEST (aperçu) — explicitement marqué sans valeur
     // fiscale. Fenêtre construite par DOM (importNode), jamais document.write.
@@ -323,15 +336,23 @@ export function ReceiptSettingsPage() {
                   </div>
                 )}
                 <div>
-                  <button
-                    onClick={() => fileRef.current?.click()}
-                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gray-900 text-white text-sm font-medium hover:bg-gray-700"
-                  >
-                    <Upload size={14} /> Importer le logo
-                  </button>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={useOfficialLogo}
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-pink-600 text-white text-sm font-medium hover:bg-pink-700"
+                    >
+                      Utiliser le logo officiel The Wesley
+                    </button>
+                    <button
+                      onClick={() => fileRef.current?.click()}
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gray-900 text-white text-sm font-medium hover:bg-gray-700"
+                    >
+                      <Upload size={14} /> Importer un fichier
+                    </button>
+                  </div>
                   <p className="text-xs text-gray-500 mt-1.5">
-                    PNG/JPEG — imprimé en noir et blanc, centré. Utilisez le logo officiel The Wesley fourni
-                    (jamais un logo redessiné).
+                    PNG/JPEG — imprimé en noir et blanc, centré. Le logo officiel The Wesley est fourni avec
+                    l'application (jamais un logo redessiné).
                   </p>
                   <input
                     ref={fileRef}
