@@ -6,7 +6,6 @@ import {
   IsOptional,
   IsNotEmpty,
   IsBoolean,
-  IsUUID,
   IsIn,
   IsArray,
   ArrayNotEmpty,
@@ -114,22 +113,6 @@ export class CreateProductDto {
   @IsInt()
   @Min(0)
   stockCriticalThreshold?: number;
-
-  @ApiPropertyOptional({ description: 'Brand id (uuid) for the product' })
-  @IsOptional()
-  @IsUUID()
-  brandId?: string;
-
-  @ApiPropertyOptional({ description: 'Supplier id (uuid) for the product' })
-  @IsOptional()
-  @IsUUID()
-  supplierId?: string;
-
-  @ApiPropertyOptional({ description: 'Internal SKU / reference (unique per store when set)' })
-  @IsOptional()
-  @IsString()
-  @MaxLength(100)
-  sku?: string;
 
   @ApiPropertyOptional({ example: 200, description: 'Struck-through / former price in minor units (for promo display)' })
   @IsOptional()
@@ -262,22 +245,6 @@ export class UpdateProductDto {
   @IsOptional()
   @IsString()
   categoryId?: string;
-
-  @ApiPropertyOptional({ description: 'Marque (uuid brands — colonne existante)' })
-  @IsOptional()
-  @IsUUID()
-  brandId?: string;
-
-  @ApiPropertyOptional({ description: 'Fournisseur principal (uuid suppliers — colonne existante)' })
-  @IsOptional()
-  @IsUUID()
-  supplierId?: string;
-
-  @ApiPropertyOptional({ example: 'SKU-001', description: 'SKU interne (colonne existante)' })
-  @IsOptional()
-  @IsString()
-  @MaxLength(64)
-  sku?: string;
 
   @ApiPropertyOptional()
   @IsOptional()

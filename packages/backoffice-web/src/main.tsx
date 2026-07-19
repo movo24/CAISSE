@@ -33,7 +33,6 @@ import { ProductVariantsPage } from './pages/ProductVariantsPage';
 import { StorePricesPage } from './pages/StorePricesPage';
 import { BrandsSuppliersPage } from './pages/BrandsSuppliersPage';
 import { CategoriesAdminPage } from './pages/CategoriesAdminPage';
-import { ProductEditPage } from './pages/ProductEditPage';
 import { ProductDetailPage } from './pages/ProductDetailPage';
 import { PromoCodesPage } from './pages/PromoCodesPage';
 import { CampaignsPage } from './pages/CampaignsPage';
