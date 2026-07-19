@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -26,7 +27,7 @@ import { productsApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
 import { useCurrentStoreId } from '../hooks/useCurrentStoreId';
 import { PriceAnalyticsPanel } from '../components/PriceAnalyticsPanel';
-import { validateProductForm, buildCreatePayload, buildUpdatePayload } from './productForm';
+import { validateProductForm, apiErrorMessage, buildCreatePayload, buildUpdatePayload } from './productForm';
 
 interface Product {
   id: string;

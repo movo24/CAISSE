@@ -7,6 +7,7 @@ import { LoginPage } from './pages/LoginPage';
 import { StoreSelectPage } from './pages/StoreSelectPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { ProductsPage } from './pages/ProductsPage';
+import { ProductEditPage } from './pages/ProductEditPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { StockAlertsPage } from './pages/StockAlertsPage';

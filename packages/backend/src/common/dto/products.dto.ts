@@ -1,4 +1,5 @@
 import {
+  IsUUID,
   IsString,
   IsInt,
   IsNumber,
@@ -46,6 +47,23 @@ export class CreateProductDto {
   @IsOptional()
   @IsString()
   categoryId?: string;
+
+  @ApiPropertyOptional({ description: 'Marque (uuid brands — colonne existante)' })
+  @IsOptional()
+  @IsUUID()
+  brandId?: string;
+
+  @ApiPropertyOptional({ description: 'Fournisseur principal (uuid suppliers — colonne existante)' })
+  @IsOptional()
+  @IsUUID()
+  supplierId?: string;
+
+  @ApiPropertyOptional({ example: 'SKU-001', description: 'SKU interne (colonne existante)' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  sku?: string;
+
 
   @ApiPropertyOptional({ example: 'unit', default: 'unit' })
   @IsOptional()
@@ -244,6 +262,22 @@ export class UpdateProductDto {
   @IsOptional()
   @IsString()
   categoryId?: string;
+
+  @ApiPropertyOptional({ description: 'Marque (uuid brands — colonne existante)' })
+  @IsOptional()
+  @IsUUID()
+  brandId?: string;
+
+  @ApiPropertyOptional({ description: 'Fournisseur principal (uuid suppliers — colonne existante)' })
+  @IsOptional()
+  @IsUUID()
+  supplierId?: string;
+
+  @ApiPropertyOptional({ example: 'SKU-001', description: 'SKU interne (colonne existante)' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  sku?: string;
 
   @ApiPropertyOptional()
   @IsOptional()

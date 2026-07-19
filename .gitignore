@@ -15,3 +15,4 @@ coverage/
 !public/
 # Assets de marque officiels importés par Vite (hashés au build) — doivent être versionnés.
 !packages/pos-desktop/src/renderer/assets/*.png
+!packages/backoffice-web/src/assets/*.png

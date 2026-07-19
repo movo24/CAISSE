@@ -6,6 +6,7 @@ import {
   History, Plus, Trash2, AlertCircle, CheckCircle2, Pencil, Link2,
 } from 'lucide-react';
 import { productsApi } from '../services/api';
+import { ttcFromHt, eurosInputToMinor, minorToEurosInput, parseTaxRate } from './pricingMath';
 
 /**
  * Fiche produit PROFESSIONNELLE (page complète — remplace la popup minimaliste).
@@ -138,6 +139,9 @@ export function ProductEditPage() {
   const [priceHistory, setPriceHistory] = useState<any[]>([]);
   const [analytics, setAnalytics] = useState<any | null>(null);
   const [reason, setReason] = useState('');
+  // Saisie HT en cours (tarification bidirectionnelle — repris de la fiche P1 #84) :
+  // tant que l'utilisateur édite le HT, il reste maître et le TTC est recalculé.
+  const [htInput, setHtInput] = useState<string | null>(null);
   // Lot 4 — galerie & documents
   const [media, setMedia] = useState<any[]>([]);
   const [dragMediaIdx, setDragMediaIdx] = useState<number | null>(null);
@@ -210,6 +214,7 @@ export function ProductEditPage() {
       }
       const p = (await productsApi.get(id)).data;
       setOriginal(p);
+      setHtInput(null);
       setForm({
         ean: p.ean || '', name: p.name || '', description: p.description || '',
         categoryId: p.categoryId || '', unitType: p.unitType || 'unit',
@@ -736,16 +741,46 @@ export function ProductEditPage() {
 
         {tab === 'tarification' && (
           <div className="space-y-6">
+            {/* Saisie BIDIRECTIONNELLE (reprise fiche P1 #84) : HT édité → TTC recalculé ;
+                TTC édité → HT dérivé ; TVA changée pendant l'édition du HT → TTC recalculé
+                depuis le HT affiché. Cycle sans dérive prouvé par pricingMath.test. */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
               <Field label="Prix d'achat HT (€)"><input className={inputCls} inputMode="decimal" value={form.cost} onChange={(e) => set('cost', e.target.value)} /></Field>
               <Field label="Prix d'achat TTC (calc.)"><input className={`${inputCls} bg-gray-50`} disabled value={eur(calc.costTtc)} /></Field>
-              <Field label="Prix de vente TTC (€) *"><input className={inputCls} inputMode="decimal" value={form.priceTtc} onChange={(e) => set('priceTtc', e.target.value)} /></Field>
-              <Field label="TVA (%)"><input className={inputCls} inputMode="decimal" value={form.taxRate} onChange={(e) => set('taxRate', e.target.value)} /></Field>
+              <Field label="Prix de vente HT (€)">
+                <input
+                  className={inputCls} inputMode="decimal"
+                  value={htInput !== null ? htInput : (calc.ht != null ? minorToEurosInput(calc.ht) : '')}
+                  onChange={(e) => {
+                    setHtInput(e.target.value);
+                    const ht = eurosInputToMinor(e.target.value);
+                    const t = parseTaxRate(form.taxRate);
+                    if (ht != null && t != null) set('priceTtc', minorToEurosInput(ttcFromHt(ht, t)));
+                  }}
+                />
+              </Field>
+              <Field label="Prix de vente TTC (€) *">
+                <input
+                  className={inputCls} inputMode="decimal" value={form.priceTtc}
+                  onChange={(e) => { setHtInput(null); set('priceTtc', e.target.value); }}
+                />
+              </Field>
+              <Field label="TVA (%)">
+                <input
+                  className={inputCls} inputMode="decimal" value={form.taxRate}
+                  onChange={(e) => {
+                    const newRate = e.target.value;
+                    set('taxRate', newRate);
+                    const ht = htInput !== null ? eurosInputToMinor(htInput) : null;
+                    const t = parseTaxRate(newRate);
+                    if (ht != null && t != null) set('priceTtc', minorToEurosInput(ttcFromHt(ht, t)));
+                  }}
+                />
+              </Field>
             </div>
             {/* Marges automatiques */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {[
-                ['Prix de vente HT', eur(calc.ht)],
                 ['Marge (€ HT)', eur(calc.margeM)],
                 ['Taux de marge (/PA)', calc.tauxMarge != null ? calc.tauxMarge.toFixed(1) + ' %' : '—'],
                 ['Taux de marque (/PV HT)', calc.tauxMarque != null ? calc.tauxMarque.toFixed(1) + ' %' : '—'],

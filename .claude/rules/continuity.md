@@ -56,3 +56,14 @@ surface it and request GO; never auto-fix.
 This charter is ratified **consciously** by the owner and lives **in the repo only**. It
 is read as "**Tier-2 supreme**", never as "execute by default", and is **not** persisted
 as cross-session memory that pre-authorizes autonomy.
+
+## §8 — Canaux (ratifié 2026-07-18, post-revue merges #84/#85 + dispatch Railway)
+Aucune écriture sur `main` (merge, push, édition directe) et aucun déclenchement de
+déploiement ou de workflow à effet externe, par **quelque canal que ce soit** — SSH,
+`gh`, GitHub App/MCP, API, CI `workflow_dispatch` — sans **GO nominatif du propriétaire
+pour CETTE action**. La capacité d'un canal ne crée jamais le droit. Un GO ambigu sur
+l'objet (ex. un nom de plateforme seul, « go railway ») se clarifie **AVANT** exécution,
+jamais après — une ratification a posteriori régularise le résultat, pas la méthode.
+Note de canal : dans les sessions Claude Code cloud, `gh` est indisponible ; les
+opérations GitHub (PRs, merges) passent par le serveur GitHub MCP (GitHub App autorisée,
+auteur affiché = compte du propriétaire) — ce canal obéit au présent §8 comme les autres.
