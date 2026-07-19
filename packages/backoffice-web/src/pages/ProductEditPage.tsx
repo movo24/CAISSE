@@ -6,6 +6,8 @@ import {
   History, Plus, Trash2, AlertCircle, CheckCircle2, Pencil, Link2,
 } from 'lucide-react';
 import { productsApi } from '../services/api';
+import { suggestShortName, shouldAutoFillShortName } from '../utils/shortName';
+import { prepareProductImage } from '../utils/imageFile';
 
 /**
  * Fiche produit PROFESSIONNELLE (page complète — remplace la popup minimaliste).
@@ -138,6 +140,19 @@ export function ProductEditPage() {
   const [priceHistory, setPriceHistory] = useState<any[]>([]);
   const [analytics, setAnalytics] = useState<any | null>(null);
   const [reason, setReason] = useState('');
+  // Nom court auto-proposé depuis le nom (jamais d'écrasement d'une saisie manuelle).
+  const lastShortSuggestion = useRef('');
+  // Création rapide de catégorie depuis la fiche (même principe que la marque,
+  // avec choix du parent pour respecter l'arborescence).
+  const [showCatForm, setShowCatForm] = useState(false);
+  const [newCatName, setNewCatName] = useState('');
+  const [newCatParent, setNewCatParent] = useState('');
+  const [catBusy, setCatBusy] = useState(false);
+  const [catError, setCatError] = useState<string | null>(null);
+  // Photo principale : sélection + compression + erreurs explicites.
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [imageBusy, setImageBusy] = useState(false);
+  const [imageError, setImageError] = useState<string | null>(null);
   // Lot 4 — galerie & documents
   const [media, setMedia] = useState<any[]>([]);
   const [dragMediaIdx, setDragMediaIdx] = useState<number | null>(null);
@@ -242,6 +257,16 @@ export function ProductEditPage() {
         useByDate: p.useByDate ? String(p.useByDate).slice(0, 10) : '',
         lotNumber: p.lotNumber || '',
       });
+      // Ancienne fiche sans nom court : proposer depuis le nom (reste modifiable).
+      // Un nom court déjà saisi n'est JAMAIS écrasé (lastShortSuggestion vide).
+      if (!p.shortName && p.name) {
+        const brandName = (b.data || []).find((x: any) => x.id === p.brandId)?.name ?? null;
+        const s0 = suggestShortName(p.name, brandName);
+        lastShortSuggestion.current = s0;
+        setForm((f) => ({ ...f, shortName: s0 }));
+      } else {
+        lastShortSuggestion.current = '';
+      }
       // Chargements non bloquants des onglets (endpoints existants)
       productsApi.listComponents(id).then((r) => setComponents(r.data || [])).catch(() => {});
       productsApi.listVariants(id).then((r) => setVariants(r.data || [])).catch(() => {});
@@ -380,13 +405,69 @@ export function ProductEditPage() {
     const name = window.prompt('Nom de la nouvelle marque :')?.trim();
     if (!name) return;
     const r = await productsApi.createBrand(name).catch(() => null);
-    if (r?.data) { setBrands((b) => [...b, r.data]); set('brandId', r.data.id); }
+    if (r?.data) {
+      // Le serveur dédoublonne (get-or-create) : ne pas ré-ajouter une marque déjà listée.
+      setBrands((b) => (b.some((x) => x.id === r.data.id) ? b : [...b, r.data]));
+      applyBrandChange(r.data.id, r.data.name);
+    }
+  };
+
+  // ── Nom court (caisse) auto-proposé — jamais d'écrasement d'une saisie manuelle ──
+  // NB : la décision (et la mutation de lastShortSuggestion) reste HORS de
+  // l'updater setForm — un updater doit être pur (StrictMode l'invoque deux
+  // fois : un effet de bord dedans annulait la re-suggestion).
+  const applyNameChange = (value: string) => {
+    const brandName = brands.find((b) => b.id === form.brandId)?.name ?? null;
+    const suggestion = suggestShortName(value, brandName);
+    const auto = shouldAutoFillShortName(form.shortName, lastShortSuggestion.current);
+    setForm((f) => ({ ...f, name: value, ...(auto ? { shortName: suggestion } : {}) }));
+    if (auto) lastShortSuggestion.current = suggestion;
+  };
+  const applyBrandChange = (brandId: string, knownName?: string) => {
+    const brandName = knownName ?? brands.find((b) => b.id === brandId)?.name ?? null;
+    const suggestion = suggestShortName(form.name, brandName);
+    const auto = shouldAutoFillShortName(form.shortName, lastShortSuggestion.current);
+    setForm((f) => ({ ...f, brandId, ...(auto ? { shortName: suggestion } : {}) }));
+    if (auto) lastShortSuggestion.current = suggestion;
+  };
+
+  // ── Création rapide de catégorie (avec parent — arborescence respectée) ──
+  const createCategoryInline = async () => {
+    const name = newCatName.trim();
+    if (!name) { setCatError('Le nom de la catégorie est obligatoire.'); return; }
+    setCatBusy(true); setCatError(null);
+    try {
+      const r = await productsApi.createCategory({ name, parentId: newCatParent || null });
+      const created = r.data;
+      // Le serveur déduplique (même nom sous le même parent → renvoie l'existante).
+      const list = (await productsApi.listCategories()).data;
+      setCategories(Array.isArray(list) ? list : []);
+      set('categoryId', created.id);
+      setShowCatForm(false); setNewCatName(''); setNewCatParent('');
+    } catch (e: any) {
+      setCatError(e?.response?.data?.message || 'Création de la catégorie impossible.');
+    } finally {
+      setCatBusy(false);
+    }
+  };
+
+  // ── Photo principale : validation + compression avant stockage data-URL ──
+  const onPickImage = async (file: File | null | undefined) => {
+    if (!file) return;
+    setImageBusy(true); setImageError(null);
+    const res = await prepareProductImage(file);
+    setImageBusy(false);
+    if (res.ok) set('imageUrl', res.dataUrl);
+    else setImageError(res.error);
   };
   const createSupplier = async () => {
     const name = window.prompt('Nom du nouveau fournisseur :')?.trim();
     if (!name) return;
     const r = await productsApi.createSupplier(name).catch(() => null);
-    if (r?.data) { setSuppliers((s) => [...s, r.data]); set('supplierId', r.data.id); }
+    if (r?.data) {
+      setSuppliers((s) => (s.some((x) => x.id === r.data.id) ? s : [...s, r.data]));
+      set('supplierId', r.data.id);
+    }
   };
 
   // ── Onglet Packs ──
@@ -648,26 +729,61 @@ export function ProductEditPage() {
       <div className="bg-white rounded-2xl border border-gray-100 shadow-soft p-6">
         {tab === 'general' && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            <Field label="Nom du produit *"><input className={inputCls} value={form.name} onChange={(e) => set('name', e.target.value)} /></Field>
+            <Field label="Nom du produit *"><input className={inputCls} value={form.name} onChange={(e) => applyNameChange(e.target.value)} /></Field>
             <Field label="Code EAN" hint={isEdit ? 'Immuable après création (anti-doublon par magasin).' : undefined}>
               <input className={`${inputCls} font-mono`} value={form.ean} disabled={isEdit} onChange={(e) => set('ean', e.target.value)} />
             </Field>
             <Field label="Désignation / description"><textarea rows={3} className={inputCls} value={form.description} onChange={(e) => set('description', e.target.value)} /></Field>
             <div className="space-y-5">
               <Field label="Catégorie" hint="Arborescence gérée dans Catalogue › Catégories.">
-                <select className={inputCls} value={form.categoryId} onChange={(e) => set('categoryId', e.target.value)}>
-                  <option value="">— Aucune —</option>
-                  {catOptions.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
-                  {form.categoryId && !categories.some((c) => c.id === form.categoryId) && (
-                    <option value={form.categoryId}>{form.categoryId} (actuel)</option>
-                  )}
-                </select>
+                <div className="flex gap-2">
+                  <select className={inputCls} value={form.categoryId} onChange={(e) => set('categoryId', e.target.value)}>
+                    <option value="">— Aucune —</option>
+                    {catOptions.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+                    {form.categoryId && !categories.some((c) => c.id === form.categoryId) && (
+                      <option value={form.categoryId}>{form.categoryId} (actuel)</option>
+                    )}
+                  </select>
+                  <button
+                    onClick={() => { setShowCatForm((v) => !v); setCatError(null); }}
+                    className="px-3 rounded-xl border border-gray-200 text-gray-500 hover:text-bo-accent"
+                    title="Nouvelle catégorie"
+                  ><Plus size={15} /></button>
+                </div>
+                {showCatForm && (
+                  <div className="mt-2 rounded-xl border border-gray-200 bg-gray-50/60 p-3 space-y-2">
+                    <input
+                      className={inputCls}
+                      value={newCatName}
+                      onChange={(e) => setNewCatName(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && !catBusy && createCategoryInline()}
+                      placeholder="Nom de la catégorie…"
+                      autoFocus
+                    />
+                    <select className={inputCls} value={newCatParent} onChange={(e) => setNewCatParent(e.target.value)}>
+                      <option value="">Catégorie principale (aucun parent)</option>
+                      {catOptions.map((o) => <option key={o.id} value={o.id}>Sous {o.label}</option>)}
+                    </select>
+                    {catError && <p className="text-xs text-red-600">{catError}</p>}
+                    <div className="flex gap-2">
+                      <button
+                        onClick={createCategoryInline}
+                        disabled={catBusy}
+                        className="px-3 py-2 rounded-lg bg-bo-accent text-white text-xs font-semibold disabled:opacity-50"
+                      >{catBusy ? 'Création…' : 'Créer et sélectionner'}</button>
+                      <button
+                        onClick={() => { setShowCatForm(false); setCatError(null); }}
+                        className="px-3 py-2 rounded-lg border border-gray-200 text-xs font-semibold text-gray-500"
+                      >Annuler</button>
+                    </div>
+                  </div>
+                )}
               </Field>
               <Field label="SKU interne"><input className={`${inputCls} font-mono`} value={form.sku} onChange={(e) => set('sku', e.target.value)} placeholder="SKU-001" /></Field>
             </div>
             <Field label="Marque">
               <div className="flex gap-2">
-                <select className={inputCls} value={form.brandId} onChange={(e) => set('brandId', e.target.value)}>
+                <select className={inputCls} value={form.brandId} onChange={(e) => applyBrandChange(e.target.value)}>
                   <option value="">— Aucune —</option>
                   {brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
                 </select>
@@ -689,7 +805,9 @@ export function ProductEditPage() {
                 )}
               </select>
             </Field>
-            <Field label="Nom court (caisse)"><input className={inputCls} value={form.shortName} onChange={(e) => set('shortName', e.target.value)} placeholder="ex : Coca 33" /></Field>
+            <Field label="Nom court (caisse)" hint="Proposé automatiquement depuis le nom — modifiable ; votre saisie n'est jamais écrasée.">
+              <input className={inputCls} value={form.shortName} onChange={(e) => set('shortName', e.target.value)} placeholder="ex : Coca 33" maxLength={120} />
+            </Field>
             <Field label="Référence interne"><input className={`${inputCls} font-mono`} value={form.internalRef} onChange={(e) => set('internalRef', e.target.value)} placeholder="INT-0001" /></Field>
             <Field label="Type de produit">
               <select className={inputCls} value={form.productType} onChange={(e) => set('productType', e.target.value)}>
@@ -1014,18 +1132,29 @@ export function ProductEditPage() {
         {tab === 'images' && (
           <div className="space-y-5">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5 items-start">
-              <Field label="Photo principale (URL ou fichier)" hint="Un fichier choisi est converti en data-URL (stockage existant). Vider = retirer l'image.">
+              <Field label="Photo principale (URL ou fichier)" hint="JPG, PNG ou WebP — compressée automatiquement avant enregistrement. Vider = retirer l'image.">
                 <input className={inputCls} value={form.imageUrl.startsWith('data:') ? '(image chargée depuis un fichier)' : form.imageUrl} disabled={form.imageUrl.startsWith('data:')} onChange={(e) => set('imageUrl', e.target.value)} placeholder="https://…" />
+                {/* input file piloté par ref + bouton explicite : plus robuste que
+                    l'activation implicite par <label> (variable selon navigateurs). */}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
+                  className="hidden"
+                  onChange={(e) => { onPickImage(e.target.files?.[0]); e.target.value = ''; }}
+                />
                 <div className="flex gap-2 mt-2">
-                  <label className="px-3 py-2 rounded-lg border border-gray-200 text-xs font-semibold text-gray-600 cursor-pointer hover:border-bo-accent">
-                    Choisir un fichier…
-                    <input type="file" accept="image/*" className="hidden" onChange={(e) => {
-                      const f = e.target.files?.[0]; if (!f) return;
-                      const r = new FileReader(); r.onload = () => set('imageUrl', String(r.result || '')); r.readAsDataURL(f);
-                    }} />
-                  </label>
-                  {form.imageUrl && <button onClick={() => set('imageUrl', '')} className="px-3 py-2 rounded-lg border border-gray-200 text-xs font-semibold text-gray-500">Retirer</button>}
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={imageBusy}
+                    className="px-3 py-2 rounded-lg border border-gray-200 text-xs font-semibold text-gray-600 hover:border-bo-accent disabled:opacity-50"
+                  >{imageBusy ? 'Préparation…' : 'Choisir un fichier…'}</button>
+                  {form.imageUrl && (
+                    <button type="button" onClick={() => { set('imageUrl', ''); setImageError(null); }} className="px-3 py-2 rounded-lg border border-gray-200 text-xs font-semibold text-gray-500">Retirer</button>
+                  )}
                 </div>
+                {imageError && <p className="mt-2 text-xs text-red-600">{imageError}</p>}
               </Field>
               <div className="rounded-xl border border-dashed border-gray-200 min-h-[160px] flex items-center justify-center bg-gray-50/50">
                 {form.imageUrl ? <img src={form.imageUrl} alt="" className="max-h-48 max-w-full object-contain rounded-lg" /> : <p className="text-xs text-gray-300">Aperçu</p>}

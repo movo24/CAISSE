@@ -20,6 +20,7 @@ if (process.env.SENTRY_DSN) {
 }
 
 import { NestFactory, Reflector } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import {
   ValidationPipe,
   HttpException,
@@ -88,6 +89,20 @@ class GlobalExceptionFilter implements ExceptionFilter {
         message,
         statusCode: status,
         ...(resObj.reason ? { reason: resObj.reason } : {}),
+      });
+      return;
+    }
+
+    // ── 2b. Corps de requête trop volumineux (body-parser, hors pipeline Nest) ──
+    // Sans ce cas, une photo produit trop lourde ressortait en 500
+    // « Internal server error » inexploitable côté Back-Office.
+    if (exception instanceof Error && exception.name === 'PayloadTooLargeError') {
+      response.status(HttpStatus.PAYLOAD_TOO_LARGE).json({
+        success: false,
+        code: 'PAYLOAD_TOO_LARGE',
+        message:
+          'Requête trop volumineuse — l’image dépasse la taille maximale acceptée. Réduisez la photo et réessayez.',
+        statusCode: HttpStatus.PAYLOAD_TOO_LARGE,
       });
       return;
     }
@@ -241,10 +256,17 @@ function getLogLevels(): ('log' | 'error' | 'warn' | 'debug' | 'verbose')[] {
 async function bootstrap() {
   validateEnvironment();
 
-  const app = await NestFactory.create(AppModule, {
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     rawBody: true, // Required for Stripe webhook signature verification
     logger: getLogLevels(),
   });
+
+  // Les fiches produit portent leur photo en data-URL dans le JSON (stockage
+  // existant, colonne text). Le défaut body-parser (100kb) rejetait donc TOUT
+  // enregistrement avec image en PayloadTooLargeError rendu « Internal server
+  // error ». Borne haute volontairement contenue : le front compresse ≤ ~500kb.
+  app.useBodyParser('json', { limit: '6mb' });
+  app.useBodyParser('urlencoded', { limit: '6mb', extended: true });
 
   // --- Trust proxy ---
   // Behind Railway/Cloudflare, the client IP is in X-Forwarded-For. Trust a
