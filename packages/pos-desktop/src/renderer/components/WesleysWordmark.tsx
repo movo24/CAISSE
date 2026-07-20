@@ -1,5 +1,5 @@
 import React from 'react';
-import logoUrl from '../assets/wesleys-logo.png';
+import logoUrl from '../assets/wesleys-logo-official.png';
 
 /**
  * The Wesley's — wordmark de marque (logotype OFFICIEL).

@@ -906,11 +906,17 @@ export function IPadPOSLayout() {
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
                   <button onClick={() => {
-                    // Get the sale ID from the last sale (stored during finalizePayment)
+                    // Ticket numérique The Wesley (base URL configurée au
+                    // Dashboard + jeton public serveur). Repli : ancien reçu
+                    // par saleId si le magasin n'a pas encore de config.
                     const lastSaleId = (store as any).lastSaleId || '';
-                    const receiptUrl = lastSaleId
-                      ? `https://api.addxintelligence.com/api/receipts/${lastSaleId}/html`
-                      : '';
+                    const lastToken = (store as any).lastPublicToken || '';
+                    const base = ((store.storeInfo as any)?.receiptPublicBaseUrl || '').replace(/\/+$/, '');
+                    const receiptUrl = base && lastToken
+                      ? `${base}/ticket/${lastToken}`
+                      : lastSaleId
+                        ? `https://api.addxintelligence.com/api/receipts/${lastSaleId}/html`
+                        : '';
                     setDigitalReceipt({
                       ticketNumber: payment.confirmation!.ticketNumber,
                       total: payment.confirmation!.total,

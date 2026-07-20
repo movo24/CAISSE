@@ -16,6 +16,7 @@ import { StoresService } from './stores.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard, Roles } from '../../common/guards/roles.guard';
 import { CreateStoreDto, UpdateStoreDto } from '../../common/dto';
+import { UpdateReceiptSettingsDto } from './receipt-settings.dto';
 import { BusinessError } from '../../common/errors/business-error';
 
 @ApiTags('stores')
@@ -103,6 +104,32 @@ export class StoresController {
       throw BusinessError.forbidden('You can only access your own store');
     }
     return this.storesService.findMyStore(id);
+  }
+
+  // ── Réglages « Ticket de caisse » (Dashboard → Paramètres → Magasins) ──
+
+  /** GET /api/stores/:id/receipt-settings — réglages + identité pour l'aperçu. */
+  @Get(':id/receipt-settings')
+  @Roles('manager')
+  @ApiOperation({ summary: 'Get receipt (ticket de caisse) settings for a store' })
+  getReceiptSettings(@Param('id') id: string, @Request() req: any) {
+    // Admin : tout magasin ; manager : uniquement le sien.
+    if (req.user.role !== 'admin' && id !== req.user.storeId) {
+      throw BusinessError.forbidden('You can only access your own store');
+    }
+    return this.storesService.getReceiptSettings(id);
+  }
+
+  /** PUT /api/stores/:id/receipt-settings — mise à jour auditée (old/new). */
+  @Put(':id/receipt-settings')
+  @Roles('admin')
+  @ApiOperation({ summary: 'Update receipt settings (admin only, audited old/new)' })
+  updateReceiptSettings(
+    @Param('id') id: string,
+    @Body() dto: UpdateReceiptSettingsDto,
+    @Request() req: any,
+  ) {
+    return this.storesService.updateReceiptSettings(id, dto, req.user.employeeId ?? 'unknown');
   }
 
   @Put(':id')

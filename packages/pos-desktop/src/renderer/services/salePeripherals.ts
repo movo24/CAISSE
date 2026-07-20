@@ -30,7 +30,7 @@
  * La logique de DÉCISION (pure) est testée ; l'orchestrateur applique ces
  * décisions à `peripheralBridge`.
  */
-import { peripheralBridge, type TicketData } from './peripheralBridge';
+import { peripheralBridge, type TicketData, type TicketVatRow } from './peripheralBridge';
 
 export type PrintStatus = 'printed' | 'print_failed' | 'no_printer' | 'skipped';
 
@@ -214,6 +214,37 @@ export class SalePeripheralGuard {
  */
 export const salePeripheralGuard = new SalePeripheralGuard();
 
+/**
+ * Ventilation TVA par taux depuis les lignes du panier (montants en centimes
+ * en entrée, euros en sortie). Même formule d'extraction que le backend
+ * (sales.service.ts) : TVA ligne = round(TTC × taux / (100 + taux)), sommée
+ * par taux — l'affichage caisse et la vente scellée restent cohérents.
+ * Les lignes sans taux connu (catalogue hors ligne ancien) sont ignorées.
+ */
+export function computeTicketVat(
+  items: Array<{ quantity: number; unitPriceMinorUnits: number; discountMinorUnits?: number; taxRate?: number }>,
+): TicketVatRow[] {
+  const byRate = new Map<number, { ttc: number; tva: number }>();
+  for (const i of items) {
+    const rate = typeof i.taxRate === 'number' && Number.isFinite(i.taxRate) ? i.taxRate : undefined;
+    if (rate === undefined) continue;
+    const ttc = i.unitPriceMinorUnits * i.quantity - (i.discountMinorUnits || 0);
+    const tva = rate > 0 ? Math.round(ttc * (rate / (100 + rate))) : 0;
+    const acc = byRate.get(rate) ?? { ttc: 0, tva: 0 };
+    acc.ttc += ttc;
+    acc.tva += tva;
+    byRate.set(rate, acc);
+  }
+  return [...byRate.entries()]
+    .map(([rate, { ttc, tva }]) => ({
+      rate,
+      ttc: ttc / 100,
+      tva: tva / 100,
+      ht: (ttc - tva) / 100,
+    }))
+    .sort((a, b) => a.rate - b.rate);
+}
+
 /** Construit le TicketData depuis des entrées simples (testable, sans store). */
 export function buildTicketData(input: {
   storeName?: string;
@@ -224,16 +255,36 @@ export function buildTicketData(input: {
   ticketNumber: string;
   date: Date;
   cashierName: string;
-  items: Array<{ name: string; quantity: number; unitPriceMinorUnits: number; discountMinorUnits?: number }>;
+  items: Array<{ name: string; quantity: number; unitPriceMinorUnits: number; discountMinorUnits?: number; taxRate?: number }>;
   subtotalMinorUnits: number;
   discountMinorUnits: number;
   totalMinorUnits: number;
   payments: SalePaymentLite[];
   changeMinorUnits: number;
   footer?: string;
+  // ── Refonte ticket The Wesley (config Dashboard — tout optionnel) ──
+  addressLine2?: string;
+  operatingCompanyName?: string;
+  rcs?: string;
+  capitalSocial?: string;
+  phone?: string;
+  website?: string;
+  headerMessage?: string;
+  logoDataUrl?: string | null;
+  registerLabel?: string;
+  softwareVersion?: string;
+  qrDataUrl?: string | null;
+  qrContent?: string | null;
+  qrText?: string;
+  finalMessage?: string;
+  offlineNote?: string;
+  testMarker?: string;
 }): TicketData {
   const methodLabel = (m: string) =>
     m === 'card' ? 'CB' : m === 'cash' ? 'Especes' : m === 'mixed' ? 'Mixte' : m;
+  const cashTendered = input.payments
+    .filter((p) => p.method === 'cash')
+    .reduce((s, p) => s + p.amountMinorUnits, 0);
   return {
     storeName: input.storeName || 'CAISSE',
     storeAddress: input.storeAddress || '',
@@ -248,15 +299,37 @@ export function buildTicketData(input: {
       unitPrice: i.unitPriceMinorUnits / 100,
       total: (i.unitPriceMinorUnits * i.quantity - (i.discountMinorUnits || 0)) / 100,
       discount: i.discountMinorUnits ? i.discountMinorUnits / 100 : undefined,
+      taxRate: i.taxRate,
     })),
     subtotal: input.subtotalMinorUnits / 100,
     discount: input.discountMinorUnits / 100,
     total: input.totalMinorUnits / 100,
     payments: input.payments.map((p) => ({ method: methodLabel(p.method), amount: p.amountMinorUnits / 100 })),
     change: input.changeMinorUnits / 100,
+    // Espèces : « Reçu » = montant espèces encaissé + monnaie rendue.
+    cashReceived:
+      input.changeMinorUnits > 0 && cashTendered > 0
+        ? (cashTendered + input.changeMinorUnits) / 100
+        : undefined,
     footer: input.footer || 'Merci de votre visite !',
     nifCaisse: input.nifCaisse || '',
-    softwareVersion: '1.0',
+    softwareVersion: input.softwareVersion || '1.0',
+    vat: computeTicketVat(input.items),
+    addressLine2: input.addressLine2,
+    operatingCompanyName: input.operatingCompanyName,
+    rcs: input.rcs,
+    capitalSocial: input.capitalSocial,
+    phone: input.phone,
+    website: input.website,
+    headerMessage: input.headerMessage,
+    logoDataUrl: input.logoDataUrl ?? null,
+    registerLabel: input.registerLabel,
+    qrDataUrl: input.qrDataUrl ?? null,
+    qrContent: input.qrContent ?? null,
+    qrText: input.qrText,
+    finalMessage: input.finalMessage,
+    offlineNote: input.offlineNote,
+    testMarker: input.testMarker,
   };
 }
 

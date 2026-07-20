@@ -32,6 +32,7 @@ import {
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import helmet from 'helmet';
 import * as cookieParser from 'cookie-parser';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { TenantInterceptor } from './common/interceptors/tenant.interceptor';
 import { BusinessError } from './common/errors/business-error';
@@ -240,10 +241,18 @@ function getLogLevels(): ('log' | 'error' | 'warn' | 'debug' | 'verbose')[] {
 async function bootstrap() {
   validateEnvironment();
 
-  const app = await NestFactory.create(AppModule, {
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     rawBody: true, // Required for Stripe webhook signature verification
     logger: getLogLevels(),
+    // Le logo du ticket (data-URL PNG ≤ ~300 Ko encodé, plafonné par DTO) doit
+    // passer le body-parser : la limite Express par défaut (100 kb) est portée
+    // à 512 kb — toujours bornée, jamais illimitée. On désactive les parsers
+    // par défaut et on les ré-enregistre via useBodyParser, qui préserve
+    // rawBody (signature webhook Stripe).
+    bodyParser: false,
   });
+  app.useBodyParser('json', { limit: '512kb' });
+  app.useBodyParser('urlencoded', { extended: true, limit: '512kb' });
 
   // --- Trust proxy ---
   // Behind Railway/Cloudflare, the client IP is in X-Forwarded-For. Trust a
@@ -271,7 +280,11 @@ async function bootstrap() {
   });
 
   // --- Global prefix ---
-  app.setGlobalPrefix('api');
+  // Le ticket numérique public vit HORS /api : l'URL imprimée dans le QR du
+  // ticket papier est https://<domaine>/ticket/<jeton> (courte, scannable).
+  app.setGlobalPrefix('api', {
+    exclude: ['ticket/:token', 'ticket/:token/data', 'ticket/:token/pdf'],
+  });
 
   // --- Global pipes ---
   app.useGlobalPipes(

@@ -8,6 +8,7 @@ import { UnitEntity } from '../../database/entities/unit.entity';
 import { BusinessError } from '../../common/errors/business-error';
 import { HttpStatus } from '@nestjs/common';
 import { TimewinService } from '../timewin/timewin.service';
+import { AuditService } from '../audit/audit.service';
 
 describe('StoresService', () => {
   let service: StoresService;
@@ -80,6 +81,10 @@ describe('StoresService', () => {
             syncStoreToTimewin: jest.fn().mockResolvedValue(undefined),
             notifyStoreDeleted: jest.fn().mockResolvedValue(undefined),
           },
+        },
+        {
+          provide: AuditService,
+          useValue: { log: jest.fn().mockResolvedValue(undefined) },
         },
       ],
     }).compile();
