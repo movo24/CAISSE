@@ -1,7 +1,15 @@
 /**
  * Non-régression alignement entité/table `units` sur un VRAI Postgres.
  * Gated sur TEST_DATABASE_URL — skippé sinon (la suite pg-mem normale n'est pas affectée).
- * ⚠️ Pointer TEST_DATABASE_URL vers une base VIERGE dédiée (le run applique toute la lignée).
+ *
+ * ISOLATION : ce spec ne travaille PAS dans la base de TEST_DATABASE_URL — il
+ * s'en sert comme connexion bootstrap pour (re)créer sa PROPRE base jetable
+ * (`caisse_units_alignment_spec`) et la détruit en sortie. Raison : en CI les
+ * specs PG partagent une seule base en série, et les specs `synchronize: true`
+ * SUPPRIMENT les index créés par les migrations (TypeORM synchronize drop les
+ * index inconnus des entités) — un spec de migration qui déroule la lignée sur
+ * la base partagée rend donc la suite sensible à l'ordre des fichiers
+ * (constaté : ajout de ce fichier → stock-movement-linkage-migration rouge).
  *
  *   TEST_DATABASE_URL=postgresql://user@localhost:5432/caisse_mig_verify \
  *     npx jest --forceExit test/units-entity-alignment.pg.spec.ts
@@ -31,6 +39,14 @@ import { StoreEntity } from '../src/database/entities/store.entity';
 
 const TEST_DB = process.env.TEST_DATABASE_URL;
 const d = TEST_DB ? describe : describe.skip;
+
+/** Base jetable dédiée à ce spec (créée depuis TEST_DATABASE_URL, détruite en sortie). */
+const ISOLATED_DB = 'caisse_units_alignment_spec';
+const isolatedUrl = (): string => {
+  const u = new URL(TEST_DB as string);
+  u.pathname = `/${ISOLATED_DB}`;
+  return u.toString();
+};
 
 const MIGRATION = 'AddUnitOperationalColumns1772000000000';
 const NEW_COLUMNS = ['type', 'country', 'currency_code', 'notes'];
@@ -62,10 +78,22 @@ d('Alignement entité/table units + migration 1772 up/down (real Postgres)', () 
     (await ds.query(`SELECT to_regclass('public.${t}') IS NOT NULL AS e`))[0]
       .e === true;
 
+  const adminQuery = async (sql: string): Promise<void> => {
+    const admin = new DataSource({ type: 'postgres', url: TEST_DB });
+    await admin.initialize();
+    try {
+      await admin.query(sql);
+    } finally {
+      await admin.destroy();
+    }
+  };
+
   beforeAll(async () => {
+    await adminQuery(`DROP DATABASE IF EXISTS ${ISOLATED_DB} WITH (FORCE)`);
+    await adminQuery(`CREATE DATABASE ${ISOLATED_DB}`);
     ds = new DataSource({
       type: 'postgres',
-      url: TEST_DB,
+      url: isolatedUrl(),
       entities: loadAllEntities() as any,
       migrations: [path.join(__dirname, '../src/database/migrations/*.ts')],
       synchronize: false,
@@ -77,6 +105,7 @@ d('Alignement entité/table units + migration 1772 up/down (real Postgres)', () 
 
   afterAll(async () => {
     await ds?.destroy();
+    await adminQuery(`DROP DATABASE IF EXISTS ${ISOLATED_DB} WITH (FORCE)`);
   });
 
   it('up : les 4 colonnes opérationnelles existent, les colonnes InitialSchema préservées', async () => {
