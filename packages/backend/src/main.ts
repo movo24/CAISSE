@@ -20,6 +20,7 @@ if (process.env.SENTRY_DSN) {
 }
 
 import { NestFactory, Reflector } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import {
   ValidationPipe,
   HttpException,
@@ -36,6 +37,7 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { TenantInterceptor } from './common/interceptors/tenant.interceptor';
 import { BusinessError } from './common/errors/business-error';
+import { validationExceptionFactory } from './common/validation-exception.factory';
 
 // ── Global Exception Filter — sanitize error responses ──────────────────
 // Reports unhandled exceptions to Sentry (when SENTRY_DSN is set).
@@ -74,6 +76,10 @@ class GlobalExceptionFilter implements ExceptionFilter {
           message: 'Erreur de validation.',
           statusCode: status,
           details: (res as any).message,
+          // Carte { champ: [messages] } produite par validationExceptionFactory —
+          // permet aux frontends de surligner le champ fautif (jamais un
+          // message générique seul). Absente si l'exception vient d'ailleurs.
+          ...((res as any).fields ? { fields: (res as any).fields } : {}),
         });
         return;
       }
@@ -89,6 +95,20 @@ class GlobalExceptionFilter implements ExceptionFilter {
         message,
         statusCode: status,
         ...(resObj.reason ? { reason: resObj.reason } : {}),
+      });
+      return;
+    }
+
+    // ── 2b. Corps de requête trop volumineux (body-parser, hors pipeline Nest) ──
+    // Sans ce cas, une photo produit trop lourde ressortait en 500
+    // « Internal server error » inexploitable côté Back-Office.
+    if (exception instanceof Error && exception.name === 'PayloadTooLargeError') {
+      response.status(HttpStatus.PAYLOAD_TOO_LARGE).json({
+        success: false,
+        code: 'PAYLOAD_TOO_LARGE',
+        message:
+          'Requête trop volumineuse — l’image dépasse la taille maximale acceptée. Réduisez la photo et réessayez.',
+        statusCode: HttpStatus.PAYLOAD_TOO_LARGE,
       });
       return;
     }
@@ -255,6 +275,13 @@ async function bootstrap() {
   app.useBodyParser('json', { limit: '512kb' });
   app.useBodyParser('urlencoded', { extended: true, limit: '512kb' });
 
+  // Les fiches produit portent leur photo en data-URL dans le JSON (stockage
+  // existant, colonne text). Le défaut body-parser (100kb) rejetait donc TOUT
+  // enregistrement avec image en PayloadTooLargeError rendu « Internal server
+  // error ». Borne haute volontairement contenue : le front compresse ≤ ~500kb.
+  app.useBodyParser('json', { limit: '6mb' });
+  app.useBodyParser('urlencoded', { limit: '6mb', extended: true });
+
   // --- Trust proxy ---
   // Behind Railway/Cloudflare, the client IP is in X-Forwarded-For. Trust a
   // BOUNDED number of front proxies (default 1) so req.ip and the per-IP rate
@@ -293,6 +320,7 @@ async function bootstrap() {
       whitelist: true,
       forbidNonWhitelisted: true,
       transform: true,
+      exceptionFactory: validationExceptionFactory,
     }),
   );
 

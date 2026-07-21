@@ -10,6 +10,7 @@ import {
 import { QRCodeSVG } from 'qrcode.react';
 import { usePOSStore } from '../../stores/posStore';
 import { useDeviceProfile, platformClasses } from '../../hooks/useDeviceProfile';
+import { productDisplayName } from '../../utils/productDisplay';
 import { useCart, CatalogueProduct } from '../../hooks/useCart';
 import { usePayment, PaymentMethod } from '../../hooks/usePayment';
 import { useFavorites } from '../../hooks/useFavorites';
@@ -125,7 +126,7 @@ export function IPadPOSLayout() {
     cart.handleSelectProduct(product);
     favorites.addRecent({
       productId: product.id,
-      name: product.name,
+      name: productDisplayName(product),
       ean: product.ean,
       priceMinorUnits: product.priceMinorUnits,
       categoryId: product.categoryId,

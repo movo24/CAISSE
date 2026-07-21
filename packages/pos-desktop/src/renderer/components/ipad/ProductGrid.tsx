@@ -1,6 +1,7 @@
 import React, { useMemo, useRef, useCallback } from 'react';
 import { Plus, Weight, AlertTriangle, ShoppingBag } from 'lucide-react';
 import type { CatalogueProduct } from '../../hooks/useCart';
+import { productDisplayName } from '../../utils/productDisplay';
 
 interface ProductGridProps {
   products: CatalogueProduct[];
@@ -91,7 +92,7 @@ export function ProductGrid({ products, category, searchTerm, onAdd, isLandscape
       {filtered.map((product) => {
         const isByWeight = product.unitType === 'kg';
         const isLowStock = product.stockQuantity <= (product.stockAlertThreshold || 5);
-        const color = getColorForProduct(product.name, product.categoryId);
+        const color = getColorForProduct(productDisplayName(product), product.categoryId);
 
         return (
           <button
@@ -127,7 +128,7 @@ export function ProductGrid({ products, category, searchTerm, onAdd, isLandscape
             <p className={`${color.text} font-bold line-clamp-2 leading-tight relative z-10 ${
               isLandscape ? 'text-[15px]' : 'text-sm'
             }`}>
-              {product.name}
+              {productDisplayName(product)}
             </p>
 
             {/* Price — bottom */}

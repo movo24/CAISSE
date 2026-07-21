@@ -7,6 +7,13 @@ import {
 } from 'lucide-react';
 import { productsApi } from '../services/api';
 import { ttcFromHt, eurosInputToMinor, minorToEurosInput, parseTaxRate } from './pricingMath';
+import { suggestShortName, shouldAutoFillShortName } from '../utils/shortName';
+import { prepareProductImage } from '../utils/imageFile';
+import {
+  validateFiche, mapApiError, firstErrorField, errorSummary,
+  tabOfField, labelOfField, type FicheErrors, type FicheFormShape,
+} from '../utils/ficheValidation';
+import { gtinIssue, GTIN_ISSUE_MESSAGE } from '../utils/gtin';
 
 /**
  * Fiche produit PROFESSIONNELLE (page complète — remplace la popup minimaliste).
@@ -69,12 +76,18 @@ const toInt = (s: string): number | undefined => {
 const inputCls = 'w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-bo-accent/20 focus:border-bo-accent/50';
 const labelCls = 'block text-xs font-semibold text-gray-500 mb-1.5';
 
-function Field({ label, children, hint }: { label: string; children: React.ReactNode; hint?: string }) {
+function Field({ label, children, hint, error, fieldId }: {
+  label: string; children: React.ReactNode; hint?: string;
+  /** Message d'erreur de validation — surligne le champ et s'affiche dessous. */
+  error?: string | null; fieldId?: string;
+}) {
   return (
-    <div>
-      <label className={labelCls}>{label}</label>
+    <div id={fieldId} className={error ? 'fp-field-error' : undefined}>
+      <label className={`${labelCls}${error ? ' !text-red-600' : ''}`}>{label}</label>
       {children}
-      {hint && <p className="text-[11px] text-gray-400 mt-1">{hint}</p>}
+      {error
+        ? <p className="text-[11px] text-red-600 font-medium mt-1" role="alert">{error}</p>
+        : hint && <p className="text-[11px] text-gray-400 mt-1">{hint}</p>}
     </div>
   );
 }
@@ -127,7 +140,33 @@ export function ProductEditPage() {
     minPrice: '', recommendedPrice: '', unitsPerPack: '', cartonsPerPallet: '',
     allergens: '', ingredients: '', bestBeforeDate: '', useByDate: '', lotNumber: '',
   });
-  const set = (k: keyof typeof form, v: any) => setForm((f) => ({ ...f, [k]: v }));
+  // Erreurs de validation par champ (client + serveur mappé) — la correction
+  // d'un champ efface son erreur immédiatement.
+  const [fieldErrors, setFieldErrors] = useState<FicheErrors>({});
+  const set = (k: keyof typeof form, v: any) => {
+    setForm((f) => ({ ...f, [k]: v }));
+    setFieldErrors((fe) => {
+      if (!(k in fe)) return fe;
+      const next = { ...fe };
+      delete next[k as keyof FicheErrors];
+      return next;
+    });
+  };
+
+  /** Ouvre l'onglet du champ fautif, le fait défiler à l'écran et lui donne le focus. */
+  const goToField = (key: keyof FicheErrors) => {
+    setTab(tabOfField(key) as Tab);
+    // L'onglet doit être rendu avant de pouvoir focus le champ.
+    window.setTimeout(() => {
+      const wrapper = document.getElementById(`fp-${key}`);
+      const input = wrapper?.querySelector<HTMLElement>('input, select, textarea');
+      wrapper?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      input?.focus();
+    }, 50);
+  };
+
+  /** Props d'erreur d'un champ : `<Field {...fp('ean')}>`. */
+  const fp = (k: keyof FicheErrors) => ({ error: fieldErrors[k], fieldId: `fp-${k}` });
 
   const [original, setOriginal] = useState<any | null>(null);
   const [brands, setBrands] = useState<any[]>([]);
@@ -142,6 +181,19 @@ export function ProductEditPage() {
   // Saisie HT en cours (tarification bidirectionnelle — repris de la fiche P1 #84) :
   // tant que l'utilisateur édite le HT, il reste maître et le TTC est recalculé.
   const [htInput, setHtInput] = useState<string | null>(null);
+  // Nom court auto-proposé depuis le nom (jamais d'écrasement d'une saisie manuelle).
+  const lastShortSuggestion = useRef('');
+  // Création rapide de catégorie depuis la fiche (même principe que la marque,
+  // avec choix du parent pour respecter l'arborescence).
+  const [showCatForm, setShowCatForm] = useState(false);
+  const [newCatName, setNewCatName] = useState('');
+  const [newCatParent, setNewCatParent] = useState('');
+  const [catBusy, setCatBusy] = useState(false);
+  const [catError, setCatError] = useState<string | null>(null);
+  // Photo principale : sélection + compression + erreurs explicites.
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [imageBusy, setImageBusy] = useState(false);
+  const [imageError, setImageError] = useState<string | null>(null);
   // Lot 4 — galerie & documents
   const [media, setMedia] = useState<any[]>([]);
   const [dragMediaIdx, setDragMediaIdx] = useState<number | null>(null);
@@ -247,6 +299,16 @@ export function ProductEditPage() {
         useByDate: p.useByDate ? String(p.useByDate).slice(0, 10) : '',
         lotNumber: p.lotNumber || '',
       });
+      // Ancienne fiche sans nom court : proposer depuis le nom (reste modifiable).
+      // Un nom court déjà saisi n'est JAMAIS écrasé (lastShortSuggestion vide).
+      if (!p.shortName && p.name) {
+        const brandName = (b.data || []).find((x: any) => x.id === p.brandId)?.name ?? null;
+        const s0 = suggestShortName(p.name, brandName);
+        lastShortSuggestion.current = s0;
+        setForm((f) => ({ ...f, shortName: s0 }));
+      } else {
+        lastShortSuggestion.current = '';
+      }
       // Chargements non bloquants des onglets (endpoints existants)
       productsApi.listComponents(id).then((r) => setComponents(r.data || [])).catch(() => {});
       productsApi.listVariants(id).then((r) => setVariants(r.data || [])).catch(() => {});
@@ -315,10 +377,17 @@ export function ProductEditPage() {
   // ── Sauvegarde ──
   const save = async () => {
     setError(null); setSaved(false);
-    const ttc = toMinor(form.priceTtc);
-    if (!form.name.trim()) { setError('Nom obligatoire.'); setTab('general'); return; }
-    if (ttc == null) { setError('Prix de vente TTC invalide.'); setTab('tarification'); return; }
-    if (!isEdit && !form.ean.trim()) { setError('EAN obligatoire.'); setTab('general'); return; }
+    // Validation client complète : chaque problème est rattaché à SON champ,
+    // l'onglet fautif s'ouvre et le premier champ invalide prend le focus.
+    const clientErrors = validateFiche(form as FicheFormShape, isEdit);
+    if (Object.keys(clientErrors).length > 0) {
+      setFieldErrors(clientErrors);
+      setError(errorSummary(clientErrors));
+      goToField(firstErrorField(clientErrors)!);
+      return;
+    }
+    setFieldErrors({});
+    const ttc = toMinor(form.priceTtc)!; // garanti par validateFiche
     const common = {
       name: form.name.trim(),
       description: form.description.trim() || undefined,
@@ -326,10 +395,12 @@ export function ProductEditPage() {
       unitType: form.unitType || undefined,
       priceMinorUnits: ttc,
       costMinorUnits: toMinor(form.cost) ?? undefined,
-      taxRate: parseFloat(form.taxRate.replace(',', '.')) || undefined,
-      stockQuantity: parseInt(form.stock, 10) || 0,
-      stockAlertThreshold: parseInt(form.alertThreshold, 10) || undefined,
-      stockCriticalThreshold: parseInt(form.criticalThreshold, 10) || undefined,
+      // `|| undefined` écrasait les valeurs 0 (TVA 0 %, seuil 0) qui retombaient
+      // silencieusement sur les défauts serveur (20 %, 10) — 0 est une valeur valide.
+      taxRate: (() => { const t = parseFloat(form.taxRate.replace(',', '.')); return Number.isFinite(t) && t >= 0 ? t : undefined; })(),
+      stockQuantity: toInt(form.stock) ?? 0,
+      stockAlertThreshold: toInt(form.alertThreshold),
+      stockCriticalThreshold: toInt(form.criticalThreshold),
       imageUrl: form.imageUrl.trim() || undefined,
       brandId: form.brandId || undefined,
       supplierId: form.supplierId || undefined,
@@ -377,7 +448,17 @@ export function ProductEditPage() {
         navigate(`/products/${r.data.id}/edit`, { replace: true });
       }
     } catch (e: any) {
-      setError(e?.response?.data?.message || 'Enregistrement impossible');
+      // Mappe la réponse serveur (400/409/…) vers les champs du formulaire :
+      // jamais un « Erreur de validation » générique, saisies toujours conservées.
+      const mapped = mapApiError(e?.response?.data);
+      setFieldErrors(mapped.fieldErrors);
+      const n = Object.keys(mapped.fieldErrors).length;
+      setError(
+        [n > 0 ? errorSummary(mapped.fieldErrors) : null, mapped.banner]
+          .filter(Boolean).join(' ') || 'Enregistrement impossible',
+      );
+      const first = firstErrorField(mapped.fieldErrors);
+      if (first) goToField(first);
     } finally { setSaving(false); }
   };
 
@@ -385,13 +466,69 @@ export function ProductEditPage() {
     const name = window.prompt('Nom de la nouvelle marque :')?.trim();
     if (!name) return;
     const r = await productsApi.createBrand(name).catch(() => null);
-    if (r?.data) { setBrands((b) => [...b, r.data]); set('brandId', r.data.id); }
+    if (r?.data) {
+      // Le serveur dédoublonne (get-or-create) : ne pas ré-ajouter une marque déjà listée.
+      setBrands((b) => (b.some((x) => x.id === r.data.id) ? b : [...b, r.data]));
+      applyBrandChange(r.data.id, r.data.name);
+    }
+  };
+
+  // ── Nom court (caisse) auto-proposé — jamais d'écrasement d'une saisie manuelle ──
+  // NB : la décision (et la mutation de lastShortSuggestion) reste HORS de
+  // l'updater setForm — un updater doit être pur (StrictMode l'invoque deux
+  // fois : un effet de bord dedans annulait la re-suggestion).
+  const applyNameChange = (value: string) => {
+    const brandName = brands.find((b) => b.id === form.brandId)?.name ?? null;
+    const suggestion = suggestShortName(value, brandName);
+    const auto = shouldAutoFillShortName(form.shortName, lastShortSuggestion.current);
+    setForm((f) => ({ ...f, name: value, ...(auto ? { shortName: suggestion } : {}) }));
+    if (auto) lastShortSuggestion.current = suggestion;
+  };
+  const applyBrandChange = (brandId: string, knownName?: string) => {
+    const brandName = knownName ?? brands.find((b) => b.id === brandId)?.name ?? null;
+    const suggestion = suggestShortName(form.name, brandName);
+    const auto = shouldAutoFillShortName(form.shortName, lastShortSuggestion.current);
+    setForm((f) => ({ ...f, brandId, ...(auto ? { shortName: suggestion } : {}) }));
+    if (auto) lastShortSuggestion.current = suggestion;
+  };
+
+  // ── Création rapide de catégorie (avec parent — arborescence respectée) ──
+  const createCategoryInline = async () => {
+    const name = newCatName.trim();
+    if (!name) { setCatError('Le nom de la catégorie est obligatoire.'); return; }
+    setCatBusy(true); setCatError(null);
+    try {
+      const r = await productsApi.createCategory({ name, parentId: newCatParent || null });
+      const created = r.data;
+      // Le serveur déduplique (même nom sous le même parent → renvoie l'existante).
+      const list = (await productsApi.listCategories()).data;
+      setCategories(Array.isArray(list) ? list : []);
+      set('categoryId', created.id);
+      setShowCatForm(false); setNewCatName(''); setNewCatParent('');
+    } catch (e: any) {
+      setCatError(e?.response?.data?.message || 'Création de la catégorie impossible.');
+    } finally {
+      setCatBusy(false);
+    }
+  };
+
+  // ── Photo principale : validation + compression avant stockage data-URL ──
+  const onPickImage = async (file: File | null | undefined) => {
+    if (!file) return;
+    setImageBusy(true); setImageError(null);
+    const res = await prepareProductImage(file);
+    setImageBusy(false);
+    if (res.ok) set('imageUrl', res.dataUrl);
+    else setImageError(res.error);
   };
   const createSupplier = async () => {
     const name = window.prompt('Nom du nouveau fournisseur :')?.trim();
     if (!name) return;
     const r = await productsApi.createSupplier(name).catch(() => null);
-    if (r?.data) { setSuppliers((s) => [...s, r.data]); set('supplierId', r.data.id); }
+    if (r?.data) {
+      setSuppliers((s) => (s.some((x) => x.id === r.data.id) ? s : [...s, r.data]));
+      set('supplierId', r.data.id);
+    }
   };
 
   // ── Onglet Packs ──
@@ -581,6 +718,9 @@ export function ProductEditPage() {
 
   // ══════════ PORTE SCANNER (création) ══════════
   if (gate) {
+    // Contrôle de format immédiat au scan : un code invalide est signalé ICI,
+    // jamais silencieusement au moment de l'enregistrement.
+    const gateIssue = gateEan.trim() ? gtinIssue(gateEan) : null;
     return (
       <div className="p-6 lg:p-8 max-w-2xl mx-auto animate-fade-in">
         <button onClick={() => navigate('/products')} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 mb-6"><ArrowLeft size={15} /> Produits</button>
@@ -596,6 +736,11 @@ export function ProductEditPage() {
             onKeyDown={(e) => e.key === 'Enter' && checkEan()}
             placeholder="Scanner l'EAN…" className={`${inputCls} text-center text-lg font-mono tracking-wider`}
           />
+          {gateIssue && (
+            <p className="text-xs font-medium text-red-600 flex items-center justify-center gap-1.5" role="alert">
+              <AlertCircle size={13} /> {GTIN_ISSUE_MESSAGE[gateIssue]}
+            </p>
+          )}
           {gateExisting && (
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-left">
               <p className="text-sm font-semibold text-amber-800 flex items-center gap-2"><AlertCircle size={15} /> Ce code-barres existe déjà</p>
@@ -604,7 +749,7 @@ export function ProductEditPage() {
             </div>
           )}
           <div className="flex gap-2 justify-center">
-            <button onClick={checkEan} disabled={gateBusy || !gateEan.trim()} className="px-5 py-2.5 rounded-xl bg-bo-accent text-white text-sm font-semibold disabled:opacity-40 flex items-center gap-2">
+            <button onClick={checkEan} disabled={gateBusy || !gateEan.trim() || !!gateIssue} className="px-5 py-2.5 rounded-xl bg-bo-accent text-white text-sm font-semibold disabled:opacity-40 flex items-center gap-2">
               {gateBusy && <Loader2 size={14} className="animate-spin" />} Vérifier &amp; continuer
             </button>
             <button onClick={() => { set('ean', gateEan.trim()); setGate(false); }} disabled={!gateEan.trim()} className="px-5 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 disabled:opacity-40">Saisie manuelle</button>
@@ -638,7 +783,23 @@ export function ProductEditPage() {
         </div>
       </div>
 
-      {error && <div className="rounded-xl bg-red-50 border border-red-200 px-4 py-2.5 text-sm text-red-700">{error}</div>}
+      {error && (
+        <div className="rounded-xl bg-red-50 border border-red-200 px-4 py-2.5 text-sm text-red-700">
+          <p className="font-semibold flex items-center gap-1.5"><AlertCircle size={15} /> {error}</p>
+          {Object.keys(fieldErrors).length > 0 && (
+            <ul className="mt-1.5 space-y-0.5 text-[13px]">
+              {(Object.entries(fieldErrors) as Array<[keyof FicheErrors, string]>).map(([k, msg]) => (
+                <li key={k}>
+                  <button type="button" onClick={() => goToField(k)} className="underline decoration-red-300 underline-offset-2 hover:decoration-red-600 text-left">
+                    {labelOfField(k)}
+                  </button>
+                  {' — '}{msg}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       {/* Onglets */}
       <div className="flex gap-1 overflow-x-auto border-b border-gray-200 pb-px">
@@ -653,38 +814,73 @@ export function ProductEditPage() {
       <div className="bg-white rounded-2xl border border-gray-100 shadow-soft p-6">
         {tab === 'general' && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            <Field label="Nom du produit *"><input className={inputCls} value={form.name} onChange={(e) => set('name', e.target.value)} /></Field>
-            <Field label="Code EAN" hint={isEdit ? 'Immuable après création (anti-doublon par magasin).' : undefined}>
+            <Field label="Nom du produit *" {...fp('name')}><input className={inputCls} value={form.name} onChange={(e) => applyNameChange(e.target.value)} /></Field>
+            <Field label={isEdit ? 'Code EAN' : 'Code EAN *'} {...fp('ean')} hint={isEdit ? 'Immuable après création (anti-doublon par magasin).' : 'EAN-8 ou EAN-13, chiffres uniquement (clé de contrôle vérifiée).'}>
               <input className={`${inputCls} font-mono`} value={form.ean} disabled={isEdit} onChange={(e) => set('ean', e.target.value)} />
             </Field>
-            <Field label="Désignation / description"><textarea rows={3} className={inputCls} value={form.description} onChange={(e) => set('description', e.target.value)} /></Field>
+            <Field label="Désignation / description" {...fp('description')}><textarea rows={3} className={inputCls} value={form.description} onChange={(e) => set('description', e.target.value)} /></Field>
             <div className="space-y-5">
-              <Field label="Catégorie" hint="Arborescence gérée dans Catalogue › Catégories.">
-                <select className={inputCls} value={form.categoryId} onChange={(e) => set('categoryId', e.target.value)}>
-                  <option value="">— Aucune —</option>
-                  {catOptions.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
-                  {form.categoryId && !categories.some((c) => c.id === form.categoryId) && (
-                    <option value={form.categoryId}>{form.categoryId} (actuel)</option>
-                  )}
-                </select>
+              <Field label="Catégorie (facultative)" {...fp('categoryId')} hint="« Aucune » n'empêche pas l'enregistrement. Arborescence gérée dans Catalogue › Catégories.">
+                <div className="flex gap-2">
+                  <select className={inputCls} value={form.categoryId} onChange={(e) => set('categoryId', e.target.value)}>
+                    <option value="">— Aucune —</option>
+                    {catOptions.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+                    {form.categoryId && !categories.some((c) => c.id === form.categoryId) && (
+                      <option value={form.categoryId}>{form.categoryId} (actuel)</option>
+                    )}
+                  </select>
+                  <button
+                    onClick={() => { setShowCatForm((v) => !v); setCatError(null); }}
+                    className="px-3 rounded-xl border border-gray-200 text-gray-500 hover:text-bo-accent"
+                    title="Nouvelle catégorie"
+                  ><Plus size={15} /></button>
+                </div>
+                {showCatForm && (
+                  <div className="mt-2 rounded-xl border border-gray-200 bg-gray-50/60 p-3 space-y-2">
+                    <input
+                      className={inputCls}
+                      value={newCatName}
+                      onChange={(e) => setNewCatName(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && !catBusy && createCategoryInline()}
+                      placeholder="Nom de la catégorie…"
+                      autoFocus
+                    />
+                    <select className={inputCls} value={newCatParent} onChange={(e) => setNewCatParent(e.target.value)}>
+                      <option value="">Catégorie principale (aucun parent)</option>
+                      {catOptions.map((o) => <option key={o.id} value={o.id}>Sous {o.label}</option>)}
+                    </select>
+                    {catError && <p className="text-xs text-red-600">{catError}</p>}
+                    <div className="flex gap-2">
+                      <button
+                        onClick={createCategoryInline}
+                        disabled={catBusy}
+                        className="px-3 py-2 rounded-lg bg-bo-accent text-white text-xs font-semibold disabled:opacity-50"
+                      >{catBusy ? 'Création…' : 'Créer et sélectionner'}</button>
+                      <button
+                        onClick={() => { setShowCatForm(false); setCatError(null); }}
+                        className="px-3 py-2 rounded-lg border border-gray-200 text-xs font-semibold text-gray-500"
+                      >Annuler</button>
+                    </div>
+                  </div>
+                )}
               </Field>
-              <Field label="SKU interne"><input className={`${inputCls} font-mono`} value={form.sku} onChange={(e) => set('sku', e.target.value)} placeholder="SKU-001" /></Field>
+              <Field label="SKU interne" {...fp('sku')}><input className={`${inputCls} font-mono`} value={form.sku} onChange={(e) => set('sku', e.target.value)} placeholder="SKU-001" /></Field>
             </div>
-            <Field label="Marque">
+            <Field label="Marque" {...fp('brandId')}>
               <div className="flex gap-2">
-                <select className={inputCls} value={form.brandId} onChange={(e) => set('brandId', e.target.value)}>
+                <select className={inputCls} value={form.brandId} onChange={(e) => applyBrandChange(e.target.value)}>
                   <option value="">— Aucune —</option>
                   {brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
                 </select>
                 <button onClick={createBrand} className="px-3 rounded-xl border border-gray-200 text-gray-500 hover:text-bo-accent" title="Nouvelle marque"><Plus size={15} /></button>
               </div>
             </Field>
-            <Field label="Unité de vente">
+            <Field label="Unité de vente" {...fp('unitType')}>
               <select className={inputCls} value={form.unitType} onChange={(e) => set('unitType', e.target.value)}>
                 <option value="unit">À l'unité</option><option value="kg">Au poids (kg)</option>
               </select>
             </Field>
-            <Field label="Statut" hint="Seul « Actif » est vendable en caisse.">
+            <Field label="Statut" {...fp('status')} hint="Seul « Actif » est vendable en caisse.">
               <select className={inputCls} value={form.status} onChange={(e) => set('status', e.target.value)}>
                 <option value="active">Actif</option>
                 <option value="draft">Brouillon</option>
@@ -694,9 +890,11 @@ export function ProductEditPage() {
                 )}
               </select>
             </Field>
-            <Field label="Nom court (caisse)"><input className={inputCls} value={form.shortName} onChange={(e) => set('shortName', e.target.value)} placeholder="ex : Coca 33" /></Field>
-            <Field label="Référence interne"><input className={`${inputCls} font-mono`} value={form.internalRef} onChange={(e) => set('internalRef', e.target.value)} placeholder="INT-0001" /></Field>
-            <Field label="Type de produit">
+            <Field label="Nom court (caisse)" {...fp('shortName')} hint="Proposé automatiquement depuis le nom — modifiable ; votre saisie n'est jamais écrasée.">
+              <input className={inputCls} value={form.shortName} onChange={(e) => set('shortName', e.target.value)} placeholder="ex : Coca 33" maxLength={120} />
+            </Field>
+            <Field label="Référence interne" {...fp('internalRef')}><input className={`${inputCls} font-mono`} value={form.internalRef} onChange={(e) => set('internalRef', e.target.value)} placeholder="INT-0001" /></Field>
+            <Field label="Type de produit" {...fp('productType')}>
               <select className={inputCls} value={form.productType} onChange={(e) => set('productType', e.target.value)}>
                 <option value="simple">Produit simple</option>
                 <option value="variant">Variante</option>
@@ -745,7 +943,7 @@ export function ProductEditPage() {
                 TTC édité → HT dérivé ; TVA changée pendant l'édition du HT → TTC recalculé
                 depuis le HT affiché. Cycle sans dérive prouvé par pricingMath.test. */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
-              <Field label="Prix d'achat HT (€)"><input className={inputCls} inputMode="decimal" value={form.cost} onChange={(e) => set('cost', e.target.value)} /></Field>
+              <Field label="Prix d'achat HT (€)" {...fp('cost')}><input className={inputCls} inputMode="decimal" value={form.cost} onChange={(e) => set('cost', e.target.value)} /></Field>
               <Field label="Prix d'achat TTC (calc.)"><input className={`${inputCls} bg-gray-50`} disabled value={eur(calc.costTtc)} /></Field>
               <Field label="Prix de vente HT (€)">
                 <input
@@ -759,13 +957,13 @@ export function ProductEditPage() {
                   }}
                 />
               </Field>
-              <Field label="Prix de vente TTC (€) *">
+              <Field label="Prix de vente TTC (€) *" {...fp('priceTtc')}>
                 <input
                   className={inputCls} inputMode="decimal" value={form.priceTtc}
                   onChange={(e) => { setHtInput(null); set('priceTtc', e.target.value); }}
                 />
               </Field>
-              <Field label="TVA (%)">
+              <Field label="TVA (%)" {...fp('taxRate')}>
                 <input
                   className={inputCls} inputMode="decimal" value={form.taxRate}
                   onChange={(e) => {
@@ -797,8 +995,8 @@ export function ProductEditPage() {
               </Field>
             )}
             <div className="grid grid-cols-2 md:grid-cols-3 gap-5">
-              <Field label="Prix minimum autorisé (€)" hint="Le PV ne devrait pas descendre en dessous."><input className={inputCls} inputMode="decimal" value={form.minPrice} onChange={(e) => set('minPrice', e.target.value)} /></Field>
-              <Field label="Prix conseillé (€)"><input className={inputCls} inputMode="decimal" value={form.recommendedPrice} onChange={(e) => set('recommendedPrice', e.target.value)} /></Field>
+              <Field label="Prix minimum autorisé (€)" {...fp('minPrice')} hint="Le PV ne devrait pas descendre en dessous."><input className={inputCls} inputMode="decimal" value={form.minPrice} onChange={(e) => set('minPrice', e.target.value)} /></Field>
+              <Field label="Prix conseillé (€)" {...fp('recommendedPrice')}><input className={inputCls} inputMode="decimal" value={form.recommendedPrice} onChange={(e) => set('recommendedPrice', e.target.value)} /></Field>
             </div>
             {(() => {
               const ttc = toMinor(form.priceTtc); const min = toMinor(form.minPrice);
@@ -813,22 +1011,22 @@ export function ProductEditPage() {
         {tab === 'stock' && (
           <div className="space-y-6">
             <div className="grid grid-cols-2 md:grid-cols-3 gap-5">
-              <Field label="Stock actuel"><input className={inputCls} inputMode="numeric" value={form.stock} onChange={(e) => set('stock', e.target.value)} /></Field>
-              <Field label="Seuil d'alerte"><input className={inputCls} inputMode="numeric" value={form.alertThreshold} onChange={(e) => set('alertThreshold', e.target.value)} /></Field>
-              <Field label="Seuil critique"><input className={inputCls} inputMode="numeric" value={form.criticalThreshold} onChange={(e) => set('criticalThreshold', e.target.value)} /></Field>
+              <Field label="Stock actuel" {...fp('stock')}><input className={inputCls} inputMode="numeric" value={form.stock} onChange={(e) => set('stock', e.target.value)} /></Field>
+              <Field label="Seuil d'alerte" {...fp('alertThreshold')}><input className={inputCls} inputMode="numeric" value={form.alertThreshold} onChange={(e) => set('alertThreshold', e.target.value)} /></Field>
+              <Field label="Seuil critique" {...fp('criticalThreshold')}><input className={inputCls} inputMode="numeric" value={form.criticalThreshold} onChange={(e) => set('criticalThreshold', e.target.value)} /></Field>
             </div>
             {/* Saisonnalité (Lot E) */}
             <div className="rounded-xl border border-gray-100 p-4 space-y-3">
               <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={form.isSeasonal} onChange={(e) => set('isSeasonal', e.target.checked)} className="accent-bo-accent" /> Produit saisonnier</label>
               {form.isSeasonal && (
                 <div className="grid grid-cols-2 gap-3 max-w-md">
-                  <Field label="Mois de début">
+                  <Field label="Mois de début" {...fp('seasonStartMonth')}>
                     <select className={inputCls} value={form.seasonStartMonth} onChange={(e) => set('seasonStartMonth', e.target.value)}>
                       <option value="">—</option>
                       {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
                     </select>
                   </Field>
-                  <Field label="Mois de fin">
+                  <Field label="Mois de fin" {...fp('seasonEndMonth')}>
                     <select className={inputCls} value={form.seasonEndMonth} onChange={(e) => set('seasonEndMonth', e.target.value)}>
                       <option value="">—</option>
                       {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
@@ -843,7 +1041,7 @@ export function ProductEditPage() {
 
         {tab === 'fournisseurs' && (
           <div className="space-y-6">
-            <Field label="Fournisseur principal">
+            <Field label="Fournisseur principal" {...fp('supplierId')}>
               <div className="flex gap-2">
                 <select className={inputCls} value={form.supplierId} onChange={(e) => set('supplierId', e.target.value)}>
                   <option value="">— Aucun —</option>
@@ -860,10 +1058,10 @@ export function ProductEditPage() {
               </div>
             )}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <Field label="Référence fournisseur"><input className={`${inputCls} font-mono`} value={form.supplierRef} onChange={(e) => set('supplierRef', e.target.value)} placeholder="FRS-REF" /></Field>
-              <Field label="Délai (jours)"><input className={inputCls} inputMode="numeric" value={form.leadTimeDays} onChange={(e) => set('leadTimeDays', e.target.value)} /></Field>
-              <Field label="MOQ (qté min. commande)"><input className={inputCls} inputMode="numeric" value={form.minOrderQuantity} onChange={(e) => set('minOrderQuantity', e.target.value)} /></Field>
-              <Field label="Pays d'origine"><input className={inputCls} value={form.countryOfOrigin} onChange={(e) => set('countryOfOrigin', e.target.value)} placeholder="France" /></Field>
+              <Field label="Référence fournisseur" {...fp('supplierRef')}><input className={`${inputCls} font-mono`} value={form.supplierRef} onChange={(e) => set('supplierRef', e.target.value)} placeholder="FRS-REF" /></Field>
+              <Field label="Délai (jours)" {...fp('leadTimeDays')}><input className={inputCls} inputMode="numeric" value={form.leadTimeDays} onChange={(e) => set('leadTimeDays', e.target.value)} /></Field>
+              <Field label="MOQ (qté min. commande)" {...fp('minOrderQuantity')}><input className={inputCls} inputMode="numeric" value={form.minOrderQuantity} onChange={(e) => set('minOrderQuantity', e.target.value)} /></Field>
+              <Field label="Pays d'origine" {...fp('countryOfOrigin')}><input className={inputCls} value={form.countryOfOrigin} onChange={(e) => set('countryOfOrigin', e.target.value)} placeholder="France" /></Field>
             </div>
             {isEdit ? (
               <div className="space-y-3 border-t border-gray-100 pt-4">
@@ -1049,18 +1247,29 @@ export function ProductEditPage() {
         {tab === 'images' && (
           <div className="space-y-5">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5 items-start">
-              <Field label="Photo principale (URL ou fichier)" hint="Un fichier choisi est converti en data-URL (stockage existant). Vider = retirer l'image.">
+              <Field label="Photo principale (URL ou fichier)" {...fp('imageUrl')} hint="JPG, PNG ou WebP — compressée automatiquement avant enregistrement. Vider = retirer l'image.">
                 <input className={inputCls} value={form.imageUrl.startsWith('data:') ? '(image chargée depuis un fichier)' : form.imageUrl} disabled={form.imageUrl.startsWith('data:')} onChange={(e) => set('imageUrl', e.target.value)} placeholder="https://…" />
+                {/* input file piloté par ref + bouton explicite : plus robuste que
+                    l'activation implicite par <label> (variable selon navigateurs). */}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
+                  className="hidden"
+                  onChange={(e) => { onPickImage(e.target.files?.[0]); e.target.value = ''; }}
+                />
                 <div className="flex gap-2 mt-2">
-                  <label className="px-3 py-2 rounded-lg border border-gray-200 text-xs font-semibold text-gray-600 cursor-pointer hover:border-bo-accent">
-                    Choisir un fichier…
-                    <input type="file" accept="image/*" className="hidden" onChange={(e) => {
-                      const f = e.target.files?.[0]; if (!f) return;
-                      const r = new FileReader(); r.onload = () => set('imageUrl', String(r.result || '')); r.readAsDataURL(f);
-                    }} />
-                  </label>
-                  {form.imageUrl && <button onClick={() => set('imageUrl', '')} className="px-3 py-2 rounded-lg border border-gray-200 text-xs font-semibold text-gray-500">Retirer</button>}
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={imageBusy}
+                    className="px-3 py-2 rounded-lg border border-gray-200 text-xs font-semibold text-gray-600 hover:border-bo-accent disabled:opacity-50"
+                  >{imageBusy ? 'Préparation…' : 'Choisir un fichier…'}</button>
+                  {form.imageUrl && (
+                    <button type="button" onClick={() => { set('imageUrl', ''); setImageError(null); }} className="px-3 py-2 rounded-lg border border-gray-200 text-xs font-semibold text-gray-500">Retirer</button>
+                  )}
                 </div>
+                {imageError && <p className="mt-2 text-xs text-red-600">{imageError}</p>}
               </Field>
               <div className="rounded-xl border border-dashed border-gray-200 min-h-[160px] flex items-center justify-center bg-gray-50/50">
                 {form.imageUrl ? <img src={form.imageUrl} alt="" className="max-h-48 max-w-full object-contain rounded-lg" /> : <p className="text-xs text-gray-300">Aperçu</p>}
@@ -1128,29 +1337,29 @@ export function ProductEditPage() {
         {tab === 'logistique' && (
           <div className="space-y-6">
             <div className="grid grid-cols-2 md:grid-cols-3 gap-5">
-              <Field label="Poids (g)"><input className={inputCls} inputMode="numeric" value={form.weightGrams} onChange={(e) => set('weightGrams', e.target.value)} /></Field>
-              <Field label="Largeur (mm)"><input className={inputCls} inputMode="numeric" value={form.widthMm} onChange={(e) => set('widthMm', e.target.value)} /></Field>
-              <Field label="Hauteur (mm)"><input className={inputCls} inputMode="numeric" value={form.heightMm} onChange={(e) => set('heightMm', e.target.value)} /></Field>
-              <Field label="Profondeur (mm)"><input className={inputCls} inputMode="numeric" value={form.depthMm} onChange={(e) => set('depthMm', e.target.value)} /></Field>
-              <Field label="Volume (ml)"><input className={inputCls} inputMode="numeric" value={form.volumeMl} onChange={(e) => set('volumeMl', e.target.value)} /></Field>
-              <Field label="Unités / carton"><input className={inputCls} inputMode="numeric" value={form.unitsPerCarton} onChange={(e) => set('unitsPerCarton', e.target.value)} /></Field>
+              <Field label="Poids (g)" {...fp('weightGrams')}><input className={inputCls} inputMode="numeric" value={form.weightGrams} onChange={(e) => set('weightGrams', e.target.value)} /></Field>
+              <Field label="Largeur (mm)" {...fp('widthMm')}><input className={inputCls} inputMode="numeric" value={form.widthMm} onChange={(e) => set('widthMm', e.target.value)} /></Field>
+              <Field label="Hauteur (mm)" {...fp('heightMm')}><input className={inputCls} inputMode="numeric" value={form.heightMm} onChange={(e) => set('heightMm', e.target.value)} /></Field>
+              <Field label="Profondeur (mm)" {...fp('depthMm')}><input className={inputCls} inputMode="numeric" value={form.depthMm} onChange={(e) => set('depthMm', e.target.value)} /></Field>
+              <Field label="Volume (ml)" {...fp('volumeMl')}><input className={inputCls} inputMode="numeric" value={form.volumeMl} onChange={(e) => set('volumeMl', e.target.value)} /></Field>
+              <Field label="Unités / carton" {...fp('unitsPerCarton')}><input className={inputCls} inputMode="numeric" value={form.unitsPerCarton} onChange={(e) => set('unitsPerCarton', e.target.value)} /></Field>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-5">
-              <Field label="Unités / colis"><input className={inputCls} inputMode="numeric" value={form.unitsPerPack} onChange={(e) => set('unitsPerPack', e.target.value)} /></Field>
-              <Field label="Cartons / palette"><input className={inputCls} inputMode="numeric" value={form.cartonsPerPallet} onChange={(e) => set('cartonsPerPallet', e.target.value)} /></Field>
+              <Field label="Unités / colis" {...fp('unitsPerPack')}><input className={inputCls} inputMode="numeric" value={form.unitsPerPack} onChange={(e) => set('unitsPerPack', e.target.value)} /></Field>
+              <Field label="Cartons / palette" {...fp('cartonsPerPallet')}><input className={inputCls} inputMode="numeric" value={form.cartonsPerPallet} onChange={(e) => set('cartonsPerPallet', e.target.value)} /></Field>
             </div>
 
             {/* Réglementaire / alimentaire (selon le type de produit) */}
             <div className="border-t border-gray-100 pt-4 space-y-4">
               <p className="text-sm font-semibold text-bo-text">Réglementaire / alimentaire</p>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                <Field label="Allergènes"><textarea rows={2} className={inputCls} value={form.allergens} onChange={(e) => set('allergens', e.target.value)} placeholder="ex : gluten, fruits à coque…" /></Field>
-                <Field label="Ingrédients"><textarea rows={2} className={inputCls} value={form.ingredients} onChange={(e) => set('ingredients', e.target.value)} /></Field>
+                <Field label="Allergènes" {...fp('allergens')}><textarea rows={2} className={inputCls} value={form.allergens} onChange={(e) => set('allergens', e.target.value)} placeholder="ex : gluten, fruits à coque…" /></Field>
+                <Field label="Ingrédients" {...fp('ingredients')}><textarea rows={2} className={inputCls} value={form.ingredients} onChange={(e) => set('ingredients', e.target.value)} /></Field>
               </div>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-5">
-                <Field label="DDM (durabilité min.)"><input type="date" className={inputCls} value={form.bestBeforeDate} onChange={(e) => set('bestBeforeDate', e.target.value)} /></Field>
-                <Field label="DLC (limite consommation)"><input type="date" className={inputCls} value={form.useByDate} onChange={(e) => set('useByDate', e.target.value)} /></Field>
-                <Field label="Numéro de lot"><input className={`${inputCls} font-mono`} value={form.lotNumber} onChange={(e) => set('lotNumber', e.target.value)} /></Field>
+                <Field label="DDM (durabilité min.)" {...fp('bestBeforeDate')}><input type="date" className={inputCls} value={form.bestBeforeDate} onChange={(e) => set('bestBeforeDate', e.target.value)} /></Field>
+                <Field label="DLC (limite consommation)" {...fp('useByDate')}><input type="date" className={inputCls} value={form.useByDate} onChange={(e) => set('useByDate', e.target.value)} /></Field>
+                <Field label="Numéro de lot" {...fp('lotNumber')}><input className={`${inputCls} font-mono`} value={form.lotNumber} onChange={(e) => set('lotNumber', e.target.value)} /></Field>
               </div>
             </div>
             <Phase2Notice fields="Emplacement réserve/rayon (module Stock Locations) · matière — à venir" />
