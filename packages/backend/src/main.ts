@@ -33,7 +33,6 @@ import {
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import helmet from 'helmet';
 import * as cookieParser from 'cookie-parser';
-import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { TenantInterceptor } from './common/interceptors/tenant.interceptor';
 import { BusinessError } from './common/errors/business-error';
