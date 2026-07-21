@@ -18,6 +18,8 @@ export interface CartItem {
   quantity: number;
   discountMinorUnits: number;
   promoName?: string;
+  /** Taux de TVA du produit (%) — pour la ventilation TVA du ticket. */
+  taxRate?: number;
 }
 
 interface Employee {
@@ -65,6 +67,12 @@ export interface TicketHistoryEntry {
   customerName?: string;
   reprintCount: number;
   reprintLog: { at: Date; by: string }[];
+  /**
+   * Jeton public du ticket numérique (généré serveur à la vente). Une
+   * réimpression réutilise CE jeton → exactement le même QR code. Absent pour
+   * une vente hors ligne pas encore synchronisée.
+   */
+  publicToken?: string | null;
 }
 
 export interface JackpotResult {
@@ -141,6 +149,18 @@ export interface StoreInfo {
   // Personnalisation ticket
   headerMessage?: string;        // Message en haut du ticket
   footerMessage?: string;        // Message en bas du ticket (ex: "Merci de votre visite !")
+
+  // Refonte ticket The Wesley — réglages Dashboard (source unique : backend)
+  addressExtra?: string;         // Complément d'adresse
+  country?: string;              // Pays
+  email?: string;                // E-mail public du magasin
+  websiteUrl?: string;           // Site Internet imprimé sur le ticket
+  operatingCompanyName?: string; // Raison sociale exploitante
+  receiptLogoUrl?: string | null;      // Logo officiel (data-URL)
+  receiptQrEnabled?: boolean;          // QR ticket numérique activé
+  receiptQrText?: string | null;       // Texte près du QR
+  receiptFinalMessage?: string | null; // Formule de fin
+  receiptPublicBaseUrl?: string | null; // Base URL publique du ticket numérique
 }
 
 interface POSState {
@@ -230,6 +250,8 @@ interface POSState {
   setOccupancy: (data: OccupancyData | null) => void;
   setWeather: (data: WeatherData | null) => void;
   addTicketToHistory: (ticket: TicketHistoryEntry) => void;
+  /** Rattache le jeton public serveur à un ticket local (sync offline). */
+  attachTicketPublicToken: (localTicketNumber: string, publicToken: string) => void;
   logReprint: (ticketNumber: string, by: string) => void;
   setStoreInfo: (info: StoreInfo) => void;
 
@@ -469,6 +491,17 @@ export const usePOSStore = create<POSState>((set, get) => ({
 
   addTicketToHistory: (ticket) => {
     set({ ticketHistory: [ticket, ...get().ticketHistory].slice(0, 200) });
+  },
+
+  attachTicketPublicToken: (localTicketNumber, publicToken) => {
+    // Vente offline synchronisée : le serveur a émis le jeton du ticket
+    // numérique — on le rattache à l'entrée locale pour que la réimpression
+    // porte le même QR que la vente scellée. Jamais de régénération.
+    set({
+      ticketHistory: get().ticketHistory.map((t) =>
+        t.ticketNumber === localTicketNumber && !t.publicToken ? { ...t, publicToken } : t,
+      ),
+    });
   },
 
   setStoreInfo: (info) => set({ storeInfo: info }),

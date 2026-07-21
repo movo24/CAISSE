@@ -7,6 +7,9 @@ import { newIdempotencyKey } from '../services/idempotency';
 import { usePerformanceStore } from '../stores/performanceStore';
 import { posEventBus } from '../services/posEventBus';
 import { peripheralBridge, TicketData } from '../services/peripheralBridge';
+import { buildTicketData } from '../services/salePeripherals';
+import { buildTicketUrl, makeTicketQrDataUrl } from '../services/ticketQr';
+import { getBrandLogoDataUrl } from '../services/brandLogo';
 import { useOfflineStore } from '../stores/offlineStore';
 import { computePaymentState, PaymentMethod } from '../services/paymentMachine';
 import { useStripeTerminal } from './useStripeTerminal';
@@ -208,8 +211,9 @@ export function usePayment() {
       ticketNumber = res.data.ticketNumber || `T-${Date.now().toString().slice(-6)}`;
       // Confirmed online → next sale gets a fresh key.
       saleIdemKeyRef.current = null;
-      // Store sale ID for QR receipt generation
+      // Store sale ID + public token for QR receipt generation
       if (res.data.id) (store as any).lastSaleId = res.data.id;
+      (store as any).lastPublicToken = res.data.publicToken || null;
       if (res.data.jackpotResult) store.setJackpotResult(res.data.jackpotResult);
       // Emit stock alerts if any were returned by the backend
       if (res.data.stockAlerts && res.data.stockAlerts.length > 0) {
@@ -312,34 +316,53 @@ export function usePayment() {
     }
     if (hasRealPrinter) {
       try {
-        const storeInfo = store.storeInfo;
-        const ticketData: TicketData = {
-          storeName: storeInfo?.storeName || 'CAISSE',
-          storeAddress: storeInfo?.address || '',
-          siret: storeInfo?.siret || '',
-          tvaIntracom: storeInfo?.tvaIntracom || '',
+        const storeInfo = store.storeInfo as any;
+        // QR ticket numérique : base publique (Dashboard) + jeton serveur.
+        // Hors ligne / non configuré → note claire, jamais bloquant.
+        const qrEnabled = storeInfo?.receiptQrEnabled !== false;
+        const lastToken = (store as any).lastPublicToken || null;
+        const ticketUrl = qrEnabled ? buildTicketUrl(storeInfo?.receiptPublicBaseUrl, lastToken) : null;
+        const qrDataUrl = ticketUrl ? await makeTicketQrDataUrl(ticketUrl) : null;
+        const ticketData: TicketData = buildTicketData({
+          storeName: storeInfo?.storeName,
+          storeAddress: storeInfo?.address,
+          addressLine2: [storeInfo?.postalCode, storeInfo?.city].filter(Boolean).join(' ') || undefined,
+          operatingCompanyName: storeInfo?.operatingCompanyName || undefined,
+          siret: storeInfo?.siret,
+          tvaIntracom: storeInfo?.tvaIntracom,
+          rcs: storeInfo?.rcs || undefined,
+          capitalSocial: storeInfo?.capitalSocial || undefined,
+          phone: storeInfo?.phone || undefined,
+          website: storeInfo?.websiteUrl || undefined,
+          headerMessage: storeInfo?.headerMessage || undefined,
+          nifCaisse: storeInfo?.nifCaisse,
+          softwareVersion: storeInfo?.softwareVersion || undefined,
+          logoDataUrl: storeInfo?.receiptLogoUrl || getBrandLogoDataUrl(),
           ticketNumber,
-          date: timestamp.toLocaleString('fr-FR'),
+          date: timestamp,
           cashierName,
           items: store.cartItems.map(i => ({
             name: i.name,
             quantity: i.quantity,
-            unitPrice: i.unitPriceMinorUnits / 100,
-            total: (i.unitPriceMinorUnits * i.quantity - (i.discountMinorUnits || 0)) / 100,
-            discount: i.discountMinorUnits ? i.discountMinorUnits / 100 : undefined,
+            unitPriceMinorUnits: i.unitPriceMinorUnits,
+            discountMinorUnits: i.discountMinorUnits,
+            taxRate: i.taxRate,
           })),
-          subtotal: store.subtotal() / 100,
-          discount: store.totalDiscount() / 100,
-          total: totalAmount / 100,
-          payments: payments.map(p => ({
-            method: p.method === 'card' ? 'CB' : p.method === 'cash' ? 'Especes' : 'Mixte',
-            amount: p.amountMinorUnits / 100,
-          })),
-          change: changeMinor / 100,
-          footer: 'Merci de votre visite !',
-          nifCaisse: storeInfo?.nifCaisse || '',
-          softwareVersion: '1.0',
-        };
+          subtotalMinorUnits: store.subtotal(),
+          discountMinorUnits: store.totalDiscount(),
+          totalMinorUnits: totalAmount,
+          payments: payments.map(p => ({ method: p.method, amountMinorUnits: p.amountMinorUnits })),
+          changeMinorUnits: changeMinor,
+          footer: storeInfo?.footerMessage || undefined,
+          finalMessage: storeInfo?.receiptFinalMessage || undefined,
+          qrDataUrl,
+          qrContent: qrDataUrl ? ticketUrl : null,
+          qrText: qrDataUrl
+            ? storeInfo?.receiptQrText || 'Scannez pour retrouver votre ticket et découvrir nos nouveautés'
+            : undefined,
+          offlineNote:
+            qrEnabled && !lastToken ? 'Ticket numérique disponible après synchronisation' : undefined,
+        });
         // Auto-print: NO browser-dialog fallback — a failed thermal print must
         // surface as "non imprimé", not silently pretend success.
         peripheralBridge.printTicket(ticketData, { allowBrowserFallback: false })

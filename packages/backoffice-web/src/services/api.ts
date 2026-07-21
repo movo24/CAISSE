@@ -455,6 +455,10 @@ export const storesApi = {
   syncFromTimeWin: () => api.post('/stores/sync'),
   getSchedule: (storeId: string) => api.get(`/stores/${storeId}/schedule`),
   updateSchedule: (storeId: string, schedules: any[]) => api.put(`/stores/${storeId}/schedule`, { schedules }),
+  // Réglages « Ticket de caisse » (refonte The Wesley) — audités côté serveur.
+  getReceiptSettings: (storeId: string) => api.get(`/stores/${storeId}/receipt-settings`),
+  updateReceiptSettings: (storeId: string, data: Record<string, unknown>) =>
+    api.put(`/stores/${storeId}/receipt-settings`, data),
 };
 
 // ---------------------------------------------------------------------------

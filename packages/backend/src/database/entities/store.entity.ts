@@ -179,6 +179,50 @@ export class StoreEntity {
   @Column({ name: 'footer_message', nullable: true })
   footerMessage: string;
 
+  // ── Receipt settings (refonte ticket The Wesley) — pilotés depuis le
+  //    Dashboard, jamais codés en dur dans le moteur d'impression. Tout est
+  //    nullable : une donnée absente n'est pas imprimée. ──
+
+  /** Site Internet public affiché sur le ticket et la page numérique. */
+  @Column({ name: 'website_url', type: 'varchar', nullable: true })
+  websiteUrl: string | null;
+
+  /** Logo officiel (data-URL PNG, converti N&B à l'impression). */
+  @Column({ name: 'receipt_logo_url', type: 'text', nullable: true })
+  receiptLogoUrl: string | null;
+
+  /** QR code du ticket numérique activé sur le ticket papier. */
+  @Column({ name: 'receipt_qr_enabled', type: 'boolean', default: true })
+  receiptQrEnabled: boolean;
+
+  /** Texte court imprimé près du QR code. */
+  @Column({ name: 'receipt_qr_text', type: 'varchar', nullable: true })
+  receiptQrText: string | null;
+
+  /** Formule de fin de ticket (ex. « Merci et à bientôt chez The Wesley »). */
+  @Column({ name: 'receipt_final_message', type: 'varchar', nullable: true })
+  receiptFinalMessage: string | null;
+
+  /** Zone recommandations/nouveautés activée sur la page numérique. */
+  @Column({ name: 'receipt_show_recommendations', type: 'boolean', default: false })
+  receiptShowRecommendations: boolean;
+
+  /** Destination commerciale de la page numérique : home | new | category. */
+  @Column({ name: 'receipt_recommendation_target', type: 'varchar', nullable: true })
+  receiptRecommendationTarget: string | null;
+
+  /** Catégorie ciblée quand receiptRecommendationTarget = 'category'. */
+  @Column({ name: 'receipt_recommendation_category_id', type: 'uuid', nullable: true })
+  receiptRecommendationCategoryId: string | null;
+
+  /**
+   * Base URL publique du ticket numérique (ex. https://api.addxintelligence.com).
+   * Nullable : sans valeur, le POS n'imprime pas de QR (jamais de domaine codé
+   * en dur dans le moteur d'impression).
+   */
+  @Column({ name: 'receipt_public_base_url', type: 'varchar', nullable: true })
+  receiptPublicBaseUrl: string | null;
+
   // ── Geolocation (weather, map) ──
 
   @Column({ type: 'decimal', precision: 10, scale: 7, nullable: true })

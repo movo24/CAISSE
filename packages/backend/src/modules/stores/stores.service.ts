@@ -10,6 +10,13 @@ import { reconcileLegalIds } from '../../common/legal/legal-id.util';
 import { mapStoreEntityToStoreInfo } from './store-info.mapper';
 import { generateUniqueStoreCode } from '../../common/utils/store-code-generator';
 import { TimewinService } from '../timewin/timewin.service';
+import { AuditService } from '../audit/audit.service';
+import {
+  RECEIPT_SETTINGS_FIELDS,
+  ReceiptSettingsField,
+  UpdateReceiptSettingsDto,
+} from './receipt-settings.dto';
+import { createHash } from 'crypto';
 
 @Injectable()
 export class StoresService {
@@ -24,6 +31,7 @@ export class StoresService {
     private unitRepo: Repository<UnitEntity>,
     private dataSource: DataSource,
     private timewinService: TimewinService,
+    private auditService: AuditService,
   ) {}
 
   async create(dto: CreateStoreDto): Promise<StoreEntity> {
@@ -223,6 +231,112 @@ export class StoresService {
       this.logger.warn(`[TW24] Store update sync failed: ${err?.message}`),
     );
     return updated;
+  }
+
+  // ─── Réglages « Ticket de caisse » (Dashboard) ──────────────────
+
+  /**
+   * Réglages ticket + identité légale du magasin, pour la page Dashboard
+   * (formulaire, aperçu 58/80 mm, indicateurs « information à compléter »).
+   */
+  async getReceiptSettings(id: string) {
+    const store = await this.findOne(id);
+    return {
+      storeId: store.id,
+      settings: {
+        websiteUrl: store.websiteUrl ?? null,
+        receiptLogoUrl: store.receiptLogoUrl ?? null,
+        receiptQrEnabled: store.receiptQrEnabled ?? true,
+        receiptQrText: store.receiptQrText ?? null,
+        footerMessage: store.footerMessage ?? null,
+        receiptFinalMessage: store.receiptFinalMessage ?? null,
+        receiptShowRecommendations: store.receiptShowRecommendations ?? false,
+        receiptRecommendationTarget: store.receiptRecommendationTarget ?? null,
+        receiptRecommendationCategoryId: store.receiptRecommendationCategoryId ?? null,
+        receiptPublicBaseUrl: store.receiptPublicBaseUrl ?? null,
+      },
+      // Identité imprimée sur le ticket — source : fiche magasin (lecture seule
+      // ici ; s'édite via la fiche magasin). Sert à l'aperçu et aux indicateurs
+      // « information à compléter ».
+      identity: {
+        name: store.name,
+        operatingCompanyName: store.operatingCompanyName ?? null,
+        formeJuridique: store.formeJuridique || null,
+        capitalSocial: store.capitalSocial || null,
+        address: store.address || null,
+        addressExtra: store.addressExtra ?? null,
+        postalCode: store.postalCode || null,
+        city: store.city || null,
+        country: store.country || null,
+        phone: store.phone || null,
+        email: store.email || null,
+        siret: store.siret || null,
+        rcs: store.rcs || null,
+        tvaIntracom: store.tvaIntracom || null,
+        nifCaisse: store.nifCaisse || null,
+        headerMessage: store.headerMessage || null,
+      },
+    };
+  }
+
+  /**
+   * Met à jour les réglages ticket d'un magasin. Chaque champ réellement
+   * modifié est audité (ancienne → nouvelle valeur) dans la chaîne d'audit du
+   * magasin ; le logo (data-URL volumineuse) est audité par empreinte sha256.
+   */
+  async updateReceiptSettings(
+    id: string,
+    dto: UpdateReceiptSettingsDto,
+    employeeId: string,
+  ) {
+    const store = await this.findOne(id);
+
+    const changes: Record<string, { old: unknown; new: unknown }> = {};
+    const patch: Partial<StoreEntity> = {};
+
+    for (const field of RECEIPT_SETTINGS_FIELDS) {
+      if (!(field in dto) || dto[field as keyof UpdateReceiptSettingsDto] === undefined) continue;
+      const next = dto[field as keyof UpdateReceiptSettingsDto] as never;
+      const prev = store[field as ReceiptSettingsField] as never;
+      if (prev === next || ((prev ?? null) === null && (next ?? null) === null)) continue;
+      (patch as Record<string, unknown>)[field] = next ?? null;
+      // Le logo est une data-URL potentiellement énorme : on audite une
+      // empreinte, jamais la valeur brute (chaîne d'audit compacte et lisible).
+      changes[field] =
+        field === 'receiptLogoUrl'
+          ? { old: this.logoDigest(prev), new: this.logoDigest(next) }
+          : { old: prev ?? null, new: next ?? null };
+    }
+
+    if (Object.keys(patch).length === 0) {
+      return this.getReceiptSettings(id);
+    }
+
+    await this.storeRepo.update(id, patch);
+
+    try {
+      await this.auditService.log({
+        storeId: id,
+        employeeId,
+        action: 'receipt_settings_updated',
+        entityType: 'store',
+        entityId: id,
+        details: { changes },
+      });
+    } catch (err: any) {
+      this.logger.warn(`[RECEIPT_SETTINGS] audit log failed for ${id}: ${err?.message}`);
+    }
+
+    this.logger.log(
+      `[RECEIPT_SETTINGS] Store ${id} updated by ${employeeId}: ${Object.keys(changes).join(', ')}`,
+    );
+    return this.getReceiptSettings(id);
+  }
+
+  /** Empreinte compacte d'un logo data-URL pour l'audit (null si absent). */
+  private logoDigest(value: unknown): string | null {
+    if (!value || typeof value !== 'string') return null;
+    return `sha256:${createHash('sha256').update(value).digest('hex').slice(0, 16)} (${value.length} chars)`;
   }
 
   // ─── Archive (soft-delete) ──────────────────────────────────────

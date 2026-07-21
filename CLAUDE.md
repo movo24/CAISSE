@@ -197,8 +197,13 @@ Current migrations (run in order):
 1755000000000-CreateAttractCampaigns
 1756000000000-AddPosMachineEnrollment
 1757000000000-AddStoreTw24Enabled
+1758000000000-AddStoreGeoAndNetwork
+1767000000000-AddStockMovementSaleLinkage
+1771000000000-AddReceiptSettingsAndPublicTicketToken
 ```
 > Saut de numérotation 1719→1735 volontaire (réservation d'une plage pour les blocs POS).
+> Sauts 1759→1766 (catalog-refonte, branche non mergée) et 1768→1770 (product-sheet-erp-pa,
+> branche non mergée) : plages réservées — ne pas réutiliser.
 
 ---
 

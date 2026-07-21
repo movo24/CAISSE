@@ -46,6 +46,7 @@ import { TimewinModule } from './modules/timewin/timewin.module';
 import { ShiftRemindersModule } from './modules/shift-reminders/shift-reminders.module';
 import { SalesAiModule } from './modules/sales-ai/sales-ai.module';
 import { ReceiptsModule } from './modules/receipts/receipts.module';
+import { PublicTicketModule } from './modules/public-ticket/public-ticket.module';
 import { EmployeesModule } from './modules/employees/employees.module';
 // ── Wesley Club (loyalty mobile app) ──
 import { MobileAuthModule } from './modules/mobile-auth/mobile-auth.module';
@@ -137,6 +138,7 @@ const isProd = process.env.NODE_ENV === 'production';
     ShiftRemindersModule,
     SalesAiModule,
     ReceiptsModule,
+    PublicTicketModule,
     EmployeesModule,
     // Wesley Club
     MobileAuthModule,

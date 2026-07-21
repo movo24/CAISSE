@@ -8,6 +8,8 @@ import { usePOSStore, TicketHistoryEntry } from '../../stores/posStore';
 import { useRights } from '../../hooks/useRights';
 import { peripheralBridge } from '../../services/peripheralBridge';
 import { buildTicketData } from '../../services/salePeripherals';
+import { buildTicketUrl, makeTicketQrDataUrl } from '../../services/ticketQr';
+import { getBrandLogoDataUrl } from '../../services/brandLogo';
 
 /* ── Helpers ── */
 
@@ -423,12 +425,28 @@ export function TicketHistoryModal({
                   onClick={async () => {
                     // Réimpression RÉELLE d'un duplicata (traçabilité déjà loggée
                     // à l'ouverture). Marqué DUPLICATA, sans valeur comptable.
+                    // Réimpression = MÊME jeton public → EXACTEMENT le même QR
+                    // que le ticket d'origine (jamais de nouveau jeton ici).
+                    const sameToken = (duplicatePreview as any).publicToken || null;
+                    const qrEnabled = (si as any)?.receiptQrEnabled !== false;
+                    const sameUrl = qrEnabled
+                      ? buildTicketUrl((si as any)?.receiptPublicBaseUrl, sameToken)
+                      : null;
+                    const qrDataUrl = sameUrl ? await makeTicketQrDataUrl(sameUrl) : null;
                     const td = buildTicketData({
                       storeName: si?.storeName,
                       storeAddress: (si as any)?.address,
+                      addressLine2: [(si as any)?.postalCode, (si as any)?.city].filter(Boolean).join(' ') || undefined,
+                      operatingCompanyName: (si as any)?.operatingCompanyName || undefined,
                       siret: (si as any)?.siret,
                       tvaIntracom: (si as any)?.tvaIntracom,
+                      rcs: (si as any)?.rcs || undefined,
+                      capitalSocial: (si as any)?.capitalSocial || undefined,
+                      phone: (si as any)?.phone || undefined,
+                      website: (si as any)?.websiteUrl || undefined,
                       nifCaisse: (si as any)?.nifCaisse,
+                      softwareVersion: (si as any)?.softwareVersion || undefined,
+                      logoDataUrl: (si as any)?.receiptLogoUrl || getBrandLogoDataUrl(),
                       ticketNumber: duplicatePreview.ticketNumber,
                       date: new Date(duplicatePreview.timestamp),
                       cashierName: duplicatePreview.cashierName,
@@ -437,6 +455,7 @@ export function TicketHistoryModal({
                         quantity: it.quantity,
                         unitPriceMinorUnits: it.unitPriceMinorUnits,
                         discountMinorUnits: it.discountMinorUnits,
+                        taxRate: it.taxRate,
                       })),
                       subtotalMinorUnits: duplicatePreview.subtotalMinorUnits,
                       discountMinorUnits: duplicatePreview.discountMinorUnits,
@@ -444,6 +463,11 @@ export function TicketHistoryModal({
                       payments: duplicatePreview.payments.map((p: any) => ({ method: p.method, amountMinorUnits: p.amountMinorUnits })),
                       changeMinorUnits: duplicatePreview.changeMinorUnits,
                       footer: "DUPLICATA — Ce document n'a aucune valeur comptable",
+                      qrDataUrl,
+                      qrContent: qrDataUrl ? sameUrl : null,
+                      qrText: qrDataUrl
+                        ? (si as any)?.receiptQrText || 'Scannez pour retrouver votre ticket et découvrir nos nouveautés'
+                        : undefined,
                     });
                     try {
                       const ok = await peripheralBridge.printTicket(td, { allowBrowserFallback: false });

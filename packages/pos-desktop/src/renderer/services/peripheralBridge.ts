@@ -23,6 +23,21 @@ export interface PeripheralStatus {
   cashDrawer: { type: CashDrawerType; connected: boolean };
 }
 
+export type PaperWidthMm = 58 | 80;
+
+/** Ventilation TVA d'un ticket (montants en euros, calculés côté caisse). */
+export interface TicketVatRow {
+  rate: number;
+  ht: number;
+  tva: number;
+  ttc: number;
+}
+
+/**
+ * Données du ticket papier. TOUT le contenu vient de la configuration du
+ * magasin (Dashboard) et de la vente — jamais de valeur codée en dur dans le
+ * moteur d'impression. Une donnée absente n'est pas imprimée.
+ */
 export interface TicketData {
   storeName: string;
   storeAddress: string;
@@ -37,6 +52,7 @@ export interface TicketData {
     unitPrice: number;
     total: number;
     discount?: number;
+    taxRate?: number;
   }>;
   subtotal: number;
   discount: number;
@@ -46,6 +62,44 @@ export interface TicketData {
   footer: string;
   nifCaisse: string;
   softwareVersion: string;
+
+  // ── Refonte ticket The Wesley (tous optionnels — config Dashboard) ──
+  /** Logo officiel (data-URL PNG/JPEG), imprimé N&B centré. */
+  logoDataUrl?: string | null;
+  /** CP + ville (2ᵉ ligne d'adresse). */
+  addressLine2?: string;
+  /** Raison sociale exploitante (si différente de l'enseigne). */
+  operatingCompanyName?: string;
+  /** RCS (mention légale, imprimée seulement si renseignée). */
+  rcs?: string;
+  /** Capital social (mention légale, imprimée seulement si renseignée). */
+  capitalSocial?: string;
+  /** Téléphone du magasin. */
+  phone?: string;
+  /** Site Internet du magasin. */
+  website?: string;
+  /** Message d'en-tête personnalisé (Dashboard). */
+  headerMessage?: string;
+  /** Libellé de la caisse (ex. « Caisse 1 »). */
+  registerLabel?: string;
+  /** Espèces reçues (paiement espèces) — pour la ligne « Reçu / Rendu ». */
+  cashReceived?: number;
+  /** Ventilation TVA par taux (HT / TVA / TTC). */
+  vat?: TicketVatRow[];
+  /** QR code du ticket numérique, PRÉ-généré en data-URL PNG (chemin HTML). */
+  qrDataUrl?: string | null;
+  /** Contenu encodé dans le QR (URL publique) — pour le QR natif ESC/POS. */
+  qrContent?: string | null;
+  /** Texte court imprimé près du QR (Dashboard). */
+  qrText?: string;
+  /** Formule de fin (Dashboard, ex. « Merci et à bientôt chez The Wesley »). */
+  finalMessage?: string;
+  /** Vente hors ligne : note « ticket numérique disponible après synchro ». */
+  offlineNote?: string;
+  /** Largeur papier (58 ou 80 mm). Défaut : réglage caisse (80 mm). */
+  paperWidthMm?: PaperWidthMm;
+  /** Marqueur ticket de test (« TEST — SANS VALEUR FISCALE ») — diagnostics UNIQUEMENT. */
+  testMarker?: string;
 }
 
 export interface BarcodeResult {
@@ -55,6 +109,79 @@ export interface BarcodeResult {
 }
 
 type BarcodeCallback = (result: BarcodeResult) => void;
+
+/* ═══════════════════════════════════════════════════
+   RÉGLAGE LARGEUR PAPIER (58 / 80 mm)
+   ═══════════════════════════════════════════════════ */
+
+const PAPER_WIDTH_KEY = 'caisse_paper_width_mm';
+
+/** Largeur papier configurée pour cette caisse (défaut 80 mm). */
+export function getPaperWidthMm(): PaperWidthMm {
+  try {
+    return localStorage.getItem(PAPER_WIDTH_KEY) === '58' ? 58 : 80;
+  } catch {
+    return 80;
+  }
+}
+
+/** Mémorise la largeur papier de cette caisse. */
+export function setPaperWidthMm(width: PaperWidthMm): void {
+  try {
+    localStorage.setItem(PAPER_WIDTH_KEY, String(width));
+  } catch { /* ignore */ }
+}
+
+/* ═══════════════════════════════════════════════════
+   ESC/POS — QR natif + encodage CP1252
+   ═══════════════════════════════════════════════════ */
+
+/**
+ * Commandes ESC/POS de QR code natif (GS ( k, modèle 2) : taille de module,
+ * correction M, stockage des données, impression. `content` = URL publique du
+ * ticket — jamais d'identifiant interne ni de donnée client.
+ */
+export function buildEscposQr(content: string, moduleSize = 6): string {
+  const GS = '\x1D';
+  const data = content.slice(0, 700); // QR v.moyenne — largement assez pour l'URL
+  const storeLen = data.length + 3;
+  const pL = String.fromCharCode(storeLen & 0xff);
+  const pH = String.fromCharCode((storeLen >> 8) & 0xff);
+  return [
+    `${GS}(k\x04\x00\x31\x41\x32\x00`, // modèle 2
+    `${GS}(k\x03\x00\x31\x43${String.fromCharCode(moduleSize)}`, // taille module
+    `${GS}(k\x03\x00\x31\x45\x31`, // correction M
+    `${GS}(k${pL}${pH}\x31\x50\x30${data}`, // stockage
+    `${GS}(k\x03\x00\x31\x51\x30`, // impression
+  ].join('');
+}
+
+/**
+ * Encode une chaîne de commandes ESC/POS en octets CP1252 (les caractères
+ * 0x00-0xFF passent tels quels ; les accents usuels sont mappés ; le reste est
+ * translittéré) — jamais d'UTF-8 multi-octets qui produirait du mojibake sur
+ * une thermique en page de code Windows-1252 (sélectionnée via ESC t 16).
+ */
+export function encodeEscpos(commands: string): Uint8Array {
+  const CP1252_EXTRA: Record<string, number> = {
+    '€': 0x80, '‚': 0x82, '„': 0x84, '…': 0x85, '‘': 0x91, '’': 0x92,
+    '“': 0x93, '”': 0x94, '–': 0x96, '—': 0x97, 'œ': 0x9c, 'Œ': 0x8c, 'Ÿ': 0x9f,
+  };
+  const out: number[] = [];
+  for (const ch of commands) {
+    const code = ch.codePointAt(0)!;
+    if (code <= 0xff) {
+      out.push(code); // latin-1 ⊂ CP1252 (accents é è à ç … corrects)
+    } else if (CP1252_EXTRA[ch] !== undefined) {
+      out.push(CP1252_EXTRA[ch]);
+    } else {
+      const ascii = ch.normalize('NFD').replace(/[̀-ͯ]/g, '');
+      const fallback = ascii.codePointAt(0);
+      out.push(fallback !== undefined && fallback <= 0xff ? fallback : 0x3f); // '?'
+    }
+  }
+  return new Uint8Array(out);
+}
 
 /* ═══════════════════════════════════════════════════
    PERIPHERAL BRIDGE
@@ -230,8 +357,7 @@ class PeripheralBridge {
       await device.selectConfiguration(1);
       await device.claimInterface(0);
       const commands = this.buildESCPOSCommands(data);
-      const encoder = new TextEncoder();
-      await device.transferOut(1, encoder.encode(commands));
+      await device.transferOut(1, encodeEscpos(commands));
       await device.close();
       console.log('[PERIPH] WebUSB print success');
       return true;
@@ -251,8 +377,7 @@ class PeripheralBridge {
       const service = await server.getPrimaryService('000018f0-0000-1000-8000-00805f9b34fb');
       const characteristic = await service.getCharacteristic('00002af1-0000-1000-8000-00805f9b34fb');
       const commands = this.buildESCPOSCommands(data);
-      const encoder = new TextEncoder();
-      const bytes = encoder.encode(commands);
+      const bytes = encodeEscpos(commands);
       for (let i = 0; i < bytes.length; i += 20) {
         await characteristic.writeValue(bytes.slice(i, i + 20));
       }
@@ -285,122 +410,180 @@ class PeripheralBridge {
     return true;
   }
 
+  /**
+   * Construit le DOM du ticket papier (58 ou 80 mm). Refonte The Wesley :
+   * logo N&B centré, mentions légales dynamiques (champ vide = non imprimé),
+   * qté × PU, remises, sous-total, ventilation TVA par taux, TOTAL TTC,
+   * reçu/rendu espèces, phrase personnalisée, QR ticket numérique. Tout vient
+   * de TicketData (config magasin + vente) — aucune valeur en dur.
+   */
   private buildReceiptDOM(doc: Document, data: TicketData): void {
-    // Add print styles
+    const width = data.paperWidthMm ?? getPaperWidthMm();
+    const bodyMm = width === 58 ? 48 : 72;
+
     const style = doc.createElement('style');
     style.textContent = `
-      @page { size: 80mm auto; margin: 0; }
-      body { font-family: 'Courier New', monospace; font-size: 12px; width: 72mm; margin: 4mm auto; color: #000; }
+      @page { size: ${width}mm auto; margin: 0; }
+      :root { color-scheme: light; }
+      body { font-family: 'Courier New', monospace; font-size: ${width === 58 ? 10 : 12}px; width: ${bodyMm}mm; margin: 3mm auto; color: #000; background: #fff; }
       .center { text-align: center; }
       .bold { font-weight: bold; }
+      .small { font-size: ${width === 58 ? 8 : 9}px; }
       .line { border-top: 1px dashed #000; margin: 4px 0; }
       table { width: 100%; border-collapse: collapse; }
-      td { padding: 1px 0; font-size: 11px; }
+      td, th { padding: 1px 0; font-size: ${width === 58 ? 9 : 11}px; }
+      th { text-align: right; font-weight: bold; border-bottom: 1px solid #000; }
+      th:first-child { text-align: left; }
       .row { display: flex; justify-content: space-between; }
+      .logo { display: block; margin: 0 auto 2mm; max-width: ${width === 58 ? 34 : 46}mm; max-height: 18mm; filter: grayscale(100%) contrast(160%); }
+      .qr { display: block; margin: 2mm auto 1mm; width: ${width === 58 ? 22 : 26}mm; height: ${width === 58 ? 22 : 26}mm; }
+      .total-line { display: flex; justify-content: space-between; font-weight: bold; font-size: ${width === 58 ? 13 : 16}px; }
+      .wrap { word-break: break-word; }
     `;
     doc.head.appendChild(style);
 
     const body = doc.body;
+    const el = (tag: string, className: string, text?: string, fontSize?: string) => {
+      const d = doc.createElement(tag);
+      if (className) d.className = className;
+      if (text !== undefined) d.textContent = text;
+      if (fontSize) (d as HTMLElement).style.fontSize = fontSize;
+      return d as HTMLElement;
+    };
+    const rowOf = (label: string, value: string, cls = 'row') => {
+      const r = el('div', cls);
+      r.appendChild(el('span', '', label));
+      r.appendChild(el('span', '', value));
+      return r;
+    };
+    const eur = (n: number) => `${n.toFixed(2)} EUR`;
 
-    // Store name
-    const h = doc.createElement('div');
-    h.className = 'center bold';
-    h.style.fontSize = '14px';
-    h.textContent = data.storeName;
-    body.appendChild(h);
-
-    // Address
-    const addr = doc.createElement('div');
-    addr.className = 'center';
-    addr.style.fontSize = '10px';
-    addr.textContent = data.storeAddress;
-    body.appendChild(addr);
-
-    // SIRET / TVA
-    const ids = doc.createElement('div');
-    ids.className = 'center';
-    ids.style.fontSize = '9px';
-    ids.textContent = `SIRET: ${data.siret} | TVA: ${data.tvaIntracom}`;
-    body.appendChild(ids);
-
-    body.appendChild(this.makeLine(doc));
-
-    // Ticket info
-    for (const line of [`Ticket: ${data.ticketNumber}`, `Date: ${data.date}`, `Caissier: ${data.cashierName}`]) {
-      const d = doc.createElement('div');
-      d.textContent = line;
-      body.appendChild(d);
+    // ── Marqueur TEST (diagnostics uniquement — jamais sur une vente réelle) ──
+    if (data.testMarker) {
+      body.appendChild(el('div', 'center bold', `*** ${data.testMarker} ***`));
+      body.appendChild(this.makeLine(doc));
     }
 
+    // ── Logo officiel (config Dashboard), N&B, centré ──
+    if (data.logoDataUrl && /^data:image\/(png|jpe?g);base64,/.test(data.logoDataUrl)) {
+      const img = doc.createElement('img');
+      img.className = 'logo';
+      img.src = data.logoDataUrl;
+      img.alt = data.storeName;
+      body.appendChild(img);
+    }
+
+    // ── Enseigne + identité ──
+    body.appendChild(el('div', 'center bold wrap', data.storeName, width === 58 ? '12px' : '14px'));
+    if (data.operatingCompanyName && data.operatingCompanyName !== data.storeName) {
+      body.appendChild(el('div', 'center small wrap', data.operatingCompanyName));
+    }
+    if (data.storeAddress) body.appendChild(el('div', 'center small wrap', data.storeAddress));
+    if (data.addressLine2) body.appendChild(el('div', 'center small wrap', data.addressLine2));
+    const contact = [data.phone, data.website].filter(Boolean).join(' - ');
+    if (contact) body.appendChild(el('div', 'center small wrap', contact));
+
+    // ── Mentions légales : seulement les champs renseignés ──
+    const legalBits: string[] = [];
+    if (data.siret) legalBits.push(`SIRET ${data.siret}`);
+    if (data.rcs) legalBits.push(`RCS ${data.rcs}`);
+    if (data.tvaIntracom) legalBits.push(`TVA ${data.tvaIntracom}`);
+    if (data.capitalSocial) legalBits.push(`Capital ${data.capitalSocial}`);
+    if (legalBits.length) body.appendChild(el('div', 'center small wrap', legalBits.join(' - ')));
+
+    if (data.headerMessage) body.appendChild(el('div', 'center small wrap', data.headerMessage));
+
     body.appendChild(this.makeLine(doc));
 
-    // Items table
-    const table = doc.createElement('table');
+    // ── Infos ticket ──
+    body.appendChild(el('div', 'bold', `Ticket ${data.ticketNumber}`));
+    body.appendChild(el('div', '', `Date: ${data.date}`));
+    if (data.registerLabel) body.appendChild(el('div', '', `Caisse: ${data.registerLabel}`));
+    body.appendChild(el('div', '', `Vendeur: ${data.cashierName}`));
+
+    body.appendChild(this.makeLine(doc));
+
+    // ── Articles : nom, puis qté × PU + remise + total ligne ──
     for (const item of data.items) {
-      const tr = doc.createElement('tr');
-      const tdName = doc.createElement('td');
-      tdName.style.textAlign = 'left';
-      tdName.textContent = item.name;
-      const tdQty = doc.createElement('td');
-      tdQty.style.textAlign = 'center';
-      tdQty.textContent = String(item.quantity);
-      const tdTotal = doc.createElement('td');
-      tdTotal.style.textAlign = 'right';
-      tdTotal.textContent = item.total.toFixed(2);
-      tr.appendChild(tdName);
-      tr.appendChild(tdQty);
-      tr.appendChild(tdTotal);
-      table.appendChild(tr);
+      body.appendChild(el('div', 'wrap', item.name));
+      const detail = rowOf(`  ${item.quantity} x ${item.unitPrice.toFixed(2)}`, eur(item.total));
+      body.appendChild(detail);
+      if (item.discount && item.discount > 0) {
+        body.appendChild(el('div', 'small', `  Remise: -${item.discount.toFixed(2)} EUR`));
+      }
     }
-    body.appendChild(table);
 
     body.appendChild(this.makeLine(doc));
 
-    // Total
-    const totalRow = doc.createElement('div');
-    totalRow.className = 'row bold';
-    const totalLabel = doc.createElement('span');
-    totalLabel.textContent = 'TOTAL';
-    const totalVal = doc.createElement('span');
-    totalVal.textContent = `${data.total.toFixed(2)} EUR`;
-    totalRow.appendChild(totalLabel);
-    totalRow.appendChild(totalVal);
+    // ── Totaux ──
+    body.appendChild(rowOf('Sous-total', eur(data.subtotal)));
+    if (data.discount > 0) body.appendChild(rowOf('Remises', `-${data.discount.toFixed(2)} EUR`));
+    const totalRow = el('div', 'total-line');
+    totalRow.appendChild(el('span', '', 'TOTAL TTC'));
+    totalRow.appendChild(el('span', '', eur(data.total)));
     body.appendChild(totalRow);
 
+    // ── Ventilation TVA par taux ──
+    if (data.vat && data.vat.length > 0) {
+      const table = doc.createElement('table');
+      const head = doc.createElement('tr');
+      for (const t of ['Taux', 'HT', 'TVA', 'TTC']) {
+        const th = doc.createElement('th');
+        th.textContent = t;
+        head.appendChild(th);
+      }
+      table.appendChild(head);
+      for (const v of data.vat) {
+        const tr = doc.createElement('tr');
+        const cells = [
+          `${Number.isInteger(v.rate) ? v.rate : v.rate.toFixed(2).replace(/\.?0+$/, '')}%`,
+          v.ht.toFixed(2),
+          v.tva.toFixed(2),
+          v.ttc.toFixed(2),
+        ];
+        cells.forEach((c, i) => {
+          const td = doc.createElement('td');
+          td.style.textAlign = i === 0 ? 'left' : 'right';
+          td.textContent = c;
+          tr.appendChild(td);
+        });
+        table.appendChild(tr);
+      }
+      body.appendChild(table);
+    }
+
     body.appendChild(this.makeLine(doc));
 
-    // Payments
-    for (const p of data.payments) {
-      const r = doc.createElement('div');
-      r.className = 'row';
-      const m = doc.createElement('span');
-      m.textContent = p.method;
-      const a = doc.createElement('span');
-      a.textContent = `${p.amount.toFixed(2)} EUR`;
-      r.appendChild(m);
-      r.appendChild(a);
-      body.appendChild(r);
-    }
-    if (data.change > 0) {
-      const c = doc.createElement('div');
-      c.textContent = `Rendu: ${data.change.toFixed(2)} EUR`;
-      body.appendChild(c);
-    }
+    // ── Paiements + reçu/rendu espèces ──
+    for (const p of data.payments) body.appendChild(rowOf(p.method, eur(p.amount)));
+    if (data.cashReceived && data.cashReceived > 0) body.appendChild(rowOf('Recu', eur(data.cashReceived)));
+    if (data.change > 0) body.appendChild(rowOf('Rendu', eur(data.change)));
 
     body.appendChild(this.makeLine(doc));
 
-    // Footer
-    const foot = doc.createElement('div');
-    foot.className = 'center';
-    foot.style.fontSize = '10px';
-    foot.textContent = data.footer;
-    body.appendChild(foot);
+    // ── Phrase personnalisée (Dashboard) ──
+    if (data.footer) body.appendChild(el('div', 'center wrap', data.footer, width === 58 ? '9px' : '10px'));
 
-    const nif = doc.createElement('div');
-    nif.className = 'center';
-    nif.style.fontSize = '9px';
-    nif.textContent = `NIF: ${data.nifCaisse} | v${data.softwareVersion}`;
-    body.appendChild(nif);
+    // ── QR ticket numérique (ou note hors ligne) ──
+    if (data.qrDataUrl) {
+      const qr = doc.createElement('img');
+      qr.className = 'qr';
+      qr.src = data.qrDataUrl;
+      qr.alt = 'QR ticket';
+      body.appendChild(qr);
+      if (data.qrText) body.appendChild(el('div', 'center small wrap', data.qrText));
+    } else if (data.offlineNote) {
+      body.appendChild(el('div', 'center small wrap', data.offlineNote));
+    }
+
+    // ── Formule de fin (Dashboard) ──
+    if (data.finalMessage) body.appendChild(el('div', 'center bold wrap', data.finalMessage, width === 58 ? '10px' : '11px'));
+
+    // ── Mentions caisse (NF525) ──
+    const tech: string[] = [];
+    if (data.nifCaisse) tech.push(`NIF: ${data.nifCaisse}`);
+    if (data.softwareVersion) tech.push(`v${data.softwareVersion}`);
+    if (tech.length) body.appendChild(el('div', 'center small', tech.join(' | ')));
   }
 
   private makeLine(doc: Document): HTMLDivElement {
@@ -409,40 +592,93 @@ class PeripheralBridge {
     return d;
   }
 
+  /**
+   * Ticket ESC/POS brut (chemins WebUSB / Bluetooth). Même contenu que le
+   * template HTML : mentions dynamiques, qté × PU, ventilation TVA, TOTAL TTC,
+   * QR natif (GS ( k). Le logo bitmap n'est pas rasterisé sur ce chemin de
+   * secours — le chemin principal (impression HTML) l'imprime. Encodage :
+   * CP1252 via encodeEscpos (accents corrects, jamais d'UTF-8 mojibake).
+   */
   private buildESCPOSCommands(data: TicketData): string {
     const ESC = '\x1B';
     const GS = '\x1D';
+    const width = data.paperWidthMm ?? getPaperWidthMm();
+    const cols = width === 58 ? 32 : 48;
+    const sep = '-'.repeat(cols);
+    const pad = (left: string, right: string) => {
+      const space = Math.max(1, cols - left.length - right.length);
+      return left + ' '.repeat(space) + right;
+    };
+    const eur = (n: number) => `${n.toFixed(2)} EUR`;
+
     const lines: string[] = [];
     lines.push(`${ESC}@`);
-    lines.push(`${ESC}a\x01`);
-    lines.push(`${ESC}E\x01`);
-    lines.push(data.storeName);
-    lines.push(`${ESC}E\x00`);
-    lines.push(data.storeAddress);
-    lines.push(`SIRET: ${data.siret}`);
-    lines.push(`TVA: ${data.tvaIntracom}`);
+    lines.push(`${ESC}t\x10`); // codepage WPC1252 (accents)
+    lines.push(`${ESC}a\x01`); // centre
+
+    if (data.testMarker) {
+      lines.push(`${ESC}E\x01*** ${data.testMarker} ***${ESC}E\x00`);
+      lines.push(sep);
+    }
+
+    lines.push(`${ESC}E\x01${data.storeName}${ESC}E\x00`);
+    if (data.operatingCompanyName && data.operatingCompanyName !== data.storeName) {
+      lines.push(data.operatingCompanyName);
+    }
+    if (data.storeAddress) lines.push(data.storeAddress);
+    if (data.addressLine2) lines.push(data.addressLine2);
+    const contact = [data.phone, data.website].filter(Boolean).join(' - ');
+    if (contact) lines.push(contact);
+    if (data.siret) lines.push(`SIRET ${data.siret}`);
+    if (data.rcs) lines.push(`RCS ${data.rcs}`);
+    if (data.tvaIntracom) lines.push(`TVA ${data.tvaIntracom}`);
+    if (data.capitalSocial) lines.push(`Capital ${data.capitalSocial}`);
+    if (data.headerMessage) lines.push(data.headerMessage);
     lines.push('');
-    lines.push(`${ESC}a\x00`);
-    lines.push(`Ticket: ${data.ticketNumber}`);
+    lines.push(`${ESC}a\x00`); // gauche
+    lines.push(`${ESC}E\x01Ticket ${data.ticketNumber}${ESC}E\x00`);
     lines.push(`Date: ${data.date}`);
-    lines.push(`Caissier: ${data.cashierName}`);
-    lines.push('--------------------------------');
+    if (data.registerLabel) lines.push(`Caisse: ${data.registerLabel}`);
+    lines.push(`Vendeur: ${data.cashierName}`);
+    lines.push(sep);
     for (const item of data.items) {
-      lines.push(item.name);
-      lines.push(`  ${item.quantity} x ${item.unitPrice.toFixed(2)}    ${item.total.toFixed(2)} EUR`);
+      lines.push(item.name.slice(0, cols));
+      lines.push(pad(`  ${item.quantity} x ${item.unitPrice.toFixed(2)}`, eur(item.total)));
       if (item.discount && item.discount > 0) lines.push(`  Remise: -${item.discount.toFixed(2)} EUR`);
     }
-    lines.push('--------------------------------');
-    lines.push(`TOTAL:            ${data.total.toFixed(2)} EUR`);
-    if (data.discount > 0) lines.push(`Remise:           -${data.discount.toFixed(2)} EUR`);
-    lines.push('');
-    for (const p of data.payments) lines.push(`${p.method}: ${p.amount.toFixed(2)} EUR`);
-    if (data.change > 0) lines.push(`Rendu: ${data.change.toFixed(2)} EUR`);
-    lines.push('');
-    lines.push(`${ESC}a\x01`);
-    lines.push(data.footer);
-    lines.push(`NIF: ${data.nifCaisse}`);
-    lines.push(`v${data.softwareVersion}`);
+    lines.push(sep);
+    lines.push(pad('Sous-total', eur(data.subtotal)));
+    if (data.discount > 0) lines.push(pad('Remises', `-${data.discount.toFixed(2)} EUR`));
+    lines.push(`${ESC}E\x01${GS}!\x01${pad('TOTAL TTC', eur(data.total))}${GS}!\x00${ESC}E\x00`);
+    if (data.vat && data.vat.length > 0) {
+      lines.push('');
+      lines.push(pad('Taux', 'HT     TVA     TTC'));
+      for (const v of data.vat) {
+        const rate = `${Number.isInteger(v.rate) ? v.rate : v.rate.toFixed(2).replace(/\.?0+$/, '')}%`;
+        lines.push(pad(rate, `${v.ht.toFixed(2)}  ${v.tva.toFixed(2)}  ${v.ttc.toFixed(2)}`));
+      }
+    }
+    lines.push(sep);
+    for (const p of data.payments) lines.push(pad(p.method, eur(p.amount)));
+    if (data.cashReceived && data.cashReceived > 0) lines.push(pad('Recu', eur(data.cashReceived)));
+    if (data.change > 0) lines.push(pad('Rendu', eur(data.change)));
+    lines.push(sep);
+    lines.push(`${ESC}a\x01`); // centre
+    if (data.footer) lines.push(data.footer);
+
+    // ── QR natif ESC/POS (GS ( k) — ticket numérique ──
+    if (data.qrContent) {
+      lines.push(buildEscposQr(data.qrContent, width === 58 ? 5 : 6));
+      if (data.qrText) lines.push(data.qrText);
+    } else if (data.offlineNote) {
+      lines.push(data.offlineNote);
+    }
+
+    if (data.finalMessage) lines.push(`${ESC}E\x01${data.finalMessage}${ESC}E\x00`);
+    const tech: string[] = [];
+    if (data.nifCaisse) tech.push(`NIF: ${data.nifCaisse}`);
+    if (data.softwareVersion) tech.push(`v${data.softwareVersion}`);
+    if (tech.length) lines.push(tech.join(' | '));
     lines.push('');
     lines.push(`${GS}V\x00`);
     return lines.join('\n');

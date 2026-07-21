@@ -105,6 +105,7 @@ const adminGroup: NavGroup = {
     { path: '/organizations', label: 'Organisations', icon: Building2 },
     { path: '/units', label: 'Unités', icon: Building2 },
     { path: '/stores', label: 'Magasins', icon: StoreIcon },
+    { path: '/stores/receipt-settings', label: 'Ticket de caisse', icon: ReceiptText },
     { path: '/connected-apps', label: 'Applications', icon: Plug },
     { path: '/airtable-ops', label: 'Airtable Ops', icon: Database },
     { path: '/security', label: 'Sécurité et accès', icon: ShieldCheck },
