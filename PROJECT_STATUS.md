@@ -199,6 +199,22 @@ validation WisePad 3 + clé Stripe prod (GO owner), DNS cutover + déploiement R
 réconciliation stock one-shot (écrit le stock réel — validation prod), **certificat de signature `.exe`**.
 Chaque action attend son GO nommé — aucune ne s'ouvre sur un « continue » générique (charte §0).
 
+---
+
+## Feature — Accès magasins + journal d'activité (2026-07-15) — branche `feat/mobile-access-and-activity-audit`
+
+RBAC pilotage par magasin + journal d'activité + audit immuable des droits. Branche depuis `origin/main`
+propre. **12 commits · aucun merge (Tier-2, GO requis).**
+
+- **Backend** — ✅ jest **1026/0** (+48) ; 6 migrations up/down/up prouvées sur vrai Postgres 16 ;
+  10 gated PG verts (dont `access-activity-migrations 3/3`).
+- **Frontend** — ✅ `SecurityAccessPage` 4 onglets + télémétrie ; tsc 0 + build Vite 0.
+- **Vérif LIVE (D21 ✅ CLOSED, 2026-07-15)** — stack réelle : 4 onglets exercés au navigateur avec
+  données réelles, 403 codes/périmètre/suspension/expiration/gate admin prouvés, **0 secret** en télémétrie.
+  2 bugs trouvés en live (filtre code métier ; validUntil:null) **corrigés + re-vérifiés** (commit `941a3ad`).
+- **Verdict : TERMINÉ ET VALIDÉ** (réserves : merge `main` = Tier-2 GO owner ; captures = fichiers en session,
+  pas PNG disque — limitation outil). Détails : `docs/design/access-activity-audit-deliverables.md`.
+- Rôle POS `cashier/manager/admin` **inchangé** ; `application_role` = dimension séparée.
 
 ## File des GO en attente (2026-07-16) — un GO couvre ce qu'il nomme, rien d'autre
 | GO attendu | Débloque | Dépend de |
@@ -209,6 +225,7 @@ Chaque action attend son GO nommé — aucune ne s'ouvre sur un « continue » g
 | Lot 1 accès (migration 1759) | colonnes révocation/validité employee_store_access | Lot 0 validé ✅ |
 | GO P0/P1 Payment Engine | implémentation moteur | choix partenaire monétique (contrat+specs) |
 | Écriture sur main | — | toujours gated |
+
 
 ## Chantier Journal de stock unifié / NF525 — branche `feat/stock-journal-nf525-on-main`
 > Surface Tier-2 (fiscal/stock). Synthèse : `PRODUCTS_FISCAL_STOCK_SYNTHESIS.md` · Dossier de GO :

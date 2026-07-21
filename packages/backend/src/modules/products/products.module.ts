@@ -9,11 +9,17 @@ import { BrandEntity } from '../../database/entities/brand.entity';
 import { SupplierEntity } from '../../database/entities/supplier.entity';
 import { StoreProductPriceEntity } from '../../database/entities/store-product-price.entity';
 import { ProductComponentEntity } from '../../database/entities/product-component.entity';
+import { ProductMediaEntity } from '../../database/entities/product-media.entity';
+import { ProductDocumentEntity } from '../../database/entities/product-document.entity';
+import { ProductBarcodeEntity } from '../../database/entities/product-barcode.entity';
+import { ProductSupplierEntity } from '../../database/entities/product-supplier.entity';
+import { ProductChangeLogEntity } from '../../database/entities/product-change-log.entity';
+import { ProductLinkEntity } from '../../database/entities/product-link.entity';
 import { AuditModule } from '../audit/audit.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([ProductEntity, ProductCategoryEntity, PriceHistoryEntity, BrandEntity, SupplierEntity, StoreProductPriceEntity, ProductComponentEntity]),
+    TypeOrmModule.forFeature([ProductEntity, ProductCategoryEntity, PriceHistoryEntity, BrandEntity, SupplierEntity, StoreProductPriceEntity, ProductComponentEntity, ProductMediaEntity, ProductDocumentEntity, ProductBarcodeEntity, ProductSupplierEntity, ProductChangeLogEntity, ProductLinkEntity]),
     AuditModule,
   ],
   controllers: [ProductsController],

@@ -42,6 +42,16 @@ describe('CSV util (RFC-4180, zero-dependency)', () => {
     expect(parseCsvWithHeader('')).toEqual([]);
   });
 
+  it('Excel FR : détecte le séparateur ; et retire le BOM (import Excel)', () => {
+    const bom = '﻿';
+    const excelFr = `${bom}ean;name;price_minor_units\n360;Coca;150\n`;
+    expect(parseCsvWithHeader(excelFr)).toEqual([{ ean: '360', name: 'Coca', price_minor_units: '150' }]);
+    // un fichier virgule reste inchangé (round-trip export/import préservé)
+    expect(parseCsvWithHeader('ean,name\n360,Coca\n')).toEqual([{ ean: '360', name: 'Coca' }]);
+    // une virgule dans un champ ; -séparé reste dans le champ
+    expect(parseCsv('a;b\n"x,y";z\n')).toEqual([['a', 'b'], ['x,y', 'z']]);
+  });
+
   it('stripFormulaGuard reverses the export guard → lossless round-trip for "-40% Promo" / "@Home" (M105)', () => {
     for (const name of ['-40% Promo', '@Home', '=Total', '+Energy']) {
       const guarded = toCsv([[name]]).trim();           // export adds the apostrophe

@@ -14,6 +14,12 @@ import { BrandEntity } from '../../database/entities/brand.entity';
 import { SupplierEntity } from '../../database/entities/supplier.entity';
 import { StoreProductPriceEntity } from '../../database/entities/store-product-price.entity';
 import { ProductComponentEntity } from '../../database/entities/product-component.entity';
+import { ProductMediaEntity } from '../../database/entities/product-media.entity';
+import { ProductDocumentEntity } from '../../database/entities/product-document.entity';
+import { ProductBarcodeEntity } from '../../database/entities/product-barcode.entity';
+import { ProductSupplierEntity } from '../../database/entities/product-supplier.entity';
+import { ProductChangeLogEntity } from '../../database/entities/product-change-log.entity';
+import { ProductLinkEntity } from '../../database/entities/product-link.entity';
 import { AuditService } from '../audit/audit.service';
 import { PaginatedResult } from '../../common/dto/pagination.dto';
 import { computePriceVerdict, PriceVerdict } from './price-verdict';
@@ -51,7 +57,272 @@ export class ProductsService {
     private storePriceRepo: Repository<StoreProductPriceEntity>,
     @InjectRepository(ProductComponentEntity)
     private componentRepo: Repository<ProductComponentEntity>,
+    @InjectRepository(ProductMediaEntity)
+    private mediaRepo: Repository<ProductMediaEntity>,
+    @InjectRepository(ProductDocumentEntity)
+    private documentRepo: Repository<ProductDocumentEntity>,
+    @InjectRepository(ProductBarcodeEntity)
+    private barcodeRepo: Repository<ProductBarcodeEntity>,
+    @InjectRepository(ProductSupplierEntity)
+    private productSupplierRepo: Repository<ProductSupplierEntity>,
+    @InjectRepository(ProductChangeLogEntity)
+    private changeLogRepo: Repository<ProductChangeLogEntity>,
+    @InjectRepository(ProductLinkEntity)
+    private linkRepo: Repository<ProductLinkEntity>,
   ) {}
+
+  // ── Produits liés : complémentaires / ventes croisées / substitution (Lot E) ──
+
+  async listLinks(productId: string, storeId: string): Promise<Array<ProductLinkEntity & { linkedProduct?: any }>> {
+    await this.findOneForStore(productId, storeId);
+    const links = await this.linkRepo.find({ where: { productId, storeId }, order: { createdAt: 'ASC' } });
+    if (!links.length) return links;
+    const ids = [...new Set(links.map((l) => l.linkedProductId))];
+    const products = await this.productRepo.find({ where: ids.map((id) => ({ id, storeId })) });
+    const byId = new Map(products.map((p) => [p.id, p]));
+    return links.map((l) => ({ ...l, linkedProduct: byId.get(l.linkedProductId) ?? null }));
+  }
+
+  async addLink(
+    productId: string,
+    storeId: string,
+    linkedProductId: string,
+    linkType?: string,
+  ): Promise<ProductLinkEntity> {
+    await this.findOneForStore(productId, storeId);
+    if (!linkedProductId) throw new BadRequestException('Le produit lié est requis');
+    if (linkedProductId === productId) throw new BadRequestException('Un produit ne peut pas être lié à lui-même');
+    await this.findOneForStore(linkedProductId, storeId); // le produit lié doit appartenir au magasin
+    const type = (['complementary', 'cross_sell', 'substitute'] as const).includes(linkType as any)
+      ? (linkType as any)
+      : 'complementary';
+    const dup = await this.linkRepo.findOne({ where: { productId, linkedProductId, linkType: type } });
+    if (dup) throw new BusinessError('PRODUCT_LINK_EXISTS', 'Ce lien existe déjà.', HttpStatus.CONFLICT);
+    return this.linkRepo.save(this.linkRepo.create({ productId, storeId, linkedProductId, linkType: type }));
+  }
+
+  async removeLink(productId: string, storeId: string, linkId: string): Promise<{ message: string }> {
+    await this.findOneForStore(productId, storeId);
+    await this.linkRepo.delete({ id: linkId, productId, storeId });
+    return { message: 'Lien retiré.' };
+  }
+
+  // ── Journal des modifications de la fiche (Lot D) ──
+
+  /** Champs tracés dans le journal des modifications (fiche + prix + fournisseur). */
+  private static readonly TRACKED_FIELDS: string[] = [
+    'name', 'shortName', 'description', 'priceMinorUnits', 'oldPriceMinorUnits', 'costMinorUnits',
+    'taxRate', 'categoryId', 'brandId', 'supplierId', 'status', 'isActive', 'sku', 'internalRef',
+    'supplierRef', 'productType', 'unitType', 'countryOfOrigin', 'leadTimeDays', 'minOrderQuantity',
+    'weightGrams', 'widthMm', 'heightMm', 'depthMm', 'volumeMl', 'unitsPerCarton',
+    'isSeasonal', 'seasonStartMonth', 'seasonEndMonth',
+    'minPriceMinorUnits', 'recommendedPriceMinorUnits', 'unitsPerPack', 'cartonsPerPallet', 'lotNumber',
+  ];
+
+  private async recordChangeLog(
+    existing: ProductEntity,
+    data: Partial<ProductEntity>,
+    changedBy?: string,
+    changedByRole?: string,
+  ): Promise<void> {
+    const rows: Partial<ProductChangeLogEntity>[] = [];
+    for (const field of ProductsService.TRACKED_FIELDS) {
+      if ((data as any)[field] === undefined) continue;
+      const oldV = (existing as any)[field];
+      const newV = (data as any)[field];
+      const oldS = oldV === null || oldV === undefined ? '' : String(oldV);
+      const newS = newV === null || newV === undefined ? '' : String(newV);
+      if (oldS === newS) continue;
+      rows.push({
+        productId: existing.id,
+        storeId: existing.storeId,
+        field,
+        oldValue: oldS,
+        newValue: newS,
+        changedBy: changedBy ?? null,
+        changedByRole: changedByRole ?? null,
+      });
+    }
+    if (rows.length) {
+      try {
+        await this.changeLogRepo.save(this.changeLogRepo.create(rows));
+      } catch (e: any) {
+        console.warn(`[ProductsService] change-log save failed (non-blocking): ${e?.message}`);
+      }
+    }
+  }
+
+  async getChangeLog(productId: string, storeId: string): Promise<ProductChangeLogEntity[]> {
+    await this.findOneForStore(productId, storeId);
+    return this.changeLogRepo.find({ where: { productId, storeId }, order: { createdAt: 'DESC' }, take: 200 });
+  }
+
+  // ── Fournisseurs multiples par produit (Lot B) ──
+
+  async listProductSuppliers(productId: string, storeId: string): Promise<ProductSupplierEntity[]> {
+    await this.findOneForStore(productId, storeId);
+    return this.productSupplierRepo.find({ where: { productId, storeId }, order: { isPrimary: 'DESC', createdAt: 'ASC' } });
+  }
+
+  private async assertSupplierInStore(storeId: string, supplierId: string): Promise<void> {
+    const sup = await this.supplierRepo.findOne({ where: { id: supplierId, storeId } });
+    if (!sup) throw new BadRequestException('Fournisseur introuvable dans ce magasin');
+  }
+
+  async addProductSupplier(
+    productId: string,
+    storeId: string,
+    data: Partial<ProductSupplierEntity>,
+  ): Promise<ProductSupplierEntity> {
+    await this.findOneForStore(productId, storeId);
+    if (!data.supplierId) throw new BadRequestException('Le fournisseur est requis');
+    await this.assertSupplierInStore(storeId, data.supplierId);
+    const dup = await this.productSupplierRepo.findOne({ where: { productId, supplierId: data.supplierId } });
+    if (dup) {
+      throw new BusinessError('PRODUCT_SUPPLIER_EXISTS', 'Ce fournisseur est déjà rattaché au produit.', HttpStatus.CONFLICT);
+    }
+    if (data.isPrimary) await this.productSupplierRepo.update({ productId, storeId }, { isPrimary: false });
+    return this.productSupplierRepo.save(
+      this.productSupplierRepo.create({
+        productId,
+        storeId,
+        supplierId: data.supplierId,
+        isPrimary: !!data.isPrimary,
+        supplierRef: data.supplierRef ?? null,
+        purchasePriceMinorUnits: data.purchasePriceMinorUnits ?? null,
+        currencyCode: data.currencyCode ?? 'EUR',
+        leadTimeDays: data.leadTimeDays ?? null,
+        minOrderQuantity: data.minOrderQuantity ?? null,
+        incoterm: data.incoterm ?? null,
+      }),
+    );
+  }
+
+  async updateProductSupplier(
+    productId: string,
+    storeId: string,
+    rowId: string,
+    patch: Partial<ProductSupplierEntity>,
+  ): Promise<ProductSupplierEntity> {
+    await this.findOneForStore(productId, storeId);
+    const row = await this.productSupplierRepo.findOne({ where: { id: rowId, productId, storeId } });
+    if (!row) throw new NotFoundException('Ligne fournisseur introuvable');
+    if (patch.isPrimary) await this.productSupplierRepo.update({ productId, storeId }, { isPrimary: false });
+    const allowed: (keyof ProductSupplierEntity)[] = [
+      'isPrimary', 'supplierRef', 'purchasePriceMinorUnits', 'currencyCode', 'leadTimeDays', 'minOrderQuantity', 'incoterm',
+    ];
+    for (const k of allowed) if (patch[k] !== undefined) (row as any)[k] = patch[k];
+    return this.productSupplierRepo.save(row);
+  }
+
+  async removeProductSupplier(productId: string, storeId: string, rowId: string): Promise<{ message: string }> {
+    await this.findOneForStore(productId, storeId);
+    await this.productSupplierRepo.delete({ id: rowId, productId, storeId });
+    return { message: 'Fournisseur retiré du produit.' };
+  }
+
+  // ── Codes-barres multiples (Lot A) ──
+
+  async listBarcodes(productId: string, storeId: string): Promise<ProductBarcodeEntity[]> {
+    await this.findOneForStore(productId, storeId);
+    return this.barcodeRepo.find({ where: { productId, storeId }, order: { isPrimary: 'DESC', createdAt: 'ASC' } });
+  }
+
+  async addBarcode(
+    productId: string,
+    storeId: string,
+    barcode: string,
+    type?: string,
+    isPrimary?: boolean,
+  ): Promise<ProductBarcodeEntity> {
+    await this.findOneForStore(productId, storeId);
+    const clean = (barcode || '').trim();
+    if (!clean) throw new BadRequestException('Le code-barres est requis');
+    const dup = await this.barcodeRepo.findOne({ where: { storeId, barcode: clean } });
+    if (dup) {
+      throw new BusinessError(
+        'BARCODE_ALREADY_EXISTS',
+        `Ce code-barres (${clean}) est déjà rattaché à un produit de ce magasin.`,
+        HttpStatus.CONFLICT,
+        { existingProductId: dup.productId },
+      );
+    }
+    const t = (['ean', 'upc', 'gtin', 'other'] as const).includes(type as any) ? (type as any) : 'ean';
+    if (isPrimary) {
+      await this.barcodeRepo.update({ productId, storeId }, { isPrimary: false });
+    }
+    return this.barcodeRepo.save(
+      this.barcodeRepo.create({ productId, storeId, barcode: clean, type: t, isPrimary: !!isPrimary }),
+    );
+  }
+
+  async setPrimaryBarcode(productId: string, storeId: string, barcodeId: string): Promise<{ message: string }> {
+    await this.findOneForStore(productId, storeId);
+    const row = await this.barcodeRepo.findOne({ where: { id: barcodeId, productId, storeId } });
+    if (!row) throw new NotFoundException('Code-barres introuvable');
+    await this.barcodeRepo.update({ productId, storeId }, { isPrimary: false });
+    await this.barcodeRepo.update({ id: barcodeId }, { isPrimary: true });
+    return { message: 'Code-barres principal défini.' };
+  }
+
+  async removeBarcode(productId: string, storeId: string, barcodeId: string): Promise<{ message: string }> {
+    await this.findOneForStore(productId, storeId);
+    await this.barcodeRepo.delete({ id: barcodeId, productId, storeId });
+    return { message: 'Code-barres retiré.' };
+  }
+
+  // ── Galerie d'images + documents (Lot 4, URLs externes) ──
+
+  async listMedia(productId: string, storeId: string): Promise<ProductMediaEntity[]> {
+    await this.findOneForStore(productId, storeId);
+    return this.mediaRepo.find({ where: { productId, storeId }, order: { sortOrder: 'ASC', createdAt: 'ASC' } });
+  }
+
+  async addMedia(productId: string, storeId: string, url: string): Promise<ProductMediaEntity> {
+    await this.findOneForStore(productId, storeId);
+    const clean = (url || '').trim();
+    if (!clean) throw new BadRequestException("L'URL de l'image est requise");
+    const count = await this.mediaRepo.count({ where: { productId, storeId } });
+    return this.mediaRepo.save(this.mediaRepo.create({ productId, storeId, url: clean, sortOrder: count }));
+  }
+
+  async removeMedia(productId: string, storeId: string, mediaId: string): Promise<{ message: string }> {
+    await this.findOneForStore(productId, storeId);
+    await this.mediaRepo.delete({ id: mediaId, productId, storeId });
+    return { message: 'Image retirée.' };
+  }
+
+  /** Réordonne la galerie selon la liste d'ids fournie (glisser-déposer, Lot G). */
+  async reorderMedia(productId: string, storeId: string, orderedIds: string[]): Promise<ProductMediaEntity[]> {
+    await this.findOneForStore(productId, storeId);
+    const rows = await this.mediaRepo.find({ where: { productId, storeId } });
+    const known = new Set(rows.map((r) => r.id));
+    let order = 0;
+    for (const id of orderedIds || []) {
+      if (known.has(id)) await this.mediaRepo.update({ id, productId, storeId }, { sortOrder: order++ });
+    }
+    return this.listMedia(productId, storeId);
+  }
+
+  async listDocuments(productId: string, storeId: string): Promise<ProductDocumentEntity[]> {
+    await this.findOneForStore(productId, storeId);
+    return this.documentRepo.find({ where: { productId, storeId }, order: { createdAt: 'ASC' } });
+  }
+
+  async addDocument(productId: string, storeId: string, name: string, url: string): Promise<ProductDocumentEntity> {
+    await this.findOneForStore(productId, storeId);
+    const cleanUrl = (url || '').trim();
+    const cleanName = (name || '').trim();
+    if (!cleanUrl) throw new BadRequestException("L'URL du document est requise");
+    if (!cleanName) throw new BadRequestException('Le nom du document est requis');
+    return this.documentRepo.save(this.documentRepo.create({ productId, storeId, name: cleanName, url: cleanUrl }));
+  }
+
+  async removeDocument(productId: string, storeId: string, documentId: string): Promise<{ message: string }> {
+    await this.findOneForStore(productId, storeId);
+    await this.documentRepo.delete({ id: documentId, productId, storeId });
+    return { message: 'Document retiré.' };
+  }
 
   // ── Per-store price override (decision 4) ──
 
@@ -187,6 +458,73 @@ export class ProductsService {
     return this.productRepo.find({ where: { parentProductId: parentId, storeId }, order: { name: 'ASC' } });
   }
 
+  /** EAN-13 interne unique (préfixe 290 + clé de contrôle) — pour variantes auto. */
+  private async generateInternalEan(storeId: string): Promise<string> {
+    for (let attempt = 0; attempt < 20; attempt++) {
+      const random = String(Math.floor(Math.random() * 1_000_000_000)).padStart(9, '0');
+      const partial = `290${random}`;
+      let sum = 0;
+      for (let i = 0; i < 12; i++) sum += parseInt(partial[i], 10) * (i % 2 === 0 ? 1 : 3);
+      const ean = `${partial}${(10 - (sum % 10)) % 10}`;
+      if (!(await this.productRepo.findOne({ where: { ean, storeId } }))) return ean;
+    }
+    throw new BadRequestException('Impossible de générer un EAN interne unique. Réessayez.');
+  }
+
+  /**
+   * Générateur de variantes par attributs (Lot C) : produit cartésien des valeurs
+   * (ex. Taille[S,M,L] × Couleur[Noir,Blanc] → 6 variantes). Chaque combinaison
+   * devient une variante (ligne enfant) avec un EAN interne généré. Idempotent :
+   * une combinaison dont le `variantName` existe déjà est ignorée (skipped).
+   */
+  async generateVariants(
+    parentId: string,
+    storeId: string,
+    attributes: Array<{ name: string; values: string[] }>,
+    employeeId: string,
+    options?: { priceMinorUnits?: number },
+  ): Promise<{ created: number; skipped: string[]; variants: ProductEntity[] }> {
+    const parent = await this.findOneForStore(parentId, storeId);
+    if (parent.parentProductId) throw new BadRequestException('Impossible de générer des variantes sur une variante.');
+
+    const axes = (attributes || [])
+      .map((a) => (a?.values || []).map((v) => (v || '').trim()).filter(Boolean))
+      .filter((vals) => vals.length > 0);
+    if (axes.length === 0) throw new BadRequestException('Fournissez au moins un attribut avec des valeurs.');
+
+    // Produit cartésien des axes.
+    let combos: string[][] = [[]];
+    for (const vals of axes) {
+      const next: string[][] = [];
+      for (const c of combos) for (const v of vals) next.push([...c, v]);
+      combos = next;
+    }
+    if (combos.length > 200) throw new BadRequestException('Trop de combinaisons (max 200). Réduisez les attributs.');
+
+    const existing = await this.listVariants(parentId, storeId);
+    const existingNames = new Set(existing.map((v) => (v.variantName || '').toLowerCase()));
+
+    const variants: ProductEntity[] = [];
+    const skipped: string[] = [];
+    for (const combo of combos) {
+      const variantName = combo.join(' / ');
+      if (existingNames.has(variantName.toLowerCase())) {
+        skipped.push(variantName);
+        continue;
+      }
+      const ean = await this.generateInternalEan(storeId);
+      const created = await this.createVariant(
+        parentId,
+        storeId,
+        { ean, variantName, priceMinorUnits: options?.priceMinorUnits ?? parent.priceMinorUnits },
+        employeeId,
+      );
+      existingNames.add(variantName.toLowerCase());
+      variants.push(created);
+    }
+    return { created: variants.length, skipped, variants };
+  }
+
   // ── Brand / supplier reference data (decision 3) ──
 
   async listBrands(storeId: string): Promise<BrandEntity[]> {
@@ -212,6 +550,40 @@ export class ProductsService {
     const existing = await this.supplierRepo.findOne({ where: { storeId, name: clean } });
     if (existing) return existing;
     return this.supplierRepo.save(this.supplierRepo.create({ storeId, name: clean }));
+  }
+
+  /**
+   * Keep `status` and `isActive` mutually consistent (gap G7).
+   * A product is sellable iff `is_active = true`; the sale path filters on that
+   * column, so `status` and `isActive` must never disagree.
+   * - if `status` is provided, it drives `isActive` (only 'active' is sellable);
+   * - else if `isActive` is provided, it drives `status` (active ↔ archived).
+   */
+  private alignStatusActive(data: Partial<ProductEntity>): void {
+    if (data.status !== undefined && data.status !== null) {
+      data.isActive = data.status === 'active';
+    } else if (data.isActive !== undefined) {
+      data.status = data.isActive ? 'active' : 'archived';
+    }
+  }
+
+  /**
+   * Enforce SKU uniqueness per store (business rule §7 "aucun doublon de SKU").
+   * The DB has a partial-unique index on (store_id, sku); this surfaces a clean
+   * 409 instead of a raw constraint-violation 500. No-op when sku is empty.
+   */
+  private async assertSkuAvailable(storeId: string, sku?: string | null, excludeId?: string): Promise<void> {
+    const clean = sku?.trim();
+    if (!clean) return;
+    const existing = await this.productRepo.findOne({ where: { storeId, sku: clean } });
+    if (existing && existing.id !== excludeId) {
+      throw new BusinessError(
+        'PRODUCT_SKU_ALREADY_EXISTS',
+        `Un produit existe déjà avec ce SKU (${clean}) : ${existing.name}.`,
+        HttpStatus.CONFLICT,
+        { existingProduct: { id: existing.id, name: existing.name, sku: existing.sku } },
+      );
+    }
   }
 
   async create(
@@ -242,6 +614,9 @@ export class ProductsService {
       }
     }
 
+    await this.assertSkuAvailable(data.storeId!, data.sku, undefined);
+
+    this.alignStatusActive(data);
     const product = this.productRepo.create(data);
     const saved = await this.productRepo.save(product);
 
@@ -257,9 +632,36 @@ export class ProductsService {
     return saved;
   }
 
+  /** Whitelist of sortable columns → SQL column (guards against injection). */
+  private static readonly PRODUCT_SORT_COLUMNS: Record<string, string> = {
+    name: 'p.name',
+    price: 'p.price_minor_units',
+    stock: 'p.stock_quantity',
+    createdAt: 'p.created_at',
+    updatedAt: 'p.updated_at',
+  };
+
   async findAll(
     storeId: string,
-    options?: { page?: number; limit?: number; search?: string; brandId?: string; supplierId?: string; topLevelOnly?: boolean },
+    options?: {
+      page?: number;
+      limit?: number;
+      search?: string;
+      brandId?: string;
+      supplierId?: string;
+      categoryId?: string;
+      /** Lifecycle filter. Omitted → active only (POS-safe). 'all' → every status. */
+      status?: string;
+      taxRate?: number;
+      outOfStock?: boolean;
+      belowThreshold?: boolean;
+      noImage?: boolean;
+      noSupplier?: boolean;
+      noCategory?: boolean;
+      sortBy?: string;
+      sortDir?: string;
+      topLevelOnly?: boolean;
+    },
   ): Promise<PaginatedResult<ProductEntity>> {
     const page = options?.page || 1;
     const limit = options?.limit || 50;
@@ -267,20 +669,37 @@ export class ProductsService {
 
     const qb = this.productRepo
       .createQueryBuilder('p')
-      .where('p.store_id = :storeId', { storeId })
-      .andWhere('p.is_active = true');
+      .where('p.store_id = :storeId', { storeId });
+
+    // Status / active filter. Default keeps the historical behaviour (active only)
+    // so the POS catalogue and other callers are unaffected.
+    const status = options?.status;
+    if (!status) {
+      qb.andWhere('p.is_active = true');
+    } else if (status !== 'all') {
+      qb.andWhere('p.status = :status', { status });
+    }
 
     if (options?.search) {
       qb.andWhere(
-        '(p.name ILIKE :search OR p.ean ILIKE :search)',
+        '(p.name ILIKE :search OR p.ean ILIKE :search OR p.sku ILIKE :search)',
         { search: `%${options.search}%` },
       );
     }
     if (options?.brandId) qb.andWhere('p.brand_id = :brandId', { brandId: options.brandId });
     if (options?.supplierId) qb.andWhere('p.supplier_id = :supplierId', { supplierId: options.supplierId });
+    if (options?.categoryId) qb.andWhere('p.category_id = :categoryId', { categoryId: options.categoryId });
+    if (options?.taxRate !== undefined) qb.andWhere('p.tax_rate = :taxRate', { taxRate: options.taxRate });
+    if (options?.outOfStock) qb.andWhere('p.stock_quantity = 0');
+    if (options?.belowThreshold) qb.andWhere('p.stock_quantity <= p.stock_alert_threshold');
+    if (options?.noImage) qb.andWhere("(p.image_url IS NULL OR p.image_url = '')");
+    if (options?.noSupplier) qb.andWhere('p.supplier_id IS NULL');
+    if (options?.noCategory) qb.andWhere("(p.category_id IS NULL OR p.category_id = '')");
     if (options?.topLevelOnly) qb.andWhere('p.parent_product_id IS NULL'); // exclude variants
 
-    qb.orderBy('p.name', 'ASC').skip(skip).take(limit);
+    const sortCol = ProductsService.PRODUCT_SORT_COLUMNS[options?.sortBy ?? 'name'] ?? 'p.name';
+    const sortDir = options?.sortDir === 'DESC' ? 'DESC' : 'ASC';
+    qb.orderBy(sortCol, sortDir).skip(skip).take(limit);
 
     const [data, total] = await qb.getManyAndCount();
 
@@ -293,6 +712,96 @@ export class ProductsService {
         totalPages: Math.ceil(total / limit),
       },
     };
+  }
+
+  /**
+   * En-tête du catalogue : compteurs réels (aucune valeur simulée).
+   * `total` = toutes fiches du magasin ; les autres compteurs portent sur les
+   * produits actifs (cohérent avec la liste par défaut).
+   */
+  async getCatalogStats(storeId: string): Promise<{
+    total: number;
+    active: number;
+    outOfStock: number;
+    belowThreshold: number;
+    noImage: number;
+    noSupplier: number;
+    noCategory: number;
+  }> {
+    const base = () =>
+      this.productRepo.createQueryBuilder('p').where('p.store_id = :storeId', { storeId });
+    const activeBase = () => base().andWhere('p.is_active = true');
+    const [total, active, outOfStock, belowThreshold, noImage, noSupplier, noCategory] =
+      await Promise.all([
+        base().getCount(),
+        activeBase().getCount(),
+        activeBase().andWhere('p.stock_quantity = 0').getCount(),
+        activeBase().andWhere('p.stock_quantity <= p.stock_alert_threshold').getCount(),
+        activeBase().andWhere("(p.image_url IS NULL OR p.image_url = '')").getCount(),
+        activeBase().andWhere('p.supplier_id IS NULL').getCount(),
+        activeBase().andWhere("(p.category_id IS NULL OR p.category_id = '')").getCount(),
+      ]);
+    return { total, active, outOfStock, belowThreshold, noImage, noSupplier, noCategory };
+  }
+
+  /**
+   * Action de masse tracée sur une sélection. Valide les références (catégorie /
+   * fournisseur / TVA) AVANT toute écriture ; applique produit par produit ;
+   * chaque produit hors magasin ou introuvable est reporté dans `failed`
+   * (jamais d'échec silencieux) ; chaque succès est audité individuellement.
+   */
+  async bulkAction(
+    storeId: string,
+    employeeId: string,
+    action: 'activate' | 'deactivate' | 'setCategory' | 'setSupplier' | 'setTax',
+    productIds: string[],
+    opts: { categoryId?: string; supplierId?: string; taxRate?: number },
+  ): Promise<{ action: string; requested: number; succeeded: number; failed: Array<{ id: string; reason: string }> }> {
+    if (action === 'setCategory') {
+      if (!opts.categoryId) throw new BadRequestException('categoryId requis pour setCategory');
+      await this.assertCategoryInStore(storeId, opts.categoryId);
+    }
+    if (action === 'setSupplier') {
+      if (!opts.supplierId) throw new BadRequestException('supplierId requis pour setSupplier');
+      const sup = await this.supplierRepo.findOne({ where: { id: opts.supplierId, storeId } });
+      if (!sup) throw new BadRequestException('Fournisseur introuvable dans ce magasin');
+    }
+    if (action === 'setTax' && (opts.taxRate == null || opts.taxRate < 0)) {
+      throw new BadRequestException('taxRate (>= 0) requis pour setTax');
+    }
+
+    const failed: Array<{ id: string; reason: string }> = [];
+    let succeeded = 0;
+    for (const id of productIds) {
+      try {
+        const product = await this.productRepo.findOne({ where: { id, storeId } });
+        if (!product) {
+          failed.push({ id, reason: 'introuvable ou autre magasin' });
+          continue;
+        }
+        const patch: Partial<ProductEntity> = {};
+        switch (action) {
+          case 'activate': patch.status = 'active'; patch.isActive = true; break;
+          case 'deactivate': patch.status = 'archived'; patch.isActive = false; break;
+          case 'setCategory': patch.categoryId = opts.categoryId!; break;
+          case 'setSupplier': patch.supplierId = opts.supplierId!; break;
+          case 'setTax': patch.taxRate = opts.taxRate!; break;
+        }
+        await this.productRepo.update(id, patch);
+        await this.auditService.log({
+          storeId,
+          employeeId,
+          action: 'product_bulk_update',
+          entityType: 'product',
+          entityId: id,
+          details: { bulkAction: action, ...opts },
+        });
+        succeeded++;
+      } catch (e: any) {
+        failed.push({ id, reason: e?.message || 'erreur' });
+      }
+    }
+    return { action, requested: productIds.length, succeeded, failed };
   }
 
   async findByEan(
@@ -381,8 +890,69 @@ export class ProductsService {
       });
     }
 
+    if (data.sku !== undefined) {
+      await this.assertSkuAvailable(existing.storeId, data.sku, id);
+    }
+
+    this.alignStatusActive(data);
+    await this.recordChangeLog(existing, data, employeeId, employeeRole);
     await this.productRepo.update(id, data);
     return this.findOne(id, storeId);
+  }
+
+  /**
+   * Duplication COMPLÈTE (Lot F) : clone la fiche + ses éléments rattachés
+   * (packs/composants, galerie, documents, fournisseurs, liens). Les identifiants
+   * UNIQUES ne sont PAS copiés : EAN interne régénéré, SKU vidé, stock à 0, statut
+   * brouillon. Les codes-barres additionnels (uniques par magasin) ne sont pas copiés.
+   */
+  async duplicateProduct(sourceId: string, storeId: string, employeeId: string): Promise<ProductEntity> {
+    const src = await this.findOneForStore(sourceId, storeId);
+    if (src.parentProductId) throw new BadRequestException('Impossible de dupliquer une variante ; dupliquez le produit parent.');
+
+    const ean = await this.generateInternalEan(storeId);
+    const clone = await this.create(
+      {
+        ...src,
+        id: undefined as any,
+        ean,
+        sku: null,
+        barcodeSource: 'generated',
+        stockQuantity: 0,
+        status: 'draft',
+        isActive: false,
+        name: `${src.name} (copie)`,
+        createdAt: undefined as any,
+        updatedAt: undefined as any,
+        store: undefined as any,
+      } as Partial<ProductEntity>,
+      employeeId,
+    );
+
+    // Composants du pack (structure conservée).
+    const components = await this.componentRepo.find({ where: { parentProductId: sourceId, storeId } });
+    for (const c of components) {
+      await this.componentRepo.save(this.componentRepo.create({
+        storeId, parentProductId: clone.id, componentProductId: c.componentProductId,
+        quantityPerParent: c.quantityPerParent, isActive: c.isActive,
+      }));
+    }
+    // Galerie + documents.
+    const media = await this.mediaRepo.find({ where: { productId: sourceId, storeId } });
+    for (const m of media) await this.mediaRepo.save(this.mediaRepo.create({ productId: clone.id, storeId, url: m.url, sortOrder: m.sortOrder }));
+    const docs = await this.documentRepo.find({ where: { productId: sourceId, storeId } });
+    for (const d of docs) await this.documentRepo.save(this.documentRepo.create({ productId: clone.id, storeId, name: d.name, url: d.url }));
+    // Fournisseurs + liens.
+    const psups = await this.productSupplierRepo.find({ where: { productId: sourceId, storeId } });
+    for (const s of psups) await this.productSupplierRepo.save(this.productSupplierRepo.create({
+      productId: clone.id, storeId, supplierId: s.supplierId, isPrimary: s.isPrimary, supplierRef: s.supplierRef,
+      purchasePriceMinorUnits: s.purchasePriceMinorUnits, currencyCode: s.currencyCode, leadTimeDays: s.leadTimeDays,
+      minOrderQuantity: s.minOrderQuantity, incoterm: s.incoterm,
+    }));
+    const links = await this.linkRepo.find({ where: { productId: sourceId, storeId } });
+    for (const l of links) await this.linkRepo.save(this.linkRepo.create({ productId: clone.id, storeId, linkedProductId: l.linkedProductId, linkType: l.linkType }));
+
+    return this.findOne(clone.id, storeId);
   }
 
   /**
@@ -549,30 +1119,155 @@ export class ProductsService {
     return this.productRepo.save(product);
   }
 
-  async getCategories(storeId: string): Promise<{ id: string; name: string }[]> {
-    return this.categoryRepo.find({
-      where: { storeId },
-      order: { name: 'ASC' },
-      select: ['id', 'name'],
-    });
+  async getCategories(
+    storeId: string,
+  ): Promise<Array<{ id: string; name: string; parentId: string | null; productCount: number }>> {
+    const cats = await this.categoryRepo.find({ where: { storeId }, order: { name: 'ASC' } });
+    const counts = await this.productRepo
+      .createQueryBuilder('p')
+      .select('p.category_id', 'categoryId')
+      .addSelect('COUNT(*)', 'cnt')
+      .where('p.store_id = :storeId', { storeId })
+      .andWhere('p.category_id IS NOT NULL')
+      .groupBy('p.category_id')
+      .getRawMany();
+    const countMap = new Map<string, number>(
+      counts.map((r: any) => [String(r.categoryId), Number(r.cnt)]),
+    );
+    return cats.map((c) => ({
+      id: c.id,
+      name: c.name,
+      parentId: c.parentId ?? null,
+      productCount: countMap.get(c.id) ?? 0,
+    }));
   }
 
-  async createCategory(storeId: string, name: string): Promise<ProductCategoryEntity> {
+  private async assertCategoryInStore(storeId: string, id: string): Promise<ProductCategoryEntity> {
+    const cat = await this.categoryRepo.findOne({ where: { id, storeId } });
+    if (!cat) throw new NotFoundException('Category not found');
+    return cat;
+  }
+
+  /** True if `candidateId` is `nodeId` itself or a descendant of it (cycle guard). */
+  private isCategoryDescendant(
+    all: ProductCategoryEntity[],
+    nodeId: string,
+    candidateId: string,
+  ): boolean {
+    const childrenOf = new Map<string, string[]>();
+    for (const c of all) {
+      const p = c.parentId ?? '__root__';
+      if (!childrenOf.has(p)) childrenOf.set(p, []);
+      childrenOf.get(p)!.push(c.id);
+    }
+    const stack = [nodeId];
+    const seen = new Set<string>();
+    while (stack.length) {
+      const cur = stack.pop()!;
+      if (cur === candidateId) return true;
+      if (seen.has(cur)) continue;
+      seen.add(cur);
+      for (const child of childrenOf.get(cur) ?? []) stack.push(child);
+    }
+    return false;
+  }
+
+  async createCategory(
+    storeId: string,
+    name: string,
+    parentId?: string | null,
+  ): Promise<ProductCategoryEntity> {
     const trimmed = name.trim();
     if (!trimmed) throw new BadRequestException('Category name is required');
+    if (parentId) await this.assertCategoryInStore(storeId, parentId);
 
-    // Check for duplicates (case-insensitive)
-    const existing = await this.categoryRepo
+    // Dedupe case-insensitively within the same parent (allows the same leaf
+    // name under different branches, e.g. "Canettes" under Boissons and Bière).
+    const dup = await this.categoryRepo
       .createQueryBuilder('c')
       .where('c.store_id = :storeId', { storeId })
       .andWhere('LOWER(c.name) = LOWER(:name)', { name: trimmed })
+      .andWhere(parentId ? 'c.parent_id = :parentId' : 'c.parent_id IS NULL', parentId ? { parentId } : {})
       .getOne();
-    if (existing) return existing;
+    if (dup) return dup;
 
-    return this.categoryRepo.save({
-      name: trimmed,
-      storeId,
-    });
+    return this.categoryRepo.save(
+      this.categoryRepo.create({ name: trimmed, storeId, parentId: parentId ?? null }),
+    );
+  }
+
+  async updateCategory(
+    storeId: string,
+    id: string,
+    patch: { name?: string; parentId?: string | null },
+  ): Promise<ProductCategoryEntity> {
+    const cat = await this.assertCategoryInStore(storeId, id);
+
+    if (patch.parentId !== undefined && patch.parentId !== null) {
+      if (patch.parentId === id) {
+        throw new BadRequestException('A category cannot be its own parent.');
+      }
+      await this.assertCategoryInStore(storeId, patch.parentId);
+      const all = await this.categoryRepo.find({ where: { storeId } });
+      if (this.isCategoryDescendant(all, id, patch.parentId)) {
+        throw new BusinessError(
+          'CATEGORY_CYCLE',
+          'Cannot move a category under one of its own descendants.',
+          HttpStatus.CONFLICT,
+        );
+      }
+    }
+
+    const nextName = patch.name?.trim();
+    if (patch.name !== undefined && !nextName) {
+      throw new BadRequestException('Category name cannot be empty');
+    }
+    const nextParent = patch.parentId !== undefined ? patch.parentId : cat.parentId;
+
+    if (nextName || patch.parentId !== undefined) {
+      const dup = await this.categoryRepo
+        .createQueryBuilder('c')
+        .where('c.store_id = :storeId', { storeId })
+        .andWhere('c.id != :id', { id })
+        .andWhere('LOWER(c.name) = LOWER(:name)', { name: nextName ?? cat.name })
+        .andWhere(nextParent ? 'c.parent_id = :nextParent' : 'c.parent_id IS NULL', nextParent ? { nextParent } : {})
+        .getOne();
+      if (dup) {
+        throw new BusinessError(
+          'CATEGORY_DUPLICATE',
+          'A category with this name already exists under the same parent.',
+          HttpStatus.CONFLICT,
+        );
+      }
+    }
+
+    if (nextName) cat.name = nextName;
+    if (patch.parentId !== undefined) cat.parentId = patch.parentId;
+    return this.categoryRepo.save(cat);
+  }
+
+  async deleteCategory(storeId: string, id: string): Promise<{ message: string }> {
+    const cat = await this.assertCategoryInStore(storeId, id);
+    const childCount = await this.categoryRepo.count({ where: { storeId, parentId: id } });
+    if (childCount > 0) {
+      throw new BusinessError(
+        'CATEGORY_HAS_CHILDREN',
+        'Reassign or remove sub-categories before deleting this category.',
+        HttpStatus.CONFLICT,
+        { childCount },
+      );
+    }
+    const productCount = await this.productRepo.count({ where: { storeId, categoryId: id } });
+    if (productCount > 0) {
+      throw new BusinessError(
+        'CATEGORY_IN_USE',
+        `This category is still used by ${productCount} product(s). Reassign them first.`,
+        HttpStatus.CONFLICT,
+        { productCount },
+      );
+    }
+    await this.categoryRepo.delete({ id, storeId });
+    return { message: `Catégorie "${cat.name}" supprimée.` };
   }
 
   async getStockAlerts(

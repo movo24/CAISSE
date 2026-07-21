@@ -30,6 +30,11 @@ export { StockLocationEntity } from './stock-location.entity';
 export { StockBalanceEntity } from './stock-balance.entity';
 export { StockMovementEntity } from './stock-movement.entity';
 export { EmployeeStoreAccessEntity } from './employee-store-access.entity';
+export { EmployeeApplicationAccessEntity } from './employee-application-access.entity';
+export { AccessAuditLogEntity } from './access-audit-log.entity';
+export { UserLoginEventEntity } from './user-login-event.entity';
+export { UserSessionEntity } from './user-session.entity';
+export { UserViewEventEntity } from './user-view-event.entity';
 // EmployeeEntity kept but not re-exported — transitional (auth fallback only)
 
 // ── Wesley Club (loyalty) entities ─────────────────────────────

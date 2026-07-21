@@ -143,9 +143,27 @@ export const authApi = {
 // Products
 // ---------------------------------------------------------------------------
 export const productsApi = {
-  list: (params?: { storeId?: string; brandId?: string; supplierId?: string; search?: string; page?: number; limit?: number }) =>
-    api.get('/products', { params }),
+  list: (params?: {
+    storeId?: string;
+    brandId?: string;
+    supplierId?: string;
+    categoryId?: string;
+    status?: string;
+    search?: string;
+    sortBy?: string;
+    sortDir?: 'ASC' | 'DESC';
+    page?: number;
+    limit?: number;
+  }) => api.get('/products', { params }),
   get: (id: string) => api.get(`/products/${id}`),
+  catalogStats: (params?: { storeId?: string }) => api.get('/products/catalog-stats', { params }),
+  bulk: (data: {
+    action: 'activate' | 'deactivate' | 'setCategory' | 'setSupplier' | 'setTax';
+    productIds: string[];
+    categoryId?: string;
+    supplierId?: string;
+    taxRate?: number;
+  }) => api.post('/products/bulk', data),
   // Aligné sur CreateProductDto : ean+name+priceMinorUnits obligatoires, le
   // storeId est forcé serveur depuis le JWT (jamais envoyé par le client).
   create: (data: {
@@ -157,13 +175,28 @@ export const productsApi = {
     description?: string;
     costMinorUnits?: number;
     taxRate?: number;
+    sku?: string;
+    brandId?: string;
+    supplierId?: string;
+    status?: string;
+    oldPriceMinorUnits?: number;
     unitType?: string;
     imageUrl?: string;
     stockAlertThreshold?: number;
     stockCriticalThreshold?: number;
-    brandId?: string;
-    supplierId?: string;
-    sku?: string;
+    shortName?: string;
+    internalRef?: string;
+    supplierRef?: string;
+    productType?: string;
+    countryOfOrigin?: string;
+    leadTimeDays?: number;
+    minOrderQuantity?: number;
+    weightGrams?: number;
+    widthMm?: number;
+    heightMm?: number;
+    depthMm?: number;
+    volumeMl?: number;
+    unitsPerCarton?: number;
   }) => api.post('/products', data),
   // Aligné sur UpdateProductDto : PAS de `ean` (immuable, absent du DTO →
   // rejeté par forbidNonWhitelisted), PAS de `storeId`.
@@ -177,13 +210,28 @@ export const productsApi = {
       description?: string;
       costMinorUnits?: number;
       taxRate?: number;
+      sku?: string;
+      brandId?: string | null;
+      supplierId?: string | null;
+      status?: string;
+      oldPriceMinorUnits?: number | null;
       unitType?: string;
       imageUrl?: string;
       stockAlertThreshold?: number;
       stockCriticalThreshold?: number;
-      brandId?: string;
-      supplierId?: string;
-      sku?: string;
+      shortName?: string;
+      internalRef?: string;
+      supplierRef?: string;
+      productType?: string;
+      countryOfOrigin?: string;
+      leadTimeDays?: number;
+      minOrderQuantity?: number;
+      weightGrams?: number;
+      widthMm?: number;
+      heightMm?: number;
+      depthMm?: number;
+      volumeMl?: number;
+      unitsPerCarton?: number;
       reason?: string;
       isActive?: boolean;
     },
@@ -192,12 +240,16 @@ export const productsApi = {
   scan: (ean: string) => api.get(`/products/scan/${ean}`),
   stockAlerts: () => api.get('/products/stock-alerts'),
   priceHistory: (id: string) => api.get(`/products/${id}/price-history`),
+  changeLog: (id: string) => api.get(`/products/${id}/change-log`),
   priceAnalytics: (id: string) => api.get(`/products/${id}/price-analytics`),
   generateBarcode: (id: string) => api.post(`/products/${id}/generate-barcode`),
+  duplicate: (id: string) => api.post(`/products/${id}/duplicate`),
   // Variants / SKU (decision 5)
   listVariants: (id: string) => api.get(`/products/${id}/variants`),
   createVariant: (id: string, data: { ean: string; variantName: string; priceMinorUnits: number; sku?: string; stockQuantity?: number; taxRate?: number; costMinorUnits?: number }) =>
     api.post(`/products/${id}/variants`, data),
+  generateVariants: (id: string, data: { attributes: Array<{ name: string; values: string[] }>; priceMinorUnits?: number }) =>
+    api.post(`/products/${id}/variants/generate`, data),
   // Per-store price override (decision 4)
   getStorePrice: (id: string) => api.get(`/products/${id}/store-price`),
   setStorePrice: (id: string, data: { priceMinorUnits: number; startsAt?: string; endsAt?: string }) => api.put(`/products/${id}/store-price`, data),
@@ -207,6 +259,13 @@ export const productsApi = {
   createBrand: (name: string) => api.post('/products/brands', { name }),
   listSuppliers: () => api.get('/products/suppliers'),
   createSupplier: (name: string) => api.post('/products/suppliers', { name }),
+  // Catégories hiérarchiques (Lot 1) — arbre id/name/parentId/productCount
+  listCategories: () => api.get('/products/categories'),
+  createCategory: (data: { name: string; parentId?: string | null }) =>
+    api.post('/products/categories', data),
+  updateCategory: (id: string, data: { name?: string; parentId?: string | null }) =>
+    api.put(`/products/categories/${id}`, data),
+  deleteCategory: (id: string) => api.delete(`/products/categories/${id}`),
   // CSV (Bloc 4i)
   exportCsv: () => api.get('/products/export', { responseType: 'text' }),
   importCsv: (csv: string) => api.post('/products/import', { csv }),
@@ -218,6 +277,29 @@ export const productsApi = {
     api.put(`/products/${id}/components/${componentRowId}`, data),
   removeComponent: (id: string, componentRowId: string) =>
     api.delete(`/products/${id}/components/${componentRowId}`),
+  // Produits liés (Lot E)
+  listLinks: (id: string) => api.get(`/products/${id}/links`),
+  addLink: (id: string, data: { linkedProductId: string; linkType?: string }) => api.post(`/products/${id}/links`, data),
+  removeLink: (id: string, linkId: string) => api.delete(`/products/${id}/links/${linkId}`),
+  // Fournisseurs multiples (Lot B)
+  listProductSuppliers: (id: string) => api.get(`/products/${id}/suppliers`),
+  addProductSupplier: (id: string, data: any) => api.post(`/products/${id}/suppliers`, data),
+  updateProductSupplier: (id: string, rowId: string, data: any) => api.put(`/products/${id}/suppliers/${rowId}`, data),
+  removeProductSupplier: (id: string, rowId: string) => api.delete(`/products/${id}/suppliers/${rowId}`),
+  // Codes-barres multiples (Lot A)
+  listBarcodes: (id: string) => api.get(`/products/${id}/barcodes`),
+  addBarcode: (id: string, data: { barcode: string; type?: string; isPrimary?: boolean }) =>
+    api.post(`/products/${id}/barcodes`, data),
+  setPrimaryBarcode: (id: string, barcodeId: string) => api.put(`/products/${id}/barcodes/${barcodeId}/primary`),
+  removeBarcode: (id: string, barcodeId: string) => api.delete(`/products/${id}/barcodes/${barcodeId}`),
+  // Galerie & documents (Lot 4 — URLs externes)
+  listMedia: (id: string) => api.get(`/products/${id}/media`),
+  addMedia: (id: string, url: string) => api.post(`/products/${id}/media`, { url }),
+  removeMedia: (id: string, mediaId: string) => api.delete(`/products/${id}/media/${mediaId}`),
+  reorderMedia: (id: string, orderedIds: string[]) => api.put(`/products/${id}/media/reorder`, { orderedIds }),
+  listDocuments: (id: string) => api.get(`/products/${id}/documents`),
+  addDocument: (id: string, name: string, url: string) => api.post(`/products/${id}/documents`, { name, url }),
+  removeDocument: (id: string, documentId: string) => api.delete(`/products/${id}/documents/${documentId}`),
 };
 
 // Intégration produit — scan code-barres inconnu (création sécurisée
@@ -709,6 +791,50 @@ export const enrollmentApi = {
   approve: (id: string) => api.post(`/pos/enrollment/${id}/approve`, {}),
   reject: (id: string, reason: string) => api.post(`/pos/enrollment/${id}/reject`, { reason }),
   revoke: (id: string, reason: string) => api.post(`/pos/enrollment/${id}/revoke`, { reason }),
+};
+
+// ---------------------------------------------------------------------------
+// Sécurité & accès (pilotage RBAC + audit des droits)
+// ---------------------------------------------------------------------------
+export const securityApi = {
+  /** Périmètre magasin effectif du demandeur. */
+  myScope: () => api.get('/pilotage/access/me'),
+  grantApplicationAccess: (
+    employeeId: string,
+    body: { applicationRole: string; applicationEnabled?: boolean; validFrom?: string; validUntil?: string; reason?: string },
+  ) => api.post(`/pilotage/admin/employees/${employeeId}/application-access`, body),
+  suspend: (employeeId: string, reason?: string) =>
+    api.post(`/pilotage/admin/employees/${employeeId}/suspend`, { reason }),
+  reactivate: (employeeId: string) =>
+    api.post(`/pilotage/admin/employees/${employeeId}/reactivate`, {}),
+  grantStore: (
+    employeeId: string,
+    storeId: string,
+    body: { accessRole?: string; canViewDashboard?: boolean; canViewFinancials?: boolean; canViewEmployees?: boolean; canViewAlerts?: boolean; canCompare?: boolean; validFrom?: string; validUntil?: string; reason?: string },
+  ) => api.put(`/pilotage/admin/employees/${employeeId}/stores/${storeId}`, body),
+  revokeStore: (employeeId: string, storeId: string, reason?: string) =>
+    api.delete(`/pilotage/admin/employees/${employeeId}/stores/${storeId}`, { data: { reason } }),
+  auditList: (params?: { scope?: string; limit?: number; offset?: number }) =>
+    api.get('/pilotage/admin/access-audit', { params }),
+  auditVerify: (scope?: string) =>
+    api.get('/pilotage/admin/access-audit/verify', { params: scope ? { scope } : {} }),
+};
+
+// ---------------------------------------------------------------------------
+// Journal d'activité (connexions / sessions / consultations)
+// ---------------------------------------------------------------------------
+export const activityApi = {
+  loginEvents: (params?: { employeeId?: string; success?: boolean; method?: string; from?: string; to?: string; page?: number; limit?: number }) =>
+    api.get('/activity/login-events', { params }),
+  sessions: (params?: { employeeId?: string; activeOnly?: boolean }) =>
+    api.get('/activity/sessions', { params }),
+  viewEvents: (params?: { employeeId?: string; storeId?: string; module?: string; action?: string; from?: string; to?: string; page?: number; limit?: number }) =>
+    api.get('/activity/view-events', { params }),
+  stats: (employeeId: string) => api.get(`/activity/employees/${employeeId}/stats`),
+  revokeSession: (sessionId: string, reason?: string) =>
+    api.post(`/activity/sessions/${sessionId}/revoke`, { reason }),
+  revokeAll: (employeeId: string, reason?: string) =>
+    api.post(`/activity/employees/${employeeId}/revoke-sessions`, { reason }),
 };
 
 export default api;

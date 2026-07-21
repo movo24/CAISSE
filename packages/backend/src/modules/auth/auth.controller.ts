@@ -68,7 +68,9 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
     @Request() req: any,
   ) {
-    const result = await this.authService.loginByPin(dto.storeId, dto.pin, req.ip);
+    const result = await this.authService.loginByPin(dto.storeId, dto.pin, req.ip, {
+      userAgent: req.headers?.['user-agent'] ?? null,
+    });
     this.setRefreshCookie(res, result.refreshToken);
     return result;
   }
@@ -86,7 +88,9 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
     @Request() req: any,
   ) {
-    const result = await this.authService.loginByEmail(dto.email, dto.pin, req.ip);
+    const result = await this.authService.loginByEmail(dto.email, dto.pin, req.ip, {
+      userAgent: req.headers?.['user-agent'] ?? null,
+    });
     this.setRefreshCookie(res, result.refreshToken);
     return result;
   }
@@ -100,7 +104,9 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
     @Request() req: any,
   ) {
-    const result = await this.authService.loginByQrCode(dto.qrCode, dto.pin, req.ip);
+    const result = await this.authService.loginByQrCode(dto.qrCode, dto.pin, req.ip, {
+      userAgent: req.headers?.['user-agent'] ?? null,
+    });
     this.setRefreshCookie(res, result.refreshToken);
     return result;
   }

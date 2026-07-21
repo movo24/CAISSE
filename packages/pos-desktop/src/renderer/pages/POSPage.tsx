@@ -61,6 +61,7 @@ import { CustomerDisplayPublisher } from '../components/CustomerDisplayPublisher
 import { UpdateBanner } from '../components/UpdateBanner';
 import { ActiveCashierBanner } from '../components/ActiveCashierBanner';
 import { ScoreDetailModal } from '../components/ScoreDetailModal';
+import { productDisplayName, productMatchesQuery } from '../utils/productDisplay';
 
 /* ── Helpers ── */
 
@@ -90,6 +91,7 @@ interface CatalogueProduct {
   id: string;
   ean: string;
   name: string;
+  shortName?: string | null;
   description?: string | null;
   categoryId?: string | null;
   unitType: string;
@@ -320,7 +322,12 @@ export function POSPage() {
   useEffect(() => {
     productsApi.list()
       .then((res) => {
-        if (Array.isArray(res.data)) setCatalogue(res.data);
+        // Le backend catalogue renvoie une page { data, meta } ; l'ancien
+        // backend renvoyait un tableau nu. Sans ce fallback, le catalogue
+        // restait silencieusement VIDE (recherche caisse morte).
+        const raw: any = res.data;
+        if (Array.isArray(raw)) setCatalogue(raw);
+        else if (raw?.data && Array.isArray(raw.data)) setCatalogue(raw.data);
       })
       .catch(() => {
         console.warn('[CATALOGUE] Backend non disponible — catalogue vide');
@@ -522,14 +529,7 @@ export function POSPage() {
     const q = scanValue.toLowerCase().trim();
     // Matche tout ce que le catalogue POS expose réellement : nom, description
     // (marque incluse quand renseignée), code-barres/SKU (EAN) et catégorie.
-    return catalogue
-      .filter((p) =>
-        p.name.toLowerCase().includes(q) ||
-        (p.description && p.description.toLowerCase().includes(q)) ||
-        p.ean.includes(q) ||
-        (p.categoryId && p.categoryId.toLowerCase().includes(q)),
-      )
-      .slice(0, 8);
+    return catalogue.filter((p) => productMatchesQuery(p, q)).slice(0, 8);
   }, [scanValue, store.scanMode, catalogue]);
 
   const addProductToCart = (product: CatalogueProduct, weightKg?: number) => {
@@ -542,7 +542,7 @@ export function POSPage() {
       store.addToCart({
         productId: product.id + '-' + Date.now(),
         ean: product.ean,
-        name: `${product.name} (${kg.toFixed(3)} kg)`,
+        name: `${productDisplayName(product)} (${kg.toFixed(3)} kg)`,
         unitPriceMinorUnits: priceMinor,
         taxRate: Number.isFinite(Number(product.taxRate)) ? Number(product.taxRate) : undefined,
       });
@@ -550,7 +550,7 @@ export function POSPage() {
       store.addToCart({
         productId: product.id,
         ean: product.ean,
-        name: product.name,
+        name: productDisplayName(product),
         unitPriceMinorUnits: product.priceMinorUnits,
         taxRate: Number.isFinite(Number(product.taxRate)) ? Number(product.taxRate) : undefined,
       });
@@ -598,11 +598,11 @@ export function POSPage() {
       } else {
         const res = await productsApi.scan(value);
         if (res.data) {
-          store.addToCart({ productId: res.data.id, ean: res.data.ean, name: res.data.name, unitPriceMinorUnits: res.data.priceMinorUnits, taxRate: Number.isFinite(Number(res.data.taxRate)) ? Number(res.data.taxRate) : undefined });
+          store.addToCart({ productId: res.data.id, ean: res.data.ean, name: productDisplayName(res.data), unitPriceMinorUnits: res.data.priceMinorUnits, taxRate: Number.isFinite(Number(res.data.taxRate)) ? Number(res.data.taxRate) : undefined });
         } else { openUnknownProduct(value.trim()); }
       }
     } catch (e: any) {
-      const fuzzy = catalogue.find((p) => p.name.toLowerCase().includes(value.toLowerCase()));
+      const fuzzy = catalogue.find((p) => productMatchesQuery(p, value.toLowerCase().trim()));
       if (fuzzy) { handleSelectProduct(fuzzy); }
       else if (store.scanMode !== 'customer' && e?.response?.status === 404) {
         // Le backend confirme : ce code-barres n'existe pas → produit inconnu.
@@ -1422,10 +1422,10 @@ export function POSPage() {
                     onClick={() => handleSelectProduct(product)}
                     onMouseEnter={() => setSelectedIdx(idx)}
                   >
-                    <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${avatarColor(product.name)} flex items-center justify-center font-bold text-xs flex-shrink-0`}>{initials(product.name)}</div>
+                    <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${avatarColor(productDisplayName(product))} flex items-center justify-center font-bold text-xs flex-shrink-0`}>{initials(productDisplayName(product))}</div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <p className="font-semibold text-sm truncate text-pos-text">{product.name}</p>
+                        <p className="font-semibold text-sm truncate text-pos-text">{productDisplayName(product)}</p>
                         {product.unitType === 'kg' && (
                           <span className="flex items-center gap-0.5 text-[10px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full ring-1 ring-amber-200">
                             <Weight size={9} /> POIDS
@@ -1691,9 +1691,9 @@ export function POSPage() {
         <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in">
           <div className="bg-white rounded-3xl shadow-elevated w-[420px] p-7 space-y-5 animate-scale-in">
             <div className="flex items-center gap-4">
-              <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${avatarColor(weightModal.name)} flex items-center justify-center font-bold text-lg`}>{initials(weightModal.name)}</div>
+              <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${avatarColor(productDisplayName(weightModal))} flex items-center justify-center font-bold text-lg`}>{initials(productDisplayName(weightModal))}</div>
               <div>
-                <h3 className="font-bold text-lg text-pos-text">{weightModal.name}</h3>
+                <h3 className="font-bold text-lg text-pos-text">{productDisplayName(weightModal)}</h3>
                 <p className="text-sm text-amber-600 font-semibold flex items-center gap-1.5"><Weight size={14} />{(weightModal.priceMinorUnits / 100).toFixed(2).replace('.', ',')} &euro; / kg</p>
               </div>
             </div>

@@ -9,6 +9,12 @@ import { BrandEntity } from '../../database/entities/brand.entity';
 import { SupplierEntity } from '../../database/entities/supplier.entity';
 import { StoreProductPriceEntity } from '../../database/entities/store-product-price.entity';
 import { ProductComponentEntity } from '../../database/entities/product-component.entity';
+import { ProductMediaEntity } from '../../database/entities/product-media.entity';
+import { ProductDocumentEntity } from '../../database/entities/product-document.entity';
+import { ProductBarcodeEntity } from '../../database/entities/product-barcode.entity';
+import { ProductSupplierEntity } from '../../database/entities/product-supplier.entity';
+import { ProductChangeLogEntity } from '../../database/entities/product-change-log.entity';
+import { ProductLinkEntity } from '../../database/entities/product-link.entity';
 import { AuditService } from '../audit/audit.service';
 
 /**
@@ -41,6 +47,12 @@ describe('ProductsService — getStockAlerts pagination', () => {
         { provide: getRepositoryToken(SupplierEntity), useValue: {} },
         { provide: getRepositoryToken(StoreProductPriceEntity), useValue: {} },
         { provide: getRepositoryToken(ProductComponentEntity), useValue: {} },
+        { provide: getRepositoryToken(ProductMediaEntity), useValue: {} },
+        { provide: getRepositoryToken(ProductDocumentEntity), useValue: {} },
+        { provide: getRepositoryToken(ProductBarcodeEntity), useValue: {} },
+        { provide: getRepositoryToken(ProductSupplierEntity), useValue: {} },
+        { provide: getRepositoryToken(ProductChangeLogEntity), useValue: {} },
+        { provide: getRepositoryToken(ProductLinkEntity), useValue: {} },
       ],
     }).compile();
     service = module.get(ProductsService);

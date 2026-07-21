@@ -5,6 +5,7 @@ import {
   HttpStatus,
   Logger,
   Inject,
+  Optional,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -18,6 +19,13 @@ import { TimewinService } from '../timewin/timewin.service';
 import { logBusinessEvent } from '../../common/business-logger';
 import { CACHE_STORE } from '../../common/cache/cache.module';
 import { ICacheStore } from '../../common/cache/cache-store';
+import { ActivityService } from '../activity-audit/activity.service';
+
+/** Contexte télémétrie fourni par le contrôleur (facultatif). */
+export interface LoginTelemetryMeta {
+  userAgent?: string | null;
+  appVersion?: string | null;
+}
 import { AuditService } from '../audit/audit.service';
 
 /** Conventional store id for global (store-less) audit events like admin login. */
@@ -57,7 +65,71 @@ export class AuthService {
     private timewin: TimewinService,
     @Inject(CACHE_STORE) private cache: ICacheStore,
     private readonly auditService: AuditService,
+    // Télémétrie de connexion — OPTIONNELLE et strictement non bloquante : si absente
+    // (ex. tests) ou en échec, l'authentification n'est jamais impactée.
+    @Optional() private readonly activity?: ActivityService,
   ) {}
+
+  /**
+   * Émet la télémétrie de connexion (succès/échec) — fire-and-forget, ne lève JAMAIS.
+   * Aucun secret (PIN/mot de passe/token) n'est transmis ici.
+   */
+  private async recordLoginTelemetry(
+    outcome: 'success' | 'failure',
+    method: 'PIN' | 'ADMIN_EMAIL' | 'QR',
+    clientIp: string | undefined,
+    meta: LoginTelemetryMeta | undefined,
+    result?: any,
+    err?: unknown,
+  ): Promise<void> {
+    if (!this.activity) return;
+    try {
+      const ua = meta?.userAgent ?? null;
+      if (outcome === 'success') {
+        const employeeId = result?.employee?.id ?? null;
+        const isNew = await this.activity.isNewDevice(employeeId, ua);
+        const sessionId = await this.activity.startSession({
+          employeeId,
+          ipAddress: clientIp ?? null,
+          userAgent: ua,
+          applicationVersion: meta?.appVersion ?? null,
+        });
+        await this.activity.recordLogin({
+          employeeId,
+          sessionId,
+          eventType: 'LOGIN_SUCCESS',
+          success: true,
+          authenticationMethod: method,
+          ipAddress: clientIp ?? null,
+          userAgent: ua,
+          applicationVersion: meta?.appVersion ?? null,
+          isNewDevice: isNew,
+        });
+      } else {
+        await this.activity.recordLogin({
+          eventType: 'LOGIN_FAILED',
+          success: false,
+          authenticationMethod: method,
+          ipAddress: clientIp ?? null,
+          userAgent: ua,
+          failureReason: err,
+        });
+      }
+    } catch {
+      /* télémétrie non bloquante — jamais d'impact sur l'auth */
+    }
+  }
+
+  /** Émet LOGOUT + ferme les sessions actives — fire-and-forget, ne lève jamais. */
+  private async recordLogoutTelemetry(employeeId: string): Promise<void> {
+    if (!this.activity) return;
+    try {
+      await this.activity.endActiveSessionsForEmployee(employeeId, 'logout');
+      await this.activity.recordLogin({ employeeId, eventType: 'LOGOUT', success: true });
+    } catch {
+      /* non bloquant */
+    }
+  }
 
   /**
    * Audit a successful admin login. Append-only hash chain, store-less events
@@ -120,8 +192,15 @@ export class AuthService {
    *
    * Set POS_AUTH_AUTHORITY=timewin to restore the legacy TimeWin24-first flow.
    */
-  async loginByPin(storeIdOrCode: string, pin: string, clientIp?: string) {
-    return this.withLockout(clientIp, () => this.doLoginByPin(storeIdOrCode, pin));
+  async loginByPin(storeIdOrCode: string, pin: string, clientIp?: string, meta?: LoginTelemetryMeta) {
+    try {
+      const result = await this.withLockout(clientIp, () => this.doLoginByPin(storeIdOrCode, pin));
+      void this.recordLoginTelemetry('success', 'PIN', clientIp, meta, result);
+      return result;
+    } catch (err) {
+      void this.recordLoginTelemetry('failure', 'PIN', clientIp, meta, undefined, err);
+      throw err;
+    }
   }
 
   private async doLoginByPin(storeIdOrCode: string, pin: string) {
@@ -175,8 +254,15 @@ export class AuthService {
    * table is checked FIRST. TimeWin24 is only a secondary fallback for an
    * email not present locally (and only in legacy/transitional mode).
    */
-  async loginByEmail(email: string, pin: string, clientIp?: string) {
-    return this.withLockout(clientIp, () => this.doLoginByEmail(email, pin));
+  async loginByEmail(email: string, pin: string, clientIp?: string, meta?: LoginTelemetryMeta) {
+    try {
+      const result = await this.withLockout(clientIp, () => this.doLoginByEmail(email, pin));
+      void this.recordLoginTelemetry('success', 'ADMIN_EMAIL', clientIp, meta, result);
+      return result;
+    } catch (err) {
+      void this.recordLoginTelemetry('failure', 'ADMIN_EMAIL', clientIp, meta, undefined, err);
+      throw err;
+    }
   }
 
   private async doLoginByEmail(email: string, pin: string) {
@@ -236,8 +322,15 @@ export class AuthService {
   /**
    * Login by QR code — via TimeWin24
    */
-  async loginByQrCode(qrCode: string, pin: string, clientIp?: string) {
-    return this.withLockout(clientIp, () => this.doLoginByQrCode(qrCode, pin));
+  async loginByQrCode(qrCode: string, pin: string, clientIp?: string, meta?: LoginTelemetryMeta) {
+    try {
+      const result = await this.withLockout(clientIp, () => this.doLoginByQrCode(qrCode, pin));
+      void this.recordLoginTelemetry('success', 'QR', clientIp, meta, result);
+      return result;
+    } catch (err) {
+      void this.recordLoginTelemetry('failure', 'QR', clientIp, meta, undefined, err);
+      throw err;
+    }
   }
 
   private async doLoginByQrCode(qrCode: string, pin: string) {
@@ -386,6 +479,7 @@ export class AuthService {
     await this.cache.sadd('revoked_tokens', employeeId, TOKEN_REVOKE_TTL);
     await this.cache.del(`token_family:${employeeId}`);
     this.logger.log(`Logout: tokens revoked for ${employeeId}`);
+    void this.recordLogoutTelemetry(employeeId); // télémétrie non bloquante
   }
 
   /* ── Authority configuration ── */

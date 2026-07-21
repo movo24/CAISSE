@@ -16,7 +16,14 @@ import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { ProductsService } from './products.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard, Roles } from '../../common/guards/roles.guard';
-import { CreateProductDto, UpdateProductDto, PaginationQueryDto } from '../../common/dto';
+import {
+  CreateProductDto,
+  UpdateProductDto,
+  PaginationQueryDto,
+  CreateCategoryDto,
+  UpdateCategoryDto,
+  BulkProductActionDto,
+} from '../../common/dto';
 
 @ApiTags('products')
 @ApiBearerAuth()
@@ -36,7 +43,7 @@ export class ProductsController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'List products for store (paginated; filter by search/brand/supplier)' })
+  @ApiOperation({ summary: 'List products for store (paginated; filter by search/brand/supplier/category/status; sortable)' })
   findAll(
     @Request() req: any,
     @Query('page') page?: string,
@@ -45,6 +52,16 @@ export class ProductsController {
     @Query('storeId') queryStoreId?: string,
     @Query('brandId') brandId?: string,
     @Query('supplierId') supplierId?: string,
+    @Query('categoryId') categoryId?: string,
+    @Query('status') status?: string,
+    @Query('taxRate') taxRate?: string,
+    @Query('outOfStock') outOfStock?: string,
+    @Query('belowThreshold') belowThreshold?: string,
+    @Query('noImage') noImage?: string,
+    @Query('noSupplier') noSupplier?: string,
+    @Query('noCategory') noCategory?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortDir') sortDir?: string,
   ) {
     const effectiveStoreId = (req.user.role === 'admin' && queryStoreId)
       ? queryStoreId
@@ -55,7 +72,38 @@ export class ProductsController {
       search,
       brandId,
       supplierId,
+      categoryId,
+      status,
+      taxRate: taxRate !== undefined && taxRate !== '' ? Number(taxRate) : undefined,
+      outOfStock: outOfStock === 'true',
+      belowThreshold: belowThreshold === 'true',
+      noImage: noImage === 'true',
+      noSupplier: noSupplier === 'true',
+      noCategory: noCategory === 'true',
+      sortBy,
+      sortDir,
     });
+  }
+
+  @Get('catalog-stats')
+  @ApiOperation({ summary: 'Catalog header counts (total, active, out-of-stock, below-threshold, missing data)' })
+  catalogStats(@Request() req: any, @Query('storeId') queryStoreId?: string) {
+    const effectiveStoreId =
+      req.user.role === 'admin' && queryStoreId ? queryStoreId : req.user.storeId;
+    return this.productsService.getCatalogStats(effectiveStoreId);
+  }
+
+  @Post('bulk')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'Bulk action on selected products (activate/deactivate/setCategory/setSupplier/setTax) — audited, returns per-id result' })
+  bulkAction(@Body() dto: BulkProductActionDto, @Request() req: any) {
+    return this.productsService.bulkAction(
+      req.user.storeId,
+      req.user.employeeId,
+      dto.action,
+      dto.productIds,
+      { categoryId: dto.categoryId, supplierId: dto.supplierId, taxRate: dto.taxRate },
+    );
   }
 
   // ── Brand / supplier reference data (decision 3) — static routes before :id ──
@@ -97,16 +145,34 @@ export class ProductsController {
   }
 
   @Get('categories')
-  @ApiOperation({ summary: 'List product categories for store' })
+  @ApiOperation({ summary: 'List product categories (tree: id, name, parentId, productCount)' })
   getCategories(@Request() req: any) {
     return this.productsService.getCategories(req.user.storeId);
   }
 
   @Post('categories')
   @Roles('admin', 'manager')
-  @ApiOperation({ summary: 'Create a product category' })
-  createCategory(@Request() req: any, @Body() body: { name: string }) {
-    return this.productsService.createCategory(req.user.storeId, body.name);
+  @ApiOperation({ summary: 'Create a product category (optional parentId for a sub-category)' })
+  createCategory(@Request() req: any, @Body() body: CreateCategoryDto) {
+    return this.productsService.createCategory(req.user.storeId, body.name, body.parentId ?? null);
+  }
+
+  @Put('categories/:categoryId')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'Rename and/or move a category (cycle-safe)' })
+  updateCategory(
+    @Param('categoryId') categoryId: string,
+    @Body() body: UpdateCategoryDto,
+    @Request() req: any,
+  ) {
+    return this.productsService.updateCategory(req.user.storeId, categoryId, body);
+  }
+
+  @Delete('categories/:categoryId')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'Delete a category (refused if it has sub-categories or attached products)' })
+  deleteCategory(@Param('categoryId') categoryId: string, @Request() req: any) {
+    return this.productsService.deleteCategory(req.user.storeId, categoryId);
   }
 
   @Get('stock-alerts')
@@ -163,6 +229,19 @@ export class ProductsController {
     return this.productsService.createVariant(id, req.user.storeId, body, req.user.employeeId);
   }
 
+  @Post(':id/variants/generate')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'Generate variants from attributes (cartesian product, e.g. size × color)' })
+  generateVariants(
+    @Param('id') id: string,
+    @Body() body: { attributes: Array<{ name: string; values: string[] }>; priceMinorUnits?: number },
+    @Request() req: any,
+  ) {
+    return this.productsService.generateVariants(id, req.user.storeId, body?.attributes ?? [], req.user.employeeId, {
+      priceMinorUnits: body?.priceMinorUnits,
+    });
+  }
+
   // ── Product Packs — composition d'un produit composé (GO owner 2026-07-09) ──
 
   @Get(':id/components')
@@ -205,6 +284,140 @@ export class ProductsController {
     return this.productsService.removeComponent(id, componentRowId, req.user.storeId);
   }
 
+  // ── Produits liés (Lot E) ──
+
+  @Get(':id/links')
+  @ApiOperation({ summary: 'List related/cross-sell/substitute products' })
+  listLinks(@Param('id') id: string, @Request() req: any) {
+    return this.productsService.listLinks(id, req.user.storeId);
+  }
+
+  @Post(':id/links')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'Link a product (complementary | cross_sell | substitute)' })
+  addLink(@Param('id') id: string, @Body() body: { linkedProductId: string; linkType?: string }, @Request() req: any) {
+    return this.productsService.addLink(id, req.user.storeId, body?.linkedProductId ?? '', body?.linkType);
+  }
+
+  @Delete(':id/links/:linkId')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'Remove a product link' })
+  removeLink(@Param('id') id: string, @Param('linkId') linkId: string, @Request() req: any) {
+    return this.productsService.removeLink(id, req.user.storeId, linkId);
+  }
+
+  // ── Fournisseurs multiples (Lot B) ──
+
+  @Get(':id/suppliers')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'List the suppliers of a product (with purchase conditions)' })
+  listProductSuppliers(@Param('id') id: string, @Request() req: any) {
+    return this.productsService.listProductSuppliers(id, req.user.storeId);
+  }
+
+  @Post(':id/suppliers')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'Attach a supplier with purchase conditions' })
+  addProductSupplier(@Param('id') id: string, @Body() body: any, @Request() req: any) {
+    return this.productsService.addProductSupplier(id, req.user.storeId, body ?? {});
+  }
+
+  @Put(':id/suppliers/:rowId')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'Update a product-supplier line' })
+  updateProductSupplier(@Param('id') id: string, @Param('rowId') rowId: string, @Body() body: any, @Request() req: any) {
+    return this.productsService.updateProductSupplier(id, req.user.storeId, rowId, body ?? {});
+  }
+
+  @Delete(':id/suppliers/:rowId')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'Detach a supplier from the product' })
+  removeProductSupplier(@Param('id') id: string, @Param('rowId') rowId: string, @Request() req: any) {
+    return this.productsService.removeProductSupplier(id, req.user.storeId, rowId);
+  }
+
+  // ── Codes-barres multiples (Lot A) ──
+
+  @Get(':id/barcodes')
+  @ApiOperation({ summary: 'List additional barcodes of a product' })
+  listBarcodes(@Param('id') id: string, @Request() req: any) {
+    return this.productsService.listBarcodes(id, req.user.storeId);
+  }
+
+  @Post(':id/barcodes')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'Add a barcode (EAN/UPC/GTIN); unique per store' })
+  addBarcode(
+    @Param('id') id: string,
+    @Body() body: { barcode: string; type?: string; isPrimary?: boolean },
+    @Request() req: any,
+  ) {
+    return this.productsService.addBarcode(id, req.user.storeId, body?.barcode ?? '', body?.type, body?.isPrimary);
+  }
+
+  @Put(':id/barcodes/:barcodeId/primary')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'Set a barcode as primary' })
+  setPrimaryBarcode(@Param('id') id: string, @Param('barcodeId') barcodeId: string, @Request() req: any) {
+    return this.productsService.setPrimaryBarcode(id, req.user.storeId, barcodeId);
+  }
+
+  @Delete(':id/barcodes/:barcodeId')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'Remove a barcode' })
+  removeBarcode(@Param('id') id: string, @Param('barcodeId') barcodeId: string, @Request() req: any) {
+    return this.productsService.removeBarcode(id, req.user.storeId, barcodeId);
+  }
+
+  // ── Galerie d'images + documents (Lot 4, URLs externes) ──
+
+  @Get(':id/media')
+  @ApiOperation({ summary: 'List product image gallery (external URLs)' })
+  listMedia(@Param('id') id: string, @Request() req: any) {
+    return this.productsService.listMedia(id, req.user.storeId);
+  }
+
+  @Post(':id/media')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'Add an image URL to the gallery' })
+  addMedia(@Param('id') id: string, @Body() body: { url: string }, @Request() req: any) {
+    return this.productsService.addMedia(id, req.user.storeId, body?.url ?? '');
+  }
+
+  @Delete(':id/media/:mediaId')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'Remove an image from the gallery' })
+  removeMedia(@Param('id') id: string, @Param('mediaId') mediaId: string, @Request() req: any) {
+    return this.productsService.removeMedia(id, req.user.storeId, mediaId);
+  }
+
+  @Put(':id/media/reorder')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'Reorder the gallery (drag & drop) — pass ordered media ids' })
+  reorderMedia(@Param('id') id: string, @Body() body: { orderedIds: string[] }, @Request() req: any) {
+    return this.productsService.reorderMedia(id, req.user.storeId, body?.orderedIds ?? []);
+  }
+
+  @Get(':id/documents')
+  @ApiOperation({ summary: 'List product documents (external URLs)' })
+  listDocuments(@Param('id') id: string, @Request() req: any) {
+    return this.productsService.listDocuments(id, req.user.storeId);
+  }
+
+  @Post(':id/documents')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'Add a document (name + URL)' })
+  addDocument(@Param('id') id: string, @Body() body: { name: string; url: string }, @Request() req: any) {
+    return this.productsService.addDocument(id, req.user.storeId, body?.name ?? '', body?.url ?? '');
+  }
+
+  @Delete(':id/documents/:documentId')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'Remove a document' })
+  removeDocument(@Param('id') id: string, @Param('documentId') documentId: string, @Request() req: any) {
+    return this.productsService.removeDocument(id, req.user.storeId, documentId);
+  }
+
   // ── Per-store price override (decision 4) ──
 
   @Get(':id/store-price')
@@ -245,6 +458,12 @@ export class ProductsController {
     return this.productsService.getPriceHistory(id, req.user.storeId);
   }
 
+  @Get(':id/change-log')
+  @ApiOperation({ summary: 'Full change log of the product sheet (fields, purchase price, supplier, status)' })
+  changeLog(@Param('id') id: string, @Request() req: any) {
+    return this.productsService.getChangeLog(id, req.user.storeId);
+  }
+
   @Get(':id/price-analytics')
   @ApiOperation({ summary: 'Get price analytics with sales impact per period' })
   priceAnalytics(@Param('id') id: string, @Request() req: any) {
@@ -270,6 +489,13 @@ export class ProductsController {
       changeSource,
       req.user.role,
     );
+  }
+
+  @Post(':id/duplicate')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'Full duplicate: clone the sheet + packs/media/documents/suppliers/links (new internal EAN, draft)' })
+  duplicateProduct(@Param('id') id: string, @Request() req: any) {
+    return this.productsService.duplicateProduct(id, req.user.storeId, req.user.employeeId);
   }
 
   @Post(':id/generate-barcode')

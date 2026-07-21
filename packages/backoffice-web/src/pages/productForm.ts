@@ -11,6 +11,9 @@
  *  - montants en centimes entiers (euros × 100, arrondis).
  */
 
+/** Statuts backend valides (validés serveur via @IsIn) — pour l'UI des sélecteurs. */
+export type ProductStatus = 'draft' | 'pending_validation' | 'active' | 'rejected' | 'archived';
+
 export interface ProductFormValues {
   name: string;
   ean: string;
@@ -20,6 +23,12 @@ export interface ProductFormValues {
   description: string;
   cost: string; // euros (saisie)
   taxRate: string; // %
+  // Champs enrichis (Lot 1 — colonnes déjà en base, exposées via DTO) :
+  sku?: string;
+  brandId?: string;
+  supplierId?: string;
+  status?: string; // l'un de ProductStatus ; validé serveur
+  oldPrice?: string; // euros — prix barré / de référence
 }
 
 export interface CreateProductPayload {
@@ -31,6 +40,11 @@ export interface CreateProductPayload {
   description?: string;
   costMinorUnits?: number;
   taxRate?: number;
+  sku?: string;
+  brandId?: string;
+  supplierId?: string;
+  status?: string;
+  oldPriceMinorUnits?: number;
 }
 
 export interface UpdateProductPayload {
@@ -41,6 +55,11 @@ export interface UpdateProductPayload {
   description?: string;
   costMinorUnits?: number;
   taxRate?: number;
+  sku?: string;
+  brandId?: string | null;
+  supplierId?: string | null;
+  status?: string;
+  oldPriceMinorUnits?: number | null;
   reason?: string;
 }
 
@@ -70,6 +89,10 @@ export function validateProductForm(form: ProductFormValues, isEdit: boolean): s
     const t = parseFr(form.taxRate);
     if (!Number.isFinite(t) || t < 0) return 'La TVA doit être un nombre positif ou nul.';
   }
+  if (form.oldPrice !== undefined && form.oldPrice.trim() !== '') {
+    const o = parseFloat(form.oldPrice);
+    if (!Number.isFinite(o) || o < 0) return 'Le prix barré doit être un nombre positif ou nul.';
+  }
   return null;
 }
 
@@ -80,6 +103,14 @@ function optionalFields(form: ProductFormValues): Partial<CreateProductPayload> 
   if (form.description.trim()) out.description = form.description.trim();
   if (form.cost.trim() !== '') out.costMinorUnits = eurosToCents(form.cost);
   if (form.taxRate.trim() !== '') out.taxRate = parseFr(form.taxRate);
+  // Champs enrichis — émis uniquement s'ils sont renseignés (jamais de clé vide).
+  if (form.sku !== undefined && form.sku.trim()) out.sku = form.sku.trim();
+  if (form.brandId) out.brandId = form.brandId;
+  if (form.supplierId) out.supplierId = form.supplierId;
+  if (form.status) out.status = form.status;
+  if (form.oldPrice !== undefined && form.oldPrice.trim() !== '') {
+    out.oldPriceMinorUnits = eurosToCents(form.oldPrice);
+  }
   return out;
 }
 

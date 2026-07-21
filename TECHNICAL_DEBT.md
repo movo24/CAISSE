@@ -112,6 +112,32 @@ Statuts : OPEN · IN PROGRESS · BLOCKED (owner/accès) · CLOSED (PR retire l'e
 
 ---
 
+## D21 — Accès magasins + journal d'activité : vérification LIVE
+**Status:** ✅ **CLOSED (vérif live EXÉCUTÉE 2026-07-15)** — stack réelle Postgres 16 + backend + backoffice.
+Migrations up/down/up prouvées sur base vierge (schéma `\d` vérifié) ; 10 gated PG verts ; 4 onglets
+exercés au navigateur avec données réelles ; 403 codes / périmètre / suspension / expiration / gate admin
+prouvés ; **0 secret** dans la télémétrie (scan SQL). **2 bugs découverts en live** (filtre écrasait le
+code métier en `HTTP_ERROR` ; `validUntil:null` n'effaçait pas la borne) → **corrigés + re-vérifiés**
+(commit `941a3ad`, + test de régression). **Résiduel mineur (non-défaut)** : captures = fichiers en
+session (pane navigateur), pas PNG disque — l'outil de capture n'écrit pas de fichier (export possible
+via passe headless Playwright si requis). Merge `main` = Tier-2, GO owner. **Since:** 2026-07-15, branche `feat/mobile-access-and-activity-audit`.
+
+**Contexte.** Le backend (RBAC pilotage, `access_audit_log` immuable, télémétrie non bloquante, alertes,
+rétention opt-in) est **complet et vérifié** : suite backend **1025/0**, et le cycle migrations up/down/re-run
+est **prouvé sur vrai Postgres 16** (base vierge) + codifié en spec gated `access-activity-migrations.pg.spec.ts`
+(3/3 PASS, skippé sans `TEST_DATABASE_URL`). Le frontend (`SecurityAccessPage` 4 onglets + client télémétrie)
+est **build-vérifié** (tsc 0 + build Vite 0).
+
+**Ce qui reste OUVERT (motive le verdict NON TERMINÉ).** La vérification **bout-en-bout au navigateur** et les
+**captures d'écran §20** ne sont PAS faites : la page est login-gated et consomme l'API → exige Postgres +
+backend + backoffice + données seed tournants simultanément (non trivial dans le harness agent). L'agent ne
+déclare jamais ces vérifications faites lui-même.
+
+**Ce qui la ferme.** Session live dédiée suivant `docs/design/access-activity-audit-live-verification-runbook.md`
+(boot stack, comptes, parcours par onglet, cas d'échec 403 FORBIDDEN/ACCOUNT_SUSPENDED/ACCESS_EXPIRED,
+captures 01→04) → captures archivées + verdict passé à TERMINÉ → retirer cette entrée. **Cross-refs.**
+`docs/design/access-activity-audit-deliverables.md`, `…-plan.md`, `…-live-verification-runbook.md`.
+**Rappel :** merge vers `main` = Tier-2 (GO owner explicite), distinct de cette dette.
 ## D22 — Journal de stock unifié : couverture shadow — ✅ chemins caisse COUVERTS (F1+F1b+F2) ; reste le cutover F3 + le legacy système B
 **Status:** IN PROGRESS (rétréci). **Since:** F1, 2026-07-16, branche `feat/stock-journal-nf525-on-main`.
 

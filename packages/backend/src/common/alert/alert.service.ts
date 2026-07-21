@@ -32,7 +32,13 @@ export type AlertEvent =
   | 'PAYMENT_PENDING_CAPTURE'
   // An audit-chain append was DROPPED after exhausting anti-fork retries (D16).
   // The audited op already committed (audit is out-of-band) → integrity gap to act on.
-  | 'AUDIT_WRITE_FAILED';
+  | 'AUDIT_WRITE_FAILED'
+  // An access-rights audit-chain append was DROPPED after exhausting anti-fork retries.
+  | 'ACCESS_AUDIT_WRITE_FAILED'
+  // A login scored above the risk threshold (new device/country, impossible travel…).
+  | 'LOGIN_RISK_HIGH'
+  // A burst of forbidden-store access attempts by one user.
+  | 'ACCESS_DENIED_BURST';
 
 export interface AlertEntry {
   event: AlertEvent;
@@ -123,10 +129,13 @@ export class AlertService {
       case 'CIRCUIT_BREAKER_OPEN':
       case 'LOGIN_BRUTEFORCE':
       case 'AUDIT_WRITE_FAILED':
+      case 'ACCESS_AUDIT_WRITE_FAILED':
         return 'critical';
       case 'RATE_LIMIT_BURST':
       case 'STOCK_VARIANCE_HIGH':
       case 'PAYMENT_PENDING_CAPTURE':
+      case 'LOGIN_RISK_HIGH':
+      case 'ACCESS_DENIED_BURST':
         return 'warning';
       default:
         return 'info';
