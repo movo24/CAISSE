@@ -36,6 +36,7 @@ import * as cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 import { TenantInterceptor } from './common/interceptors/tenant.interceptor';
 import { BusinessError } from './common/errors/business-error';
+import { validationExceptionFactory } from './common/validation-exception.factory';
 
 // ── Global Exception Filter — sanitize error responses ──────────────────
 // Reports unhandled exceptions to Sentry (when SENTRY_DSN is set).
@@ -74,6 +75,10 @@ class GlobalExceptionFilter implements ExceptionFilter {
           message: 'Erreur de validation.',
           statusCode: status,
           details: (res as any).message,
+          // Carte { champ: [messages] } produite par validationExceptionFactory —
+          // permet aux frontends de surligner le champ fautif (jamais un
+          // message générique seul). Absente si l'exception vient d'ailleurs.
+          ...((res as any).fields ? { fields: (res as any).fields } : {}),
         });
         return;
       }
@@ -302,6 +307,7 @@ async function bootstrap() {
       whitelist: true,
       forbidNonWhitelisted: true,
       transform: true,
+      exceptionFactory: validationExceptionFactory,
     }),
   );
 
