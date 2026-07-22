@@ -618,6 +618,20 @@ export class ProductsService {
     }
   }
 
+  /**
+   * store_id RÉEL d'un produit (contexte des endpoints :id pour un ADMIN).
+   * null si le produit n'existe pas — l'appelant retombe alors sur le magasin
+   * du JWT et le filtre standard produira le 404 habituel.
+   */
+  async storeIdOfProduct(productId: string): Promise<string | null> {
+    try {
+      const row = await this.productRepo.findOne({ where: { id: productId } });
+      return row?.storeId ?? null;
+    } catch {
+      return null; // id non-uuid → introuvable, jamais une 500
+    }
+  }
+
   async create(
     data: Partial<ProductEntity>,
     employeeId: string,
