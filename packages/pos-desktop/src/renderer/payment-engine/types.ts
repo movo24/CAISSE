@@ -24,6 +24,12 @@ export interface ProviderCapabilities {
   statusQuery: boolean;
   /** Separate authorization / capture phases. */
   separateAuthCapture: boolean;
+  /**
+   * Whether an APPROVED result carries a verifiable capture claim (providerRef
+   * re-checked server-side). false → mock/manual semantics: the card leg is
+   * ALWAYS sent pendingCapture=true and the sale lands payment_pending (§3.7).
+   */
+  claimsCapture: boolean;
 }
 
 /** Network is a connector detail — the engine makes NO assumption (§3.2). */
