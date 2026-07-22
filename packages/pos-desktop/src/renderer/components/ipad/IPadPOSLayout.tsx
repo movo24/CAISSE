@@ -231,6 +231,24 @@ export function IPadPOSLayout() {
               {!isLandscape && (offlineMode.isOffline ? 'OFFLINE' : 'ONLINE')}
             </button>
 
+            {/* Synchronisation manuelle du CATALOGUE produits : récupère
+                immédiatement un produit publié au back-office. */}
+            <button
+              onClick={() => void cart.refreshCatalogue()}
+              disabled={cart.catalogueSyncing}
+              className={`flex items-center gap-1 font-bold rounded-full transition-all ${
+                isLandscape ? 'text-[9px] px-1.5 py-0.5' : 'text-[10px] px-2 py-1'
+              } ${
+                cart.catalogueSyncing
+                  ? 'bg-blue-50 text-blue-600 ring-1 ring-blue-200'
+                  : 'bg-pos-subtle text-pos-muted ring-1 ring-pos-border hover:bg-pos-border/40'
+              }`}
+              title="Synchroniser les produits"
+            >
+              <SyncIcon size={isLandscape ? 9 : 10} className={cart.catalogueSyncing ? 'animate-spin' : ''} />
+              {!isLandscape && 'PRODUITS'}
+            </button>
+
             {/* Widgets — hide verbose ones in landscape */}
             {!isLandscape && (
               <>
