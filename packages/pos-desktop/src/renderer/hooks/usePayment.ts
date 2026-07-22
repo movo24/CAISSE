@@ -12,8 +12,10 @@ import { buildTicketUrl, makeTicketQrDataUrl } from '../services/ticketQr';
 import { getBrandLogoDataUrl } from '../services/brandLogo';
 import { useOfflineStore } from '../stores/offlineStore';
 import { computePaymentState, PaymentMethod } from '../services/paymentMachine';
-import { useStripeTerminal } from './useStripeTerminal';
 import { getCardPaymentMode, CARD_DISABLED_MESSAGE, CardPaymentMode } from '../services/cardPaymentMode';
+import { PaymentEngine } from '../payment-engine/engine';
+import { StripeProvider } from '../payment-engine/providers/stripeProvider';
+import { MockProvider } from '../payment-engine/providers/mockProvider';
 
 /* ── Types ── */
 
@@ -101,7 +103,29 @@ export function usePayment() {
   // be committed when this is set — nothing can fabricate a captured card payment.
   const cardLegRef = useRef<CardLegFacts | null>(null);
 
-  const stripeTerminal = useStripeTerminal();
+  // Payment Engine (P1) : un moteur par mode, persistant pour la session de
+  // caisse — il porte le verrou de ré-entrée, l'unicité de tentative par vente
+  // (anti-double-débit) et le journal des transitions.
+  const enginesRef = useRef<{
+    real?: { engine: PaymentEngine; provider: StripeProvider };
+    demo?: { engine: PaymentEngine; provider: MockProvider };
+  }>({});
+
+  const getRealEngine = useCallback(() => {
+    if (!enginesRef.current.real) {
+      const provider = new StripeProvider();
+      enginesRef.current.real = { engine: new PaymentEngine(provider), provider };
+    }
+    return enginesRef.current.real;
+  }, []);
+
+  const getDemoEngine = useCallback(() => {
+    if (!enginesRef.current.demo) {
+      const provider = new MockProvider();
+      enginesRef.current.demo = { engine: new PaymentEngine(provider), provider };
+    }
+    return enginesRef.current.demo;
+  }, []);
 
   const totalPaid = partialPayments.reduce((s, p) => s + p.amountMinorUnits, 0);
   const remaining = store.paymentModalOpen ? store.total() - totalPaid : 0;
@@ -453,16 +477,6 @@ export function usePayment() {
     setTpeResult(result);
   }, [clearTpeTimers, store, finalizePayment, commitPartialPayment]);
 
-  /** Ensure the SDK is up and a reader connected (auto-connects a single reader). */
-  const ensureReaderConnected = useCallback(async () => {
-    if (stripeTerminal.isReady) return;
-    const readers: any[] = await stripeTerminal.initTerminal();
-    if (!readers || readers.length === 0) {
-      throw new Error('Aucun lecteur carte détecté. Vérifiez que le WisePad 3 est allumé et connecté au réseau.');
-    }
-    await stripeTerminal.connectReader(readers[0]);
-  }, [stripeTerminal]);
-
   const startTpeWaiting = useCallback((amountMinor: number, context: 'quick' | 'split') => {
     clearTpeTimers();
     setTpeResult(null);
@@ -487,31 +501,52 @@ export function usePayment() {
         setTpeCountdown((prev) => (prev <= 1 ? 0 : prev - 1));
       }, 1000);
 
-      if (mode === 'real') {
-        try {
-          await ensureReaderConnected();
-          // Tie the PaymentIntent to THIS checkout: the sale idempotency key is the
-          // reference, so a retried PI create dedupes server-side (deterministic key).
-          if (!saleIdemKeyRef.current) saleIdemKeyRef.current = newIdempotencyKey();
-          const { paymentIntentId } = await stripeTerminal.collectPayment(amountMinor, saleIdemKeyRef.current);
-          if (!tpeWaitingRef.current) return; // cashier cancelled meanwhile
-          cardLegRef.current = {
-            stripePaymentIntentId: paymentIntentId,
-            stripeReaderId: stripeTerminal.connectedReader?.id,
-            pendingCapture: false,
-          };
-          handleTpeResponse('success');
-        } catch (err: any) {
-          if (!tpeWaitingRef.current) return; // cancelled — reader flow already aborted
-          setTpeErrorMessage(err?.message || 'Erreur terminal de paiement');
-          handleTpeResponse('refused');
+      // Payment Engine (P1) : même moteur quel que soit le fournisseur — verrou
+      // de ré-entrée, une tentative active par vente, incertain → vérification.
+      const { engine, provider } = mode === 'real' ? getRealEngine() : getDemoEngine();
+      try {
+        if (mode === 'real') {
+          const stripe = provider as StripeProvider;
+          await stripe.init({ provider: 'stripe' });
+          await stripe.connect(); // « Aucun lecteur carte détecté… » si absent
         }
-      } else {
-        // Demo (dev builds only): explicit simulate button; auto-timeout otherwise.
-        tpeTimeoutRef.current = setTimeout(() => handleTpeResponse('timeout'), countdownTotal * 1000);
+        if (!saleIdemKeyRef.current) saleIdemKeyRef.current = newIdempotencyKey();
+        const out = await engine.startPayment({
+          saleKey: saleIdemKeyRef.current,
+          amountMinorUnits: amountMinor,
+          storeId: store.employee?.storeId,
+        });
+        if (!tpeWaitingRef.current) return; // cashier cancelled meanwhile
+
+        if (out.status === 'APPROVED') {
+          // INVARIANT conservé : seuls les faits de capture committent la jambe.
+          // claimsCapture=false (mock/manual) → pendingCapture → payment_pending.
+          cardLegRef.current = engine.claimsCapture
+            ? {
+                stripePaymentIntentId: out.result?.providerRef,
+                stripeReaderId: (provider as StripeProvider).reader?.id,
+                pendingCapture: false,
+              }
+            : { pendingCapture: true };
+          handleTpeResponse('success');
+          return;
+        }
+        if (out.status === 'CANCELLED') return; // overlay déjà fermé par l'annulation
+        const message =
+          out.result?.errorMessage ||
+          (out.status === 'VERIFICATION_REQUIRED'
+            ? 'Vérification nécessaire — ne relancez pas ce paiement avant résolution.'
+            : out.message);
+        setTpeErrorMessage(message);
+        handleTpeResponse(out.result?.outcome === 'timeout' ? 'timeout' : 'refused');
+      } catch (err: any) {
+        // EngineBusyError / AttemptBlockedError / lecteur absent / init SDK.
+        if (!tpeWaitingRef.current) return;
+        setTpeErrorMessage(err?.message || 'Erreur terminal de paiement');
+        handleTpeResponse('refused');
       }
     })();
-  }, [clearTpeTimers, ensureReaderConnected, stripeTerminal, handleTpeResponse]);
+  }, [clearTpeTimers, getRealEngine, getDemoEngine, store, handleTpeResponse]);
 
   /**
    * DEV/DEMO ONLY — simulate a card acceptance. The committed leg is flagged
@@ -520,9 +555,10 @@ export function usePayment() {
    */
   const simulateDemoTpeSuccess = useCallback(() => {
     if (tpeWaitingRef.current?.mode !== 'demo') return;
-    cardLegRef.current = { pendingCapture: true };
-    handleTpeResponse('success');
-  }, [handleTpeResponse]);
+    // Résout la collecte mock : le moteur renvoie APPROVED (claimsCapture=false)
+    // et le flux nominal committe la jambe pendingCapture=true.
+    enginesRef.current.demo?.provider.resolveApproved();
+  }, []);
 
   const cancelTpeWaiting = useCallback(() => {
     clearTpeTimers();
@@ -531,9 +567,11 @@ export function usePayment() {
     setTpeErrorMessage(null);
     tpeWaitingRef.current = null;
     cardLegRef.current = null;
-    // Abort an in-progress reader collection so the WisePad screen resets.
-    if (stripeTerminal.isCollecting) void stripeTerminal.cancelCollect();
-  }, [clearTpeTimers, stripeTerminal]);
+    // Aborte la collecte en cours (lecteur réel ou mock) — l'attempt du moteur
+    // se résout en CANCELLED via le flux nominal, le WisePad se réinitialise.
+    void enginesRef.current.real?.engine.cancelActive();
+    void enginesRef.current.demo?.engine.cancelActive();
+  }, [clearTpeTimers]);
 
   const addPartialPayment = useCallback((method: PaymentMethod) => {
     const inputVal = splitAmountInput.trim().replace(',', '.');
@@ -588,7 +626,6 @@ export function usePayment() {
     handleTpeResponse,
     cancelTpeWaiting,
     simulateDemoTpeSuccess,
-    stripeTerminal,
 
     // Actions
     addPartialPayment,

@@ -49,27 +49,35 @@ describe('usePayment — real card flow wiring (source)', () => {
     expect(src).toMatch(/setTpeResult\('refused'\)/);
   });
 
-  it('real success carries the PaymentIntent id and is NOT pendingCapture', () => {
-    expect(src).toMatch(/stripePaymentIntentId: paymentIntentId,[\s\S]{0,120}pendingCapture: false/);
+  it('real success carries the PaymentIntent id (providerRef) and is NOT pendingCapture', () => {
+    // P1 Payment Engine : la jambe capturée porte la réf provider ; seul un
+    // provider claimsCapture (Stripe) peut produire pendingCapture: false.
+    expect(src).toMatch(/engine\.claimsCapture[\s\S]{0,200}stripePaymentIntentId: out\.result\?\.providerRef,[\s\S]{0,160}pendingCapture: false/);
   });
 
   it('demo success is flagged pendingCapture=true (sale lands payment_pending)', () => {
-    expect(src).toMatch(/simulateDemoTpeSuccess[\s\S]{0,300}mode !== 'demo'\) return;[\s\S]{0,120}pendingCapture: true/);
+    // Le mode démo passe par MockProvider (claimsCapture=false) → la branche
+    // engine renvoie TOUJOURS pendingCapture: true pour un provider non probant.
+    expect(src).toMatch(/: \{ pendingCapture: true \}/);
+    expect(src).toMatch(/simulateDemoTpeSuccess[\s\S]{0,300}mode !== 'demo'\) return;[\s\S]{0,200}resolveApproved\(\)/);
   });
 
-  it('the PaymentIntent is tied to the sale idempotency key (one checkout, one reference)', () => {
-    expect(src).toMatch(/collectPayment\(amountMinor, saleIdemKeyRef\.current\)/);
+  it('the payment attempt is tied to the sale idempotency key (one checkout, one reference)', () => {
+    expect(src).toMatch(/saleKey: saleIdemKeyRef\.current/);
   });
 
-  it('cancel aborts an in-progress reader collection', () => {
-    expect(src).toMatch(/isCollecting\) void stripeTerminal\.cancelCollect\(\)/);
+  it('cancel aborts an in-progress collection via the engine (reader resets)', () => {
+    expect(src).toMatch(/cancelTpeWaiting[\s\S]{0,600}engine\.cancelActive\(\)/);
   });
 });
 
-describe('useStripeTerminal — dev-only simulated readers (source)', () => {
-  const src = readFileSync(join(__dirname, '..', 'hooks', 'useStripeTerminal.ts'), 'utf8');
+describe('StripeProvider — dev-only simulated readers (source)', () => {
+  const src = readFileSync(
+    join(__dirname, '..', 'payment-engine', 'providers', 'stripeProvider.ts'),
+    'utf8',
+  );
   it('simulated discovery is gated on the Vite build flag, not process.env', () => {
-    expect(src).toMatch(/simulated: !import\.meta\.env\.PROD/);
+    expect(src).toMatch(/simulated: deps\?\.simulated \?\? !import\.meta\.env\.PROD/);
     expect(src).not.toMatch(/simulated: process\.env/);
   });
 });
