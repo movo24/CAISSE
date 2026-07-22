@@ -13,9 +13,12 @@ import { getBrandLogoDataUrl } from '../services/brandLogo';
 import { useOfflineStore } from '../stores/offlineStore';
 import { computePaymentState, PaymentMethod } from '../services/paymentMachine';
 import { getCardPaymentMode, CARD_DISABLED_MESSAGE, CardPaymentMode } from '../services/cardPaymentMode';
-import { PaymentEngine } from '../payment-engine/engine';
 import { StripeProvider } from '../payment-engine/providers/stripeProvider';
-import { MockProvider } from '../payment-engine/providers/mockProvider';
+import {
+  getRealPaymentEngine,
+  getDemoPaymentEngine,
+  cancelAnyActiveCollection,
+} from '../payment-engine/engineRegistry';
 
 /* ── Types ── */
 
@@ -103,29 +106,9 @@ export function usePayment() {
   // be committed when this is set — nothing can fabricate a captured card payment.
   const cardLegRef = useRef<CardLegFacts | null>(null);
 
-  // Payment Engine (P1) : un moteur par mode, persistant pour la session de
-  // caisse — il porte le verrou de ré-entrée, l'unicité de tentative par vente
-  // (anti-double-débit) et le journal des transitions.
-  const enginesRef = useRef<{
-    real?: { engine: PaymentEngine; provider: StripeProvider };
-    demo?: { engine: PaymentEngine; provider: MockProvider };
-  }>({});
-
-  const getRealEngine = useCallback(() => {
-    if (!enginesRef.current.real) {
-      const provider = new StripeProvider();
-      enginesRef.current.real = { engine: new PaymentEngine(provider), provider };
-    }
-    return enginesRef.current.real;
-  }, []);
-
-  const getDemoEngine = useCallback(() => {
-    if (!enginesRef.current.demo) {
-      const provider = new MockProvider();
-      enginesRef.current.demo = { engine: new PaymentEngine(provider), provider };
-    }
-    return enginesRef.current.demo;
-  }, []);
+  // Payment Engine (P1) : moteurs UNIQUES partagés par toute l'app (registre
+  // module) — verrou de ré-entrée, unicité de tentative par vente
+  // (anti-double-débit) et journal des transitions communs à tous les écrans.
 
   const totalPaid = partialPayments.reduce((s, p) => s + p.amountMinorUnits, 0);
   const remaining = store.paymentModalOpen ? store.total() - totalPaid : 0;
@@ -503,7 +486,7 @@ export function usePayment() {
 
       // Payment Engine (P1) : même moteur quel que soit le fournisseur — verrou
       // de ré-entrée, une tentative active par vente, incertain → vérification.
-      const { engine, provider } = mode === 'real' ? getRealEngine() : getDemoEngine();
+      const { engine, provider } = mode === 'real' ? getRealPaymentEngine() : getDemoPaymentEngine();
       try {
         if (mode === 'real') {
           const stripe = provider as StripeProvider;
@@ -546,7 +529,7 @@ export function usePayment() {
         handleTpeResponse('refused');
       }
     })();
-  }, [clearTpeTimers, getRealEngine, getDemoEngine, store, handleTpeResponse]);
+  }, [clearTpeTimers, store, handleTpeResponse]);
 
   /**
    * DEV/DEMO ONLY — simulate a card acceptance. The committed leg is flagged
@@ -557,7 +540,7 @@ export function usePayment() {
     if (tpeWaitingRef.current?.mode !== 'demo') return;
     // Résout la collecte mock : le moteur renvoie APPROVED (claimsCapture=false)
     // et le flux nominal committe la jambe pendingCapture=true.
-    enginesRef.current.demo?.provider.resolveApproved();
+    getDemoPaymentEngine().provider.resolveApproved();
   }, []);
 
   const cancelTpeWaiting = useCallback(() => {
@@ -569,8 +552,7 @@ export function usePayment() {
     cardLegRef.current = null;
     // Aborte la collecte en cours (lecteur réel ou mock) — l'attempt du moteur
     // se résout en CANCELLED via le flux nominal, le WisePad se réinitialise.
-    void enginesRef.current.real?.engine.cancelActive();
-    void enginesRef.current.demo?.engine.cancelActive();
+    void cancelAnyActiveCollection();
   }, [clearTpeTimers]);
 
   const addPartialPayment = useCallback((method: PaymentMethod) => {

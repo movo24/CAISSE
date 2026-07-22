@@ -46,16 +46,24 @@ describe('POSPage inline — carte gated, jamais fictive (P0 #1)', () => {
     expect(src).toMatch(/mode === 'disabled'[\s\S]{0,120}setError\(CARD_DISABLED_MESSAGE\);\s*\n\s*return;/);
   });
 
-  it('real mode → directed to the aligned iPad/WisePad 3 pipeline (no parallel reader flow)', () => {
-    expect(src).toMatch(/mode === 'real'[\s\S]{0,300}iPad[\s\S]{0,100}return;/);
+  it('real mode runs through the SAME Payment Engine as the iPad (no parallel reader flow)', () => {
+    // P1c : fin du renvoi vers l'iPad (R9) — le desktop pilote le moteur unique.
+    expect(src).not.toMatch(/utilisez la caisse iPad/);
+    expect(src).toMatch(/getRealPaymentEngine\(\)/);
+    expect(src).toMatch(/engine\.startPayment\(\{/);
   });
 
   it('a card leg only commits with capture facts — no facts → refused', () => {
     expect(src).toMatch(/const facts = cardLegFactsRef\.current;\s*\n\s*if \(!currentTpe \|\| !facts\)/);
   });
 
-  it('demo acceptance is explicit and flags pendingCapture=true (sale payment_pending)', () => {
-    expect(src).toMatch(/simulateDemoTpeSuccess[\s\S]{0,300}mode !== 'demo'\) return;[\s\S]{0,120}pendingCapture: true/);
+  it('only a claimsCapture provider can commit a non-pendingCapture card leg', () => {
+    expect(src).toMatch(/engine\.claimsCapture[\s\S]{0,200}stripePaymentIntentId: out\.result\?\.providerRef,[\s\S]{0,160}pendingCapture: false/);
+    expect(src).toMatch(/: \{ pendingCapture: true \}/);
+  });
+
+  it('demo acceptance is explicit and resolves the mock collect (leg stays pendingCapture)', () => {
+    expect(src).toMatch(/simulateDemoTpeSuccess[\s\S]{0,300}mode !== 'demo'\) return;[\s\S]{0,400}resolveApproved\(\)/);
   });
 
   it('the demo overlay is labelled and success never reads as a real payment', () => {

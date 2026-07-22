@@ -67,7 +67,7 @@ describe('usePayment — real card flow wiring (source)', () => {
   });
 
   it('cancel aborts an in-progress collection via the engine (reader resets)', () => {
-    expect(src).toMatch(/cancelTpeWaiting[\s\S]{0,600}engine\.cancelActive\(\)/);
+    expect(src).toMatch(/cancelTpeWaiting[\s\S]{0,600}cancelAnyActiveCollection\(\)/);
   });
 });
 

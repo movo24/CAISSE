@@ -23,7 +23,12 @@ import { getBrandLogoDataUrl } from '../services/brandLogo';
 import { toWirePayments, toSaleDiscountFields } from '../services/salePayload';
 import { validateManualDiscount } from '../services/discount-policy';
 import { useOfflineStore } from '../stores/offlineStore';
-import { getCardPaymentMode, CARD_DISABLED_MESSAGE } from '../services/cardPaymentMode';
+import { getCardPaymentMode, CARD_DISABLED_MESSAGE, type CardPaymentMode } from '../services/cardPaymentMode';
+import {
+  getRealPaymentEngine,
+  getDemoPaymentEngine,
+  cancelAnyActiveCollection,
+} from '../payment-engine/engineRegistry';
 import { loadSettings as loadCustomerDisplaySettings, terminalLabel } from '../services/customerDisplay/settings';
 import { computePaymentState, type PaymentMethod } from '../services/paymentMachine';
 import { PromoCodeControl } from '../components/PromoCodeControl';
@@ -116,7 +121,9 @@ interface PartialPayment {
   method: PaymentMethod;
   amountMinorUnits: number;
   creditNoteCode?: string;
-  /** Card leg NOT really captured (demo) → sale lands payment_pending. */
+  stripePaymentIntentId?: string;
+  stripeReaderId?: string;
+  /** Card leg NOT really captured (demo/degraded) → sale lands payment_pending. */
   pendingCapture?: boolean;
 }
 
@@ -218,24 +225,31 @@ export function POSPage() {
   const [splitAmountInput, setSplitAmountInput] = useState('');
   const splitInputRef = useRef<HTMLInputElement>(null);
 
-  // TPE waiting state — on this legacy desktop path only the labelled DEMO flow
-  // can open the overlay (real card = iPad/aligned pipeline; prod unconfigured = disabled).
+  // TPE waiting state — Payment Engine (P1) : ce poste desktop pilote le MÊME
+  // moteur que l'iPad (mode réel Stripe Terminal inclus — fin du verrou R9) ;
+  // prod non configurée = disabled (fail-closed), dev sans Stripe = DÉMO.
   const [tpeWaiting, setTpeWaiting] = useState<{
     amountMinorUnits: number;
     method: 'card';
     context: 'quick' | 'split';
     startedAt: number;
-    mode: 'demo';
+    mode: CardPaymentMode;
+    countdownTotal: number;
   } | null>(null);
   const tpeWaitingRef = useRef<typeof tpeWaiting>(null); // mirror to avoid stale closures
   const [tpeCountdown, setTpeCountdown] = useState(25);
   const [tpeResult, setTpeResult] = useState<'success' | 'refused' | 'timeout' | null>(null);
+  const [tpeErrorMessage, setTpeErrorMessage] = useState<string | null>(null);
   const tpeTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const tpeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Capture facts attached to a card leg before commit — a card leg can ONLY be
-  // committed when facts are set (demo → pendingCapture:true). Nothing can
-  // fabricate a captured card payment on this path.
-  const cardLegFactsRef = useRef<{ pendingCapture?: boolean } | null>(null);
+  // committed when facts are set (real → PI vérifiable ; demo → pendingCapture:
+  // true). Nothing can fabricate a captured card payment on this path.
+  const cardLegFactsRef = useRef<{
+    stripePaymentIntentId?: string;
+    stripeReaderId?: string;
+    pendingCapture?: boolean;
+  } | null>(null);
 
   // Ticket history (extracted hook)
   const ticketHistory = useTicketHistory();
@@ -682,37 +696,74 @@ export function POSPage() {
     // Clear any previous TPE session
     clearTpeTimers();
     setTpeResult(null);
+    setTpeErrorMessage(null);
     cardLegFactsRef.current = null;
 
     void (async () => {
-      // Card gate (decision produit ratifiée) : this legacy desktop path never runs
-      // a real reader flow — real card lives on the aligned iPad pipeline. Prod
-      // without Stripe = disabled. Dev without Stripe = labelled DEMO only.
+      // Payment Engine (P1) : ce poste pilote le MÊME moteur que l'iPad —
+      // le mode réel (lecteur Stripe Terminal) est désormais disponible ici.
+      // Prod sans config = disabled (fail-closed). Dev sans Stripe = DÉMO.
       const mode = await getCardPaymentMode();
       if (mode === 'disabled') {
         setError(CARD_DISABLED_MESSAGE);
         return;
       }
-      if (mode === 'real') {
-        setError('Paiement carte réel : utilisez la caisse iPad (lecteur WisePad 3). Ce poste desktop n\'est pas encore raccordé au lecteur.');
-        return;
-      }
 
-      const tpeState = { amountMinorUnits: amountMinor, method: 'card' as const, context, startedAt: Date.now(), mode };
-      setTpeCountdown(25);
+      const countdownTotal = mode === 'real' ? 120 : 25;
+      const tpeState = {
+        amountMinorUnits: amountMinor, method: 'card' as const, context,
+        startedAt: Date.now(), mode, countdownTotal,
+      };
+      setTpeCountdown(countdownTotal);
       setTpeWaiting(tpeState);
       tpeWaitingRef.current = tpeState; // keep ref in sync
 
-      // Countdown timer — demo auto-times out; acceptance is ONLY the explicit demo button
+      // Affichage seul — l'issue (timeout compris) vient toujours du moteur.
       tpeTimerRef.current = setInterval(() => {
-        setTpeCountdown((prev) => {
-          if (prev <= 1) {
-            handleTpeResponse('timeout');
-            return 0;
-          }
-          return prev - 1;
-        });
+        setTpeCountdown((prev) => (prev <= 1 ? 0 : prev - 1));
       }, 1000);
+
+      const { engine } = mode === 'real' ? getRealPaymentEngine() : getDemoPaymentEngine();
+      try {
+        if (mode === 'real') {
+          const stripe = getRealPaymentEngine().provider;
+          await stripe.init({ provider: 'stripe' });
+          await stripe.connect(); // « Aucun lecteur carte détecté… » si absent
+        }
+        if (!saleIdemKeyRef.current) saleIdemKeyRef.current = newIdempotencyKey();
+        const out = await engine.startPayment({
+          saleKey: saleIdemKeyRef.current,
+          amountMinorUnits: amountMinor,
+          storeId: store.employee?.storeId,
+        });
+        if (!tpeWaitingRef.current) return; // annulé entre-temps
+
+        if (out.status === 'APPROVED') {
+          // INVARIANT : seuls les faits de capture committent la jambe carte.
+          cardLegFactsRef.current = engine.claimsCapture
+            ? {
+                stripePaymentIntentId: out.result?.providerRef,
+                stripeReaderId: getRealPaymentEngine().provider.reader?.id,
+                pendingCapture: false,
+              }
+            : { pendingCapture: true };
+          handleTpeResponse('success');
+          return;
+        }
+        if (out.status === 'CANCELLED') return; // overlay déjà fermé
+        const message =
+          out.result?.errorMessage ||
+          (out.status === 'VERIFICATION_REQUIRED'
+            ? 'Vérification nécessaire — ne relancez pas ce paiement avant résolution.'
+            : out.message);
+        setTpeErrorMessage(message);
+        handleTpeResponse(out.result?.outcome === 'timeout' ? 'timeout' : 'refused');
+      } catch (err: unknown) {
+        // EngineBusyError / AttemptBlockedError / lecteur absent / init SDK.
+        if (!tpeWaitingRef.current) return;
+        setTpeErrorMessage((err as Error)?.message || 'Erreur terminal de paiement');
+        handleTpeResponse('refused');
+      }
     })();
   };
 
@@ -768,16 +819,21 @@ export function POSPage() {
    */
   const simulateDemoTpeSuccess = () => {
     if (tpeWaitingRef.current?.mode !== 'demo') return;
-    cardLegFactsRef.current = { pendingCapture: true };
-    handleTpeResponse('success');
+    // Résout la collecte mock : le moteur renvoie APPROVED (claimsCapture=false)
+    // et le flux nominal committe la jambe pendingCapture=true → payment_pending.
+    getDemoPaymentEngine().provider.resolveApproved();
   };
 
   const cancelTpeWaiting = () => {
     clearTpeTimers();
     setTpeWaiting(null);
     setTpeResult(null);
+    setTpeErrorMessage(null);
     tpeWaitingRef.current = null;
     cardLegFactsRef.current = null;
+    // Aborte la collecte en cours (lecteur réel ou mock) — l'attempt du moteur
+    // se résout en CANCELLED via le flux nominal, le lecteur se réinitialise.
+    void cancelAnyActiveCollection();
   };
 
   // Cleanup timers on unmount
@@ -1964,9 +2020,11 @@ export function POSPage() {
             {/* Waiting state */}
             {!tpeResult && (
               <>
-                <div className="mb-4 px-3 py-2 rounded-xl bg-amber-100 text-amber-800 text-xs font-black tracking-wide">
-                  MODE DÉMO — aucun paiement réel. La vente restera « à régulariser ».
-                </div>
+                {tpeWaiting.mode === 'demo' && (
+                  <div className="mb-4 px-3 py-2 rounded-xl bg-amber-100 text-amber-800 text-xs font-black tracking-wide">
+                    MODE DÉMO — aucun paiement réel. La vente restera « à régulariser ».
+                  </div>
+                )}
                 {/* Animated card icon */}
                 <div className="relative mx-auto w-24 h-24 mb-6">
                   <div className="absolute inset-0 rounded-full bg-pos-accent/10 animate-ping" />
@@ -1975,7 +2033,9 @@ export function POSPage() {
                   </div>
                 </div>
 
-                <h3 className="text-xl font-black text-pos-text mb-2">En attente du TPE (démo)...</h3>
+                <h3 className="text-xl font-black text-pos-text mb-2">
+                  {tpeWaiting.mode === 'real' ? 'Presentez la carte sur le lecteur...' : 'En attente du TPE (démo)...'}
+                </h3>
                 <p className="text-sm text-pos-muted mb-1">Presentez la carte sur le terminal</p>
                 <p className="text-2xl font-black text-pos-accent mb-4">
                   {(tpeWaiting.amountMinorUnits / 100).toFixed(2).replace('.', ',')} €
@@ -1986,7 +2046,7 @@ export function POSPage() {
                   <div className="w-32 h-2 bg-gray-100 rounded-full overflow-hidden">
                     <div
                       className="h-full bg-pos-accent rounded-full transition-all duration-1000"
-                      style={{ width: `${(tpeCountdown / 25) * 100}%` }}
+                      style={{ width: `${(tpeCountdown / tpeWaiting.countdownTotal) * 100}%` }}
                     />
                   </div>
                   <span className="text-sm font-mono text-pos-muted font-semibold">{tpeCountdown}s</span>
@@ -1999,12 +2059,14 @@ export function POSPage() {
                   <div className="w-2.5 h-2.5 rounded-full bg-pos-accent animate-bounce" style={{ animationDelay: '300ms' }} />
                 </div>
 
-                <button
-                  className="w-full py-3 mb-2 rounded-xl text-sm font-black bg-amber-500 text-white"
-                  onClick={simulateDemoTpeSuccess}
-                >
-                  Simuler l'acceptation (DÉMO)
-                </button>
+                {tpeWaiting.mode === 'demo' && (
+                  <button
+                    className="w-full py-3 mb-2 rounded-xl text-sm font-black bg-amber-500 text-white"
+                    onClick={simulateDemoTpeSuccess}
+                  >
+                    Simuler l'acceptation (DÉMO)
+                  </button>
+                )}
                 <button
                   className="btn-ghost w-full text-sm"
                   onClick={cancelTpeWaiting}
@@ -2020,8 +2082,12 @@ export function POSPage() {
                 <div className="mx-auto w-24 h-24 rounded-full bg-gradient-to-br from-emerald-400 to-green-500 flex items-center justify-center mb-6 animate-scale-in">
                   <CheckCircle2 size={48} className="text-white" />
                 </div>
-                <h3 className="text-xl font-black text-emerald-600 mb-2">Paiement simule (DÉMO) — a regulariser</h3>
-                <p className="text-sm text-pos-muted">Aucun paiement reel n'a ete capture</p>
+                <h3 className="text-xl font-black text-emerald-600 mb-2">
+                  {tpeWaiting.mode === 'demo' ? 'Paiement simule (DÉMO) — a regulariser' : 'Paiement accepte'}
+                </h3>
+                {tpeWaiting.mode === 'demo' && (
+                  <p className="text-sm text-pos-muted">Aucun paiement reel n'a ete capture</p>
+                )}
                 <p className="text-2xl font-black text-emerald-600 mt-3">
                   {(tpeWaiting.amountMinorUnits / 100).toFixed(2).replace('.', ',')} €
                 </p>
@@ -2035,7 +2101,9 @@ export function POSPage() {
                   <XCircle size={48} className="text-white" />
                 </div>
                 <h3 className="text-xl font-black text-red-600 mb-2">Paiement refuse</h3>
-                <p className="text-sm text-pos-muted mb-4">Le terminal a refuse la transaction</p>
+                <p className="text-sm text-pos-muted mb-4">
+                  {tpeErrorMessage || 'Le terminal a refuse la transaction'}
+                </p>
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-pos-accent/10 text-pos-accent font-semibold text-sm hover:bg-pos-accent/20 transition-all"
