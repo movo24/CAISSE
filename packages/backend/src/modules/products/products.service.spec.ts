@@ -15,6 +15,7 @@ import { ProductBarcodeEntity } from '../../database/entities/product-barcode.en
 import { ProductSupplierEntity } from '../../database/entities/product-supplier.entity';
 import { ProductChangeLogEntity } from '../../database/entities/product-change-log.entity';
 import { ProductLinkEntity } from '../../database/entities/product-link.entity';
+import { StoreEntity } from '../../database/entities/store.entity';
 import { AuditService } from '../audit/audit.service';
 
 /**
@@ -53,6 +54,7 @@ describe('ProductsService — getStockAlerts pagination', () => {
         { provide: getRepositoryToken(ProductSupplierEntity), useValue: {} },
         { provide: getRepositoryToken(ProductChangeLogEntity), useValue: {} },
         { provide: getRepositoryToken(ProductLinkEntity), useValue: {} },
+        { provide: getRepositoryToken(StoreEntity), useValue: { findOne: jest.fn() } },
       ],
     }).compile();
     service = module.get(ProductsService);

@@ -41,6 +41,16 @@ export class CreateProductDto {
   @MaxLength(200)
   name: string;
 
+  @ApiPropertyOptional({
+    description:
+      'Magasin cible (ADMIN uniquement — affectation explicite depuis la fiche). ' +
+      'Pour tout autre rôle, le serveur force le magasin du JWT (TenantInterceptor).',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  storeId?: string;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()

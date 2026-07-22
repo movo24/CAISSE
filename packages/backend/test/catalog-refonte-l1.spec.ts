@@ -58,6 +58,7 @@ describe('Catalogue refonte L1 — product enablement (no migration)', () => {
       ds.getRepository(ProductSupplierEntity),
       ds.getRepository(ProductChangeLogEntity),
       ds.getRepository(ProductLinkEntity),
+      ds.getRepository(StoreEntity),
     );
   });
   afterAll(async () => {
