@@ -1,6 +1,6 @@
 {
   "name": "@caisse/pos-desktop",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "private": true,
   "description": "POS Caisse — application de caisse desktop",
   "author": "AddX Intelligence",
