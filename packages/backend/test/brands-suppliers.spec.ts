@@ -50,6 +50,7 @@ describe('Decision 3 — brand / supplier catalogue', () => {
       ds.getRepository(ProductSupplierEntity),
       ds.getRepository(ProductChangeLogEntity),
       ds.getRepository(ProductLinkEntity),
+      ds.getRepository(StoreEntity),
     );
   });
   afterAll(async () => {

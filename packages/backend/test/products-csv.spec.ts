@@ -53,6 +53,7 @@ describe('Bloc 4i — product CSV import/export', () => {
       ds.getRepository(ProductSupplierEntity),
       ds.getRepository(ProductChangeLogEntity),
       ds.getRepository(ProductLinkEntity),
+      ds.getRepository(StoreEntity),
     );
   });
   afterAll(async () => {

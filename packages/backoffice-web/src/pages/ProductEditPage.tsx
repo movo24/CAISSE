@@ -4,8 +4,14 @@ import {
   ScanBarcode, Save, ArrowLeft, Loader2, Package, Euro, Boxes, Truck,
   Layers, GitBranch, Image as ImageIcon, Ruler, BadgePercent, BarChart3,
   History, Plus, Trash2, AlertCircle, CheckCircle2, Pencil, Link2,
+  Lock, ChevronLeft, ChevronRight, ClipboardCheck, Store as StoreIcon,
 } from 'lucide-react';
-import { productsApi } from '../services/api';
+import { productsApi, storesApi } from '../services/api';
+import { useAuthStore } from '../stores/authStore';
+import {
+  WIZARD_STEPS, WIZARD_STEP_LABEL, validateStep, validateAll, stepHasContent,
+  isNaAllowed, recapWarnings, type WizardStep, type WizardContext,
+} from '../utils/ficheWizard';
 import { ttcFromHt, eurosInputToMinor, minorToEurosInput, parseTaxRate } from './pricingMath';
 import { suggestShortName, shouldAutoFillShortName } from '../utils/shortName';
 import { prepareProductImage } from '../utils/imageFile';
@@ -36,7 +42,8 @@ import { gtinIssue, GTIN_ISSUE_MESSAGE } from '../utils/gtin';
 
 type Tab =
   | 'general' | 'tarification' | 'stock' | 'fournisseurs' | 'packs'
-  | 'variantes' | 'lies' | 'images' | 'logistique' | 'promotions' | 'stats' | 'historique';
+  | 'variantes' | 'lies' | 'images' | 'logistique' | 'promotions' | 'stats' | 'historique'
+  | 'recap';
 
 const TABS: { key: Tab; label: string; icon: React.ElementType }[] = [
   { key: 'general', label: 'Général', icon: Package },
@@ -121,10 +128,48 @@ export function ProductEditPage() {
 
   // ── Données ──
   const [loading, setLoading] = useState(isEdit);
-  const [tab, setTab] = useState<Tab>('general');
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  // ── Assistant séquentiel (owner P0 « fiche guidée ») ──
+  // Création : wizard TOUJOURS. Édition : wizard si ?wizard=1 (reprise après
+  // création du brouillon) ou fiche encore en brouillon ; sinon navigation
+  // libre (fiche déjà complète) avec le même stepper et ses coches.
+  const wizardParam = searchParams.get('wizard') === '1';
+  const initialStep = (() => {
+    const i = parseInt(searchParams.get('step') || '', 10);
+    return Number.isFinite(i) && i >= 0 && i < WIZARD_STEPS.length ? i : 0;
+  })();
+  const [wizardMode, setWizardMode] = useState(!isEdit || wizardParam);
+  const [stepIdx, setStepIdx] = useState(initialStep);
+  const [maxReachedIdx, setMaxReachedIdx] = useState(initialStep);
+  const [naAck, setNaAck] = useState<Partial<Record<WizardStep, boolean>>>({});
+  const [stepIssues, setStepIssues] = useState<string[]>([]);
+  const [publishing, setPublishing] = useState(false);
+  const [published, setPublished] = useState(false);
+  const [tab, setTab] = useState<Tab>(
+    (!isEdit || wizardParam) ? (WIZARD_STEPS[initialStep] as Tab) : 'general',
+  );
+
+  // Magasin de publication (cause racine du bug « invisible en caisse ») :
+  // l'admin choisit le magasin cible ; les autres rôles publient sur le leur.
+  const auth = useAuthStore();
+  const isAdmin = auth.employee?.role === 'admin';
+  const [storeId, setStoreId] = useState<string>(() =>
+    isAdmin ? (auth.currentStoreId || '') : (auth.employee?.storeId || ''),
+  );
+  // Liste des magasins pour le sélecteur : le store d'auth peut ne pas être
+  // encore chargé → la fiche charge la sienne (admin).
+  const [allStores, setAllStores] = useState<Array<{ id: string; name: string }>>([]);
+  useEffect(() => {
+    if (!isAdmin) return;
+    storesApi.list()
+      .then((r) => setAllStores((r.data || []).map((s: any) => ({ id: s.id, name: s.name }))))
+      .catch(() => setAllStores([]));
+  }, [isAdmin]);
+  const storeOptions = allStores.length > 0 ? allStores : (auth.stores as Array<{ id: string; name: string }>);
+  const storeNameOf = (sid: string) => storeOptions.find((s) => s.id === sid)?.name;
 
   const [form, setForm] = useState({
     ean: '', name: '', description: '', categoryId: '', unitType: 'unit',
@@ -155,7 +200,14 @@ export function ProductEditPage() {
 
   /** Ouvre l'onglet du champ fautif, le fait défiler à l'écran et lui donne le focus. */
   const goToField = (key: keyof FicheErrors) => {
-    setTab(tabOfField(key) as Tab);
+    const targetTab = tabOfField(key) as Tab;
+    // En mode assistant, l'onglet fautif est aussi une étape : on s'y place.
+    const wIdx = WIZARD_STEPS.indexOf(targetTab as WizardStep);
+    if (wIdx >= 0) {
+      setStepIdx(wIdx);
+      setMaxReachedIdx((m) => Math.max(m, wIdx));
+    }
+    setTab(targetTab);
     // L'onglet doit être rendu avant de pouvoir focus le champ.
     window.setTimeout(() => {
       const wrapper = document.getElementById(`fp-${key}`);
@@ -266,6 +318,9 @@ export function ProductEditPage() {
       }
       const p = (await productsApi.get(id)).data;
       setOriginal(p);
+      setStoreId(p.storeId || '');
+      // Un brouillon rouvre TOUJOURS l'assistant : la fiche n'est pas terminée.
+      if (p.status === 'draft') setWizardMode(true);
       setHtInput(null);
       setForm({
         ean: p.ean || '', name: p.name || '', description: p.description || '',
@@ -375,20 +430,10 @@ export function ProductEditPage() {
   }, [categories]);
 
   // ── Sauvegarde ──
-  const save = async () => {
-    setError(null); setSaved(false);
-    // Validation client complète : chaque problème est rattaché à SON champ,
-    // l'onglet fautif s'ouvre et le premier champ invalide prend le focus.
-    const clientErrors = validateFiche(form as FicheFormShape, isEdit);
-    if (Object.keys(clientErrors).length > 0) {
-      setFieldErrors(clientErrors);
-      setError(errorSummary(clientErrors));
-      goToField(firstErrorField(clientErrors)!);
-      return;
-    }
-    setFieldErrors({});
-    const ttc = toMinor(form.priceTtc)!; // garanti par validateFiche
-    const common = {
+  /** Payload commun création/modification — utilisé par save() ET l'assistant. */
+  const buildCommonPayload = () => {
+    const ttc = toMinor(form.priceTtc)!; // garanti par la validation en amont
+    return {
       name: form.name.trim(),
       description: form.description.trim() || undefined,
       categoryId: form.categoryId.trim() || undefined,
@@ -434,6 +479,22 @@ export function ProductEditPage() {
       useByDate: form.useByDate || undefined,
       lotNumber: form.lotNumber.trim() || undefined,
     };
+  };
+
+  const save = async () => {
+    setError(null); setSaved(false);
+    // Validation client complète : chaque problème est rattaché à SON champ,
+    // l'onglet fautif s'ouvre et le premier champ invalide prend le focus.
+    const clientErrors = validateFiche(form as FicheFormShape, isEdit);
+    if (Object.keys(clientErrors).length > 0) {
+      setFieldErrors(clientErrors);
+      setError(errorSummary(clientErrors));
+      goToField(firstErrorField(clientErrors)!);
+      return;
+    }
+    setFieldErrors({});
+    const common = buildCommonPayload();
+    const ttc = common.priceMinorUnits;
     setSaving(true);
     try {
       if (isEdit && id) {
@@ -444,7 +505,12 @@ export function ProductEditPage() {
         } as any);
         setSaved(true); load();
       } else {
-        const r = await productsApi.create({ ...common, ean: form.ean.trim() } as any);
+        const r = await productsApi.create({
+          ...common,
+          ean: form.ean.trim(),
+          // Affectation magasin explicite (admin) — cause racine du bug sync.
+          ...(isAdmin && storeId ? { storeId } : {}),
+        } as any);
         navigate(`/products/${r.data.id}/edit`, { replace: true });
       }
     } catch (e: any) {
@@ -460,6 +526,153 @@ export function ProductEditPage() {
       const first = firstErrorField(mapped.fieldErrors);
       if (first) goToField(first);
     } finally { setSaving(false); }
+  };
+
+  // ── Assistant séquentiel : contexte, navigation, brouillon, publication ──
+
+  const wizardCtx = (): WizardContext => ({
+    form: form as FicheFormShape,
+    isEdit,
+    storeIdSelected: Boolean(storeId),
+    componentsCount: components.length,
+    variantsCount: variants.length,
+    linksCount: links.length,
+    mediaCount: media.length,
+    prodSuppliersCount: prodSuppliers.length,
+    naAck,
+  });
+
+  const currentStep: WizardStep | null = wizardMode
+    ? (WIZARD_STEPS[stepIdx] ?? null)
+    : (WIZARD_STEPS.includes(tab as WizardStep) ? (tab as WizardStep) : null);
+
+  const goToStep = (i: number) => {
+    setStepIssues([]);
+    setStepIdx(i);
+    setMaxReachedIdx((m) => Math.max(m, i));
+    setTab(WIZARD_STEPS[i] as Tab);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const goPrev = () => {
+    if (stepIdx > 0) goToStep(stepIdx - 1);
+  };
+
+  /** Valide l'étape courante ; en échec → champs surlignés + messages, on RESTE. */
+  const validateCurrentStep = (): boolean => {
+    const step = WIZARD_STEPS[stepIdx];
+    const v = validateStep(step, wizardCtx());
+    if (!v.ok) {
+      setFieldErrors(v.fieldErrors);
+      setStepIssues(v.stepIssues);
+      setError(
+        Object.keys(v.fieldErrors).length > 0
+          ? errorSummary(v.fieldErrors)
+          : v.stepIssues[0] ?? 'Étape incomplète.',
+      );
+      const first = firstErrorField(v.fieldErrors);
+      if (first) goToField(first);
+      return false;
+    }
+    setFieldErrors({});
+    setStepIssues([]);
+    setError(null);
+    return true;
+  };
+
+  /**
+   * Création : dès que Général + Tarification sont validés, la fiche est créée
+   * en BROUILLON (status draft → invisible en caisse) pour ouvrir les étapes
+   * à sous-entités (packs, variantes, images…). L'assistant continue sur la
+   * route d'édition (?wizard=1) sans perdre la position.
+   */
+  const createDraftAndContinue = async () => {
+    setSaving(true);
+    try {
+      const r = await productsApi.create({
+        ...buildCommonPayload(),
+        ean: form.ean.trim(),
+        status: 'draft',
+        ...(isAdmin && storeId ? { storeId } : {}),
+      } as any);
+      navigate(`/products/${r.data.id}/edit?wizard=1&step=${stepIdx + 1}`, { replace: true });
+      // Le routeur peut réutiliser la même instance (pas de remontage) : on
+      // avance aussi explicitement — l'URL sert de reprise après refresh.
+      goToStep(stepIdx + 1);
+    } catch (e: any) {
+      const mapped = mapApiError(e?.response?.data);
+      setFieldErrors(mapped.fieldErrors);
+      const n = Object.keys(mapped.fieldErrors).length;
+      setError(
+        [n > 0 ? errorSummary(mapped.fieldErrors) : null, mapped.banner]
+          .filter(Boolean).join(' ') || 'Enregistrement impossible',
+      );
+      const first = firstErrorField(mapped.fieldErrors);
+      if (first) goToField(first);
+    } finally { setSaving(false); }
+  };
+
+  const goNext = async () => {
+    if (!validateCurrentStep()) return;
+    const step = WIZARD_STEPS[stepIdx];
+    if (!isEdit && step === 'tarification') {
+      // La suite exige un id produit → création du brouillon maintenant.
+      await createDraftAndContinue();
+      return;
+    }
+    if (isEdit && id) {
+      // Chaque « Suivant » PERSISTE l'étape (owner : contrôlées ET sauvegardées).
+      try {
+        await productsApi.update(id, buildCommonPayload() as any);
+      } catch (e: any) {
+        const mapped = mapApiError(e?.response?.data);
+        setFieldErrors(mapped.fieldErrors);
+        setError(mapped.banner || errorSummary(mapped.fieldErrors));
+        return;
+      }
+    }
+    goToStep(Math.min(stepIdx + 1, WIZARD_STEPS.length - 1));
+  };
+
+  /** Bouton final : « Valider et publier en caisse ». */
+  const publish = async () => {
+    const v = validateAll(wizardCtx());
+    if (!v.ok) {
+      setFieldErrors(v.fieldErrors);
+      setStepIssues(v.stepIssues);
+      setError('Impossible de publier : des étapes sont incomplètes.');
+      if (v.firstFailing) goToStep(WIZARD_STEPS.indexOf(v.firstFailing));
+      return;
+    }
+    if (!id) return; // le brouillon existe toujours à ce stade
+    setPublishing(true);
+    setError(null);
+    try {
+      await productsApi.update(id, { ...buildCommonPayload(), status: 'active' } as any);
+      setPublished(true);
+      setWizardMode(false);
+      await load();
+      setTab('general');
+    } catch (e: any) {
+      const mapped = mapApiError(e?.response?.data);
+      setFieldErrors(mapped.fieldErrors);
+      setError(mapped.banner || errorSummary(mapped.fieldErrors));
+      const first = firstErrorField(mapped.fieldErrors);
+      if (first) goToField(first);
+    } finally { setPublishing(false); }
+  };
+
+  /** Statut visuel d'une étape du stepper. */
+  const stepVisual = (i: number): 'done' | 'na' | 'current' | 'todo' | 'locked' => {
+    const step = WIZARD_STEPS[i];
+    if (i === stepIdx && wizardMode) return 'current';
+    if (!wizardMode || i <= maxReachedIdx) {
+      if (step === 'recap') return i === stepIdx ? 'current' : 'todo';
+      const v = validateStep(step, wizardCtx());
+      if (!v.ok) return 'todo';
+      return isNaAllowed(step, wizardCtx()) && !stepHasContent(step, wizardCtx()) ? 'na' : 'done';
+    }
+    return 'locked';
   };
 
   const createBrand = async () => {
@@ -777,9 +990,20 @@ export function ProductEditPage() {
         </div>
         <div className="flex items-center gap-2">
           {saved && <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600"><CheckCircle2 size={14} /> Enregistré</span>}
-          <button onClick={save} disabled={saving} className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-bo-accent text-white text-sm font-semibold disabled:opacity-40">
-            {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={15} />} Enregistrer
-          </button>
+          {published && (
+            <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600">
+              <CheckCircle2 size={14} /> Publié en caisse — synchronisation automatique (≤ 15 s) ou bouton « PRODUITS » sur la caisse
+            </span>
+          )}
+          {wizardMode ? (
+            <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-bo-accent bg-bo-accent/10 px-3 py-1.5 rounded-full">
+              <ClipboardCheck size={13} /> Assistant — étape {stepIdx + 1}/{WIZARD_STEPS.length} : {WIZARD_STEP_LABEL[WIZARD_STEPS[stepIdx]]}
+            </span>
+          ) : (
+            <button onClick={save} disabled={saving} className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-bo-accent text-white text-sm font-semibold disabled:opacity-40">
+              {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={15} />} Enregistrer
+            </button>
+          )}
         </div>
       </div>
 
@@ -801,15 +1025,62 @@ export function ProductEditPage() {
         </div>
       )}
 
-      {/* Onglets */}
-      <div className="flex gap-1 overflow-x-auto border-b border-gray-200 pb-px">
-        {TABS.map(({ key, label, icon: Icon }) => (
-          <button key={key} onClick={() => setTab(key)}
-            className={`flex items-center gap-1.5 px-3.5 py-2.5 text-xs font-semibold rounded-t-lg whitespace-nowrap transition-colors border-b-2 ${tab === key ? 'text-bo-accent border-bo-accent bg-bo-accent/[0.04]' : 'text-gray-400 border-transparent hover:text-gray-600'}`}>
-            <Icon size={14} /> {label}
-          </button>
-        ))}
-      </div>
+      {/* Messages d'étape sans champ dédié (magasin, composants de pack, N/A) */}
+      {stepIssues.length > 0 && (
+        <div className="rounded-xl bg-amber-50 border border-amber-200 px-4 py-2.5 text-sm text-amber-800">
+          {stepIssues.map((m, i) => (
+            <p key={i} className="font-medium flex items-center gap-1.5"><AlertCircle size={15} /> {m}</p>
+          ))}
+        </div>
+      )}
+
+      {/* Parcours guidé (stepper) ou onglets libres */}
+      {wizardMode ? (
+        <div className="flex gap-1 overflow-x-auto border-b border-gray-200 pb-px">
+          {WIZARD_STEPS.map((s, i) => {
+            const visual = stepVisual(i);
+            const clickable = i <= maxReachedIdx;
+            return (
+              <button
+                key={s}
+                onClick={() => clickable && goToStep(i)}
+                disabled={!clickable}
+                title={visual === 'locked' ? 'Validez les étapes précédentes avec « Suivant »' : undefined}
+                className={`flex items-center gap-1.5 px-3.5 py-2.5 text-xs font-semibold rounded-t-lg whitespace-nowrap transition-colors border-b-2 ${
+                  visual === 'current'
+                    ? 'text-bo-accent border-bo-accent bg-bo-accent/[0.04]'
+                    : visual === 'done' || visual === 'na'
+                    ? 'text-emerald-600 border-transparent hover:text-emerald-700'
+                    : visual === 'locked'
+                    ? 'text-gray-300 border-transparent cursor-not-allowed'
+                    : 'text-gray-400 border-transparent hover:text-gray-600'
+                }`}
+              >
+                {visual === 'done' ? (
+                  <CheckCircle2 size={14} />
+                ) : visual === 'na' ? (
+                  <CheckCircle2 size={14} className="opacity-60" />
+                ) : visual === 'locked' ? (
+                  <Lock size={12} />
+                ) : (
+                  <span className="w-4 h-4 rounded-full border border-current text-[9px] flex items-center justify-center">{i + 1}</span>
+                )}
+                {WIZARD_STEP_LABEL[s]}
+                {visual === 'na' && <span className="text-[9px] font-normal opacity-60">N/A</span>}
+              </button>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="flex gap-1 overflow-x-auto border-b border-gray-200 pb-px">
+          {TABS.map(({ key, label, icon: Icon }) => (
+            <button key={key} onClick={() => setTab(key)}
+              className={`flex items-center gap-1.5 px-3.5 py-2.5 text-xs font-semibold rounded-t-lg whitespace-nowrap transition-colors border-b-2 ${tab === key ? 'text-bo-accent border-bo-accent bg-bo-accent/[0.04]' : 'text-gray-400 border-transparent hover:text-gray-600'}`}>
+              <Icon size={14} /> {label}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="bg-white rounded-2xl border border-gray-100 shadow-soft p-6">
         {tab === 'general' && (
@@ -817,6 +1088,34 @@ export function ProductEditPage() {
             <Field label="Nom du produit *" {...fp('name')}><input className={inputCls} value={form.name} onChange={(e) => applyNameChange(e.target.value)} /></Field>
             <Field label={isEdit ? 'Code EAN' : 'Code EAN *'} {...fp('ean')} hint={isEdit ? 'Immuable après création (anti-doublon par magasin).' : 'EAN-8 ou EAN-13, chiffres uniquement (clé de contrôle vérifiée).'}>
               <input className={`${inputCls} font-mono`} value={form.ean} disabled={isEdit} onChange={(e) => set('ean', e.target.value)} />
+            </Field>
+            <Field
+              label="Magasin de publication *"
+              fieldId="fp-storeId"
+              hint="Le produit n'apparaît QUE sur les caisses de ce magasin — un produit sans magasin n'arrive jamais en caisse."
+            >
+              {isEdit ? (
+                <div className={`${inputCls} bg-gray-50 text-gray-600 flex items-center gap-2`}>
+                  <StoreIcon size={14} className="text-gray-400" />
+                  {storeNameOf(storeId) || storeId || '—'}
+                </div>
+              ) : isAdmin ? (
+                <select
+                  className={inputCls}
+                  value={storeId}
+                  onChange={(e) => { setStoreId(e.target.value); setStepIssues([]); }}
+                >
+                  <option value="">— Choisir le magasin —</option>
+                  {storeOptions.map((s) => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              ) : (
+                <div className={`${inputCls} bg-gray-50 text-gray-600 flex items-center gap-2`}>
+                  <StoreIcon size={14} className="text-gray-400" />
+                  {storeNameOf(storeId) || 'Votre magasin'}
+                </div>
+              )}
             </Field>
             <Field label="Désignation / description" {...fp('description')}><textarea rows={3} className={inputCls} value={form.description} onChange={(e) => set('description', e.target.value)} /></Field>
             <div className="space-y-5">
@@ -1462,6 +1761,113 @@ export function ProductEditPage() {
                 <p className="text-[11px] text-gray-400 mt-2">Journal réel (table product_change_log) : prix d'achat, TVA, fournisseur, catégorie, statut, dimensions…</p>
               </div>
             )}
+          </div>
+        )}
+
+        {/* ── Récapitulatif final (assistant) ── */}
+        {tab === 'recap' && (
+          <div className="space-y-5">
+            <h3 className="text-base font-bold text-bo-text flex items-center gap-2">
+              <ClipboardCheck size={18} className="text-bo-accent" /> Récapitulatif avant publication
+            </h3>
+            {recapWarnings(wizardCtx()).map((w, i) => (
+              <div key={i} className="rounded-xl bg-amber-50 border border-amber-200 px-4 py-2.5 text-sm text-amber-800 font-medium">
+                ⚠ {w}
+              </div>
+            ))}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+              <div className="rounded-xl border border-gray-100 p-4 space-y-1.5">
+                <p className="text-[11px] uppercase font-bold text-gray-400">Informations générales</p>
+                <p><span className="text-gray-400">Nom :</span> <span className="font-semibold">{form.name || '—'}</span></p>
+                <p><span className="text-gray-400">Nom court caisse :</span> {form.shortName || '—'}</p>
+                <p><span className="text-gray-400">EAN :</span> <span className="font-mono">{form.ean || '—'}</span></p>
+                <p><span className="text-gray-400">SKU / Réf :</span> {form.sku || form.internalRef || '—'}</p>
+                <p><span className="text-gray-400">Catégorie :</span> {categories.find((c) => c.id === form.categoryId)?.name || '—'}</p>
+                <p><span className="text-gray-400">Marque :</span> {brands.find((b) => b.id === form.brandId)?.name || 'Aucune'}</p>
+                <p><span className="text-gray-400">Type / unité :</span> {form.productType} · {form.unitType}</p>
+              </div>
+              <div className="rounded-xl border border-gray-100 p-4 space-y-1.5">
+                <p className="text-[11px] uppercase font-bold text-gray-400">Prix, TVA & stock</p>
+                <p><span className="text-gray-400">Prix de vente TTC :</span> <span className="font-semibold">{form.priceTtc || '—'} €</span></p>
+                <p><span className="text-gray-400">TVA :</span> {form.taxRate || '—'} %</p>
+                <p><span className="text-gray-400">Prix d'achat HT :</span> {form.cost || '—'}{form.cost ? ' €' : ''}</p>
+                <p><span className="text-gray-400">Stock initial :</span> <span className="font-semibold">{form.stock || '—'}</span></p>
+                <p><span className="text-gray-400">Seuils alerte / critique :</span> {form.alertThreshold || '—'} / {form.criticalThreshold || '—'}</p>
+              </div>
+              <div className="rounded-xl border border-gray-100 p-4 space-y-1.5">
+                <p className="text-[11px] uppercase font-bold text-gray-400">Magasin & fournisseur</p>
+                <p className="flex items-center gap-1.5">
+                  <StoreIcon size={13} className="text-gray-400" />
+                  <span className="text-gray-400">Magasin de publication :</span>{' '}
+                  <span className="font-semibold">{storeNameOf(storeId) || storeId || '—'}</span>
+                </p>
+                <p><span className="text-gray-400">Prix applicable dans ce magasin :</span> {storePrice?.priceMinorUnits != null ? eur(storePrice.priceMinorUnits) + ' (prix magasin)' : `${form.priceTtc || '—'} € (prix de base)`}</p>
+                <p><span className="text-gray-400">Fournisseur :</span> {suppliers.find((s) => s.id === form.supplierId)?.name || (prodSuppliers.length > 0 ? `${prodSuppliers.length} fournisseur(s)` : 'Aucun')}</p>
+              </div>
+              <div className="rounded-xl border border-gray-100 p-4 space-y-1.5">
+                <p className="text-[11px] uppercase font-bold text-gray-400">Composition & médias</p>
+                <p><span className="text-gray-400">Pack :</span> {components.length > 0 ? `${components.length} composant(s)` : 'Non applicable'}</p>
+                <p><span className="text-gray-400">Variantes :</span> {variants.length > 0 ? `${variants.length} variante(s)` : 'Aucune'}</p>
+                <p><span className="text-gray-400">Produits liés :</span> {links.length > 0 ? `${links.length} lien(s)` : 'Aucun'}</p>
+                <p><span className="text-gray-400">Images :</span> {(form.imageUrl ? 1 : 0) + media.length > 0 ? `${(form.imageUrl ? 1 : 0) + media.length} image(s)` : 'Aucune'}</p>
+                <p>
+                  <span className="text-gray-400">Publication en caisse :</span>{' '}
+                  <span className="font-semibold text-emerald-600">Actif — visible et vendable après publication</span>
+                </p>
+              </div>
+            </div>
+            <p className="text-xs text-gray-400">
+              Après publication, la caisse récupère le produit automatiquement (rafraîchissement ≤ 15 s)
+              ou immédiatement via le bouton « PRODUITS » (Synchroniser les produits).
+            </p>
+          </div>
+        )}
+
+        {/* ── Navigation de l'assistant : Précédent / N-A / Suivant / Publier ── */}
+        {wizardMode && (
+          <div className="flex items-center justify-between gap-3 mt-6 pt-4 border-t border-gray-100">
+            <button
+              onClick={goPrev}
+              disabled={stepIdx === 0 || saving || publishing}
+              className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 disabled:opacity-40 hover:bg-gray-50"
+            >
+              <ChevronLeft size={15} /> Précédent
+            </button>
+            <div className="flex items-center gap-3">
+              {currentStep && isNaAllowed(currentStep, wizardCtx()) && !stepHasContent(currentStep, wizardCtx()) && (
+                <label className="flex items-center gap-2 text-sm text-gray-600 font-medium cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={!!naAck[currentStep]}
+                    onChange={(e) => {
+                      setNaAck((a) => ({ ...a, [currentStep]: e.target.checked }));
+                      setStepIssues([]);
+                    }}
+                    className="w-4 h-4 accent-bo-accent"
+                  />
+                  Non applicable / Aucun
+                </label>
+              )}
+              {WIZARD_STEPS[stepIdx] === 'recap' ? (
+                <button
+                  onClick={publish}
+                  disabled={publishing}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-bold disabled:opacity-40 hover:bg-emerald-700"
+                >
+                  {publishing ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />}
+                  Valider et publier en caisse
+                </button>
+              ) : (
+                <button
+                  onClick={goNext}
+                  disabled={saving}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-bo-accent text-white text-sm font-semibold disabled:opacity-40"
+                >
+                  {saving ? <Loader2 size={15} className="animate-spin" /> : null}
+                  Suivant <ChevronRight size={15} />
+                </button>
+              )}
+            </div>
           </div>
         )}
       </div>

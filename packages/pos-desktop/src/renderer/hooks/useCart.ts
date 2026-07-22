@@ -3,6 +3,11 @@ import { usePOSStore } from '../stores/posStore';
 import { productsApi, productIntegrationApi, customersApi } from '../services/api';
 import { posEventBus } from '../services/posEventBus';
 import { productDisplayName, productMatchesQuery } from '../utils/productDisplay';
+import {
+  fetchFullCatalogue,
+  loadCatalogueCache,
+  saveCatalogueCache,
+} from '../services/catalogSync';
 
 /* ── Product type (mirrors backend API) ── */
 
@@ -30,7 +35,15 @@ export function useCart() {
   const store = usePOSStore();
   const scanRef = useRef<HTMLInputElement>(null);
 
-  const [catalogue, setCatalogue] = useState<CatalogueProduct[]>([]);
+  // Démarrage sur le dernier catalogue connu (cache persistant) : une caisse
+  // hors ligne au boot garde recherche + scan opérationnels.
+  const [catalogue, setCatalogue] = useState<CatalogueProduct[]>(
+    () => loadCatalogueCache().products,
+  );
+  const [catalogueSyncedAt, setCatalogueSyncedAt] = useState<string | null>(
+    () => loadCatalogueCache().at,
+  );
+  const [catalogueSyncing, setCatalogueSyncing] = useState(false);
   const [categories, setCategories] = useState<string[]>([]);
   const [scanValue, setScanValue] = useState('');
   const [error, setError] = useState('');
@@ -41,19 +54,24 @@ export function useCart() {
   const [weightModal, setWeightModal] = useState<CatalogueProduct | null>(null);
   const [weightValue, setWeightValue] = useState('');
 
-  // Load catalogue on mount + refresh for near real-time stock
-  const refreshCatalogue = useCallback(() => {
-    // Safari aggressively caches GET responses (ETag).
-    // productsApi.list() returns stale data → use cache-busting headers
-    productsApi.list()
-      .then((res: any) => {
-        const raw = res.data;
-        if (Array.isArray(raw)) setCatalogue(raw);
-        else if (raw?.data && Array.isArray(raw.data)) setCatalogue(raw.data);
-      })
-      .catch(() => {
-        console.warn('[CATALOGUE] Backend unavailable — keeping cached catalogue');
-      });
+  // Load catalogue on mount + refresh for near real-time stock.
+  // Charge TOUTES les pages (fetchFullCatalogue) et persiste le résultat —
+  // un nouveau produit publié au back-office arrive SANS réinstallation.
+  const refreshCatalogue = useCallback(async (): Promise<number | null> => {
+    setCatalogueSyncing(true);
+    let count: number | null = null;
+    try {
+      const out = await fetchFullCatalogue((params) => productsApi.list(params));
+      setCatalogue(out.products);
+      saveCatalogueCache(out.products);
+      const at = new Date().toISOString();
+      setCatalogueSyncedAt(at);
+      count = out.products.length;
+    } catch {
+      console.warn('[CATALOGUE] Backend unavailable — keeping cached catalogue');
+    } finally {
+      setCatalogueSyncing(false);
+    }
 
     productsApi.categories()
       .then((res: any) => {
@@ -63,6 +81,7 @@ export function useCart() {
         }
       })
       .catch((err) => console.warn('[CATALOGUE] Failed to load categories:', err?.message || err));
+    return count;
   }, []);
 
   // Refresh immediately after a sale completes (stock changed on backend)
@@ -195,6 +214,8 @@ export function useCart() {
   return {
     // State
     catalogue,
+    catalogueSyncedAt,
+    catalogueSyncing,
     categories,
     scanValue,
     setScanValue,

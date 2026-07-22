@@ -20,6 +20,7 @@ import { ProductBarcodeEntity } from '../../database/entities/product-barcode.en
 import { ProductSupplierEntity } from '../../database/entities/product-supplier.entity';
 import { ProductChangeLogEntity } from '../../database/entities/product-change-log.entity';
 import { ProductLinkEntity } from '../../database/entities/product-link.entity';
+import { StoreEntity } from '../../database/entities/store.entity';
 import { AuditService } from '../audit/audit.service';
 import { PaginatedResult } from '../../common/dto/pagination.dto';
 import { computePriceVerdict, PriceVerdict } from './price-verdict';
@@ -69,6 +70,8 @@ export class ProductsService {
     private changeLogRepo: Repository<ProductChangeLogEntity>,
     @InjectRepository(ProductLinkEntity)
     private linkRepo: Repository<ProductLinkEntity>,
+    @InjectRepository(StoreEntity)
+    private storeRepo: Repository<StoreEntity>,
   ) {}
 
   // ── Produits liés : complémentaires / ventes croisées / substitution (Lot E) ──
@@ -586,10 +589,40 @@ export class ProductsService {
     }
   }
 
+  /**
+   * Un produit doit être rattaché à un magasin RÉEL pour être publiable en
+   * caisse : le catalogue POS et le scan filtrent sur products.store_id.
+   * Un storeId inexistant (ex. fallback '_admin' d'un JWT admin sans magasin)
+   * créait une fiche invisible et invendable — refus explicite désormais.
+   */
+  private async assertStoreAssignable(storeId?: string): Promise<void> {
+    if (!storeId) {
+      throw new BusinessError(
+        'PRODUCT_STORE_REQUIRED',
+        'Affectation magasin obligatoire : sélectionnez le magasin cible avant de publier le produit.',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    let store: StoreEntity | null = null;
+    try {
+      store = await this.storeRepo.findOne({ where: { id: storeId } });
+    } catch {
+      store = null; // id non-uuid (ex. '_admin') → cast PG en échec → introuvable
+    }
+    if (!store) {
+      throw new BusinessError(
+        'PRODUCT_STORE_REQUIRED',
+        `Magasin cible introuvable (${storeId}) : sélectionnez un magasin réel — un produit sans magasin n'apparaîtra jamais en caisse.`,
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
   async create(
     data: Partial<ProductEntity>,
     employeeId: string,
   ): Promise<ProductEntity> {
+    await this.assertStoreAssignable(data.storeId);
     // Anti-doublon strict : un code-barres = une seule fiche par magasin,
     // quel que soit son statut (active, en attente, archivée…).
     if (data.ean && data.storeId) {

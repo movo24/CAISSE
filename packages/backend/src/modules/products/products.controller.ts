@@ -34,10 +34,17 @@ export class ProductsController {
 
   @Post()
   @Roles('admin', 'manager')
-  @ApiOperation({ summary: 'Create a product' })
+  @ApiOperation({ summary: 'Create a product (admin may target a specific store)' })
   create(@Body() dto: CreateProductDto, @Request() req: any) {
+    // Affectation magasin : un ADMIN peut cibler explicitement un magasin
+    // (étape « Magasin & publication » de la fiche). Sans cible explicite —
+    // et pour tout autre rôle (TenantInterceptor bloque en amont un
+    // body.storeId étranger) — le magasin du JWT reste forcé : un produit
+    // n'est JAMAIS créé sans rattachement contrôlé.
+    const targetStoreId =
+      req.user.role === 'admin' && dto.storeId ? dto.storeId : req.user.storeId;
     return this.productsService.create(
-      { ...dto, storeId: req.user.storeId },
+      { ...dto, storeId: targetStoreId },
       req.user.employeeId,
     );
   }

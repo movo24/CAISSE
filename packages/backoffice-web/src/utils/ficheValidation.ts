@@ -85,6 +85,11 @@ const FIELD_LABEL = Object.fromEntries(FIELD_META.map(([k, , l]) => [k, l])) as 
 export const tabOfField = (f: keyof FicheFormShape): FicheTab => FIELD_TAB[f] ?? 'general';
 export const labelOfField = (f: keyof FicheFormShape): string => FIELD_LABEL[f] ?? f;
 
+/** Champs d'un onglet, dans l'ordre visuel (assistant séquentiel). */
+export function fieldsOfTab(tab: FicheTab): Array<keyof FicheFormShape> {
+  return FIELD_META.filter(([, t]) => t === tab).map(([k]) => k);
+}
+
 /** Premier champ en erreur, dans l'ordre visuel onglet par onglet. */
 export function firstErrorField(errors: FicheErrors): keyof FicheFormShape | null {
   for (const key of FIELD_ORDER) if (errors[key]) return key;

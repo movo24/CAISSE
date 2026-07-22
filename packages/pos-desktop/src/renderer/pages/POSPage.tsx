@@ -24,6 +24,7 @@ import { toWirePayments, toSaleDiscountFields } from '../services/salePayload';
 import { validateManualDiscount } from '../services/discount-policy';
 import { useOfflineStore } from '../stores/offlineStore';
 import { getCardPaymentMode, CARD_DISABLED_MESSAGE } from '../services/cardPaymentMode';
+import { fetchFullCatalogue, loadCatalogueCache, saveCatalogueCache } from '../services/catalogSync';
 import { loadSettings as loadCustomerDisplaySettings, terminalLabel } from '../services/customerDisplay/settings';
 import { computePaymentState, type PaymentMethod } from '../services/paymentMachine';
 import { PromoCodeControl } from '../components/PromoCodeControl';
@@ -317,22 +318,35 @@ export function POSPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Fetch product catalogue from backend
-  const [catalogue, setCatalogue] = useState<CatalogueProduct[]>([]);
-  useEffect(() => {
-    productsApi.list()
-      .then((res) => {
-        // Le backend catalogue renvoie une page { data, meta } ; l'ancien
-        // backend renvoyait un tableau nu. Sans ce fallback, le catalogue
-        // restait silencieusement VIDE (recherche caisse morte).
-        const raw: any = res.data;
-        if (Array.isArray(raw)) setCatalogue(raw);
-        else if (raw?.data && Array.isArray(raw.data)) setCatalogue(raw.data);
-      })
-      .catch(() => {
-        console.warn('[CATALOGUE] Backend non disponible — catalogue vide');
-      });
+  // Catalogue produits : TOUTES les pages (fetchFullCatalogue), cache
+  // persistant (boot hors ligne opérationnel), rafraîchi toutes les 15 s et
+  // synchronisable À LA DEMANDE (« Synchroniser les produits ») — un produit
+  // publié au back-office arrive sans réinstallation ni nouvelle version.
+  const [catalogue, setCatalogue] = useState<CatalogueProduct[]>(
+    () => loadCatalogueCache().products,
+  );
+  const [catalogueSyncing, setCatalogueSyncing] = useState(false);
+  const [catalogueSyncInfo, setCatalogueSyncInfo] = useState<string | null>(null);
+  const refreshCatalogue = useCallback(async (manual = false): Promise<void> => {
+    setCatalogueSyncing(true);
+    try {
+      const out = await fetchFullCatalogue((params) => productsApi.list(params));
+      setCatalogue(out.products);
+      saveCatalogueCache(out.products);
+      if (manual) setCatalogueSyncInfo(`${out.products.length} produits synchronisés`);
+    } catch {
+      console.warn('[CATALOGUE] Backend non disponible — cache conservé');
+      if (manual) setCatalogueSyncInfo('Serveur injoignable — catalogue local conservé');
+    } finally {
+      setCatalogueSyncing(false);
+      if (manual) setTimeout(() => setCatalogueSyncInfo(null), 4000);
+    }
   }, []);
+  useEffect(() => {
+    void refreshCatalogue();
+    const interval = setInterval(() => void refreshCatalogue(), 15_000);
+    return () => clearInterval(interval);
+  }, [refreshCatalogue]);
 
   // filteredHistory, handleReprint — provided by useTicketHistory hook
 
@@ -1315,6 +1329,23 @@ export function POSPage() {
         >
           {offlineMode.isOffline ? <WifiOff size={10} /> : offlineMode.isSyncing ? <SyncIcon size={10} className="animate-spin" /> : <Wifi size={10} />}
           {offlineMode.isOffline ? 'OFFLINE' : offlineMode.isSyncing ? `SYNC ${offlineMode.syncProgress}%` : offlineMode.pendingCount > 0 ? `${offlineMode.pendingCount} en attente` : 'ONLINE'}
+        </button>
+
+        {/* Synchronisation manuelle du CATALOGUE produits (indépendante de la
+            file offline) : récupère immédiatement un produit publié au
+            back-office, sans attendre le rafraîchissement automatique. */}
+        <button
+          onClick={() => void refreshCatalogue(true)}
+          disabled={catalogueSyncing}
+          className={`flex-none flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1 rounded-full transition-all ${
+            catalogueSyncing
+              ? 'bg-blue-50 text-blue-600 ring-1 ring-blue-200'
+              : 'bg-pos-subtle text-pos-muted ring-1 ring-pos-border hover:bg-pos-border/40 cursor-pointer'
+          }`}
+          title="Synchroniser les produits (recharge le catalogue depuis le serveur)"
+        >
+          <SyncIcon size={10} className={catalogueSyncing ? 'animate-spin' : ''} />
+          {catalogueSyncInfo ?? (catalogueSyncing ? 'PRODUITS…' : 'PRODUITS')}
         </button>
 
         <div className="relative flex-none">
