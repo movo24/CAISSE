@@ -6,7 +6,7 @@ import {
   History, Plus, Trash2, AlertCircle, CheckCircle2, Pencil, Link2,
   Lock, ChevronLeft, ChevronRight, ClipboardCheck, Store as StoreIcon,
 } from 'lucide-react';
-import { productsApi } from '../services/api';
+import { productsApi, storesApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
 import {
   WIZARD_STEPS, WIZARD_STEP_LABEL, validateStep, validateAll, stepHasContent,
@@ -159,6 +159,17 @@ export function ProductEditPage() {
   const [storeId, setStoreId] = useState<string>(() =>
     isAdmin ? (auth.currentStoreId || '') : (auth.employee?.storeId || ''),
   );
+  // Liste des magasins pour le sélecteur : le store d'auth peut ne pas être
+  // encore chargé → la fiche charge la sienne (admin).
+  const [allStores, setAllStores] = useState<Array<{ id: string; name: string }>>([]);
+  useEffect(() => {
+    if (!isAdmin) return;
+    storesApi.list()
+      .then((r) => setAllStores((r.data || []).map((s: any) => ({ id: s.id, name: s.name }))))
+      .catch(() => setAllStores([]));
+  }, [isAdmin]);
+  const storeOptions = allStores.length > 0 ? allStores : (auth.stores as Array<{ id: string; name: string }>);
+  const storeNameOf = (sid: string) => storeOptions.find((s) => s.id === sid)?.name;
 
   const [form, setForm] = useState({
     ean: '', name: '', description: '', categoryId: '', unitType: 'unit',
@@ -585,6 +596,9 @@ export function ProductEditPage() {
         ...(isAdmin && storeId ? { storeId } : {}),
       } as any);
       navigate(`/products/${r.data.id}/edit?wizard=1&step=${stepIdx + 1}`, { replace: true });
+      // Le routeur peut réutiliser la même instance (pas de remontage) : on
+      // avance aussi explicitement — l'URL sert de reprise après refresh.
+      goToStep(stepIdx + 1);
     } catch (e: any) {
       const mapped = mapApiError(e?.response?.data);
       setFieldErrors(mapped.fieldErrors);
@@ -1083,7 +1097,7 @@ export function ProductEditPage() {
               {isEdit ? (
                 <div className={`${inputCls} bg-gray-50 text-gray-600 flex items-center gap-2`}>
                   <StoreIcon size={14} className="text-gray-400" />
-                  {auth.stores.find((s: any) => s.id === storeId)?.name || storeId || '—'}
+                  {storeNameOf(storeId) || storeId || '—'}
                 </div>
               ) : isAdmin ? (
                 <select
@@ -1092,14 +1106,14 @@ export function ProductEditPage() {
                   onChange={(e) => { setStoreId(e.target.value); setStepIssues([]); }}
                 >
                   <option value="">— Choisir le magasin —</option>
-                  {auth.stores.map((s: any) => (
+                  {storeOptions.map((s) => (
                     <option key={s.id} value={s.id}>{s.name}</option>
                   ))}
                 </select>
               ) : (
                 <div className={`${inputCls} bg-gray-50 text-gray-600 flex items-center gap-2`}>
                   <StoreIcon size={14} className="text-gray-400" />
-                  {auth.stores.find((s: any) => s.id === storeId)?.name || 'Votre magasin'}
+                  {storeNameOf(storeId) || 'Votre magasin'}
                 </div>
               )}
             </Field>
@@ -1785,7 +1799,7 @@ export function ProductEditPage() {
                 <p className="flex items-center gap-1.5">
                   <StoreIcon size={13} className="text-gray-400" />
                   <span className="text-gray-400">Magasin de publication :</span>{' '}
-                  <span className="font-semibold">{auth.stores.find((s: any) => s.id === storeId)?.name || storeId || '—'}</span>
+                  <span className="font-semibold">{storeNameOf(storeId) || storeId || '—'}</span>
                 </p>
                 <p><span className="text-gray-400">Prix applicable dans ce magasin :</span> {storePrice?.priceMinorUnits != null ? eur(storePrice.priceMinorUnits) + ' (prix magasin)' : `${form.priceTtc || '—'} € (prix de base)`}</p>
                 <p><span className="text-gray-400">Fournisseur :</span> {suppliers.find((s) => s.id === form.supplierId)?.name || (prodSuppliers.length > 0 ? `${prodSuppliers.length} fournisseur(s)` : 'Aucun')}</p>
