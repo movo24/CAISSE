@@ -49,6 +49,36 @@ describe('POS session lifecycle — une caisse appartient à un caissier', () =>
     expect(s?.openedAt).toBe('2026-07-07T09:04:00Z');
   });
 
+  it('échec TOTAL (open + active) → posSessionOpenFailed=true, jamais silencieux', async () => {
+    open.mockRejectedValue(new Error('network down'));
+    active.mockRejectedValue(new Error('network down'));
+    usePOSStore.getState().setEmployee(emp as any, 'jwt');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(usePOSStore.getState().posSession).toBeNull();
+    expect(usePOSStore.getState().posSessionOpenFailed).toBe(true);
+  });
+
+  it('le flag échec retombe à false dès qu\'une ouverture réussit ensuite', async () => {
+    open.mockRejectedValueOnce(new Error('down'));
+    active.mockRejectedValueOnce(new Error('down'));
+    usePOSStore.getState().setEmployee(emp as any, 'jwt');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(usePOSStore.getState().posSessionOpenFailed).toBe(true);
+
+    open.mockResolvedValue({ data: { id: 'sess-2', openedAt: '2026-07-18T09:00:00Z', terminalId: 'TERMINAL 02' } });
+    await usePOSStore.getState().openPosSession();
+    expect(usePOSStore.getState().posSession?.id).toBe('sess-2');
+    expect(usePOSStore.getState().posSessionOpenFailed).toBe(false);
+  });
+
+  it('réponse open sans id → état échec visible (pas de session fantôme)', async () => {
+    open.mockResolvedValue({ data: {} });
+    usePOSStore.getState().setEmployee(emp as any, 'jwt');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(usePOSStore.getState().posSession).toBeNull();
+    expect(usePOSStore.getState().posSessionOpenFailed).toBe(true);
+  });
+
   it('recovers the active session when open returns 409 (terminal already bound)', async () => {
     open.mockRejectedValue({ response: { status: 409 } });
     active.mockResolvedValue({ data: { id: 'sess-existing', openedAt: '2026-07-07T08:00:00Z', terminalId: 'TERMINAL 02' } });

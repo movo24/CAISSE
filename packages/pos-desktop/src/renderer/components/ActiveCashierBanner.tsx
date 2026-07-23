@@ -52,6 +52,7 @@ export function ActiveCashierBanner({
 }) {
   const employee = usePOSStore((s) => s.employee);
   const posSession = usePOSStore((s) => s.posSession);
+  const sessionOpenFailed = usePOSStore((s) => s.posSessionOpenFailed);
   const storeInfo = usePOSStore((s) => s.storeInfo);
   const [score, setScore] = useState<ScoreSummary | null>(null);
 
@@ -100,6 +101,14 @@ export function ActiveCashierBanner({
           {storeName && <> · {storeName}</>}
           {sessionNo && <> · Session {sessionNo}</>}
           {posSession?.openedAt && <> · depuis {hhmm(posSession.openedAt)}</>}
+          {!posSession && sessionOpenFailed && (
+            <span
+              className="ml-1 inline-flex items-center rounded px-1.5 py-0.5 bg-red-100 text-red-700 font-bold uppercase tracking-wide"
+              title="La session de caisse n'a pas pu être ouverte sur le serveur : les ventes passent mais ne seront rattachées à aucun comptage de caisse. Reconnectez-vous quand le serveur répond."
+            >
+              Session non ouverte
+            </span>
+          )}
         </p>
       </div>
       {/* Score jour — pastille sobre */}
