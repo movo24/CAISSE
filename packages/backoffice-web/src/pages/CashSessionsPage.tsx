@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { posSessionsApi, employeeScoreApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
-import { buildSessionListParams } from './cashSessionsFilters';
+import { buildSessionListParams, buildOffSessionParams } from './cashSessionsFilters';
 
 interface Session {
   id: string;
@@ -26,6 +26,13 @@ interface Session {
   cashCountSkippedReason: string | null;
   cashCountSkippedAt: string | null;
   openingCashCorrectedAt: string | null;
+}
+
+interface OffSessionDay {
+  date: string;
+  salesCount: number;
+  cashMinorUnits: number;
+  ticketNumbers: string[];
 }
 
 interface ScoreAlert {
@@ -72,6 +79,7 @@ const SEVERITY_STYLE: Record<string, string> = {
 export function CashSessionsPage() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [alerts, setAlerts] = useState<ScoreAlert[]>([]);
+  const [offSession, setOffSession] = useState<OffSessionDay[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [withCashOnly, setWithCashOnly] = useState(false);
@@ -84,12 +92,14 @@ export function CashSessionsPage() {
     setLoading(true);
     setError(null);
     try {
-      const [sRes, aRes] = await Promise.all([
+      const [sRes, aRes, oRes] = await Promise.all([
         posSessionsApi.list(buildSessionListParams({ isAdmin, selectedStoreId: storeFilter, withCashCountOnly: withCashOnly })),
         employeeScoreApi.alerts(72),
+        posSessionsApi.offSession(buildOffSessionParams({ isAdmin, selectedStoreId: storeFilter })),
       ]);
       setSessions(Array.isArray(sRes.data) ? sRes.data : []);
       setAlerts(Array.isArray(aRes.data) ? aRes.data : []);
+      setOffSession(Array.isArray(oRes.data) ? oRes.data : []);
     } catch (e: any) {
       setError(e?.response?.data?.message || 'Chargement impossible. Réservé aux managers/admins.');
     } finally {
@@ -142,6 +152,44 @@ export function CashSessionsPage() {
       {error && (
         <div className="mb-4 flex items-center gap-2 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
           <AlertTriangle size={16} /> {error}
+        </div>
+      )}
+
+      {/* Angle mort du comptage : argent encaissé SANS session — visible, jamais tu. */}
+      {offSession.length > 0 && (
+        <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <AlertTriangle size={16} className="text-amber-600" />
+            <h2 className="text-sm font-semibold text-amber-800">
+              Ventes hors session (14 derniers jours) — hors de tout comptage de caisse
+            </h2>
+          </div>
+          <p className="text-xs text-amber-700 mb-3">
+            Ces ventes sont fiscalement complètes (ticket, Z, journal) mais encaissées sans session :
+            leur espèces n&apos;entre dans l&apos;attendu d&apos;aucun comptage. À rapprocher manuellement.
+          </p>
+          <table className="min-w-full text-sm">
+            <thead>
+              <tr className="text-left text-xs uppercase tracking-wide text-amber-700/70">
+                <th className="pr-4 py-1">Jour</th>
+                <th className="pr-4 py-1 text-right">Ventes</th>
+                <th className="pr-4 py-1 text-right">Espèces encaissées</th>
+                <th className="py-1">Tickets</th>
+              </tr>
+            </thead>
+            <tbody>
+              {offSession.map((d) => (
+                <tr key={d.date} className="border-t border-amber-100">
+                  <td className="pr-4 py-1.5 text-amber-900">{new Date(d.date + 'T00:00:00').toLocaleDateString('fr-FR')}</td>
+                  <td className="pr-4 py-1.5 text-right text-amber-900">{d.salesCount}</td>
+                  <td className="pr-4 py-1.5 text-right font-semibold text-amber-900">{euros(d.cashMinorUnits)}</td>
+                  <td className="py-1.5 text-xs text-amber-800 truncate max-w-[280px]" title={d.ticketNumbers.join(', ')}>
+                    {d.ticketNumbers.join(', ') || '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 

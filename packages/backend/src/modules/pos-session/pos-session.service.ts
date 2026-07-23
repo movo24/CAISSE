@@ -13,6 +13,7 @@ import { Repository } from 'typeorm';
 import { hasMinRole } from '../../common/guards/permissions';
 import { PosSessionEntity } from '../../database/entities/pos-session.entity';
 import { SalePaymentEntity } from '../../database/entities/sale-payment.entity';
+import { SaleEntity } from '../../database/entities/sale.entity';
 import { CreditNoteEntity } from '../../database/entities/credit-note.entity';
 import { normalizeShiftRecords, findEndedShiftFor } from '../shift-reminders/shift-normalize.util';
 import { TimewinService } from '../timewin/timewin.service';
@@ -72,6 +73,10 @@ export class PosSessionService {
     @Optional()
     @InjectRepository(CreditNoteEntity)
     private readonly creditNoteRepo?: Repository<CreditNoteEntity>,
+    // OPTIONAL: ventes hors session (visibilité de l'angle mort du comptage).
+    @Optional()
+    @InjectRepository(SaleEntity)
+    private readonly saleRepo?: Repository<SaleEntity>,
   ) {}
 
   /**
@@ -629,5 +634,54 @@ export class PosSessionService {
     if (opts.activeOnly) qb.andWhere('s.is_active = true');
     if (opts.withCashCountOnly) qb.andWhere('s.cash_counted_at IS NOT NULL');
     return qb.getMany();
+  }
+
+  /**
+   * Ventes HORS SESSION (session_id NULL, status completed) des N derniers
+   * jours, agrégées par jour — LECTURE SEULE. Rend VISIBLE l'angle mort du
+   * contrôle de caisse : une vente encaissée sans session n'entre dans
+   * l'attendu d'AUCUN comptage (l'argent est au tiroir, invisible des écarts).
+   * Le total espèces ne compte que les jambes cash réellement capturées.
+   * Fenêtre bornée (1-31 j) : les ventes antérieures au rattachement de
+   * session (colonne additive 1748) sont toutes session NULL — une fenêtre
+   * courte cible l'activité récente, pas l'historique legacy.
+   */
+  async listOffSessionCash(
+    storeId: string,
+    days = 14,
+  ): Promise<Array<{ date: string; salesCount: number; cashMinorUnits: number; ticketNumbers: string[] }>> {
+    if (!this.saleRepo) return [];
+    const window = Math.min(Math.max(Math.floor(days) || 14, 1), 31);
+    const since = new Date(Date.now() - window * 24 * 3600 * 1000);
+    const rows = await this.saleRepo
+      .createQueryBuilder('s')
+      .leftJoin('s.payments', 'p', "p.method = 'cash' AND p.captured = true")
+      .select('s.id', 'id')
+      .addSelect('s.ticket_number', 'ticket')
+      .addSelect('s.created_at', 'createdat')
+      .addSelect('COALESCE(SUM(p.amount_minor_units), 0)', 'cash')
+      .where('s.store_id = :storeId', { storeId })
+      .andWhere('s.session_id IS NULL')
+      .andWhere("s.status = 'completed'")
+      .andWhere('s.created_at >= :since', { since })
+      .groupBy('s.id')
+      .addGroupBy('s.ticket_number')
+      .addGroupBy('s.created_at')
+      .orderBy('s.created_at', 'DESC')
+      .limit(500)
+      .getRawMany<{ id: string; ticket: string; createdat: Date | string; cash: string }>();
+
+    const byDay = new Map<string, { salesCount: number; cashMinorUnits: number; ticketNumbers: string[] }>();
+    for (const r of rows) {
+      const day = new Date(r.createdat).toISOString().slice(0, 10);
+      const agg = byDay.get(day) ?? { salesCount: 0, cashMinorUnits: 0, ticketNumbers: [] };
+      agg.salesCount += 1;
+      agg.cashMinorUnits += parseInt(r.cash, 10) || 0;
+      if (agg.ticketNumbers.length < 20 && r.ticket) agg.ticketNumbers.push(r.ticket);
+      byDay.set(day, agg);
+    }
+    return [...byDay.entries()]
+      .sort((a, b) => (a[0] < b[0] ? 1 : -1))
+      .map(([date, v]) => ({ date, ...v }));
   }
 }
