@@ -4,6 +4,8 @@ import {
   CircleDot, Bell, CheckCircle2,
 } from 'lucide-react';
 import { posSessionsApi, employeeScoreApi } from '../services/api';
+import { useAuthStore } from '../stores/authStore';
+import { buildSessionListParams, buildOffSessionParams } from './cashSessionsFilters';
 
 interface Session {
   id: string;
@@ -24,6 +26,13 @@ interface Session {
   cashCountSkippedReason: string | null;
   cashCountSkippedAt: string | null;
   openingCashCorrectedAt: string | null;
+}
+
+interface OffSessionDay {
+  date: string;
+  salesCount: number;
+  cashMinorUnits: number;
+  ticketNumbers: string[];
 }
 
 interface ScoreAlert {
@@ -70,26 +79,33 @@ const SEVERITY_STYLE: Record<string, string> = {
 export function CashSessionsPage() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [alerts, setAlerts] = useState<ScoreAlert[]>([]);
+  const [offSession, setOffSession] = useState<OffSessionDay[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [withCashOnly, setWithCashOnly] = useState(false);
+  // Ciblage magasin (ADMIN uniquement — le serveur n'accepte ?storeId= que pour lui).
+  const isAdmin = useAuthStore((s) => s.employee?.role === 'admin');
+  const stores = useAuthStore((s) => s.stores);
+  const [storeFilter, setStoreFilter] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [sRes, aRes] = await Promise.all([
-        posSessionsApi.list({ limit: 100, withCashCountOnly: withCashOnly }),
+      const [sRes, aRes, oRes] = await Promise.all([
+        posSessionsApi.list(buildSessionListParams({ isAdmin, selectedStoreId: storeFilter, withCashCountOnly: withCashOnly })),
         employeeScoreApi.alerts(72),
+        posSessionsApi.offSession(buildOffSessionParams({ isAdmin, selectedStoreId: storeFilter })),
       ]);
       setSessions(Array.isArray(sRes.data) ? sRes.data : []);
       setAlerts(Array.isArray(aRes.data) ? aRes.data : []);
+      setOffSession(Array.isArray(oRes.data) ? oRes.data : []);
     } catch (e: any) {
       setError(e?.response?.data?.message || 'Chargement impossible. Réservé aux managers/admins.');
     } finally {
       setLoading(false);
     }
-  }, [withCashOnly]);
+  }, [withCashOnly, isAdmin, storeFilter]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -139,15 +155,68 @@ export function CashSessionsPage() {
         </div>
       )}
 
+      {/* Angle mort du comptage : argent encaissé SANS session — visible, jamais tu. */}
+      {offSession.length > 0 && (
+        <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <AlertTriangle size={16} className="text-amber-600" />
+            <h2 className="text-sm font-semibold text-amber-800">
+              Ventes hors session (14 derniers jours) — hors de tout comptage de caisse
+            </h2>
+          </div>
+          <p className="text-xs text-amber-700 mb-3">
+            Ces ventes sont fiscalement complètes (ticket, Z, journal) mais encaissées sans session :
+            leur espèces n&apos;entre dans l&apos;attendu d&apos;aucun comptage. À rapprocher manuellement.
+          </p>
+          <table className="min-w-full text-sm">
+            <thead>
+              <tr className="text-left text-xs uppercase tracking-wide text-amber-700/70">
+                <th className="pr-4 py-1">Jour</th>
+                <th className="pr-4 py-1 text-right">Ventes</th>
+                <th className="pr-4 py-1 text-right">Espèces encaissées</th>
+                <th className="py-1">Tickets</th>
+              </tr>
+            </thead>
+            <tbody>
+              {offSession.map((d) => (
+                <tr key={d.date} className="border-t border-amber-100">
+                  <td className="pr-4 py-1.5 text-amber-900">{new Date(d.date + 'T00:00:00').toLocaleDateString('fr-FR')}</td>
+                  <td className="pr-4 py-1.5 text-right text-amber-900">{d.salesCount}</td>
+                  <td className="pr-4 py-1.5 text-right font-semibold text-amber-900">{euros(d.cashMinorUnits)}</td>
+                  <td className="py-1.5 text-xs text-amber-800 truncate max-w-[280px]" title={d.ticketNumbers.join(', ')}>
+                    {d.ticketNumbers.join(', ') || '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Sessions table */}
         <div className="lg:col-span-2">
           <div className="flex items-center justify-between mb-2">
             <h2 className="text-sm font-semibold text-gray-700">Sessions récentes</h2>
-            <label className="flex items-center gap-2 text-xs text-gray-500">
-              <input type="checkbox" checked={withCashOnly} onChange={(e) => setWithCashOnly(e.target.checked)} />
-              Comptées uniquement
-            </label>
+            <div className="flex items-center gap-3">
+              {isAdmin && stores.length > 0 && (
+                <select
+                  value={storeFilter}
+                  onChange={(e) => setStoreFilter(e.target.value)}
+                  className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs text-gray-600"
+                  title="Cibler un magasin (admin) — les sessions listées sont celles du magasin choisi"
+                >
+                  <option value="">Mon magasin</option>
+                  {stores.map((st) => (
+                    <option key={st.id} value={st.id}>{st.name || st.storeCode || st.id.slice(0, 8)}</option>
+                  ))}
+                </select>
+              )}
+              <label className="flex items-center gap-2 text-xs text-gray-500">
+                <input type="checkbox" checked={withCashOnly} onChange={(e) => setWithCashOnly(e.target.checked)} />
+                Comptées uniquement
+              </label>
+            </div>
           </div>
           <div className="overflow-x-auto rounded-xl border border-gray-100 bg-white">
             <table className="min-w-full text-sm">

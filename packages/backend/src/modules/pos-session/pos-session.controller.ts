@@ -120,6 +120,24 @@ export class PosSessionController {
     });
   }
 
+  @Get('off-session')
+  @Roles('admin', 'manager')
+  @UseGuards(RolesGuard)
+  @ApiOperation({
+    summary:
+      "Ventes HORS SESSION des N derniers jours (manager/admin, lecture seule) : " +
+      "argent encaissé sans session, donc hors de tout comptage de caisse — rendu visible.",
+  })
+  offSession(
+    @Request() req: any,
+    @Query('days') days?: string,
+    @Query('storeId') queryStoreId?: string,
+  ) {
+    // Même règle de ciblage que list() : admin peut viser un magasin, sinon JWT.
+    const storeId = req.user.role === 'admin' && queryStoreId ? queryStoreId : req.user.storeId;
+    return this.service.listOffSessionCash(storeId, days ? parseInt(days, 10) : undefined);
+  }
+
   @Get('active')
   @ApiHeader({
     name: 'X-Terminal-Id',
