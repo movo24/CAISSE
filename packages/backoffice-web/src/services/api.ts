@@ -238,6 +238,8 @@ export const productsApi = {
   ) => api.put(`/products/${id}`, data),
   delete: (id: string) => api.delete(`/products/${id}`),
   scan: (ean: string) => api.get(`/products/scan/${ean}`),
+  /** Identifiant interne Wesley (WES-P-…) — généré par le serveur, atomique, org-wide. */
+  generateInternalCode: () => api.post('/products/internal-code/generate'),
   stockAlerts: () => api.get('/products/stock-alerts'),
   priceHistory: (id: string) => api.get(`/products/${id}/price-history`),
   changeLog: (id: string) => api.get(`/products/${id}/change-log`),

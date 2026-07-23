@@ -32,7 +32,9 @@ export function productMatchesQuery(p: SearchableProduct, query: string): boolea
     p.name.toLowerCase().includes(query) ||
     ((p.shortName ?? '').toLowerCase().includes(query) && (p.shortName ?? '').trim() !== '') ||
     (!!p.description && p.description.toLowerCase().includes(query)) ||
-    p.ean.includes(query) ||
+    // Insensible à la casse : indispensable pour les identifiants internes
+    // Wesley (WES-P-…) — la requête arrive déjà en minuscules de l'appelant.
+    p.ean.toLowerCase().includes(query) ||
     (!!p.categoryId && p.categoryId.toLowerCase().includes(query))
   );
 }

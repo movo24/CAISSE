@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Tag, Printer, Search, Check, Download, Plus, Minus, X, FileText, History } from 'lucide-react';
 import { productsApi } from '../services/api';
 import { useCurrentStoreId } from '../hooks/useCurrentStoreId';
@@ -55,7 +56,10 @@ function formatPrice(minorUnits: number, currency: string): string {
 export function LabelsPage() {
   const storeId = useCurrentStoreId();
   const [products, setProducts] = useState<Product[]>([]);
-  const [search, setSearch] = useState('');
+  // `?q=<code>` : arrivée depuis le bouton « Étiquette » d'une fiche produit —
+  // la recherche est pré-remplie avec son code-barres (réimpression en 1 clic).
+  const [searchParams] = useSearchParams();
+  const [search, setSearch] = useState(() => searchParams.get('q') ?? '');
   const [cart, setCart] = useState<CartItem[]>([]);
   const [labelSize, setLabelSize] = useState<LabelSize>('medium');
   const [loading, setLoading] = useState(true);

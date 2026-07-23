@@ -60,6 +60,15 @@ describe('scénarios 4+5+6 — formats EAN', () => {
     expect(validateFiche({ ...validForm, ean: '' }, false).ean).toMatch(/obligatoire/);
     expect(validateFiche({ ...validForm, ean: '' }, true).ean).toBeUndefined();
   });
+
+  it('identifiant interne Wesley accepté (WES-P-############)', () => {
+    expect(validateFiche({ ...validForm, ean: 'WES-P-000000000042' }, false)).toEqual({});
+  });
+
+  it('code Wesley malformé → message dédié (pas le message EAN trompeur)', () => {
+    const errors = validateFiche({ ...validForm, ean: 'WES-P-42' }, false);
+    expect(errors.ean).toMatch(/Code Wesley invalide/);
+  });
 });
 
 describe('scénario 8 — prix obligatoire absent → onglet Tarification', () => {

@@ -41,3 +41,28 @@ describe('productMatchesQuery — recherche produit', () => {
     expect(productMatchesQuery({ ...p, shortName: '  ' }, 'zzz')).toBe(false);
   });
 });
+
+describe('productMatchesQuery — identifiants internes Wesley (Code 128, non-GS1)', () => {
+  const vrac = {
+    name: 'Bonbons vrac maison',
+    shortName: 'Vrac maison',
+    ean: 'WES-P-000000000042',
+    description: null,
+    categoryId: 'vrac-id',
+  };
+
+  it('retrouve le produit par son code Wesley complet — requête normalisée en minuscules par l’appelant', () => {
+    // useCart/POSPage passent `value.toLowerCase().trim()` : le code interne
+    // doit matcher malgré la casse (bug latent corrigé — `ean.includes` était
+    // sensible à la casse, indifférent pour un EAN numérique, bloquant pour WES-P).
+    expect(productMatchesQuery(vrac, 'wes-p-000000000042')).toBe(true);
+  });
+
+  it('retrouve le produit par un fragment du code Wesley (saisie partielle)', () => {
+    expect(productMatchesQuery(vrac, 'wes-p-0000000000')).toBe(true);
+  });
+
+  it('retrouve toujours le produit par nom / nom court', () => {
+    expect(productMatchesQuery(vrac, 'vrac maison')).toBe(true);
+  });
+});

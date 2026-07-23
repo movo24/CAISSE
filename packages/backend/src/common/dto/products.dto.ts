@@ -18,7 +18,7 @@ import {
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 // Canonical product lifecycle statuses (single source of truth).
 import { PRODUCT_STATUSES, ProductStatus } from './product-integration.dto';
-import { IsGtinBarcode } from '../validators/gtin.validator';
+import { IsProductBarcode } from '../validators/gtin.validator';
 
 /** Types de produit déclaratifs (Lot 2). */
 export const PRODUCT_TYPES = ['simple', 'variant', 'pack', 'service', 'deposit', 'gift_card'] as const;
@@ -30,9 +30,11 @@ export class CreateProductDto {
   @IsNotEmpty({ message: 'Le code EAN est obligatoire pour créer un produit.' })
   @MaxLength(50)
   // Formats réellement pris en charge par la caisse : EAN-8, UPC-A (12) et
-  // EAN-13, clé de contrôle vérifiée. Un code mal saisi doit être refusé avec
-  // un message exploitable, jamais accepté silencieusement.
-  @IsGtinBarcode()
+  // EAN-13 (clé de contrôle vérifiée) OU identifiant interne Wesley
+  // `WES-P-############` (généré serveur, Code 128 non-GS1). Un code mal
+  // saisi doit être refusé avec un message exploitable, jamais accepté
+  // silencieusement.
+  @IsProductBarcode()
   ean: string;
 
   @ApiProperty({ example: 'Coca-Cola 33cl' })

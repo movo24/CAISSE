@@ -1,4 +1,4 @@
-import { gtinIssue, GTIN_ISSUE_MESSAGE } from './gtin';
+import { productCodeIssue, PRODUCT_CODE_ISSUE_MESSAGE } from './gtin';
 
 /**
  * Validation client + mapping des erreurs serveur de la fiche produit
@@ -140,8 +140,8 @@ export function validateFiche(form: FicheFormShape, isEdit: boolean): FicheError
   else put('name', maxLen(form.name.trim(), 200));
 
   if (!isEdit) {
-    const issue = gtinIssue(form.ean);
-    if (issue) put('ean', GTIN_ISSUE_MESSAGE[issue]);
+    const issue = productCodeIssue(form.ean);
+    if (issue) put('ean', PRODUCT_CODE_ISSUE_MESSAGE[issue]);
   }
 
   if (form.priceTtc.trim() === '') {
