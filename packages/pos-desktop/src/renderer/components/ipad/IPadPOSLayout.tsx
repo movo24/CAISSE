@@ -37,6 +37,8 @@ import { ActiveCashierBanner } from '../ActiveCashierBanner';
 import { ScoreDetailModal } from '../ScoreDetailModal';
 import { CashCountModal } from '../pos/CashCountModal';
 import { CashOpenModal } from '../pos/CashOpenModal';
+import { SessionReopenPrompt } from '../pos/SessionReopenPrompt';
+import { initSessionReopenWatcher } from '../../services/sessionReopen';
 import { Wifi, WifiOff, CloudOff, Cloud, RefreshCw as SyncIcon, ShieldAlert, Upload, Lock as LockIcon } from 'lucide-react';
 
 /* ── Helpers ── */
@@ -93,6 +95,9 @@ export function IPadPOSLayout() {
   const [fullscreen, setFullscreen] = useState(false);
   const [scoreDetailOpen, setScoreDetailOpen] = useState(false);
   const btPrinter = useBluetoothPrinter();
+
+  // Watcher réouverture de session : accroché aux TRANSITIONS réseau (idempotent).
+  useEffect(() => { initSessionReopenWatcher(); }, []);
 
   // Sync BT printer status with peripheralBridge
   useEffect(() => {
@@ -376,6 +381,7 @@ export function IPadPOSLayout() {
       {scoreDetailOpen && <ScoreDetailModal onClose={() => setScoreDetailOpen(false)} />}
       <CashOpenModal />
       <CashCountModal />
+      <SessionReopenPrompt />
 
       {/* ═══ MAIN 3-COLUMN LAYOUT ═══ */}
       <div className={`flex-1 min-h-0 ${isLandscape ? 'ipad-pos-grid' : 'ipad-pos-grid-portrait'}`}>

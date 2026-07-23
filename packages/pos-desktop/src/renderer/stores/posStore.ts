@@ -193,6 +193,13 @@ interface POSState {
   /** Vrai quand l'ouverture de session serveur a échoué (open + récupération
    *  active) : la caisse tourne alors SANS session — état affiché, jamais tu. */
   posSessionOpenFailed: boolean;
+  /** Prompt « Serveur de retour — rouvrir une session ? » (jamais silencieux). */
+  sessionReopenOffered: boolean;
+  dismissSessionReopen: () => void;
+  /** Rouvre une session avec le contenu ACTUEL du tiroir comme fond.
+   *  Single-flight ; 409 → adopte la session active existante (aucun doublon).
+   *  Retourne true si une session est active à l'issue de l'appel. */
+  reopenSessionWithFloat: (openingCashMinorUnits: number) => Promise<boolean>;
   openPosSession: () => Promise<void>;
   /** Changement de caissier explicite : ferme la session précédente, ouvre une
    *  nouvelle et journalise EMPLOYEE_SWITCHED (jamais de switch silencieux). */
@@ -247,6 +254,9 @@ interface POSState {
   total: () => number;
 }
 
+// Verrou single-flight de la réouverture de session (jamais deux open en vol).
+let reopenInFlight = false;
+
 export const usePOSStore = create<POSState>((set, get) => ({
   employee: null,
   accessToken: null,
@@ -255,6 +265,7 @@ export const usePOSStore = create<POSState>((set, get) => ({
   cashCountOpen: false,
   openingCashRequired: false,
   posSessionOpenFailed: false,
+  sessionReopenOffered: false,
   cartItems: [],
   customerQrCode: null,
   customer: null,
@@ -335,6 +346,48 @@ export const usePOSStore = create<POSState>((set, get) => ({
     localStorage.setItem('pos_employee', JSON.stringify(employee));
     set({ employee, accessToken: token, posSession: null });
     await get().openPosSession();
+  },
+
+  dismissSessionReopen: () => set({ sessionReopenOffered: false }),
+
+  reopenSessionWithFloat: async (openingCashMinorUnits: number) => {
+    // Single-flight : un seul appel en vol, les clics répétés sont ignorés.
+    if (reopenInFlight) return false;
+    if (get().posSession?.id) { set({ sessionReopenOffered: false }); return true; }
+    reopenInFlight = true;
+    try {
+      const res = await posSessionApi.open(openingCashMinorUnits);
+      const s = res.data;
+      if (s?.id) {
+        set({
+          posSession: { id: s.id, openedAt: s.openedAt || new Date().toISOString(), terminalId: s.terminalId ?? null },
+          openingCashRequired: s.openingCashMinorUnits == null,
+          posSessionOpenFailed: false,
+          sessionReopenOffered: false,
+        });
+        return true;
+      }
+      return false;
+    } catch {
+      // 409 : une session est déjà active sur ce terminal → on l'ADOPTE, jamais
+      // de doublon (le fond saisi est ignoré : la session existante fait foi).
+      try {
+        const act = await posSessionApi.active();
+        const s = act.data;
+        if (s?.id) {
+          set({
+            posSession: { id: s.id, openedAt: s.openedAt || new Date().toISOString(), terminalId: s.terminalId ?? null },
+            openingCashRequired: s.openingCashMinorUnits == null,
+            posSessionOpenFailed: false,
+            sessionReopenOffered: false,
+          });
+          return true;
+        }
+      } catch { /* le prompt reste affiché, le caissier peut réessayer */ }
+      return false;
+    } finally {
+      reopenInFlight = false;
+    }
   },
 
   openPosSession: async () => {
