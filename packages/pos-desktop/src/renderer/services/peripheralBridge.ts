@@ -9,6 +9,13 @@
 
 import { DevicePlatform } from '../hooks/useDeviceProfile';
 import { attachWedgeKeyboardListener } from './wedgeKeyboardListener';
+import {
+  classifyPrinterMode,
+  decideDrawerPath,
+  getDrawerQueueName,
+  getDrawerStrategy,
+  type PrinterCommandMode,
+} from './drawerStrategy';
 
 /* ═══════════════════════════════════════════════════
    TYPES
@@ -22,6 +29,13 @@ export interface PeripheralStatus {
   printer: { type: PrinterType; connected: boolean; name: string | null };
   scanner: { type: ScannerType; connected: boolean; name: string | null };
   cashDrawer: { type: CashDrawerType; connected: boolean };
+}
+
+/** Driver/port Windows + mode de commande déduit (diagnostic + décision tiroir). */
+export interface OsPrinterInfo {
+  driverName: string | null;
+  portName: string | null;
+  mode: PrinterCommandMode;
 }
 
 export type PaperWidthMm = 58 | 80;
@@ -196,6 +210,13 @@ class PeripheralBridge {
     cashDrawer: { type: 'none', connected: false },
   };
   private barcodeCallbacks: Set<BarcodeCallback> = new Set();
+  /** Driver/port/mode de l'imprimante OS sélectionnée (null tant que non lu). */
+  private _printerInfo: OsPrinterInfo | null = null;
+  /** Derniers chronométrages réels (diagnostic latence terrain). */
+  lastPrintTimings: Record<string, number> | null = null;
+  lastDrawerTimings: { ms?: number; path?: string } | null = null;
+  /** Dernière raison d'échec/refus tiroir (affichée à l'écran diagnostic). */
+  lastDrawerError: string | null = null;
   private _btPrintFn: ((data: TicketData) => Promise<boolean>) | null = null;
   private _btDrawerFn: (() => Promise<boolean>) | null = null;
   private cameraStream: MediaStream | null = null;
@@ -244,6 +265,7 @@ class PeripheralBridge {
           const saved = this.getSelectedOsPrinter();
           const name = saved && electronPrinters.includes(saved) ? saved : electronPrinters[0];
           this._status.printer = { type: 'thermal_usb', connected: true, name };
+          await this.refreshPrinterInfo(name);
           return;
         }
       } catch (e) {
@@ -255,6 +277,37 @@ class PeripheralBridge {
     // A real printer (Bluetooth thermal) will be registered via useBluetoothPrinter
     // This prevents the browser print dialog from appearing on every sale
     this._status.printer = { type: 'none', connected: false, name: null };
+  }
+
+  /**
+   * Lit le driver/port Windows de l'imprimante et en déduit le MODE RÉEL
+   * (ex. TSP100/TSP143 futurePRNT = raster → ESC/POS brut interdit). Jamais
+   * bloquant : en cas d'échec, mode 'unknown' (comportement d'avant).
+   */
+  private async refreshPrinterInfo(name: string): Promise<void> {
+    this._printerInfo = null;
+    try {
+      const api = (window as any).electronAPI;
+      if (!api?.getPrinterInfo) return;
+      const info = await api.getPrinterInfo(name);
+      if (info?.ok) {
+        this._printerInfo = {
+          driverName: info.driverName ?? null,
+          portName: info.portName ?? null,
+          mode: classifyPrinterMode(info.driverName),
+        };
+        console.log('[PERIPH] Printer driver:', info.driverName, '→ mode:', this._printerInfo.mode);
+      } else {
+        console.warn('[PERIPH] getPrinterInfo failed:', info?.error);
+      }
+    } catch (e) {
+      console.warn('[PERIPH] getPrinterInfo error:', e);
+    }
+  }
+
+  /** Driver/port/mode de l'imprimante OS (null si non lu — ex. hors desktop). */
+  get printerInfo(): OsPrinterInfo | null {
+    return this._printerInfo;
   }
 
   /** Register Bluetooth printer functions from useBluetoothPrinter hook */
@@ -323,12 +376,16 @@ class PeripheralBridge {
       // reçu HTML 80 mm construit par DOM sûr, imprimé en silencieux. Un échec
       // résout { ok:false } côté main → false honnête ici, jamais de faux succès.
       if (this.isElectron() && (window as any).electronAPI?.printTicketHtml) {
+        const tBuild = Date.now();
         const html = this.buildReceiptHtml(data);
+        const buildMs = Date.now() - tBuild;
         // Cible l'imprimante sélectionnée (sinon défaut OS).
         const device = this._status.printer.name ?? undefined;
         const result = await (window as any).electronAPI.printTicketHtml(html, device);
+        // Chronométrage réel (main) + construction HTML — pour la trace terrain.
+        this.lastPrintTimings = { buildMs, htmlBytes: html.length, ...(result?.timings ?? {}) };
         if (result?.ok) {
-          console.log('[PERIPH] Desktop OS print success');
+          console.log('[PERIPH] Desktop OS print success', JSON.stringify(this.lastPrintTimings));
           return true;
         }
         console.warn('[PERIPH] Desktop OS print failed:', result?.error);
@@ -813,19 +870,39 @@ class PeripheralBridge {
       return false; // real kick attempted and failed — say so
     }
 
-    // Desktop Windows : kick ESC/POS via job RAW au spooler, vers l'imprimante
-    // thermique sélectionnée. Résultat honnête (job RAW réellement accepté).
+    // Desktop Windows : le CHEMIN dépend du MODE RÉEL du driver (décision pure
+    // `decideDrawerPath`) : 'raw' = kick ESC/POS (imprimantes ESC/POS) ;
+    // 'queue' = job driver vers la file Windows dédiée (TSP100/TSP143
+    // futurePRNT raster — l'ESC/POS brut y est inopérant et peut corrompre les
+    // jobs d'impression) ; 'refuse' = échec honnête expliqué, JAMAIS d'octets
+    // aveugles vers le matériel (incident « tiroir en boucle »).
     if (this._status.cashDrawer.type === 'printer_kick' && (window as any).electronAPI?.openCashDrawer) {
+      this.lastDrawerError = null;
+      const mode = this._printerInfo?.mode ?? 'unknown';
+      const decision = decideDrawerPath(mode, getDrawerStrategy(), getDrawerQueueName());
+      if (decision.path === 'refuse') {
+        this.lastDrawerError = decision.reason;
+        this.lastDrawerTimings = { path: 'refuse' };
+        console.warn('[PERIPH] Drawer kick refused (honest):', decision.reason);
+        return false;
+      }
       try {
         const device = this._status.printer.name ?? undefined;
-        const res = await (window as any).electronAPI.openCashDrawer(device);
+        const opts =
+          decision.path === 'queue'
+            ? { path: 'queue' as const, queueName: decision.queueName }
+            : { path: 'raw' as const };
+        const res = await (window as any).electronAPI.openCashDrawer(device, opts);
+        this.lastDrawerTimings = { ms: res?.ms, path: decision.path };
         if (res?.ok) {
-          console.log('[PERIPH] Cash drawer opened via spooler RAW');
+          console.log(`[PERIPH] Cash drawer opened via ${decision.path} (${res?.ms ?? '?'}ms)`);
           return true;
         }
-        console.warn('[PERIPH] Spooler drawer kick failed:', res?.error);
+        this.lastDrawerError = res?.error || 'échec ouverture tiroir';
+        console.warn('[PERIPH] Drawer kick failed:', decision.path, res?.error);
       } catch (e) {
-        console.warn('[PERIPH] Spooler drawer kick error:', e);
+        this.lastDrawerError = e instanceof Error ? e.message : String(e);
+        console.warn('[PERIPH] Drawer kick error:', e);
       }
       return false; // vrai kick tenté et échoué — on le dit
     }

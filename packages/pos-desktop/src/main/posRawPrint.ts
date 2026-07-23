@@ -120,19 +120,24 @@ function runPowerShell(printerName: string, rawFile: string): Promise<{ ok: bool
 export async function sendRawEscpos(
   printerName: string,
   bytes: Uint8Array,
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{ ok: boolean; error?: string; ms?: number }> {
   if (process.platform !== 'win32') {
     return { ok: false, error: 'impression RAW disponible uniquement sur Windows' };
   }
   if (!printerName) return { ok: false, error: 'aucune imprimante sélectionnée' };
   if (bytes.length === 0) return { ok: false, error: 'séquence vide' };
 
+  const t0 = Date.now();
   const tmp = path.join(os.tmpdir(), `poscaisse-raw-${Date.now()}-${Math.round(process.hrtime()[1] % 1e6)}.bin`);
   try {
     fs.writeFileSync(tmp, Buffer.from(bytes));
-    return await runPowerShell(printerName, tmp);
+    const res = await runPowerShell(printerName, tmp);
+    const ms = Date.now() - t0;
+    // eslint-disable-next-line no-console
+    console.info('[RAW-TIMING]', JSON.stringify({ printerName, bytes: bytes.length, ms, ok: res.ok, error: res.error }));
+    return { ...res, ms };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+    return { ok: false, error: e instanceof Error ? e.message : String(e), ms: Date.now() - t0 };
   } finally {
     try {
       fs.unlinkSync(tmp);
@@ -142,11 +147,120 @@ export async function sendRawEscpos(
   }
 }
 
+/**
+ * Infos de la file Windows (driver + port) via `Get-Printer` — c'est le driver
+ * qui dit le MODE RÉEL de l'imprimante (ex. « Star TSP100 Cutter (TSP143) » =
+ * futurePRNT raster → ESC/POS brut inopérant). Lecture seule, jamais bloquant.
+ */
+export async function getPrinterInfo(
+  printerName: string,
+): Promise<{ ok: boolean; driverName?: string; portName?: string; error?: string }> {
+  if (process.platform !== 'win32') return { ok: false, error: 'Windows uniquement' };
+  if (!printerName) return { ok: false, error: 'aucune imprimante' };
+  return new Promise((resolve) => {
+    const script = [
+      '$ErrorActionPreference = "Stop"',
+      'try {',
+      '  $p = Get-Printer -Name $env:POS_PRN_NAME',
+      '  Write-Output ("OK:" + $p.DriverName + "|" + $p.PortName)',
+      '} catch { Write-Output ("ERR:" + $_.Exception.Message) }',
+    ].join('\n');
+    let stdout = '';
+    const child = spawn(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script],
+      { env: { ...process.env, POS_PRN_NAME: printerName } },
+    );
+    const timer = setTimeout(() => {
+      child.kill();
+      resolve({ ok: false, error: 'Get-Printer timeout' });
+    }, 10_000);
+    child.stdout.on('data', (d) => (stdout += String(d)));
+    child.on('error', (e) => {
+      clearTimeout(timer);
+      resolve({ ok: false, error: e?.message || 'powershell spawn error' });
+    });
+    child.on('close', () => {
+      clearTimeout(timer);
+      const out = stdout.trim();
+      if (out.startsWith('OK:')) {
+        const [driverName, portName] = out.slice(3).split('|');
+        return resolve({ ok: true, driverName: driverName?.trim(), portName: portName?.trim() });
+      }
+      resolve({ ok: false, error: out.startsWith('ERR:') ? out.slice(4) : out || 'Get-Printer failed' });
+    });
+  });
+}
+
+/**
+ * Kick tiroir via FILE WINDOWS DÉDIÉE (imprimantes raster type TSP100/TSP143
+ * futurePRNT, où l'ESC/POS brut est inopérant) : on imprime un job driver (GDI)
+ * minuscule sur une file configurée « Peripheral Unit = Cash Drawer, ouverture
+ * en début de document ». Un job = UNE impulsion. AUCUN octet brut n'est envoyé
+ * — c'est le driver Star qui pilote le tiroir, exactement comme futurePRNT.
+ */
+export async function sendDrawerQueueJob(
+  queueName: string,
+): Promise<{ ok: boolean; error?: string; ms?: number }> {
+  if (process.platform !== 'win32') return { ok: false, error: 'Windows uniquement' };
+  if (!queueName) return { ok: false, error: 'aucune file tiroir configurée' };
+  const t0 = Date.now();
+  return new Promise((resolve) => {
+    const script = [
+      '$ErrorActionPreference = "Stop"',
+      'try {',
+      // Un seul espace : job GDI minimal — le driver déclenche le tiroir, pas le contenu.
+      '  " " | Out-Printer -Name $env:POS_DRAWER_QUEUE',
+      '  Write-Output "OK"',
+      '} catch { Write-Output ("ERR:" + $_.Exception.Message) }',
+    ].join('\n');
+    let stdout = '';
+    const child = spawn(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script],
+      { env: { ...process.env, POS_DRAWER_QUEUE: queueName } },
+    );
+    const timer = setTimeout(() => {
+      child.kill();
+      resolve({ ok: false, error: 'drawer queue timeout', ms: Date.now() - t0 });
+    }, 15_000);
+    child.stdout.on('data', (d) => (stdout += String(d)));
+    child.on('error', (e) => {
+      clearTimeout(timer);
+      resolve({ ok: false, error: e?.message || 'powershell spawn error', ms: Date.now() - t0 });
+    });
+    child.on('close', () => {
+      clearTimeout(timer);
+      const ms = Date.now() - t0;
+      const out = stdout.trim();
+      // eslint-disable-next-line no-console
+      console.info('[DRAWER-QUEUE-TIMING]', JSON.stringify({ queueName, ms, out }));
+      if (out.startsWith('OK')) return resolve({ ok: true, ms });
+      resolve({ ok: false, error: out.startsWith('ERR:') ? out.slice(4) : out || 'drawer queue failed', ms });
+    });
+  });
+}
+
 /** Enregistre les canaux IPC RAW : ouverture tiroir + coupe + envoi brut. */
 export function registerPosRawPrintIpc(): void {
-  ipcMain.handle('pos-print:openDrawer', async (_e, deviceName?: unknown) => {
+  // Ouverture tiroir. `opts.path` choisi par le renderer selon le MODE RÉEL du
+  // driver (décision pure `decideDrawerPath`) : 'raw' = kick ESC/POS (imprimantes
+  // ESC/POS), 'queue' = job driver vers la file Windows dédiée (TSP100/TSP143
+  // futurePRNT — jamais d'octets bruts vers un firmware raster).
+  ipcMain.handle('pos-print:openDrawer', async (_e, deviceName?: unknown, opts?: unknown) => {
     const printer = typeof deviceName === 'string' ? deviceName : '';
+    const o = (opts && typeof opts === 'object' ? opts : {}) as { path?: unknown; queueName?: unknown };
+    if (o.path === 'queue') {
+      const queue = typeof o.queueName === 'string' ? o.queueName : '';
+      return sendDrawerQueueJob(queue);
+    }
     return sendRawEscpos(printer, drawerKickBytes(0));
+  });
+
+  // Lecture seule : driver + port de la file (détection du mode réel).
+  ipcMain.handle('pos-print:getPrinterInfo', async (_e, deviceName?: unknown) => {
+    const printer = typeof deviceName === 'string' ? deviceName : '';
+    return getPrinterInfo(printer);
   });
   ipcMain.handle('pos-print:cut', async (_e, deviceName?: unknown) => {
     const printer = typeof deviceName === 'string' ? deviceName : '';
