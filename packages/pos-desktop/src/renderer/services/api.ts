@@ -152,7 +152,10 @@ export const storesApi = {
 
 // Products
 export const productsApi = {
-  list: () => api.get('/products'),
+  // Catalogue paginé : catalogSync.fetchFullCatalogue boucle sur les pages —
+  // la caisse charge TOUT le catalogue du magasin, plus seulement la 1re page.
+  list: (params?: { page?: number; limit?: number }) =>
+    api.get('/products', { params: { limit: 100, ...params } }),
   get: (id: string) => api.get(`/products/${id}`),
   scan: (ean: string) => api.get(`/products/scan/${ean}`),
   create: (data: any) => api.post('/products', data),

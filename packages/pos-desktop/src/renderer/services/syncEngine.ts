@@ -146,8 +146,19 @@ async function syncEntry(entry: OfflineQueueEntry): Promise<{ success: boolean; 
         // M603: reshape the queued payload to the exact CreateSaleDto — the offline
         // entry carries display-only extras (ticketNumber/totalMinorUnits/item names)
         // that forbidNonWhitelisted would 400. Keeps items/payments/discount/promo.
-        await salesApi.create(toSyncCreateBody(entry.payload), idemKey);
-        console.log(`[SYNC] Ticket ${entry.payload.ticketNumber} synced to server`);
+        {
+          const res = await salesApi.create(toSyncCreateBody(entry.payload), idemKey);
+          console.log(`[SYNC] Ticket ${entry.payload.ticketNumber} synced to server`);
+          // Le serveur a émis le jeton public du ticket numérique : on le
+          // rattache à l'entrée d'historique locale (réimpression = même QR).
+          try {
+            const tok = (res as any)?.data?.publicToken;
+            if (tok) {
+              const { usePOSStore } = await import('../stores/posStore');
+              usePOSStore.getState().attachTicketPublicToken(entry.payload.ticketNumber, tok);
+            }
+          } catch { /* rattachement best-effort — jamais bloquant pour la sync */ }
+        }
         break;
 
       case 'payment':

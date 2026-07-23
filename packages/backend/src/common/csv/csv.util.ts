@@ -6,7 +6,18 @@
  * - Accepts both LF and CRLF line endings on parse; emits CRLF on serialize.
  * - parseCsv returns rows of raw string cells (no header interpretation).
  */
-export function parseCsv(text: string): string[][] {
+/** Détecte le séparateur (`,` ou `;` Excel FR) d'après la 1ʳᵉ ligne. */
+function detectDelimiter(text: string): ',' | ';' {
+  const firstLine = text.split(/\r?\n/, 1)[0] || '';
+  const commas = (firstLine.match(/,/g) || []).length;
+  const semis = (firstLine.match(/;/g) || []).length;
+  return semis > commas ? ';' : ',';
+}
+
+export function parseCsv(text: string, delimiter?: ',' | ';'): string[][] {
+  // Retire un BOM UTF-8 éventuel (fichiers exportés par Excel).
+  if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
+  const delim = delimiter ?? detectDelimiter(text);
   const rows: string[][] = [];
   let field = '';
   let row: string[] = [];
@@ -36,7 +47,7 @@ export function parseCsv(text: string): string[][] {
       i++;
       continue;
     }
-    if (c === ',') {
+    if (c === delim) {
       row.push(field);
       field = '';
       i++;

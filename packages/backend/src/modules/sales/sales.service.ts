@@ -12,7 +12,7 @@ import type Stripe from 'stripe';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, QueryRunner } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
-import { createHash } from 'crypto';
+import { createHash, randomBytes } from 'crypto';
 import { SaleEntity } from '../../database/entities/sale.entity';
 import { EmployeeEntity } from '../../database/entities/employee.entity';
 import { AlertService } from '../../common/alert/alert.service';
@@ -625,9 +625,19 @@ export class SalesService {
     const totalAfterDiscount = subtotal - totalDiscount;
     let taxTotal = 0;
     for (const li of lineItems) {
-      // Extract tax from gross (TTC → TVA component)
+      // Extract tax from gross (TTC → TVA component).
+      // DÉFENSE FISCALE : le taux est normalisé en number AU SITE DE CALCUL,
+      // quel que soit ce que fournit l'amont. Le driver pg renvoie les colonnes
+      // `decimal` en STRING ; sans ceci, `100 + '20.00'` concatène ('10020.00')
+      // et la TVA scellée dans le hash v2 sort ~100× trop faible (bug réel
+      // constaté sur vrai Postgres, invisible avec des mocks numériques). Le
+      // transformer decimalToNumber corrige les entités relues ; cette
+      // normalisation-ci garantit le calcul même si une source future
+      // réintroduit une string.
+      const rate = Number(li.taxRate);
+      const safeRate = Number.isFinite(rate) && rate >= 0 ? rate : 0;
       const taxAmount = Math.round(
-        li.lineTotalMinorUnits * (li.taxRate / (100 + li.taxRate)),
+        li.lineTotalMinorUnits * (safeRate / (100 + safeRate)),
       );
       taxTotal += taxAmount;
     }
@@ -766,6 +776,13 @@ export class SalesService {
       sale.hashChainCurrent = currentHash;
       sale.hashVersion = 2;
       sale.completedAt = completedAt;
+
+      // Jeton public du ticket numérique — opaque, non devinable (192 bits),
+      // généré serveur, HORS empreinte de hash (comme sessionId/terminalId).
+      // Un rejeu idempotent renvoie la vente cachée avec CE jeton (réimpression
+      // = même QR) ; une nouvelle vente en génère toujours un nouveau. Une
+      // collision (improbable) frappe l'index unique → 23505 → retry global.
+      sale.publicToken = randomBytes(24).toString('base64url');
 
       // Register binding — resolved server-side, OUTSIDE the fiscal hash above.
       // Binds to the terminal's active session only if it belongs to this

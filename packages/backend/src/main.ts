@@ -20,6 +20,7 @@ if (process.env.SENTRY_DSN) {
 }
 
 import { NestFactory, Reflector } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import {
   ValidationPipe,
   HttpException,
@@ -35,6 +36,7 @@ import * as cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 import { TenantInterceptor } from './common/interceptors/tenant.interceptor';
 import { BusinessError } from './common/errors/business-error';
+import { validationExceptionFactory } from './common/validation-exception.factory';
 
 // ── Global Exception Filter — sanitize error responses ──────────────────
 // Reports unhandled exceptions to Sentry (when SENTRY_DSN is set).
@@ -73,20 +75,39 @@ class GlobalExceptionFilter implements ExceptionFilter {
           message: 'Erreur de validation.',
           statusCode: status,
           details: (res as any).message,
+          // Carte { champ: [messages] } produite par validationExceptionFactory —
+          // permet aux frontends de surligner le champ fautif (jamais un
+          // message générique seul). Absente si l'exception vient d'ailleurs.
+          ...((res as any).fields ? { fields: (res as any).fields } : {}),
         });
         return;
       }
 
-      // Any other HttpException
+      // Any other HttpException. Préserve un `code`/`reason` métier si l'exception en fournit un
+      // (ex. StoreAccessGuard → FORBIDDEN/ACCOUNT_SUSPENDED/ACCESS_EXPIRED, spec §5) ; sinon HTTP_ERROR.
+      const resObj: any = typeof res === 'object' && res !== null ? res : {};
       const message =
-        typeof res === 'string'
-          ? res
-          : (res as any).message || 'Internal server error';
+        typeof res === 'string' ? res : resObj.message || 'Internal server error';
       response.status(status).json({
         success: false,
-        code: 'HTTP_ERROR',
+        code: typeof resObj.code === 'string' ? resObj.code : 'HTTP_ERROR',
         message,
         statusCode: status,
+        ...(resObj.reason ? { reason: resObj.reason } : {}),
+      });
+      return;
+    }
+
+    // ── 2b. Corps de requête trop volumineux (body-parser, hors pipeline Nest) ──
+    // Sans ce cas, une photo produit trop lourde ressortait en 500
+    // « Internal server error » inexploitable côté Back-Office.
+    if (exception instanceof Error && exception.name === 'PayloadTooLargeError') {
+      response.status(HttpStatus.PAYLOAD_TOO_LARGE).json({
+        success: false,
+        code: 'PAYLOAD_TOO_LARGE',
+        message:
+          'Requête trop volumineuse — l’image dépasse la taille maximale acceptée. Réduisez la photo et réessayez.',
+        statusCode: HttpStatus.PAYLOAD_TOO_LARGE,
       });
       return;
     }
@@ -240,10 +261,25 @@ function getLogLevels(): ('log' | 'error' | 'warn' | 'debug' | 'verbose')[] {
 async function bootstrap() {
   validateEnvironment();
 
-  const app = await NestFactory.create(AppModule, {
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     rawBody: true, // Required for Stripe webhook signature verification
     logger: getLogLevels(),
+    // Le logo du ticket (data-URL PNG ≤ ~300 Ko encodé, plafonné par DTO) doit
+    // passer le body-parser : la limite Express par défaut (100 kb) est portée
+    // à 512 kb — toujours bornée, jamais illimitée. On désactive les parsers
+    // par défaut et on les ré-enregistre via useBodyParser, qui préserve
+    // rawBody (signature webhook Stripe).
+    bodyParser: false,
   });
+  app.useBodyParser('json', { limit: '512kb' });
+  app.useBodyParser('urlencoded', { extended: true, limit: '512kb' });
+
+  // Les fiches produit portent leur photo en data-URL dans le JSON (stockage
+  // existant, colonne text). Le défaut body-parser (100kb) rejetait donc TOUT
+  // enregistrement avec image en PayloadTooLargeError rendu « Internal server
+  // error ». Borne haute volontairement contenue : le front compresse ≤ ~500kb.
+  app.useBodyParser('json', { limit: '6mb' });
+  app.useBodyParser('urlencoded', { limit: '6mb', extended: true });
 
   // --- Trust proxy ---
   // Behind Railway/Cloudflare, the client IP is in X-Forwarded-For. Trust a
@@ -271,7 +307,11 @@ async function bootstrap() {
   });
 
   // --- Global prefix ---
-  app.setGlobalPrefix('api');
+  // Le ticket numérique public vit HORS /api : l'URL imprimée dans le QR du
+  // ticket papier est https://<domaine>/ticket/<jeton> (courte, scannable).
+  app.setGlobalPrefix('api', {
+    exclude: ['ticket/:token', 'ticket/:token/data', 'ticket/:token/pdf'],
+  });
 
   // --- Global pipes ---
   app.useGlobalPipes(
@@ -279,6 +319,7 @@ async function bootstrap() {
       whitelist: true,
       forbidNonWhitelisted: true,
       transform: true,
+      exceptionFactory: validationExceptionFactory,
     }),
   );
 

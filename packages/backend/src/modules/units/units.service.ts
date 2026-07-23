@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
 import { UnitEntity } from '../../database/entities/unit.entity';
 import { OrganizationEntity } from '../../database/entities/organization.entity';
 import { BusinessError } from '../../common/errors/business-error';
@@ -77,9 +77,9 @@ export class UnitsService {
 
     // If renaming, check uniqueness within same org
     if (dto.name && dto.name !== unit.name) {
-      const orgId = dto.organizationId || unit.organizationId;
+      const orgId = dto.organizationId ?? unit.organizationId;
       const existing = await this.unitRepo.findOne({
-        where: { name: dto.name, organizationId: orgId, isActive: true },
+        where: { name: dto.name, organizationId: orgId ?? IsNull(), isActive: true },
       });
       if (existing) {
         throw BusinessError.alreadyExists('Unit', 'name', dto.name);

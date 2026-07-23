@@ -9,10 +9,12 @@ import { StoreEntity } from '../../database/entities/store.entity';
 import { EmployeeEntity } from '../../database/entities/employee.entity';
 import { PosSessionEntity } from '../../database/entities/pos-session.entity';
 import { AuditModule } from '../audit/audit.module';
+import { ActivityAuditModule } from '../activity-audit/activity-audit.module';
 
 @Module({
   imports: [
     AuditModule,
+    ActivityAuditModule,
     PassportModule,
     JwtModule.register({
       secret: (() => {

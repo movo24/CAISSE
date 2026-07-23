@@ -2,6 +2,12 @@ import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { usePOSStore } from '../stores/posStore';
 import { productsApi, productIntegrationApi, customersApi } from '../services/api';
 import { posEventBus } from '../services/posEventBus';
+import { productDisplayName, productMatchesQuery } from '../utils/productDisplay';
+import {
+  fetchFullCatalogue,
+  loadCatalogueCache,
+  saveCatalogueCache,
+} from '../services/catalogSync';
 
 /* ── Product type (mirrors backend API) ── */
 
@@ -9,6 +15,7 @@ export interface CatalogueProduct {
   id: string;
   ean: string;
   name: string;
+  shortName?: string | null;
   description?: string | null;
   categoryId?: string | null;
   unitType: string;
@@ -28,7 +35,15 @@ export function useCart() {
   const store = usePOSStore();
   const scanRef = useRef<HTMLInputElement>(null);
 
-  const [catalogue, setCatalogue] = useState<CatalogueProduct[]>([]);
+  // Démarrage sur le dernier catalogue connu (cache persistant) : une caisse
+  // hors ligne au boot garde recherche + scan opérationnels.
+  const [catalogue, setCatalogue] = useState<CatalogueProduct[]>(
+    () => loadCatalogueCache().products,
+  );
+  const [catalogueSyncedAt, setCatalogueSyncedAt] = useState<string | null>(
+    () => loadCatalogueCache().at,
+  );
+  const [catalogueSyncing, setCatalogueSyncing] = useState(false);
   const [categories, setCategories] = useState<string[]>([]);
   const [scanValue, setScanValue] = useState('');
   const [error, setError] = useState('');
@@ -39,19 +54,24 @@ export function useCart() {
   const [weightModal, setWeightModal] = useState<CatalogueProduct | null>(null);
   const [weightValue, setWeightValue] = useState('');
 
-  // Load catalogue on mount + refresh for near real-time stock
-  const refreshCatalogue = useCallback(() => {
-    // Safari aggressively caches GET responses (ETag).
-    // productsApi.list() returns stale data → use cache-busting headers
-    productsApi.list()
-      .then((res: any) => {
-        const raw = res.data;
-        if (Array.isArray(raw)) setCatalogue(raw);
-        else if (raw?.data && Array.isArray(raw.data)) setCatalogue(raw.data);
-      })
-      .catch(() => {
-        console.warn('[CATALOGUE] Backend unavailable — keeping cached catalogue');
-      });
+  // Load catalogue on mount + refresh for near real-time stock.
+  // Charge TOUTES les pages (fetchFullCatalogue) et persiste le résultat —
+  // un nouveau produit publié au back-office arrive SANS réinstallation.
+  const refreshCatalogue = useCallback(async (): Promise<number | null> => {
+    setCatalogueSyncing(true);
+    let count: number | null = null;
+    try {
+      const out = await fetchFullCatalogue((params) => productsApi.list(params));
+      setCatalogue(out.products);
+      saveCatalogueCache(out.products);
+      const at = new Date().toISOString();
+      setCatalogueSyncedAt(at);
+      count = out.products.length;
+    } catch {
+      console.warn('[CATALOGUE] Backend unavailable — keeping cached catalogue');
+    } finally {
+      setCatalogueSyncing(false);
+    }
 
     productsApi.categories()
       .then((res: any) => {
@@ -61,6 +81,7 @@ export function useCart() {
         }
       })
       .catch((err) => console.warn('[CATALOGUE] Failed to load categories:', err?.message || err));
+    return count;
   }, []);
 
   // Refresh immediately after a sale completes (stock changed on backend)
@@ -83,13 +104,7 @@ export function useCart() {
   const searchResults = useMemo(() => {
     if (!scanValue.trim() || store.scanMode === 'customer') return [];
     const q = scanValue.toLowerCase().trim();
-    return catalogue
-      .filter((p) =>
-        p.name.toLowerCase().includes(q) ||
-        (p.description && p.description.toLowerCase().includes(q)) ||
-        p.ean.includes(q),
-      )
-      .slice(0, 8);
+    return catalogue.filter((p) => productMatchesQuery(p, q)).slice(0, 8);
   }, [scanValue, store.scanMode, catalogue]);
 
   const addProductToCart = useCallback((product: CatalogueProduct, weightKg?: number) => {
@@ -100,15 +115,17 @@ export function useCart() {
       store.addToCart({
         productId: product.id + '-' + Date.now(),
         ean: product.ean,
-        name: `${product.name} (${weightKg.toFixed(3)} kg)`,
+        name: `${productDisplayName(product)} (${weightKg.toFixed(3)} kg)`,
         unitPriceMinorUnits: priceMinor,
+        taxRate: Number.isFinite(Number(product.taxRate)) ? Number(product.taxRate) : undefined,
       });
     } else {
       store.addToCart({
         productId: product.id,
         ean: product.ean,
-        name: product.name,
+        name: productDisplayName(product),
         unitPriceMinorUnits: product.priceMinorUnits,
+        taxRate: Number.isFinite(Number(product.taxRate)) ? Number(product.taxRate) : undefined,
       });
     }
     setScanValue('');
@@ -171,11 +188,11 @@ export function useCart() {
       } else {
         const res = await productsApi.scan(value);
         if (res.data) {
-          store.addToCart({ productId: res.data.id, ean: res.data.ean, name: res.data.name, unitPriceMinorUnits: res.data.priceMinorUnits });
+          store.addToCart({ productId: res.data.id, ean: res.data.ean, name: productDisplayName(res.data), unitPriceMinorUnits: res.data.priceMinorUnits, taxRate: Number.isFinite(Number(res.data.taxRate)) ? Number(res.data.taxRate) : undefined });
         } else { await reportUnknownProduct(value.trim()); }
       }
     } catch (e: any) {
-      const fuzzy = catalogue.find((p) => p.name.toLowerCase().includes(value.toLowerCase()));
+      const fuzzy = catalogue.find((p) => productMatchesQuery(p, value.toLowerCase().trim()));
       if (fuzzy) { handleSelectProduct(fuzzy); }
       else if (store.scanMode !== 'customer' && e?.response?.status === 404) {
         await reportUnknownProduct(value.trim());
@@ -197,6 +214,8 @@ export function useCart() {
   return {
     // State
     catalogue,
+    catalogueSyncedAt,
+    catalogueSyncing,
     categories,
     scanValue,
     setScanValue,

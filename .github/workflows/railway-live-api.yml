@@ -1,0 +1,126 @@
+# Déploiement du service Railway LIVE derrière api.addxintelligence.com
+# (service historique « sweet-blessing », domaine bgzfcn8a.up.railway.app —
+# c'est LUI que la caisse et le back-office consomment, cf. INTEGRATION_GAPS.md).
+#
+# Modelé sur railway-live.yml (GO owner 2026-07-08, chemin « CI secret existant »).
+# Jamais aucune valeur de secret affichée : le token sert uniquement d'en-tête ;
+# seules des IDs (projet/environnement/service) et des statuts sont imprimés.
+# Sécurité injection : l'unique input (commit_sha) n'est consommé QUE via la
+# variable d'environnement DEPLOY_SHA, jamais interpolé directement dans run:.
+name: Railway Live Deploy (api.addxintelligence.com)
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: "SHA complet du commit main à déployer"
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency: railway-live-api
+
+env:
+  URL: https://api.addxintelligence.com
+  OLD_TARGET: bgzfcn8a.up.railway.app
+  DEPLOY_SHA: ${{ inputs.commit_sha }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      RAILWAY_TOKEN_OLD: ${{ secrets.RAILWAY_TOKEN_OLD }}
+    steps:
+      - name: Présence du secret (nom seulement)
+        run: |
+          if [ -z "$RAILWAY_TOKEN_OLD" ]; then
+            echo "RAILWAY_TOKEN_OLD : ABSENT des secrets du repo" && exit 1
+          fi
+          echo "RAILWAY_TOKEN_OLD : PRÉSENT"
+
+      - name: Résolution projet/environnement/service (IDs seulement)
+        id: resolve
+        run: |
+          gql() {
+            curl -sS --max-time 30 -X POST https://backboard.railway.app/graphql/v2 \
+              -H "Project-Access-Token: $RAILWAY_TOKEN_OLD" -H "Content-Type: application/json" -d "$1"
+          }
+          PT=$(gql '{"query":"query { projectToken { projectId environmentId } }"}')
+          PROJECT=$(printf '%s' "$PT" | jq -r '.data.projectToken.projectId // empty')
+          ENVID=$(printf '%s' "$PT" | jq -r '.data.projectToken.environmentId // empty')
+          if [ -z "$PROJECT" ] || [ -z "$ENVID" ]; then
+            echo "Token projet illisible :"; printf '%s' "$PT" | jq -c '{errors: (.errors // [] | map(.message))}'; exit 1
+          fi
+          echo "project=$PROJECT env=$ENVID"
+          SVCS=$(gql "{\"query\":\"query { project(id: \\\"$PROJECT\\\") { services { edges { node { id name serviceInstances { edges { node { environmentId domains { serviceDomains { domain } customDomains { domain } } } } } } } } } }\"}")
+          # Cible = service portant le domaine custom api.addxintelligence.com,
+          # sinon le domaine Railway historique bgzfcn8a, sinon (fallback
+          # documenté) le service nommé « backend » — les autres services du
+          # projet (backoffice/pos/mobile/Redis) ne sont jamais candidats.
+          SERVICE=$(printf '%s' "$SVCS" | jq -r --arg cd "api.addxintelligence.com" --arg d "$OLD_TARGET" '
+            [.data.project.services.edges[].node
+             | select(
+                 ([.serviceInstances.edges[].node.domains.customDomains[]?.domain] | index($cd)) or
+                 ([.serviceInstances.edges[].node.domains.serviceDomains[]?.domain] | index($d))
+               ) | .id][0] // empty' )
+          if [ -z "$SERVICE" ]; then
+            echo "Aucun service ne porte api.addxintelligence.com ni $OLD_TARGET — fallback service nommé 'backend'"
+            SERVICE=$(printf '%s' "$SVCS" | jq -r '[.data.project.services.edges[].node | select(.name == "backend") | .id][0] // empty')
+          fi
+          if [ -z "$SERVICE" ]; then
+            echo "Service cible introuvable. Services du projet (id/nom + domaines) :"
+            printf '%s' "$SVCS" | jq -c '[.data.project.services.edges[].node | {id, name, domains: [.serviceInstances.edges[].node.domains | (.serviceDomains[]?.domain, .customDomains[]?.domain)]}]'
+            exit 1
+          fi
+          echo "service=$SERVICE"
+          printf '%s' "$SVCS" | jq -c --arg s "$SERVICE" '.data.project.services.edges[].node | select(.id == $s) | {id, name, domains: [.serviceInstances.edges[].node.domains | (.serviceDomains[]?.domain, .customDomains[]?.domain)]}'
+          {
+            echo "project=$PROJECT"; echo "envid=$ENVID"; echo "service=$SERVICE"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Déploiement du SHA demandé
+        env:
+          SERVICE_ID: ${{ steps.resolve.outputs.service }}
+          ENV_ID: ${{ steps.resolve.outputs.envid }}
+        run: |
+          gql() {
+            curl -sS --max-time 30 -X POST https://backboard.railway.app/graphql/v2 \
+              -H "Project-Access-Token: $RAILWAY_TOKEN_OLD" -H "Content-Type: application/json" -d "$1"
+          }
+          echo "serviceInstanceDeployV2 service=$SERVICE_ID env=$ENV_ID sha=$DEPLOY_SHA"
+          OUT=$(gql "{\"query\":\"mutation { serviceInstanceDeployV2(serviceId: \\\"$SERVICE_ID\\\", environmentId: \\\"$ENV_ID\\\", commitSha: \\\"$DEPLOY_SHA\\\") }\"}")
+          printf '%s' "$OUT" | jq -c '{data, errors: (.errors // [] | map(.message))}'
+          ERRS=$(printf '%s' "$OUT" | jq -r '(.errors // []) | length')
+          [ "$ERRS" = "0" ] || exit 1
+
+      - name: Attente du déploiement (statut Railway)
+        env:
+          PROJECT_ID: ${{ steps.resolve.outputs.project }}
+          SERVICE_ID: ${{ steps.resolve.outputs.service }}
+          ENV_ID: ${{ steps.resolve.outputs.envid }}
+        run: |
+          gql() {
+            curl -sS --max-time 30 -X POST https://backboard.railway.app/graphql/v2 \
+              -H "Project-Access-Token: $RAILWAY_TOKEN_OLD" -H "Content-Type: application/json" -d "$1"
+          }
+          for i in $(seq 1 60); do
+            sleep 15
+            ST=$(gql "{\"query\":\"query { deployments(first: 1, input: {projectId: \\\"$PROJECT_ID\\\", serviceId: \\\"$SERVICE_ID\\\", environmentId: \\\"$ENV_ID\\\"}) { edges { node { status } } } }\"}" \
+              | jq -r '.data.deployments.edges[0].node.status // "UNKNOWN"')
+            echo "[$i] statut=$ST"
+            case "$ST" in
+              SUCCESS) exit 0 ;;
+              FAILED|CRASHED|REMOVED) echo "Déploiement en échec ($ST)"; exit 1 ;;
+            esac
+          done
+          echo "Timeout d'attente (15 min)"; exit 1
+
+      - name: Smoke test santé (uptime doit repartir de ~0)
+        run: |
+          sleep 10
+          H=$(curl -sS --max-time 20 "$URL/api/health")
+          printf '%s' "$H" | jq -c '{status, database, uptime_seconds}'
+          printf '%s' "$H" | jq -e '.status == "ok" or .status == "degraded"' >/dev/null
+          UP=$(printf '%s' "$H" | jq -r '.uptime_seconds')
+          awk "BEGIN{exit !($UP < 600)}" || { echo "Uptime $UP s : le service n'a pas redémarré ?"; exit 1; }

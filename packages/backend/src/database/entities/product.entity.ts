@@ -9,6 +9,7 @@ import {
   Index,
 } from 'typeorm';
 import { StoreEntity } from './store.entity';
+import { decimalToNumber } from '../../common/utils/decimal.transformer';
 
 @Entity('products')
 @Index(['ean', 'storeId'], { unique: true })
@@ -22,6 +23,14 @@ export class ProductEntity {
 
   @Column({ name: 'barcode_source', type: 'varchar', default: 'imported' })
   barcodeSource: 'imported' | 'manual' | 'generated';
+
+  /**
+   * Nature du code principal : GTIN fabricant officiel (GS1) ou identifiant
+   * interne Wesley (`WES-P-############`, Code 128 non-GS1, environnement
+   * fermé). Dérivé côté serveur du format du code — jamais fourni par le client.
+   */
+  @Column({ name: 'barcode_type', type: 'varchar', default: 'EXTERNAL_GTIN' })
+  barcodeType: 'EXTERNAL_GTIN' | 'INTERNAL_WESLEY';
 
   @Column()
   name: string;
@@ -63,7 +72,7 @@ export class ProductEntity {
   @Column({ name: 'cost_minor_units', type: 'integer', nullable: true })
   costMinorUnits: number;
 
-  @Column({ name: 'tax_rate', type: 'decimal', default: 20.0 })
+  @Column({ name: 'tax_rate', type: 'decimal', default: 20.0, transformer: decimalToNumber })
   taxRate: number;
 
   @Column({ name: 'image_url', nullable: true, type: 'text' })
@@ -88,6 +97,84 @@ export class ProductEntity {
    */
   @Column({ type: 'varchar', default: 'active' })
   status: 'draft' | 'pending_validation' | 'active' | 'rejected' | 'archived';
+
+  // ── Lot 2 — champs additifs de la fiche pro (migration 1760, tous nullables) ──
+  @Column({ name: 'short_name', type: 'varchar', nullable: true })
+  shortName: string | null;
+
+  @Column({ name: 'internal_ref', type: 'varchar', nullable: true })
+  internalRef: string | null;
+
+  @Column({ name: 'supplier_ref', type: 'varchar', nullable: true })
+  supplierRef: string | null;
+
+  @Column({ name: 'product_type', type: 'varchar', default: 'simple' })
+  productType: 'simple' | 'variant' | 'pack' | 'service' | 'deposit' | 'gift_card';
+
+  @Column({ name: 'country_of_origin', type: 'varchar', nullable: true })
+  countryOfOrigin: string | null;
+
+  @Column({ name: 'lead_time_days', type: 'integer', nullable: true })
+  leadTimeDays: number | null;
+
+  @Column({ name: 'min_order_quantity', type: 'integer', nullable: true })
+  minOrderQuantity: number | null;
+
+  @Column({ name: 'weight_grams', type: 'integer', nullable: true })
+  weightGrams: number | null;
+
+  @Column({ name: 'width_mm', type: 'integer', nullable: true })
+  widthMm: number | null;
+
+  @Column({ name: 'height_mm', type: 'integer', nullable: true })
+  heightMm: number | null;
+
+  @Column({ name: 'depth_mm', type: 'integer', nullable: true })
+  depthMm: number | null;
+
+  @Column({ name: 'volume_ml', type: 'integer', nullable: true })
+  volumeMl: number | null;
+
+  @Column({ name: 'units_per_carton', type: 'integer', nullable: true })
+  unitsPerCarton: number | null;
+
+  // ── Lot E — saisonnalité (fenêtre par mois, récurrente) ──
+  @Column({ name: 'is_seasonal', type: 'boolean', default: false })
+  isSeasonal: boolean;
+
+  @Column({ name: 'season_start_month', type: 'integer', nullable: true })
+  seasonStartMonth: number | null;
+
+  @Column({ name: 'season_end_month', type: 'integer', nullable: true })
+  seasonEndMonth: number | null;
+
+  // ── Lot I — prix encadrés, conditionnement, réglementaire alimentaire ──
+  @Column({ name: 'min_price_minor_units', type: 'integer', nullable: true })
+  minPriceMinorUnits: number | null;
+
+  @Column({ name: 'recommended_price_minor_units', type: 'integer', nullable: true })
+  recommendedPriceMinorUnits: number | null;
+
+  @Column({ name: 'units_per_pack', type: 'integer', nullable: true })
+  unitsPerPack: number | null;
+
+  @Column({ name: 'cartons_per_pallet', type: 'integer', nullable: true })
+  cartonsPerPallet: number | null;
+
+  @Column({ type: 'text', nullable: true })
+  allergens: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  ingredients: string | null;
+
+  @Column({ name: 'best_before_date', type: 'date', nullable: true })
+  bestBeforeDate: string | null;
+
+  @Column({ name: 'use_by_date', type: 'date', nullable: true })
+  useByDate: string | null;
+
+  @Column({ name: 'lot_number', type: 'varchar', length: 60, nullable: true })
+  lotNumber: string | null;
 
   @Column({ name: 'store_id' })
   storeId: string;

@@ -9,8 +9,8 @@ export class ProductCategoryEntity {
   @Column()
   name: string;
 
-  @Column({ name: 'parent_id', nullable: true })
-  parentId: string;
+  @Column({ name: 'parent_id', type: 'varchar', nullable: true })
+  parentId: string | null;
 
   @Column({ name: 'store_id' })
   storeId: string;

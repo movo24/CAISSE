@@ -18,27 +18,33 @@ export class UnitEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'organization_id' })
-  organizationId: string;
+  @Column({ name: 'organization_id', type: 'uuid', nullable: true })
+  organizationId: string | null;
 
-  @Column()
+  @Column({ type: 'varchar' })
   name: string;
 
+  @Column({ type: 'varchar', nullable: true })
+  code: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  description: string | null;
+
   /** Type: retail, warehouse, headquarters, franchise, popup */
-  @Column({ default: 'retail' })
+  @Column({ type: 'varchar', default: 'retail' })
   type: string;
 
-  @Column({ default: 'FR' })
+  @Column({ type: 'varchar', default: 'FR' })
   country: string;
 
-  @Column({ name: 'currency_code', default: 'EUR' })
+  @Column({ name: 'currency_code', type: 'varchar', default: 'EUR' })
   currencyCode: string;
 
-  @Column({ name: 'is_active', default: true })
+  @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;
 
-  @Column({ nullable: true, type: 'text' })
-  notes: string;
+  @Column({ type: 'text', nullable: true })
+  notes: string | null;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

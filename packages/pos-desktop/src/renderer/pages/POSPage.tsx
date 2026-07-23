@@ -18,10 +18,13 @@ import {
   type DrawerStatus,
 } from '../services/salePeripherals';
 import { newIdempotencyKey } from '../services/idempotency';
+import { buildTicketUrl, makeTicketQrDataUrl } from '../services/ticketQr';
+import { getBrandLogoDataUrl } from '../services/brandLogo';
 import { toWirePayments, toSaleDiscountFields } from '../services/salePayload';
 import { validateManualDiscount } from '../services/discount-policy';
 import { useOfflineStore } from '../stores/offlineStore';
 import { getCardPaymentMode, CARD_DISABLED_MESSAGE } from '../services/cardPaymentMode';
+import { fetchFullCatalogue, loadCatalogueCache, saveCatalogueCache } from '../services/catalogSync';
 import { loadSettings as loadCustomerDisplaySettings, terminalLabel } from '../services/customerDisplay/settings';
 import { computePaymentState, type PaymentMethod } from '../services/paymentMachine';
 import { PromoCodeControl } from '../components/PromoCodeControl';
@@ -60,6 +63,7 @@ import { CustomerDisplayPublisher } from '../components/CustomerDisplayPublisher
 import { UpdateBanner } from '../components/UpdateBanner';
 import { ActiveCashierBanner } from '../components/ActiveCashierBanner';
 import { ScoreDetailModal } from '../components/ScoreDetailModal';
+import { productDisplayName, productMatchesQuery } from '../utils/productDisplay';
 
 /* ── Helpers ── */
 
@@ -89,6 +93,7 @@ interface CatalogueProduct {
   id: string;
   ean: string;
   name: string;
+  shortName?: string | null;
   description?: string | null;
   categoryId?: string | null;
   unitType: string;
@@ -325,17 +330,35 @@ export function POSPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Fetch product catalogue from backend
-  const [catalogue, setCatalogue] = useState<CatalogueProduct[]>([]);
-  useEffect(() => {
-    productsApi.list()
-      .then((res) => {
-        if (Array.isArray(res.data)) setCatalogue(res.data);
-      })
-      .catch(() => {
-        console.warn('[CATALOGUE] Backend non disponible — catalogue vide');
-      });
+  // Catalogue produits : TOUTES les pages (fetchFullCatalogue), cache
+  // persistant (boot hors ligne opérationnel), rafraîchi toutes les 15 s et
+  // synchronisable À LA DEMANDE (« Synchroniser les produits ») — un produit
+  // publié au back-office arrive sans réinstallation ni nouvelle version.
+  const [catalogue, setCatalogue] = useState<CatalogueProduct[]>(
+    () => loadCatalogueCache().products,
+  );
+  const [catalogueSyncing, setCatalogueSyncing] = useState(false);
+  const [catalogueSyncInfo, setCatalogueSyncInfo] = useState<string | null>(null);
+  const refreshCatalogue = useCallback(async (manual = false): Promise<void> => {
+    setCatalogueSyncing(true);
+    try {
+      const out = await fetchFullCatalogue((params) => productsApi.list(params));
+      setCatalogue(out.products);
+      saveCatalogueCache(out.products);
+      if (manual) setCatalogueSyncInfo(`${out.products.length} produits synchronisés`);
+    } catch {
+      console.warn('[CATALOGUE] Backend non disponible — cache conservé');
+      if (manual) setCatalogueSyncInfo('Serveur injoignable — catalogue local conservé');
+    } finally {
+      setCatalogueSyncing(false);
+      if (manual) setTimeout(() => setCatalogueSyncInfo(null), 4000);
+    }
   }, []);
+  useEffect(() => {
+    void refreshCatalogue();
+    const interval = setInterval(() => void refreshCatalogue(), 15_000);
+    return () => clearInterval(interval);
+  }, [refreshCatalogue]);
 
   // filteredHistory, handleReprint — provided by useTicketHistory hook
 
@@ -532,14 +555,7 @@ export function POSPage() {
     const q = scanValue.toLowerCase().trim();
     // Matche tout ce que le catalogue POS expose réellement : nom, description
     // (marque incluse quand renseignée), code-barres/SKU (EAN) et catégorie.
-    return catalogue
-      .filter((p) =>
-        p.name.toLowerCase().includes(q) ||
-        (p.description && p.description.toLowerCase().includes(q)) ||
-        p.ean.includes(q) ||
-        (p.categoryId && p.categoryId.toLowerCase().includes(q)),
-      )
-      .slice(0, 8);
+    return catalogue.filter((p) => productMatchesQuery(p, q)).slice(0, 8);
   }, [scanValue, store.scanMode, catalogue]);
 
   const addProductToCart = (product: CatalogueProduct, weightKg?: number) => {
@@ -558,15 +574,17 @@ export function POSPage() {
       store.addToCart({
         productId: product.id + '-' + Date.now(),
         ean: product.ean,
-        name: `${product.name} (${kg.toFixed(3)} kg)`,
+        name: `${productDisplayName(product)} (${kg.toFixed(3)} kg)`,
         unitPriceMinorUnits: priceMinor,
+        taxRate: Number.isFinite(Number(product.taxRate)) ? Number(product.taxRate) : undefined,
       });
     } else {
       store.addToCart({
         productId: product.id,
         ean: product.ean,
-        name: product.name,
+        name: productDisplayName(product),
         unitPriceMinorUnits: product.priceMinorUnits,
+        taxRate: Number.isFinite(Number(product.taxRate)) ? Number(product.taxRate) : undefined,
       });
     }
     setScanValue('');
@@ -617,13 +635,13 @@ export function POSPage() {
             setError(`Vente refusée — produit désactivé : ${res.data.name}`);
             flashScannerStatus('refused', 'Produit désactivé');
           } else {
-            store.addToCart({ productId: res.data.id, ean: res.data.ean, name: res.data.name, unitPriceMinorUnits: res.data.priceMinorUnits });
+            store.addToCart({ productId: res.data.id, ean: res.data.ean, name: productDisplayName(res.data), unitPriceMinorUnits: res.data.priceMinorUnits, taxRate: Number.isFinite(Number(res.data.taxRate)) ? Number(res.data.taxRate) : undefined });
             flashScannerStatus('added');
           }
         } else { openUnknownProduct(value.trim()); }
       }
     } catch (e: any) {
-      const fuzzy = catalogue.find((p) => p.name.toLowerCase().includes(value.toLowerCase()));
+      const fuzzy = catalogue.find((p) => productMatchesQuery(p, value.toLowerCase().trim()));
       if (fuzzy) { handleSelectProduct(fuzzy); }
       else if (store.scanMode !== 'customer' && e?.response?.status === 404) {
         // Le backend confirme : ce code-barres n'existe pas → produit inconnu.
@@ -894,6 +912,9 @@ export function POSPage() {
       : 'mixed';
 
     let ticketNumber = '';
+    // Jeton public du ticket numérique (généré SERVEUR à la vente). Hors ligne :
+    // null — la vente reste finalisable, le jeton arrivera à la synchronisation.
+    let publicToken: string | null = null;
 
     // Stable idempotency key for this checkout — a double-click / retry reuses it,
     // so the backend dedupes instead of creating a second sale + cash-in.
@@ -909,6 +930,7 @@ export function POSPage() {
         payments: toWirePayments(payments),
       }, idempotencyKey);
       ticketNumber = res.data.ticketNumber || `T-${Date.now().toString().slice(-6)}`;
+      publicToken = res.data.publicToken || null;
       saleIdemKeyRef.current = null; // confirmed online → next sale gets a fresh key
       if (res.data.jackpotResult) store.setJackpotResult(res.data.jackpotResult);
     } catch (err: any) {
@@ -992,6 +1014,8 @@ export function POSPage() {
       customerName: store.customer ? `${store.customer.firstName} ${store.customer.lastName}` : undefined,
       reprintCount: 0,
       reprintLog: [],
+      // Réimpression = MÊME jeton → exactement le même QR (jamais régénéré).
+      publicToken,
     });
 
     // Record performance metrics (silent tracking)
@@ -1039,12 +1063,31 @@ export function POSPage() {
     // vente. Idempotent par `saleId` (idempotency key) ET par action, persisté :
     // ni double ticket ni double tiroir sur double-clic / retry / remontage /
     // redémarrage. (`ticketNumber` reste la référence FISCALE affichée.)
+    const si = store.storeInfo;
+    // QR du ticket numérique : URL = base publique (config Dashboard) + jeton
+    // serveur. Hors ligne / QR désactivé / base absente → pas de QR (note claire
+    // hors ligne) — l'encaissement ne dépend JAMAIS du site Internet.
+    const qrEnabled = si?.receiptQrEnabled !== false;
+    const ticketUrl = qrEnabled ? buildTicketUrl(si?.receiptPublicBaseUrl, publicToken) : null;
+    // TicketData construit de façon SYNCHRONE, avant clearCart (le panier et
+    // les totaux sont capturés maintenant, jamais relus plus tard).
     const ticketData = buildTicketData({
-      storeName: store.storeInfo?.storeName,
-      storeAddress: store.storeInfo?.address,
-      siret: store.storeInfo?.siret,
-      tvaIntracom: store.storeInfo?.tvaIntracom,
-      nifCaisse: store.storeInfo?.nifCaisse,
+      storeName: si?.storeName,
+      storeAddress: si?.address,
+      addressLine2: [si?.postalCode, si?.city].filter(Boolean).join(' ') || undefined,
+      operatingCompanyName: si?.operatingCompanyName || undefined,
+      siret: si?.siret,
+      tvaIntracom: si?.tvaIntracom,
+      rcs: si?.rcs || undefined,
+      capitalSocial: si?.capitalSocial || undefined,
+      phone: si?.phone || undefined,
+      website: si?.websiteUrl || undefined,
+      headerMessage: si?.headerMessage || undefined,
+      nifCaisse: si?.nifCaisse,
+      softwareVersion: si?.softwareVersion || undefined,
+      // Logo : config Dashboard d'abord ; sinon repli = logo officiel The
+      // Wesley embarqué dans la caisse (jamais un ticket sans marque).
+      logoDataUrl: si?.receiptLogoUrl || getBrandLogoDataUrl(),
       ticketNumber,
       date: timestamp,
       cashierName,
@@ -1053,24 +1096,46 @@ export function POSPage() {
         quantity: i.quantity,
         unitPriceMinorUnits: i.unitPriceMinorUnits,
         discountMinorUnits: i.discountMinorUnits,
+        taxRate: i.taxRate,
       })),
       subtotalMinorUnits: store.subtotal(),
       discountMinorUnits: store.totalDiscount(),
       totalMinorUnits: totalAmount,
       payments: payments.map((p) => ({ method: p.method, amountMinorUnits: p.amountMinorUnits })),
       changeMinorUnits: changeMinor,
+      footer: si?.footerMessage || undefined,
+      finalMessage: si?.receiptFinalMessage || undefined,
+      offlineNote:
+        qrEnabled && !publicToken
+          ? 'Ticket numérique disponible après synchronisation'
+          : undefined,
     });
     setLastPrintStatus(null);
     setLastDrawerStatus(null);
-    void finalizeSalePeripherals({
-      // Identité STABLE de la vente = idempotency key (sale-<uuid>), jamais le
-      // ticketNumber (séquentiel par magasin côté serveur, instable côté client).
-      saleId: idempotencyKey,
-      ticketData,
-      payments: payments.map((p) => ({ method: p.method, amountMinorUnits: p.amountMinorUnits })),
-      saleValidated: true,
-      guard: salePeripheralGuard,
-    }).then((r) => {
+    void (async () => {
+      // Le QR (ticket numérique) est généré puis fusionné dans le TicketData
+      // déjà capturé — aucune relecture du panier après clearCart.
+      const qrDataUrl = ticketUrl ? await makeTicketQrDataUrl(ticketUrl) : null;
+      return finalizeSalePeripherals({
+        // Identité STABLE de la vente = idempotency key (sale-<uuid>), jamais le
+        // ticketNumber (séquentiel par magasin côté serveur, instable côté client).
+        saleId: idempotencyKey,
+        saleValidated: true,
+        payments: payments.map((p) => ({ method: p.method, amountMinorUnits: p.amountMinorUnits })),
+        guard: salePeripheralGuard,
+        ticketData: qrDataUrl
+          ? {
+              ...ticketData,
+              qrDataUrl,
+              qrContent: ticketUrl,
+              qrText:
+                si?.receiptQrText ||
+                'Scannez pour retrouver votre ticket et découvrir nos nouveautés',
+              offlineNote: undefined,
+            }
+          : ticketData,
+      });
+    })().then((r) => {
       // Trois statuts distincts, jamais fusionnés (règle owner).
       setLastPrintStatus(r.printStatus);
       setLastDrawerStatus(r.drawerStatus);
@@ -1299,6 +1364,23 @@ export function POSPage() {
           {offlineMode.isOffline ? 'OFFLINE' : offlineMode.isSyncing ? `SYNC ${offlineMode.syncProgress}%` : offlineMode.pendingCount > 0 ? `${offlineMode.pendingCount} en attente` : 'ONLINE'}
         </button>
 
+        {/* Synchronisation manuelle du CATALOGUE produits (indépendante de la
+            file offline) : récupère immédiatement un produit publié au
+            back-office, sans attendre le rafraîchissement automatique. */}
+        <button
+          onClick={() => void refreshCatalogue(true)}
+          disabled={catalogueSyncing}
+          className={`flex-none flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1 rounded-full transition-all ${
+            catalogueSyncing
+              ? 'bg-blue-50 text-blue-600 ring-1 ring-blue-200'
+              : 'bg-pos-subtle text-pos-muted ring-1 ring-pos-border hover:bg-pos-border/40 cursor-pointer'
+          }`}
+          title="Synchroniser les produits (recharge le catalogue depuis le serveur)"
+        >
+          <SyncIcon size={10} className={catalogueSyncing ? 'animate-spin' : ''} />
+          {catalogueSyncInfo ?? (catalogueSyncing ? 'PRODUITS…' : 'PRODUITS')}
+        </button>
+
         <div className="relative flex-none">
           <button className="profile-trigger" onClick={() => setProfileOpen(!profileOpen)}>
             <div className="w-8 h-8 rounded-full bg-pos-subtle flex items-center justify-center">
@@ -1424,10 +1506,10 @@ export function POSPage() {
                     onClick={() => handleSelectProduct(product)}
                     onMouseEnter={() => setSelectedIdx(idx)}
                   >
-                    <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${avatarColor(product.name)} flex items-center justify-center font-bold text-xs flex-shrink-0`}>{initials(product.name)}</div>
+                    <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${avatarColor(productDisplayName(product))} flex items-center justify-center font-bold text-xs flex-shrink-0`}>{initials(productDisplayName(product))}</div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <p className="font-semibold text-sm truncate text-pos-text">{product.name}</p>
+                        <p className="font-semibold text-sm truncate text-pos-text">{productDisplayName(product)}</p>
                         {product.unitType === 'kg' && (
                           <span className="flex items-center gap-0.5 text-[10px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full ring-1 ring-amber-200">
                             <Weight size={9} /> POIDS
@@ -1693,9 +1775,9 @@ export function POSPage() {
         <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in">
           <div className="bg-white rounded-3xl shadow-elevated w-[420px] p-7 space-y-5 animate-scale-in">
             <div className="flex items-center gap-4">
-              <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${avatarColor(weightModal.name)} flex items-center justify-center font-bold text-lg`}>{initials(weightModal.name)}</div>
+              <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${avatarColor(productDisplayName(weightModal))} flex items-center justify-center font-bold text-lg`}>{initials(productDisplayName(weightModal))}</div>
               <div>
-                <h3 className="font-bold text-lg text-pos-text">{weightModal.name}</h3>
+                <h3 className="font-bold text-lg text-pos-text">{productDisplayName(weightModal)}</h3>
                 <p className="text-sm text-amber-600 font-semibold flex items-center gap-1.5"><Weight size={14} />{(weightModal.priceMinorUnits / 100).toFixed(2).replace('.', ',')} &euro; / kg</p>
               </div>
             </div>

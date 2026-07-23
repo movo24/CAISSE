@@ -10,6 +10,7 @@ import {
 import { QRCodeSVG } from 'qrcode.react';
 import { usePOSStore } from '../../stores/posStore';
 import { useDeviceProfile, platformClasses } from '../../hooks/useDeviceProfile';
+import { productDisplayName } from '../../utils/productDisplay';
 import { useCart, CatalogueProduct } from '../../hooks/useCart';
 import { usePayment, PaymentMethod } from '../../hooks/usePayment';
 import { useFavorites } from '../../hooks/useFavorites';
@@ -125,7 +126,7 @@ export function IPadPOSLayout() {
     cart.handleSelectProduct(product);
     favorites.addRecent({
       productId: product.id,
-      name: product.name,
+      name: productDisplayName(product),
       ean: product.ean,
       priceMinorUnits: product.priceMinorUnits,
       categoryId: product.categoryId,
@@ -228,6 +229,24 @@ export function IPadPOSLayout() {
             >
               {offlineMode.isOffline ? <WifiOff size={isLandscape ? 9 : 10} /> : <Wifi size={isLandscape ? 9 : 10} />}
               {!isLandscape && (offlineMode.isOffline ? 'OFFLINE' : 'ONLINE')}
+            </button>
+
+            {/* Synchronisation manuelle du CATALOGUE produits : récupère
+                immédiatement un produit publié au back-office. */}
+            <button
+              onClick={() => void cart.refreshCatalogue()}
+              disabled={cart.catalogueSyncing}
+              className={`flex items-center gap-1 font-bold rounded-full transition-all ${
+                isLandscape ? 'text-[9px] px-1.5 py-0.5' : 'text-[10px] px-2 py-1'
+              } ${
+                cart.catalogueSyncing
+                  ? 'bg-blue-50 text-blue-600 ring-1 ring-blue-200'
+                  : 'bg-pos-subtle text-pos-muted ring-1 ring-pos-border hover:bg-pos-border/40'
+              }`}
+              title="Synchroniser les produits"
+            >
+              <SyncIcon size={isLandscape ? 9 : 10} className={cart.catalogueSyncing ? 'animate-spin' : ''} />
+              {!isLandscape && 'PRODUITS'}
             </button>
 
             {/* Widgets — hide verbose ones in landscape */}
@@ -906,11 +925,17 @@ export function IPadPOSLayout() {
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
                   <button onClick={() => {
-                    // Get the sale ID from the last sale (stored during finalizePayment)
+                    // Ticket numérique The Wesley (base URL configurée au
+                    // Dashboard + jeton public serveur). Repli : ancien reçu
+                    // par saleId si le magasin n'a pas encore de config.
                     const lastSaleId = (store as any).lastSaleId || '';
-                    const receiptUrl = lastSaleId
-                      ? `https://api.addxintelligence.com/api/receipts/${lastSaleId}/html`
-                      : '';
+                    const lastToken = (store as any).lastPublicToken || '';
+                    const base = ((store.storeInfo as any)?.receiptPublicBaseUrl || '').replace(/\/+$/, '');
+                    const receiptUrl = base && lastToken
+                      ? `${base}/ticket/${lastToken}`
+                      : lastSaleId
+                        ? `https://api.addxintelligence.com/api/receipts/${lastSaleId}/html`
+                        : '';
                     setDigitalReceipt({
                       ticketNumber: payment.confirmation!.ticketNumber,
                       total: payment.confirmation!.total,

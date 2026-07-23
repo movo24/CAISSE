@@ -7,8 +7,10 @@ import { LoginPage } from './pages/LoginPage';
 import { StoreSelectPage } from './pages/StoreSelectPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { ProductsPage } from './pages/ProductsPage';
+import { ProductEditPage } from './pages/ProductEditPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { ReceiptSettingsPage } from './pages/ReceiptSettingsPage';
 import { StockAlertsPage } from './pages/StockAlertsPage';
 import { StockNetworkPage } from './pages/StockNetworkPage';
 import { LabelsPage } from './pages/LabelsPage';
@@ -23,6 +25,7 @@ import { PlanningPage } from './pages/PlanningPage';
 import { ReturnsPage } from './pages/ReturnsPage';
 import { ConnectedAppsPage } from './pages/ConnectedAppsPage';
 import { AirtableOpsPage } from './pages/AirtableOpsPage';
+import { SecurityAccessPage } from './pages/SecurityAccessPage';
 import { SalesGuardsPage } from './pages/SalesGuardsPage';
 import { BillingPage } from './pages/BillingPage';
 import { ComingSoonPage } from './pages/ComingSoonPage';
@@ -30,6 +33,8 @@ import { NetworkDashboardPage } from './pages/NetworkDashboardPage';
 import { ProductVariantsPage } from './pages/ProductVariantsPage';
 import { StorePricesPage } from './pages/StorePricesPage';
 import { BrandsSuppliersPage } from './pages/BrandsSuppliersPage';
+import { CategoriesAdminPage } from './pages/CategoriesAdminPage';
+import { ProductDetailPage } from './pages/ProductDetailPage';
 import { PromoCodesPage } from './pages/PromoCodesPage';
 import { CampaignsPage } from './pages/CampaignsPage';
 import { PendingPaymentsPage } from './pages/PendingPaymentsPage';
@@ -83,9 +88,13 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             {/* Couche 3: Exploitation magasin */}
             <Route path="/" element={<DashboardPage />} />
             <Route path="/products" element={<ProductsPage />} />
+            <Route path="/products/new" element={<ProductEditPage />} />
+            <Route path="/products/:id/edit" element={<ProductEditPage />} />
+            <Route path="/products/:id" element={<ProductDetailPage />} />
             <Route path="/catalog/variants" element={<ProductVariantsPage />} />
             <Route path="/catalog/store-prices" element={<StorePricesPage />} />
             <Route path="/catalog/brands-suppliers" element={<BrandsSuppliersPage />} />
+            <Route path="/catalog/categories" element={<CategoriesAdminPage />} />
             <Route path="/promo-codes" element={<PromoCodesPage />} />
             <Route path="/campaigns" element={<CampaignsPage />} />
             <Route path="/pending-payments" element={<PendingPaymentsPage />} />
@@ -110,9 +119,11 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             <Route path="/organizations" element={<OrganizationsPage />} />
             <Route path="/units" element={<UnitsPage />} />
             <Route path="/stores" element={<StoresManagementPage />} />
+            <Route path="/stores/receipt-settings" element={<ReceiptSettingsPage />} />
             <Route path="/pos-enrollment" element={<PosEnrollmentPage />} />
             <Route path="/connected-apps" element={<ConnectedAppsPage />} />
             <Route path="/airtable-ops" element={<AirtableOpsPage />} />
+            <Route path="/security" element={<SecurityAccessPage />} />
 
             {/* Couche 4: Equipes / RH */}
             <Route path="/employees" element={<EmployeesPage />} />

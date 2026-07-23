@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Package, FileBarChart, Settings, LogOut,
@@ -6,10 +6,11 @@ import {
   AlertTriangle, Building2, Network, Plug, CreditCard, Tag, Warehouse,
   BarChart3, Users, ShieldAlert, Database, Wallet, CalendarClock, Undo2,
   Boxes, Coins, Ticket, ClipboardCheck, Factory, ScanBarcode, Banknote,
-  ReceiptText, MonitorPlay, MonitorSmartphone,
+  ReceiptText, MonitorPlay, MonitorSmartphone, ShieldCheck, FolderTree,
 } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 import { useAppScope } from '../hooks/useAppScope';
+import { trackView } from '../services/telemetry';
 
 /* ══════════════════════════════════════════════════════════════
    ARCHITECTURE PAR COUCHES METIER
@@ -59,6 +60,7 @@ const navItems: NavItem[] = [
   { path: '/catalog/variants', label: 'Variantes', icon: Boxes, minRole: 'manager', scope: 'store' },
   { path: '/catalog/store-prices', label: 'Prix magasin', icon: Coins, minRole: 'manager', scope: 'store' },
   { path: '/catalog/brands-suppliers', label: 'Marques & Fournisseurs', icon: Factory, minRole: 'manager', scope: 'store' },
+  { path: '/catalog/categories', label: 'Catégories', icon: FolderTree, minRole: 'manager', scope: 'store' },
   { path: '/promo-codes', label: 'Codes promo', icon: Ticket, minRole: 'manager', scope: 'store' },
   { path: '/campaigns', label: 'Campagnes écran client', icon: MonitorPlay, minRole: 'manager', scope: 'store' },
   { path: '/pending-payments', label: 'Paiements à régulariser', icon: CreditCard, minRole: 'manager', scope: 'store' },
@@ -103,8 +105,10 @@ const adminGroup: NavGroup = {
     { path: '/organizations', label: 'Organisations', icon: Building2 },
     { path: '/units', label: 'Unités', icon: Building2 },
     { path: '/stores', label: 'Magasins', icon: StoreIcon },
+    { path: '/stores/receipt-settings', label: 'Ticket de caisse', icon: ReceiptText },
     { path: '/connected-apps', label: 'Applications', icon: Plug },
     { path: '/airtable-ops', label: 'Airtable Ops', icon: Database },
+    { path: '/security', label: 'Sécurité et accès', icon: ShieldCheck },
   ],
 };
 
@@ -123,6 +127,11 @@ export function Layout() {
   const [adminOpen, setAdminOpen] = useState(() =>
     adminGroup.items.some((i) => location.pathname === i.path),
   );
+
+  // Télémétrie de consultation : une vue de page par navigation (non bloquant).
+  useEffect(() => {
+    trackView({ action: 'PAGE_VIEW', sourceRoute: location.pathname });
+  }, [location.pathname]);
 
   const handleLogout = () => {
     logout();

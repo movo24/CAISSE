@@ -11,6 +11,9 @@
  *  - montants en centimes entiers (euros × 100, arrondis).
  */
 
+/** Statuts backend valides (validés serveur via @IsIn) — pour l'UI des sélecteurs. */
+export type ProductStatus = 'draft' | 'pending_validation' | 'active' | 'rejected' | 'archived';
+
 export interface ProductFormValues {
   name: string;
   ean: string;
@@ -20,6 +23,12 @@ export interface ProductFormValues {
   description: string;
   cost: string; // euros (saisie)
   taxRate: string; // %
+  // Champs enrichis (Lot 1 — colonnes déjà en base, exposées via DTO) :
+  sku?: string;
+  brandId?: string;
+  supplierId?: string;
+  status?: string; // l'un de ProductStatus ; validé serveur
+  oldPrice?: string; // euros — prix barré / de référence
 }
 
 export interface CreateProductPayload {
@@ -31,6 +40,11 @@ export interface CreateProductPayload {
   description?: string;
   costMinorUnits?: number;
   taxRate?: number;
+  sku?: string;
+  brandId?: string;
+  supplierId?: string;
+  status?: string;
+  oldPriceMinorUnits?: number;
 }
 
 export interface UpdateProductPayload {
@@ -41,17 +55,25 @@ export interface UpdateProductPayload {
   description?: string;
   costMinorUnits?: number;
   taxRate?: number;
+  sku?: string;
+  brandId?: string | null;
+  supplierId?: string | null;
+  status?: string;
+  oldPriceMinorUnits?: number | null;
   reason?: string;
 }
 
-const eurosToCents = (v: string): number => Math.round(parseFloat(v) * 100);
+/** Nombre « français » : accepte la virgule décimale et les espaces (saisie/scan). */
+export const parseFr = (v: string): number => parseFloat((v || '').trim().replace(/\s/g, '').replace(',', '.'));
+
+const eurosToCents = (v: string): number => Math.round(parseFr(v) * 100);
 
 /** Renvoie un message d'erreur, ou null si le formulaire est valide. */
 export function validateProductForm(form: ProductFormValues, isEdit: boolean): string | null {
   if (!form.name.trim()) return 'Le nom du produit est obligatoire.';
   if (!isEdit && !form.ean.trim()) return "Le code EAN est obligatoire pour créer un produit.";
 
-  const price = parseFloat(form.price);
+  const price = parseFr(form.price);
   if (form.price.trim() === '' || !Number.isFinite(price) || price < 0) {
     return 'Le prix doit être un nombre positif ou nul.';
   }
@@ -60,12 +82,16 @@ export function validateProductForm(form: ProductFormValues, isEdit: boolean): s
     if (!Number.isFinite(stock) || stock < 0) return 'Le stock doit être un entier positif ou nul.';
   }
   if (form.cost.trim() !== '') {
-    const cost = parseFloat(form.cost);
+    const cost = parseFr(form.cost);
     if (!Number.isFinite(cost) || cost < 0) return "Le prix d'achat doit être un nombre positif ou nul.";
   }
   if (form.taxRate.trim() !== '') {
-    const t = parseFloat(form.taxRate);
+    const t = parseFr(form.taxRate);
     if (!Number.isFinite(t) || t < 0) return 'La TVA doit être un nombre positif ou nul.';
+  }
+  if (form.oldPrice !== undefined && form.oldPrice.trim() !== '') {
+    const o = parseFloat(form.oldPrice);
+    if (!Number.isFinite(o) || o < 0) return 'Le prix barré doit être un nombre positif ou nul.';
   }
   return null;
 }
@@ -76,7 +102,15 @@ function optionalFields(form: ProductFormValues): Partial<CreateProductPayload> 
   if (form.category.trim()) out.categoryId = form.category.trim();
   if (form.description.trim()) out.description = form.description.trim();
   if (form.cost.trim() !== '') out.costMinorUnits = eurosToCents(form.cost);
-  if (form.taxRate.trim() !== '') out.taxRate = parseFloat(form.taxRate);
+  if (form.taxRate.trim() !== '') out.taxRate = parseFr(form.taxRate);
+  // Champs enrichis — émis uniquement s'ils sont renseignés (jamais de clé vide).
+  if (form.sku !== undefined && form.sku.trim()) out.sku = form.sku.trim();
+  if (form.brandId) out.brandId = form.brandId;
+  if (form.supplierId) out.supplierId = form.supplierId;
+  if (form.status) out.status = form.status;
+  if (form.oldPrice !== undefined && form.oldPrice.trim() !== '') {
+    out.oldPriceMinorUnits = eurosToCents(form.oldPrice);
+  }
   return out;
 }
 
@@ -99,4 +133,46 @@ export function buildUpdatePayload(form: ProductFormValues, reason?: string): Up
   };
   if (reason && reason.trim()) payload.reason = reason.trim();
   return payload;
+}
+
+/* ── Erreurs backend → champ par champ ──────────────────────────────────
+   Le filtre global renvoie { code:'VALIDATION_ERROR', message:'Erreur de
+   validation.', details: string[] } : on N'AFFICHE PLUS le générique — on
+   mappe chaque detail class-validator sur son champ avec un libellé clair. */
+
+const FIELD_LABELS: Record<string, string> = {
+  ean: 'Code EAN', name: 'Nom', priceMinorUnits: 'Prix de vente',
+  costMinorUnits: "Prix d'achat", taxRate: 'TVA', stockQuantity: 'Stock',
+  categoryId: 'Catégorie', description: 'Description', brandId: 'Marque',
+  supplierId: 'Fournisseur', sku: 'SKU', imageUrl: 'Image',
+  stockAlertThreshold: "Seuil d'alerte", stockCriticalThreshold: 'Seuil critique',
+};
+
+export interface FieldError { field: string; label: string; message: string }
+
+export function extractFieldErrors(errorResponse: any): FieldError[] {
+  const details: string[] = Array.isArray(errorResponse?.details) ? errorResponse.details
+    : Array.isArray(errorResponse?.message) ? errorResponse.message : [];
+  return details.map((d) => {
+    const m = /^(?:property )?(\w+)/.exec(d);
+    const field = m ? m[1] : 'form';
+    const label = FIELD_LABELS[field] || field;
+    let message = d;
+    if (/should not exist/.test(d)) message = `${label} : champ non reconnu par le serveur (version de l'application obsolète — recharger/mettre à jour).`;
+    else if (/must be an integer|must be a number/.test(d)) message = `${label} : nombre invalide.`;
+    else if (/must not be less than 0/.test(d)) message = `${label} : doit être positif ou nul.`;
+    else if (/should not be empty|must be a string/.test(d)) message = `${label} : obligatoire.`;
+    else if (/must be shorter/.test(d)) message = `${label} : trop long.`;
+    else if (/must be a UUID/.test(d)) message = `${label} : sélection invalide.`;
+    return { field, label, message };
+  });
+}
+
+/** Message lisible pour TOUTE erreur API produit (jamais un générique muet). */
+export function apiErrorMessage(e: any): string {
+  const r = e?.response?.data;
+  const fields = extractFieldErrors(r);
+  if (fields.length) return fields.map((f) => f.message).join(' · ');
+  if (typeof r?.message === 'string' && r.message !== 'Erreur de validation.') return r.message;
+  return e?.message || 'Erreur inconnue.';
 }

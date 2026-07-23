@@ -45,16 +45,25 @@ export class StockController {
   @Post(':productId/adjust')
   @Roles('admin', 'manager')
   @UseGuards(RolesGuard)
-  @ApiOperation({ summary: 'Adjust stock quantity manually' })
-  adjust(
+  @ApiOperation({ summary: 'Adjust stock quantity manually (admin: any store)' })
+  async adjust(
     @Param('productId') productId: string,
     @Body() dto: AdjustStockDto,
     @Request() req: any,
   ) {
+    // Même logique générique que products.controller.storeCtxFor : un ADMIN
+    // ajuste le stock dans le magasin RÉEL du produit (la page Alertes Stock
+    // liste le magasin sélectionné, pas celui du JWT) ; tout autre rôle reste
+    // strictement sur son magasin. Audit 2026-07-23 : seul cas à impact réel
+    // hors module products.
+    const storeId =
+      req.user.role === 'admin'
+        ? ((await this.stockService.storeIdOfProduct(productId)) ?? req.user.storeId)
+        : req.user.storeId;
     return this.stockService.adjustStock(
       productId,
       dto.quantity,
-      req.user.storeId,
+      storeId,
       req.user.employeeId,
       dto.reason,
       dto.mode || 'absolute',

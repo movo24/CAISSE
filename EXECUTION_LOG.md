@@ -108,8 +108,55 @@ Revue adversariale de TOUS les fixes de la campagne (chaque agent tente de RÉFU
 ### Prochaine action automatique (continuité)
 Safe restant : audit read-only des modules ⚠️ (jackpot/loyalty/etc.) → confirmer/infirmer, garde-fous additifs + tests si bug évident. Vrais blocages : M107 réconciliation prod / décision A-B-C, D16-D17 archi, secrets/prod (#3, D6/D8/D7), Stripe parqué.
 
+
+### Session POS/backoffice — 2026-07-16 (fil « caisse terrain »)
+- **v1.1.0 livrée** (merge #80 + release, parc auto-update) ; docs Payment Engine mergés (#82, #83 : architecture validée owner, GO P0/P1 fermé en attente partenaire).
+- **PR #84 (draft)** : Dashboard identité ADDX×Wesley (a4124d4) · fiche produit page 11 onglets scan-first Phase 1 (0eba794) · schéma ERP produits À VALIDER D-FP1..D-FP5 (bd4179b) · fix erreurs-par-champ + virgule FR (602ca50, cause prouvée : build déployé obsolète + double masquage) · réalignement entité employee_store_access sur migration 1711 (ea04289, mécanisme prouvé par micro-test SQL ; PG 5 specs série ×2 ordres exit 0 en local) · HT↔TTC bidirectionnel anti-dérive (70f9164, balayage exhaustif).
+- **Chantier accès & activité** : Lot 0 VALIDÉ (f06403f sur feat/mobile-access-rebuild-2026-07) ; ancien chantier prouvé perdu (ls-remote/cat-file/reflog vides).
+- **Correction de discipline (owner)** : GO M-B indûment étendu par l'agent → annulé ; AUCUN code/migration n'avait été écrit (vérifié). Règle réaffirmée : un GO couvre ce qu'il nomme.
+- **main@a7f6f59 : CI rouge** (step PG serial) — re-run lancé pour discriminer flake vs cause réelle ; non reproduit localement en conditions CI exactes.
+
 ---
 
+## 2026-07-15 — Accès magasins + journal d'activité (branche `feat/mobile-access-and-activity-audit`)
+
+Mission owner : RBAC pilotage par magasin + journal d'activité (connexions/sessions/consultations)
++ audit immuable des droits. Branche depuis `origin/main` propre (choix owner — évite la divergence
+`mobile-pilotage-readonly`). **Aucun merge** (Tier-2, GO requis).
+
+### Backend (Lots 0-9, 11 commits `eac412b`→`e35e033`)
+- 6 migrations additives `1759000000000`→`…005` : enrich `employee_store_access` (entité réparée,
+  colonnes snake_case) + nouvelles tables `employee_application_access`, `access_audit_log` (hash-chaîné,
+  réutilise `computeAuditHashV2`), `user_login_events`, `user_sessions`, `user_view_events`.
+- Modules `pilotage-access` (AccessService + StoreAccessGuard/@RequireStoreAccess + AccessAuditService +
+  AccessAdminService) et `activity-audit` (ActivityService NON bloquant + hooks auth @Optional +
+  SecurityAlertService + RetentionService opt-in). Rôle POS inchangé ; `application_role` = dimension séparée.
+- **Vérifs** : suite backend **jest 1025/0** (exit 0, +47 nouveaux, 10 fichiers de specs). tsc + lint OK.
+
+### Frontend (commit `0b91369`)
+- `securityApi`/`activityApi` + `services/telemetry.ts` (batché non bloquant) + hook route-view (Layout) +
+  page `SecurityAccessPage` 4 onglets admin-gated + route `/security` + nav. **Vérifs** : tsc 0 + build Vite 0.
+
+### Migrations sur VRAI Postgres 16 (2026-07-15, base vierge locale — gap #1 fermé)
+- `migration:run` : exit 0, 45 migrations, tête `CreateUserViewEvents1759000000005`, schéma vérifié
+  (colonnes snake_case `employee_store_access`, 5 tables, index anti-fork `UX_access_scope_prevhash`).
+- Idempotence : « No migrations are pending » (exit 0). `revert` ×6 (exit 0) → tête `1758`, tables/colonnes
+  retirées. `re-run` (exit 0) → ré-appliquées. Codifié : `access-activity-migrations.pg.spec.ts` (gated
+  TEST_DATABASE_URL) — **3/3 PASS** sur PG local, **skippé** sinon. Commit `04c7dd0`.
+
+### Vérification LIVE EXÉCUTÉE (2026-07-15 — stack réelle PG16 + backend :3001 + backoffice :5173)
+- Migrations base vierge `caisse_liveverify` : run exit 0 (45), schéma `\d` vérifié (types/défauts/UNIQUE/
+  FK CASCADE/index partiel/anti-fork), revert ×6 exit 0, re-run exit 0, idempotent. Gated PG : 10/10.
+- HTTP réels (curl) : admin login, grant 201/200, audit `{valid:true}` ; manager Évry **403 FORBIDDEN/
+  STORE_NOT_IN_SCOPE**, suspend **403 ACCOUNT_SUSPENDED**, expiré **403 ACCESS_EXPIRED**, clear null → 200.
+- **2 BUGS trouvés en live → corrigés + re-vérifiés (commit `941a3ad`)** : (A) filtre d'exception global
+  écrasait le code métier en `HTTP_ERROR` → préserve `code`+`reason` (§5) ; (B) `grantStoreAccess` ne
+  pouvait effacer une borne via `null`. Suite après fix : **1026/0**.
+- Navigateur : 4 onglets rendus avec données réelles (IP masquée, risque, badge chaîne intègre), filtre +
+  état vide OK, gate admin (manager redirigé). Télémétrie : scan SQL 3 tables → **0 secret**.
+- Captures : en session (pane), pas PNG disque (limitation outil de capture). `.env`/launch.json restaurés.
+
+**Verdict : TERMINÉ ET VALIDÉ** (réserves : merge `main` = Tier-2 GO owner ; captures = session). D21 CLOSED.
 ## 2026-07-16 — Journal de stock unifié / NF525 : F0 + F1 (GO owner nommé) — branche `feat/stock-journal-nf525-on-main`
 
 ### Synthèse décisionnelle (avant tout code)

@@ -18,6 +18,9 @@ import {
 } from 'lucide-react';
 import { useDashboardData } from '../hooks/useDashboardData';
 import { ProductScanPanel } from '../components/ProductScanPanel';
+// Logos OFFICIELS (mêmes fichiers que la caisse — jamais recréés, jamais de texte de substitution)
+import wesleysLogoUrl from '../assets/wesleys-logo.png';
+import addxLogoUrl from '../assets/addx-logo.png';
 
 const WEEK_DAYS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
 const MONTHS_SHORT = ['Jan', 'Fev', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aou', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -180,11 +183,22 @@ export function DashboardPage() {
 
   return (
     <div className="p-6 lg:p-8 space-y-6 animate-fade-in max-w-[1600px] mx-auto">
-      {/* ══════════ HEADER ══════════ */}
+      {/* ══════════ HEADER — identité The Wesley's × ADDX Caisse (logos officiels,
+             chacun limité à sa propre largeur, jamais de bande dédiée) ══════════ */}
       <div className="flex items-center justify-between flex-wrap gap-4">
-        <div>
-          <h2 className="text-2xl font-bold text-bo-text">Dashboard CEO</h2>
-          <p className="text-gray-400 text-sm mt-1">Pilotage temps reel — Reseau multi-magasins</p>
+        <div className="flex items-center gap-4 min-w-0">
+          <img src={wesleysLogoUrl} alt="The Wesley's" draggable={false}
+               className="h-9 w-auto flex-none select-none" style={{ flex: '0 0 auto' }} />
+          <div className="w-px h-8 bg-gray-200 flex-none" />
+          <div className="min-w-0">
+            <h2 className="text-2xl font-bold text-bo-text truncate">Dashboard CEO</h2>
+            <p className="text-gray-400 text-sm mt-0.5 flex items-center gap-1.5">
+              Pilotage temps reel — Reseau multi-magasins
+              <span className="text-gray-300">·</span>
+              <img src={addxLogoUrl} alt="ADDX Caisse" draggable={false}
+                   className="h-3.5 w-auto inline-block align-middle select-none opacity-90" />
+            </p>
+          </div>
         </div>
         <div className="flex items-center gap-3">
           {/* Synchro TimeWin24 par magasin (Partie C) — optionnelle, admin. */}
@@ -214,7 +228,7 @@ export function DashboardPage() {
           <select
             value={storeFilter}
             onChange={(e) => setStoreFilter(e.target.value)}
-            className="text-xs font-semibold bg-white border border-gray-200 rounded-xl px-3 py-2 text-bo-text focus:ring-2 focus:ring-bo-accent/20 focus:border-bo-accent"
+            className="text-xs font-semibold bg-white border border-gray-200 rounded-xl px-3 py-2 text-bo-text focus:ring-2 focus:ring-[#E5117A]/20 focus:border-[#E5117A]"
           >
             <option value="all">Tous les magasins</option>
             {stores.map((s) => (
@@ -222,7 +236,7 @@ export function DashboardPage() {
             ))}
           </select>
           {/* Export */}
-          <button className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white border border-gray-200 text-xs font-semibold text-gray-600 hover:border-bo-accent hover:text-bo-accent transition-all">
+          <button className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white border border-gray-200 text-xs font-semibold text-gray-600 hover:border-[#E5117A] hover:text-[#E5117A] transition-all">
             <Download size={14} />
             Export
           </button>
@@ -240,7 +254,7 @@ export function DashboardPage() {
           icon={TrendingUp}
           title="A. Performance Commerciale"
           subtitle="CA, objectifs, KPIs de vente en temps reel"
-          color="bg-bo-accent"
+          color="bg-[#E5117A]"
         />
 
         {/* TOP KPIs ROW */}
@@ -249,7 +263,7 @@ export function DashboardPage() {
             label="CA Jour"
             value={fmtK(perfData.caJour)}
             icon={Euro}
-            color="text-bo-accent bg-indigo-50"
+            color="text-[#E5117A] bg-indigo-50"
             trend={{ current: perfData.caJour, previous: perfData.caJourN1 }}
           />
           <KpiCard
@@ -347,10 +361,10 @@ export function DashboardPage() {
           <div className="bg-white rounded-2xl p-5 shadow-soft border border-gray-100/50">
             <div className="flex items-center justify-between mb-4">
               <h4 className="font-semibold text-bo-text flex items-center gap-2">
-                <Clock size={14} className="text-bo-accent" />
+                <Clock size={14} className="text-[#E5117A]" />
                 CA par heure — Pic : {peakHour.h}
               </h4>
-              <span className="text-xs font-semibold text-bo-accent bg-indigo-50 px-2 py-0.5 rounded-full">
+              <span className="text-xs font-semibold text-[#E5117A] bg-indigo-50 px-2 py-0.5 rounded-full">
                 {fmtK(peakHour.ca)}
               </span>
             </div>
@@ -360,22 +374,22 @@ export function DashboardPage() {
                 const isPeak = h.ca === maxHourlyCA;
                 return (
                   <div key={h.h} className="flex-1 flex flex-col items-center gap-1 group">
-                    <span className={`text-[9px] font-semibold opacity-0 group-hover:opacity-100 transition-opacity ${isPeak ? 'opacity-100 text-bo-accent' : 'text-gray-400'}`}>
+                    <span className={`text-[9px] font-semibold opacity-0 group-hover:opacity-100 transition-opacity ${isPeak ? 'opacity-100 text-[#E5117A]' : 'text-gray-400'}`}>
                       {fmtK(h.ca)}
                     </span>
                     <div className="w-full" style={{ height: '90px', display: 'flex', alignItems: 'flex-end' }}>
                       <div
                         className={`w-full rounded-t-md transition-all ${
                           isPeak
-                            ? 'bg-gradient-to-t from-bo-accent to-indigo-400'
+                            ? 'bg-gradient-to-t from-[#E5117A] to-indigo-400'
                             : pct >= 70
-                            ? 'bg-gradient-to-t from-indigo-300 to-indigo-200 group-hover:from-bo-accent/60'
+                            ? 'bg-gradient-to-t from-indigo-300 to-indigo-200 group-hover:from-[#E5117A]/60'
                             : 'bg-gradient-to-t from-indigo-200 to-indigo-100 group-hover:from-indigo-300'
                         }`}
                         style={{ height: `${pct}%`, minHeight: '4px' }}
                       />
                     </div>
-                    <span className={`text-[9px] font-medium ${isPeak ? 'text-bo-accent font-bold' : 'text-gray-400'}`}>{h.h}</span>
+                    <span className={`text-[9px] font-medium ${isPeak ? 'text-[#E5117A] font-bold' : 'text-gray-400'}`}>{h.h}</span>
                   </div>
                 );
               })}
@@ -386,7 +400,7 @@ export function DashboardPage() {
           <div className="bg-white rounded-2xl p-5 shadow-soft border border-gray-100/50">
             <div className="flex items-center justify-between mb-4">
               <h4 className="font-semibold text-bo-text flex items-center gap-2">
-                <BarChart3 size={14} className="text-bo-accent" />
+                <BarChart3 size={14} className="text-[#E5117A]" />
                 Semaine en cours
               </h4>
               <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${weekProgressPct >= 100 ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
@@ -434,7 +448,7 @@ export function DashboardPage() {
         {/* ROW 4: Monthly CA comparison (mini chart) */}
         <div className="bg-white rounded-2xl p-5 shadow-soft border border-gray-100/50">
           <h4 className="font-semibold text-bo-text flex items-center gap-2 mb-4">
-            <Activity size={14} className="text-bo-accent" />
+            <Activity size={14} className="text-[#E5117A]" />
             Evolution CA mensuel — N vs N-1
           </h4>
           <div className="flex items-end gap-1 h-24">
@@ -455,7 +469,7 @@ export function DashboardPage() {
                       style={{ height: current > 0 ? `${(current / maxVal) * 100}%` : '0%', minHeight: current > 0 ? '2px' : '0px' }}
                     />
                   </div>
-                  <span className={`text-[8px] font-medium ${isCurrentMonth ? 'text-bo-accent font-bold' : 'text-gray-400'}`}>{month}</span>
+                  <span className={`text-[8px] font-medium ${isCurrentMonth ? 'text-[#E5117A] font-bold' : 'text-gray-400'}`}>{month}</span>
                 </div>
               );
             })}
@@ -533,7 +547,7 @@ export function DashboardPage() {
                     <td className="py-2.5 font-medium text-bo-text">{p.name}</td>
                     <td className="py-2.5 font-mono text-xs text-gray-400">{p.ean}</td>
                     <td className="py-2.5 text-right font-semibold">{p.qty}</td>
-                    <td className="py-2.5 text-right font-semibold text-bo-accent">{fmtK(p.ca)}</td>
+                    <td className="py-2.5 text-right font-semibold text-[#E5117A]">{fmtK(p.ca)}</td>
                     <td className="py-2.5 text-right">
                       <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
                         p.marge >= 60 ? 'bg-emerald-50 text-emerald-700' :
@@ -666,7 +680,7 @@ export function DashboardPage() {
           <KpiCard label="Remboursements" value={fmt(caisseStats.totalRemboursements)} icon={RotateCcw} color="text-amber-600 bg-amber-50" />
           <KpiCard label="Ecart caisse" value={`${caisseStats.ecartCaisseTotal >= 0 ? '+' : ''}${fmt(caisseStats.ecartCaisseTotal)}`} icon={Scale} color={caisseStats.ecartCaisseTotal === 0 ? 'text-emerald-600 bg-emerald-50' : 'text-amber-600 bg-amber-50'} />
           <KpiCard label="Rapport Z" value={caisseStats.rapportZAuto ? 'Auto' : 'Manuel'} sub="Generation automatique" icon={FileText} color="text-violet-600 bg-violet-50" />
-          <KpiCard label="Caissiers actifs" value={String(cashierData.length)} icon={Users} color="text-bo-accent bg-indigo-50" />
+          <KpiCard label="Caissiers actifs" value={String(cashierData.length)} icon={Users} color="text-[#E5117A] bg-indigo-50" />
         </div>
 
         {/* Cashier performance table */}
@@ -678,7 +692,7 @@ export function DashboardPage() {
             </h4>
             <button
               onClick={() => setShowAllCashiers(!showAllCashiers)}
-              className="text-xs text-bo-accent font-semibold hover:underline flex items-center gap-1"
+              className="text-xs text-[#E5117A] font-semibold hover:underline flex items-center gap-1"
             >
               {showAllCashiers ? 'Reduire' : 'Voir tout'}
               {showAllCashiers ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
@@ -702,7 +716,7 @@ export function DashboardPage() {
                   <tr key={c.name} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
                     <td className="py-2.5">
                       <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-full bg-gradient-to-br from-bo-accent to-indigo-400 flex items-center justify-center">
+                        <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#E5117A] to-indigo-400 flex items-center justify-center">
                           <span className="text-white text-[10px] font-bold">
                             {c.name.split(' ').map(n => n[0]).join('')}
                           </span>
@@ -711,7 +725,7 @@ export function DashboardPage() {
                       </div>
                     </td>
                     <td className="py-2.5 text-right font-semibold">{c.tickets}</td>
-                    <td className="py-2.5 text-right font-semibold text-bo-accent">{fmtK(c.ca)}</td>
+                    <td className="py-2.5 text-right font-semibold text-[#E5117A]">{fmtK(c.ca)}</td>
                     <td className="py-2.5 text-right">
                       <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
                         c.vitesseMoy <= 35 ? 'bg-emerald-50 text-emerald-700' :
@@ -754,7 +768,7 @@ export function DashboardPage() {
             </h4>
             <button
               onClick={() => setShowZHistory(!showZHistory)}
-              className="text-xs text-bo-accent font-semibold hover:underline flex items-center gap-1"
+              className="text-xs text-[#E5117A] font-semibold hover:underline flex items-center gap-1"
             >
               {showZHistory ? 'Masquer' : 'Afficher'}
               {showZHistory ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
@@ -781,7 +795,7 @@ export function DashboardPage() {
                       <td className="py-2.5 text-right font-bold text-bo-text">{fmt(z.caTotal)}</td>
                       <td className="py-2.5 text-right font-semibold">{z.tickets}</td>
                       <td className="py-2.5 text-right text-emerald-600">{fmt(z.especes)}</td>
-                      <td className="py-2.5 text-right text-bo-accent">{fmt(z.cb)}</td>
+                      <td className="py-2.5 text-right text-[#E5117A]">{fmt(z.cb)}</td>
                       <td className="py-2.5 text-right text-amber-600">{fmt(z.mixte)}</td>
                       <td className="py-2.5 text-right">
                         <span className={`font-semibold ${
@@ -826,19 +840,19 @@ export function DashboardPage() {
               Repartition des modes de paiement
             </h4>
             <div className="space-y-4">
-              <HBar label={`Carte bancaire (${paymentData.cb.count} tx)`} value={`${paymentData.cb.pct}% — ${fmtK(paymentData.cb.montant)}`} pct={paymentData.cb.pct} color="bg-gradient-to-r from-bo-accent to-indigo-400" />
+              <HBar label={`Carte bancaire (${paymentData.cb.count} tx)`} value={`${paymentData.cb.pct}% — ${fmtK(paymentData.cb.montant)}`} pct={paymentData.cb.pct} color="bg-gradient-to-r from-[#E5117A] to-indigo-400" />
               <HBar label={`Especes (${paymentData.especes.count} tx)`} value={`${paymentData.especes.pct}% — ${fmtK(paymentData.especes.montant)}`} pct={paymentData.especes.pct} color="bg-gradient-to-r from-emerald-400 to-emerald-300" />
               <HBar label={`Mixte / Fractionne (${paymentData.mixte.count} tx)`} value={`${paymentData.mixte.pct}% — ${fmtK(paymentData.mixte.montant)}`} pct={paymentData.mixte.pct} color="bg-gradient-to-r from-amber-400 to-amber-300" />
             </div>
 
             {/* Visual bar */}
             <div className="mt-4 flex h-4 rounded-full overflow-hidden">
-              <div className="bg-bo-accent" style={{ width: `${paymentData.cb.pct}%` }} />
+              <div className="bg-[#E5117A]" style={{ width: `${paymentData.cb.pct}%` }} />
               <div className="bg-emerald-400" style={{ width: `${paymentData.especes.pct}%` }} />
               <div className="bg-amber-400" style={{ width: `${paymentData.mixte.pct}%` }} />
             </div>
             <div className="flex items-center gap-4 mt-2 text-[10px] text-gray-400">
-              <span className="flex items-center gap-1"><span className="w-2 h-2 bg-bo-accent rounded" /> CB</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 bg-[#E5117A] rounded" /> CB</span>
               <span className="flex items-center gap-1"><span className="w-2 h-2 bg-emerald-400 rounded" /> Especes</span>
               <span className="flex items-center gap-1"><span className="w-2 h-2 bg-amber-400 rounded" /> Mixte</span>
             </div>
