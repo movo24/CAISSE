@@ -729,7 +729,7 @@ export class ProductsService {
 
     if (options?.search) {
       qb.andWhere(
-        '(p.name ILIKE :search OR p.ean ILIKE :search OR p.sku ILIKE :search)',
+        '(p.name ILIKE :search OR p.ean ILIKE :search OR p.sku ILIKE :search OR p.short_name ILIKE :search)',
         { search: `%${options.search}%` },
       );
     }

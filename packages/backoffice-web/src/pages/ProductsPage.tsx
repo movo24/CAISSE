@@ -123,6 +123,14 @@ export function ProductsPage() {
   const [page, setPage] = useState(1);
   const LIMIT = 50;
   const [loading, setLoading] = useState(true);
+  // Ne devient true qu'après la PREMIÈRE réponse : le spinner plein-page ne
+  // s'affiche qu'au premier chargement. Ensuite, la page (et le champ de
+  // recherche) restent TOUJOURS montés — seul le tableau montre un chargement
+  // discret. (Bug 2026-07-23 : chaque frappe démontait la page → focus perdu.)
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  // Numéro de séquence des requêtes liste : une réponse en retard (obsolète)
+  // ne doit jamais écraser le résultat de la recherche la plus récente.
+  const fetchSeqRef = useRef(0);
   const [error, setError] = useState<string | null>(null);
 
   // ── Filtres serveur ──
@@ -184,6 +192,7 @@ export function ProductsPage() {
   const [categoryRefs, setCategoryRefs] = useState<CatItem[]>([]);
 
   const fetchProducts = useCallback(async () => {
+    const seq = ++fetchSeqRef.current;
     try {
       setLoading(true);
       const res = await productsApi.list({
@@ -204,6 +213,7 @@ export function ProductsPage() {
         sortBy,
         sortDir,
       } as any);
+      if (seq !== fetchSeqRef.current) return; // réponse obsolète — une recherche plus récente est partie
       const body: any = res.data;
       const data: any[] = Array.isArray(body) ? body : (body?.data || body?.products || []);
       setTotal(body?.meta?.total ?? data.length);
@@ -228,10 +238,14 @@ export function ProductsPage() {
       );
       setError(null);
     } catch (err: any) {
+      if (seq !== fetchSeqRef.current) return; // erreur d'une requête obsolète — ignore
       const msg = err.response?.data?.message;
       setError(typeof msg === 'string' ? msg : Array.isArray(msg) ? msg.join(', ') : 'Erreur lors du chargement des produits');
     } finally {
-      setLoading(false);
+      if (seq === fetchSeqRef.current) {
+        setLoading(false);
+        setHasLoadedOnce(true);
+      }
     }
   }, [storeId, page, debouncedSearch, fStatus, fBrand, fSupplier, fCategory, fTax, fOutOfStock, fBelowThreshold, fNoImage, fNoSupplier, fNoCategory, sortBy, sortDir]);
 
@@ -526,7 +540,10 @@ export function ProductsPage() {
     }
   };
 
-  if (loading && products.length === 0) {
+  // Spinner plein-page UNIQUEMENT avant la toute première réponse. Ensuite la
+  // page ne se démonte plus jamais : la saisie reste fluide, le focus reste
+  // dans le champ, et seul le tableau signale les rafraîchissements.
+  if (!hasLoadedOnce) {
     return (
       <div className="flex items-center justify-center h-96">
         <Loader2 size={32} className="animate-spin text-bo-accent" />
@@ -632,11 +649,14 @@ export function ProductsPage() {
             <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
               type="text"
-              placeholder="Rechercher par nom, EAN ou SKU..."
-              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-bo-accent/30 focus:border-bo-accent transition-all"
+              placeholder="Rechercher par nom, nom caisse, EAN ou SKU..."
+              className="w-full pl-10 pr-9 py-2.5 rounded-xl border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-bo-accent/30 focus:border-bo-accent transition-all"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
+            {loading && (
+              <Loader2 size={15} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-bo-accent/60" aria-label="Recherche en cours" />
+            )}
           </div>
           <select className="py-2.5 px-3 rounded-xl border border-gray-200 bg-white text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-bo-accent/30" value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
             <option value="active">Actifs</option>
@@ -756,8 +776,9 @@ export function ProductsPage() {
         </div>
       )}
 
-      {/* Table serveur */}
-      <div className="bg-white rounded-2xl shadow-soft border border-gray-100/50 overflow-x-auto">
+      {/* Table serveur — chargement DISCRET : les lignes précédentes restent
+          affichées (légèrement estompées), jamais de démontage de la page. */}
+      <div className={`bg-white rounded-2xl shadow-soft border border-gray-100/50 overflow-x-auto transition-opacity duration-150 ${loading ? 'opacity-60' : ''}`}>
         <table className="w-full min-w-[720px]">
           <thead>
             <tr className="border-b border-gray-100 bg-gray-50/50">
