@@ -1,208 +1,214 @@
-# Fiche produit unique (organisation) + affectation multi-magasins — analyse & plan de migration
+# Fiche produit unique (organisation) + affectation multi-magasins + archivage automatique — dossier d'exécution
 
-> 2026-07-23 — dossier de décision. **Aucun code, aucun merge, aucun déploiement sans GO
-> nominatif owner** (directive du 2026-07-23 : « Fais d'abord l'analyse de l'existant et
-> propose le plan de migration »).
+> 2026-07-23 — analyse validée et **décisions owner intégrées** (message « Décisions
+> validées pour finaliser le plan », Fartas Omar). **Aucun code applicatif, aucune
+> migration exécutée, aucun merge, aucun déploiement sans GO nominatif — Fartas Omar.**
 
-## 1. Constat — le modèle actuel est « une fiche PAR magasin »
+## 0. Décisions owner actées (2026-07-23)
 
-| Élément | État actuel (vérifié dans le code @ `main` 4c3ddea) |
+| # | Décision |
 |---|---|
-| `products` | **1 ligne par magasin** : `store_id NOT NULL`, index unique `(ean, store_id)`, `stock_quantity`, `is_active`/`status` portés par la ligne |
-| « Produit dans 2 magasins » | = **2 fiches distinctes** (ids différents) — c'est la conception que l'owner rejette |
-| Prix magasin | `store_product_prices` existe déjà (fenêtres programmées) mais **unique sur `product_id` seul** — cohérent avec le modèle par-magasin, à étendre |
-| Stock | Sur la ligne produit (décrément vente `sales.service`, ajustements `stock`, inventaires `inventory-scan`, écarts `stock-reconciliation`) ; `stock_movements` porte déjà `store_id` ✔ |
-| Référentiels | **Catégories, marques ET fournisseurs sont aussi par magasin** (`unique (store_id, name)`) — une fiche unique org ne peut pas référencer proprement un référentiel de magasin |
+| 1 | Produit test `WES-P-000000000001` : **intact**, actif sur The Wesley Test, stock 5 (test physique douchette) |
+| 2 | **Stock magasin porté par `product_store_assignments`** ; mouvements → journal `stock_movements` existant ; prix → `store_product_prices` |
+| 3 | **Référentiels (catégories, marques, fournisseurs) → org-level AVANT l'ouverture de l'interface multi-magasins** |
+| 4 | `products.store_id` **conservé en compatibilité puis déprécié — AUCUN DROP dans ce chantier** (GO séparé après validation complète) |
+| 5 | Archivage 6 mois **intégré au modèle `product_store_assignments`** : `is_active`, `assigned_at`, `last_sold_at`, `archived_at`, `archive_reason`, infos de réactivation |
+| 6 | Archivage **même avec stock restant** — la notification signale le **stock théorique restant** pour déclencher un contrôle physique |
+| 7 | Jamais vendu → horloge depuis la **première affectation/entrée en stock dans LE magasin**, jamais depuis la création de la fiche |
+
+## 1. Constat — modèle actuel (vérifié dans le code @ `main` 4c3ddea)
+
+| Élément | État actuel |
+|---|---|
+| `products` | **1 ligne par magasin** : `store_id NOT NULL`, unique `(ean, store_id)`, `stock_quantity`, `is_active`/`status` portés par la ligne |
+| « Produit dans 2 magasins » | = 2 fiches distinctes (ids différents) — conception rejetée |
+| Prix magasin | `store_product_prices` existe (fenêtres programmées) mais unique sur `product_id` seul — à étendre |
+| Stock | Sur la ligne produit (vente, ajustements, inventaires, écarts) ; `stock_movements` porte déjà `store_id` ✔ |
+| Référentiels | Catégories, marques, fournisseurs **par magasin** (`unique (store_id, name)`) |
 | Multi-tenant | `TenantInterceptor` filtre par `storeId` du JWT (admin bypass) |
-| POS | Pull complet `GET /products?storeId=<magasin>` (rafraîchi ≤ 15 s + à chaque vente) |
-| UI création | Assistant : champ « **Magasin de publication** » (menu déroulant mono-magasin) — le champ à remplacer |
-| Couplage code | `products.service.ts` seul : **224 références à `storeId`** ; s'ajoutent sales, stock, imports CSV, bulk actions, stats |
+| POS | Pull complet `GET /products?storeId=<magasin>` (≤ 15 s + après chaque vente) ; cache hors-ligne |
+| UI création | Assistant : « Magasin de publication » mono-magasin — à remplacer |
+| Couplage | `products.service.ts` : 224 réfs `storeId` ; + sales, stock, CSV, bulk, stats |
 
-### Données de production (photographie 2026-07-23, session owner)
-- **3 produits au total** : 1 × Boutique Paris (témoin 22/07), 2 × The Wesley Test
-  (« teste » + « TEST CODE WESLEY — vrac », WES-P-000000000001).
-- **0 doublon d'EAN inter-magasins** → aucune consolidation de fiches à opérer.
-- Conclusion : **fenêtre idéale** — la migration de données est triviale AUJOURD'HUI ;
-  chaque produit importé d'ici là la complexifie.
+**Données prod (2026-07-23)** : 3 produits (1 Boutique Paris, 2 The Wesley Test),
+**0 doublon EAN inter-magasins** → aucune consolidation ; fenêtre idéale, chaque import
+d'ici l'exécution la complexifie.
 
-## 2. Cible (conforme à la directive)
+## 2. Modèle cible (arrêté)
 
-- `products` = **fiche unique au niveau organisation** (nom, code-barres, catégorie, marque,
-  photo, TVA, type…). Le code-barres (GTIN ou WES-P) devient **unique org-wide**.
-- Nouvelle table **`product_store_assignments`** :
-  `product_id` + `store_id` **UNIQUE**, `is_active` (visible/vendable dans ce magasin),
-  `stock_quantity` + seuils **par magasin**, horodatage. **Décocher un magasin =
-  `is_active=false` — jamais de DELETE** : ventes, prix et stocks passés intacts.
-- Prix : prix de base sur la fiche + `store_product_prices` étendu à `(product_id, store_id)`
-  unique = prix magasin.
-- UI : section « **Magasins dans lesquels ce produit est disponible** » — cases à cocher
-  (tous les magasins), Tout sélectionner / Tout désélectionner, précochage du magasin
-  contextuel (décochable), libre en Vue globale, **modifiable après création depuis la
-  fiche** sans recréer le produit.
-- POS : visible/scannable **uniquement si** affecté **ET** actif dans le magasin de la
-  caisse ; non affecté ou décoché → absent ; **aucune récupération globale automatique**.
+### 2.1 `products` — fiche unique organisation
+Nom, code-barres (GTIN ou WES-P, **unique org-wide** en phase finale), catégorie, marque,
+fournisseur (org-level après P2), photo, TVA, type, prix de base. `store_id` conservé en
+compatibilité (décision 4), plus jamais utilisé pour le filtrage à terme.
 
-## 3. Plan de migration — 5 phases, chacune additive, testable, réversible
+### 2.2 `product_store_assignments` — cœur du chantier (décisions 2 et 5)
 
-### Phase 0 — Garde-fous (aucun risque)
-- Specs PG « photographie » du comportement actuel (list/scan/POS par magasin) pour
-  détecter toute régression pendant la transition.
-- Contrôle doublons EAN org-wide (fait : 0) — à re-vérifier au moment de chaque phase.
+```sql
+CREATE TABLE product_store_assignments (
+  id              uuid PK DEFAULT gen_random_uuid(),
+  product_id      uuid NOT NULL REFERENCES products(id),
+  store_id        uuid NOT NULL REFERENCES stores(id),
+  is_active       boolean NOT NULL DEFAULT true,   -- visible/vendable dans CE magasin
+  -- stock PAR magasin (décision 2 ; les mouvements restent dans stock_movements)
+  stock_quantity          integer NOT NULL DEFAULT 0,
+  stock_alert_threshold   integer,
+  stock_critical_threshold integer,
+  -- horloge d'inactivité (décisions 5 et 7)
+  assigned_at     timestamptz NOT NULL DEFAULT now(),
+  first_stocked_at timestamptz,                    -- 1re entrée stock dans CE magasin
+  last_sold_at    timestamptz,                     -- dernière vente CE produit / CE magasin
+  -- archivage réversible (jamais de DELETE)
+  archived_at     timestamptz,
+  archive_reason  varchar(30),                     -- 'inactivity_6m' | 'manual' | 'unchecked'
+  archived_stock_snapshot integer,                 -- stock théorique au moment de l'archivage (décision 6)
+  reactivated_at  timestamptz,
+  reactivated_by  uuid,                            -- employé responsable
+  created_at/updated_at timestamptz,
+  CONSTRAINT uq_product_store UNIQUE (product_id, store_id)
+);
+```
 
-### Phase 1 — Schéma additif (migration 1774, Tier-2 : GO dédié)
-- `CREATE TABLE product_store_assignments` (unique `product_id+store_id`,
-  `is_active`, `stock_quantity`, seuils, `created_at/updated_at`).
-- **Backfill** : 1 ligne par produit existant → (`product_id`, son `store_id` actuel,
-  `is_active` = état actuel, stock copié). Les 3 produits prod gardent exactement leurs
-  affectations — **aucun produit dupliqué, supprimé ou déplacé**.
-- `store_product_prices` : contrainte unique étendue à `(product_id, store_id)`.
-- `products.store_id` **conservé tel quel** (legacy) — rien n'est supprimé.
+Invariants : `is_active=false` ⇔ `archived_at`+`archive_reason` renseignés ; décocher un
+magasin dans l'UI = archivage `archive_reason='unchecked'` (réversible) ; **aucun DELETE,
+jamais** ; réactivation = `is_active=true` + `reactivated_at/by` (l'horloge repart de là).
 
-### Phase 2 — Backend en double-écriture / double-lecture (pattern éprouvé du stock-journal F2)
-- Écritures stock (vente, ajustement, inventaire) : assignment **ET** colonne legacy.
-- Lectures (`list`, `scan`, POS, stats) : via assignment, **fallback legacy** si assignment
-  absent (ceinture pendant la transition).
-- `TenantInterceptor` inchangé : un caissier ne voit que son magasin — le filtre passe
-  simplement de `p.store_id = :x` à `EXISTS (assignment actif pour :x)`.
+### 2.3 Prix et mouvements (décision 2)
+- `store_product_prices` : contrainte unique étendue à `(product_id, store_id)` = prix
+  magasin ; le prix de base reste sur la fiche.
+- `stock_movements` : inchangé — reste LE journal de traçabilité ; les écritures ciblent
+  le couple (produit, magasin) et mettent à jour `assignments.stock_quantity` +
+  `first_stocked_at` à la première entrée.
 
-### Phase 3 — UI + endpoints d'affectation
-- Assistant : « Magasin de publication » → section cases à cocher (multi), précochage
-  contextuel, Tout sélectionner/désélectionner.
-- Fiche en édition : même section, modifiable à tout moment ; `PUT /products/:id/stores`
-  (upsert des affectations, désactivation sans suppression).
-- Les 6 tests de la directive (cf. §4).
+### 2.4 Référentiels org-level (décision 3 — AVANT l'UI multi-magasins)
+Catégories/marques/fournisseurs : `store_id` rendu nullable + lignes org (store_id NULL),
+dédoublonnage par nom (3 produits en prod : mapping trivial), unique `(name)` org pour les
+nouvelles lignes ; les lignes magasin existantes sont fusionnées vers l'org puis conservées
+en lecture (pas de DROP, même politique que `products.store_id`).
 
-### Phase 4 — Référentiels org-level (chantier séparé mais NÉCESSAIRE à la fiche unique)
-- Catégories / marques / fournisseurs : aujourd'hui par magasin → passage org-level
-  (dédoublonnage par nom, mapping des références). Peut suivre la phase 3 : en attendant,
-  la fiche référence le référentiel du magasin « propriétaire » (compat).
+## 3. Séquence des migrations (chacune additive, avec rollback — §5)
 
-### Phase 5 — Bascule des invariants (après preuve en prod des phases 1-3)
-- Index unique `ean` **org-wide** (remplace `(ean, store_id)`).
-- Retrait progressif des lectures legacy ; `products.store_id` déprécié — **jamais de
-  DROP** tant que tout n'est pas prouvé sur plusieurs semaines d'exploitation.
-
-## 4. Tests exigés (directive) → couverture prévue
-
-| # | Exigence | Preuve prévue |
+| Mig | Contenu | Rollback |
 |---|---|---|
-| 1 | Affecté Marseille + Cergy → visible dans les 2 | spec PG assignment + E2E POS-API par magasin |
-| 2 | Non coché Châtelet → absent de cette caisse | spec filtrage POS (aucune récupération globale) |
-| 3 | Décocher Marseille → retiré de la caisse, historique intact | spec : ventes/mouvements/prix conservés, `is_active=false`, aucun DELETE |
-| 4 | Modifier la fiche générale → répercuté partout | spec : update nom/TVA → visible via les 2 magasins (même `product_id`) |
-| 5 | Prix et stocks différents par magasin | spec : `store_product_prices` + `assignments.stock_quantity` divergents |
-| 6 | Code-barres unique dans toute l'organisation | spec contrainte + 409 à la création (déjà en place pour WES-P, étendu aux GTIN) |
+| **1774** | `product_store_assignments` (DDL §2.2 complet, archivage inclus — décision 5) + **backfill** : 1 ligne par produit existant (`product_id`, son `store_id`, `is_active` = état actuel, stock copié, `assigned_at` = `products.created_at`, `first_stocked_at` = 1re entrée stock_movements si existante, `last_sold_at` = MAX(vente) si existante) | `DROP TABLE product_store_assignments` (aucune autre table touchée) |
+| **1775** | `store_product_prices` : unique `(product_id, store_id)` (remplace unique `product_id`) | restauration de l'ancien index |
+| **1776** | Référentiels : `store_id` nullable + lignes org fusionnées + remap des `products.category_id/brand_id/supplier_id` vers les ids org (table de correspondance conservée) | remap inverse via la table de correspondance (aucune ligne supprimée) |
+| **1777** (fin de chantier, GO dédié) | index unique `ean` org-wide (précondition re-vérifiée : 0 doublon) | retour à unique `(ean, store_id)` |
+| Hors chantier (GO séparé, décision 4) | dépréciation finale / DROP éventuel de `products.store_id` | n/a — jamais dans ce chantier |
 
-## 5. Risques & points de décision owner
+Ordre d'exécution du chantier : **1774 → 1775 → double-écriture backend → 1776
+(référentiels) → UI multi-magasins → job d'archivage → 1777**. L'UI n'ouvre qu'après 1776
+(décision 3).
 
-1. **Stock par magasin** : porté par `product_store_assignments` (proposé, simple) ou table
-   de stock dédiée ? → proposition : assignment (le journal `stock_movements` reste la
-   traçabilité).
-2. **Référentiels org (phase 4)** : avant ou après la phase 3 ? → proposition : après,
-   avec compat temporaire.
-3. **Sort final de `products.store_id`** : dépréciation longue proposée, jamais de DROP
-   sans GO dédié.
-4. **Sync offline POS** : les caisses gardent un cache — la double-lecture (phase 2)
-   garantit qu'aucune caisse ne perd son catalogue pendant la bascule.
-5. Migration sur `products` = **Tier-2** : chaque phase avec migration aura son GO propre.
+## 4. Comportements
 
-## 6. Archivage automatique des produits inactifs (6 mois) — directive 2026-07-23
+### 4.1 API / backend (double-écriture puis bascule — pattern stock-journal F2)
+- Écritures stock (vente, ajustement, inventaire, réception) : `assignments` **ET** colonne
+  legacy `products.stock_quantity` pendant la transition ; `last_sold_at` mis à jour à
+  chaque vente du couple (produit, magasin).
+- Lectures (`list`, `scan`, stats, alertes stock) : via assignment (`is_active`), fallback
+  legacy si assignment absent (ceinture).
+- Nouveaux endpoints : `GET/PUT /products/:id/stores` (lire/éditer les affectations —
+  upsert + archivage `unchecked`, jamais de suppression) ; `POST .../:storeId/reactivate`
+  (rôle manager/admin).
+- `TenantInterceptor` inchangé : caissier = son magasin uniquement.
 
-> Purge = **archivage réversible par magasin**, jamais de suppression physique.
-> S'appuie sur `product_store_assignments` (§2-3) — c'est la **Phase 3b** du plan.
+### 4.2 Synchronisation POS
+- Le pull catalogue renvoie les produits **affectés** au magasin avec leur statut ;
+  recherche/vente = actifs uniquement ; **aucune récupération globale automatique**.
+- Les affectations archivées voyagent dans le cache avec leur statut → le scan d'un
+  produit archivé affiche, même hors-ligne : « Produit archivé pour inactivité —
+  réactivation par un responsable nécessaire. » (ajout au panier refusé).
+- Une caisse hors-ligne pendant la bascule garde son cache ; à la reconnexion le pull
+  filtré prend le relais (aucune caisse ne perd son catalogue).
 
-### 6.1 Modèle technique
+### 4.3 UI (après 1776)
+- Assistant + fiche : section « **Magasins dans lesquels ce produit est disponible** » —
+  cases à cocher (tous les magasins), « Tout sélectionner » / « Tout désélectionner »,
+  précochage du magasin contextuel (décochable), libre en Vue globale, modifiable après
+  création sans recréer le produit.
+- Fiche → section Magasins : badge par magasin (Actif / Archivé inactivité / Archivé
+  manuel / Décoché) avec motif, dernière vente, date d'archivage, **stock théorique au
+  moment de l'archivage**, bouton Réactiver (manager/admin).
 
-Extension de `product_store_assignments` (intégrée au DDL de la phase 1 — un seul GO
-migration au lieu de deux) :
+### 4.4 Archivage automatique 6 mois (job quotidien)
+- `@Cron` 04:00 Europe/Paris (infra `ScheduleModule` en place).
+- Horloge par affectation **active** : `last_sold_at` (requête ventes autoritaire au
+  moment du job) ; jamais vendu → `first_stocked_at`, sinon `assigned_at` (décision 7 —
+  jamais la date de création de la fiche) ; et jamais avant `reactivated_at`.
+- « Six mois complets » stricts (mois calendaires Europe/Paris).
+- Transition **atomique** : `UPDATE … SET is_active=false, archived_at=now(),
+  archive_reason='inactivity_6m', archived_stock_snapshot=stock_quantity,
+  last_sold_at=<calculé> WHERE id=… AND is_active=true` → l'archivage en double est
+  structurellement impossible (double job, deux instances).
+- Si la ligne a réellement transitionné : entrée d'audit chaînée
+  (`product_store_archived_inactivity`) + notifications 3 canaux (responsable magasin,
+  back-office, caisse) : « Le produit [nom/code] n'a enregistré aucune vente depuis six
+  mois et a été retiré du catalogue actif. » — **complétée, si `archived_stock_snapshot >
+  0`, par : « Stock théorique restant : N — contrôle physique recommandé. »** (décision 6).
+- Fiche générale → « Produits archivés » quand TOUTES les affectations sont inactives ;
+  ressort dès une réactivation.
+- Le job ignore `archive_reason='manual'` et `'unchecked'`.
 
-| Colonne | Rôle |
+## 5. Rollback (par étape, sans perte)
+
+| Étape | Procédure de retour |
 |---|---|
-| `status` | `active` \| `archived_inactivity` \| `archived_manual` (remplace le simple `is_active` du §2 ; motifs distincts obligatoires) |
-| `archived_at` / `archived_reason` | date + motif consultables par le responsable |
-| `last_sale_at` | dernière vente CE produit / CE magasin — figée au moment de l'archivage (consultation) ; source de vérité = requête ventes au moment du job (pas de dérive de cache) |
-| `first_stocked_at` | première entrée en stock dans ce magasin (posée au 1er mouvement d'entrée) |
-| `reactivated_at` / `reactivated_by` | réactivation par responsable — **l'horloge repart d'ici** |
+| 1774/1775 | migrations down (DROP de la table d'affectation / index restauré) — les colonnes legacy n'ont jamais cessé d'être écrites pendant la double-écriture → retour à l'état antérieur SANS perte |
+| Double-écriture | feature-flag de lecture (`assignment` → `legacy`) : bascule inverse instantanée sans migration |
+| 1776 (référentiels) | remap inverse via table de correspondance (aucune ligne supprimée) |
+| UI | redéploiement Vercel précédent (« Instant Rollback ») — le backend double-lecture sert les deux UIs |
+| Job d'archivage | désactivable par flag ; réactivation en masse possible (`is_active=true` sur `archive_reason='inactivity_6m'`), l'audit garde la trace des deux transitions |
+| 1777 | retour à l'index `(ean, store_id)` |
 
-**Job quotidien** (`@Cron` 04:00 Europe/Paris — infra `ScheduleModule` déjà en place,
-pattern shift-reminders) :
+Garantie transverse : **aucune donnée historique (ventes, mouvements, prix, journaux,
+fiches) n'est modifiée ni supprimée par aucune étape** — preuve par diff dans les tests.
 
-1. Pour chaque affectation `status='active'` : `dernière vente = MAX(sale.created_at)`
-   (JOIN `sale_line_items`, produit + magasin) — requête autoritaire, pas de compteur.
-2. Point de départ de l'horloge : dernière vente s'il y en a une ; sinon
-   `first_stocked_at` ; sinon date d'affectation ; **et jamais avant `reactivated_at`**.
-3. Si « six mois complets » écoulés (mois calendaires, strictement) →
-   `UPDATE … SET status='archived_inactivity', archived_at=now(), last_sale_at=…
-   WHERE id=… AND status='active'` — **transition atomique** : le WHERE garantit
-   l'impossibilité d'archivage en double (double exécution du job, deux instances).
-4. Uniquement si la ligne a réellement transitionné : entrée d'**audit** (chaîne
-   `audit_entries` existante, action `product_store_archived_inactivity`) +
-   **notifications** (3 canaux) :
-   - responsable du magasin (module `notifications` existant + `notifications_log`) ;
-   - back-office (centre de notifications) ;
-   - caisse concernée : « Le produit [nom/code] n'a enregistré aucune vente depuis six
-     mois et a été retiré du catalogue actif. » (feed lu par le POS à la synchro ≤ 15 s).
-5. Fiche générale : si TOUTES les affectations du produit sont archivées (auto ou
-   manuel) → `products.status='archived'` (section Produits archivés). La réactivation
-   d'un seul magasin la fait ressortir.
+## 6. Cas limites (arbitrés sauf mention)
 
-**Ce que l'archivage ne touche JAMAIS** : la fiche, les ventes, les mouvements de stock,
-les prix, les journaux — aucune ligne supprimée ni modifiée hors la transition de statut
-(preuve par diff dans les tests).
+1. Réactivé puis toujours pas vendu → horloge depuis `reactivated_at` (pas de re-archivage le lendemain).
+2. Jamais vendu, jamais stocké → horloge depuis `assigned_at` (décision 7).
+3. Frontière : archive si dernière vente `< now − 6 mois` stricts.
+4. **Vente offline synchronisée après archivage** : vente TOUJOURS acceptée (réalité
+   comptable), `last_sold_at` mis à jour, notification « vendu alors qu'archivé » —
+   pas d'auto-réactivation (proposé ; à confirmer au GO).
+5. Produit dans un panier au moment de l'archivage → la vente en cours n'est jamais cassée.
+6. **Stock restant à l'archivage → archivage quand même + stock théorique dans la
+   notification** (décision 6, arbitré).
+7. Retours/avoirs ≠ vente → ne réinitialisent pas l'horloge (proposé ; à confirmer au GO).
+8. Archivage manuel / décochage : motifs distincts, jamais touchés par le job.
+9. Nouveau magasin coché → aucun archivage avant 6 mois d'affectation.
+10. Fuseau Europe/Paris, mois calendaires, job idempotent.
+11. WES-P et EAN fabricant strictement identiques face à toutes les règles.
+12. Deux caisses d'un même magasin → même catalogue filtré (l'affectation est par magasin, pas par terminal).
 
-**Caisse / scan d'un produit archivé** : la synchro POS inclut les affectations archivées
-avec leur statut ; la recherche et la vente ne montrent que l'actif, mais le scan d'un code
-archivé affiche : « Produit archivé pour inactivité — réactivation par un responsable
-nécessaire. » (fonctionne aussi hors-ligne, le statut étant dans le cache catalogue).
+## 7. Plan de tests (aucun code avant GO — liste contractuelle)
 
-**Réactivation** : fiche produit → section Magasins → badge « Archivé pour inactivité »
-(motif + dernière vente + date d'archivage) → bouton Réactiver (rôle manager/admin) →
-`status='active'`, `reactivated_at/by`, audit, retour en caisse à la synchro suivante.
+**Affectations (directive n°1)**
+T1 affecté Marseille+Cergy → visible dans les deux (API POS par magasin) ·
+T2 non coché Châtelet → absent de cette caisse, aucune récupération globale ·
+T3 décocher Marseille → retiré de la caisse marseillaise, ventes/prix/stocks/journaux
+intacts (diff) · T4 modifier la fiche générale → répercuté partout (même product_id) ·
+T5 prix et stocks divergents par magasin (assignments + store_product_prices) ·
+T6 code-barres unique org-wide (409, WES-P et GTIN).
 
-### 6.2 Cas limites (et arbitrages proposés)
+**Archivage (directive n°2)**
+A1 vendu il y a 7 mois à Marseille / 1 mois à Cergy → archivé Marseille seulement ·
+A2 jamais vendu, affecté il y a 7 mois → archivé (départ affectation/1re entrée stock,
+jamais création fiche) · A3 jamais vendu, 5 mois → pas archivé · A4 frontière ±1 jour ·
+A5 job ×2 / 2 instances → UN archivage, UN audit, UNE notification ·
+A6 archivé partout → fiche dans Produits archivés ; une réactivation la fait ressortir ·
+A7 réactivation sans vente → pas de re-archivage avant 6 nouveaux mois ·
+A8 scan d'un archivé (y compris hors-ligne) → message exact, panier refusé ·
+A9 vente offline post-archivage → acceptée + horloge + notification ·
+A10 diff avant/après → historique STRICTEMENT intact ·
+A11 notifications 3 canaux, message exact, **stock théorique restant mentionné si > 0** ·
+A12 motifs manuel / décoché / inactivité distincts, job aveugle aux deux premiers.
 
-1. **Réactivé puis toujours pas vendu** → l'horloge repart de `reactivated_at`, sinon
-   re-archivage dès le lendemain.
-2. **Jamais vendu, jamais stocké** → 6 mois depuis l'affectation.
-3. **Frontière des « six mois complets »** : archive si dernière vente `< now − 6 mois`
-   stricts (une vente au jour anniversaire garde le produit actif).
-4. **Vente offline synchronisée APRÈS archivage** (caisse hors-ligne avec l'ancien
-   catalogue) : la vente est **toujours acceptée** (réalité comptable) et met à jour la
-   dernière vente. → **Décision owner** : réactivation automatique, ou notification
-   « vendu alors qu'archivé » au responsable (proposé : notification, pas d'auto-réactivation).
-5. **Produit dans un panier au moment de l'archivage** : la ligne de panier est figée —
-   l'encaissement en cours n'est jamais cassé ; le produit disparaît à la synchro suivante.
-6. **Réassort récent sans vente** (entrée de stock il y a 1 mois, dernière vente il y a
-   8 mois) : la règle des ventes archive quand même. → **Décision owner** : appliquer
-   strictement (proposé, conforme à la directive) ou différer si entrée de stock < N mois.
-7. **Retours/avoirs** : un avoir n'est PAS une vente — ne réinitialise pas l'horloge
-   (proposé ; à confirmer).
-8. **Archivage manuel** : motif distinct (`archived_manual`), jamais touché par le job ;
-   les deux motifs sont affichés différemment.
-9. **Nouveau magasin coché récemment** : horloge depuis l'affectation — aucun archivage
-   possible avant 6 mois.
-10. **Fuseau** : mois calendaires Europe/Paris ; job idempotent (re-run sans effet).
-11. **WES-P vs EAN fabricant** : strictement identiques face à la règle.
+**Migrations** M1 backfill 1774 : les 3 produits prod (dont le produit test, décision 1)
+conservent exactement affectation/état/stock · M2 down-migrations 1774/1775/1776 sans
+perte · M3 précondition 1777 (0 doublon EAN) re-vérifiée à l'exécution.
 
-### 6.3 Tests exigés (s'ajoutent aux 6 du §4)
-
-| # | Scénario | Attendu |
-|---|---|---|
-| A1 | Vendu il y a 7 mois à Marseille, 1 mois à Cergy | archivé Marseille, actif Cergy |
-| A2 | Jamais vendu, affecté il y a 7 mois | archivé (départ = affectation/1re entrée stock) |
-| A3 | Jamais vendu, affecté il y a 5 mois | PAS archivé |
-| A4 | Frontière : vente à 6 mois − 1 j / + 1 j | actif / archivé |
-| A5 | Job exécuté 2× (ou 2 instances) | UN archivage, UN audit, UNE notification |
-| A6 | Archivé dans tous les magasins | fiche générale → Produits archivés ; réactivation d'un magasin → fiche active |
-| A7 | Réactivation sans vente ensuite | pas de re-archivage avant 6 nouveaux mois |
-| A8 | Scan d'un archivé en caisse | message exact affiché, ajout panier refusé, hors-ligne inclus |
-| A9 | Vente offline syncée après archivage | vente acceptée, horloge mise à jour, notification (selon arbitrage cas 4) |
-| A10 | Diff avant/après archivage | ventes, prix, stocks, journaux STRICTEMENT identiques ; seule la transition de statut + audit |
-| A11 | Notifications | responsable + back-office + caisse reçoivent le message exact |
-| A12 | Motifs | archivage manuel et inactivité affichés distinctement, le job ignore le manuel |
-
-## 7. Produit test du 2026-07-23
-
-`WES-P-000000000001` (« TEST CODE WESLEY — vrac 2026-07-23 », id `dbb9ba9f-…`) a été publié
-sur The Wesley Test **avant** la directive d'arrêt. Non touché. Options : le laisser (il
-servira au test physique douchette/Code 128) ou le passer « Archivé » (1 clic, réversible).
+## 8. Produit test (décision 1)
+`WES-P-000000000001` (« TEST CODE WESLEY — vrac 2026-07-23 », id `dbb9ba9f-…`) : **actif,
+stock 5, The Wesley Test — ne pas toucher** ; réservé au test physique douchette. Sa
+publication mono-magasin valide le Code 128, pas le futur multi-magasins (noté).
