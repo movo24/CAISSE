@@ -1,9 +1,14 @@
 /**
  * Non-régression migration F0 (liaison vente sur stock_movements) sur un VRAI Postgres.
  * Gated sur TEST_DATABASE_URL — skippé sinon (la suite pg-mem normale n'est pas affectée).
- * ⚠️ Pointer TEST_DATABASE_URL vers une base VIERGE dédiée (le run applique toute la lignée).
  *
- *   TEST_DATABASE_URL=postgresql://user@localhost:5432/caisse_mig_verify \
+ * ISOLATION : ce spec ne travaille PAS dans la base de TEST_DATABASE_URL — il
+ * s'en sert comme connexion bootstrap pour (re)créer sa PROPRE base jetable
+ * (`caisse_stock_linkage_mig_spec`), détruite en sortie (voir
+ * helpers/isolated-db.ts : les specs `synchronize: true` de la base partagée
+ * CI droppent les index créés par les migrations → suite sensible à l'ordre).
+ *
+ *   TEST_DATABASE_URL=postgresql://user@localhost:5432/caisse_test \
  *     npx jest --forceExit test/stock-movement-linkage-migration.pg.spec.ts
  *
  * Prouve, pour le bloc F0 (PRODUCTS_FISCAL_STOCK_SYNTHESIS.md) :
@@ -17,9 +22,17 @@ import * as path from 'path';
 import { DataSource } from 'typeorm';
 import { loadAllEntities } from './helpers/pgmem';
 import { revertToMigration } from './helpers/revert-to-migration';
+import {
+  createIsolatedDb,
+  dropIsolatedDb,
+  isolatedDbUrl,
+} from './helpers/isolated-db';
 
 const TEST_DB = process.env.TEST_DATABASE_URL;
 const d = TEST_DB ? describe : describe.skip;
+
+/** Base jetable dédiée à ce spec (créée depuis TEST_DATABASE_URL, détruite en sortie). */
+const ISOLATED_DB = 'caisse_stock_linkage_mig_spec';
 
 const MIGRATION = 'AddStockMovementSaleLinkage1767000000000';
 const NEW_COLUMNS = ['store_id', 'sale_id', 'sale_line_item_id', 'occurred_at'];
@@ -46,9 +59,10 @@ d('Migration F0 stock_movements liaison vente up/down (real Postgres)', () => {
     (await ds.query(`SELECT to_regclass('public.${t}') IS NOT NULL AS e`))[0].e === true;
 
   beforeAll(async () => {
+    await createIsolatedDb(TEST_DB as string, ISOLATED_DB);
     ds = new DataSource({
       type: 'postgres',
-      url: TEST_DB,
+      url: isolatedDbUrl(TEST_DB as string, ISOLATED_DB),
       entities: loadAllEntities() as any,
       migrations: [path.join(__dirname, '../src/database/migrations/*.ts')],
       synchronize: false,
@@ -60,6 +74,7 @@ d('Migration F0 stock_movements liaison vente up/down (real Postgres)', () => {
 
   afterAll(async () => {
     await ds?.destroy();
+    await dropIsolatedDb(TEST_DB as string, ISOLATED_DB);
   });
 
   it('up : colonnes de liaison + index (dont unique partielle), colonnes legacy préservées', async () => {
