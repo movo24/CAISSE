@@ -35,6 +35,25 @@ export function resolveLocalScan(code: string, catalogue: ScanProduct[]): ScanOu
   return { status: 'add', product };
 }
 
+/**
+ * Validation d'un code scanné AVANT toute recherche : un code plausible est
+ * imprimable ASCII, sans espace interne, entre 4 et 32 caractères (couvre
+ * EAN-8/13, UPC-A, GTIN-14, codes internes WES-P… et CODE-128 raisonnables).
+ * Un code invalide doit produire un message VISIBLE — jamais un silence.
+ */
+export type ScanCodeValidation = { ok: true; code: string } | { ok: false; reason: string };
+
+export function validateScanCode(raw: string): ScanCodeValidation {
+  const code = (raw || '').trim();
+  if (code.length < 4) {
+    return { ok: false, reason: `Code-barres invalide ou incomplet : ${code || '(vide)'}` };
+  }
+  if (code.length > 32 || /[^\x20-\x7E]/.test(code) || /\s/.test(code)) {
+    return { ok: false, reason: `Code-barres invalide ou incomplet : ${code.slice(0, 40)}` };
+  }
+  return { ok: true, code };
+}
+
 /** État du dernier scan accepté, pour bloquer un double-envoi d'un SEUL scan. */
 export interface ScanDedupState {
   code: string | null;

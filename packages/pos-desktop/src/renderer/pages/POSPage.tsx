@@ -51,7 +51,8 @@ import { BonAchatModal } from '../components/pos/BonAchatModal';
 import { WesleysWordmark } from '../components/WesleysWordmark';
 import { peripheralBridge } from '../services/peripheralBridge';
 import { shouldAcceptWedgeScan } from '../services/wedgeScanGate';
-import { isDuplicateScan, type ScanDedupState } from '../services/scanResolver';
+import { isDuplicateScan, validateScanCode, type ScanDedupState } from '../services/scanResolver';
+import { scanTrace } from '../services/scanTrace';
 import { useCloudSyncStore } from '../services/cloudSyncIdentity';
 import { Wifi, WifiOff, CloudOff, RefreshCw as SyncIcon, ShieldAlert, Upload, Lock as LockIcon } from 'lucide-react';
 import { IPadPOSLayout } from '../components/ipad/IPadPOSLayout';
@@ -159,12 +160,15 @@ export function POSPage() {
   const [error, setError] = useState('');
   // Indicateur discret douchette. « prêt » = écoute clavier active (l'app reçoit des
   // frappes) ; AUCUNE détection matérielle physique n'est prétendue depuis le renderer.
-  const [scannerStatus, setScannerStatus] = useState<{ kind: 'ready' | 'added' | 'unknown' | 'refused'; msg?: string }>({ kind: 'ready' });
+  const [scannerStatus, setScannerStatus] = useState<{ kind: 'ready' | 'added' | 'unknown' | 'refused' | 'error'; msg?: string }>({ kind: 'ready' });
   const scannerStatusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const flashScannerStatus = useCallback((kind: 'added' | 'unknown' | 'refused', msg?: string) => {
+  const flashScannerStatus = useCallback((kind: 'added' | 'unknown' | 'refused' | 'error', msg?: string) => {
     setScannerStatus({ kind, msg });
     if (scannerStatusTimer.current) clearTimeout(scannerStatusTimer.current);
-    scannerStatusTimer.current = setTimeout(() => setScannerStatus({ kind: 'ready' }), 1800);
+    // Les issues négatives (introuvable / refusé / erreur) restent lisibles plus
+    // longtemps — sans jamais bloquer le scan suivant (simple indicateur).
+    const holdMs = kind === 'added' ? 1800 : 5000;
+    scannerStatusTimer.current = setTimeout(() => setScannerStatus({ kind: 'ready' }), holdMs);
   }, []);
   // Anti-double-ajout : ignore la ré-émission d'un même code par un seul scan physique.
   const lastWedgeScan = useRef<ScanDedupState>({ code: null, ts: 0 });
@@ -614,12 +618,35 @@ export function POSPage() {
 
   /* ── Scan handler ── */
 
-  const handleScan = async (value: string) => {
+  // MÊME fonction pour la douchette (source 'wedge') et le champ de recherche
+  // (source 'manual') — une seule logique de résolution, jamais deux.
+  // Règle absolue : AUCUN scan ne finit dans le silence — chaque code produit
+  // un résultat VISIBLE (ajout, introuvable, invalide, ou erreur technique
+  // clairement distinguée d'un produit inexistant).
+  const handleScan = async (value: string, source: 'manual' | 'wedge' = 'manual') => {
     if (!value.trim()) return;
     setError('');
+    // Un code de douchette invalide/incomplet → message visible, pas de silence.
+    if (source === 'wedge') {
+      const valid = validateScanCode(value);
+      if (!valid.ok) {
+        scanTrace('result_invalid', value, { source });
+        setError(valid.reason);
+        flashScannerStatus('refused', valid.reason);
+        return;
+      }
+    }
     const localMatch = catalogue.find((p) => p.ean === value.trim());
-    if (localMatch) { handleSelectProduct(localMatch); return; }
-    if (searchResults.length > 0) {
+    if (localMatch) {
+      scanTrace('lookup_local_hit', value.trim(), { source, name: localMatch.name });
+      handleSelectProduct(localMatch);
+      flashScannerStatus('added', `${productDisplayName(localMatch)} — ${(localMatch.priceMinorUnits / 100).toFixed(2)} €`);
+      return;
+    }
+    // Raccourci « résultat de recherche sélectionné » : UNIQUEMENT pour l'Entrée
+    // MANUELLE dans le champ. Un scan douchette résout TOUJOURS son propre code —
+    // sinon il ajouterait silencieusement le mauvais produit affiché.
+    if (source === 'manual' && searchResults.length > 0) {
       const idx = selectedIdx >= 0 ? selectedIdx : 0;
       handleSelectProduct(searchResults[idx]);
       return;
@@ -629,24 +656,44 @@ export function POSPage() {
         const res = await customersApi.findByQr(value);
         if (res.data) { store.setCustomer(res.data, value); store.setScanMode('product'); }
       } else {
+        scanTrace('lookup_backend', value.trim(), { source });
         const res = await productsApi.scan(value);
         if (res.data) {
           if (res.data.isActive === false) {
+            scanTrace('result_refused', value.trim(), { name: res.data.name });
             setError(`Vente refusée — produit désactivé : ${res.data.name}`);
             flashScannerStatus('refused', 'Produit désactivé');
           } else {
+            scanTrace('result_found', value.trim(), { name: res.data.name });
             store.addToCart({ productId: res.data.id, ean: res.data.ean, name: productDisplayName(res.data), unitPriceMinorUnits: res.data.priceMinorUnits, taxRate: Number.isFinite(Number(res.data.taxRate)) ? Number(res.data.taxRate) : undefined });
-            flashScannerStatus('added');
+            flashScannerStatus('added', `${productDisplayName(res.data)} — ${(res.data.priceMinorUnits / 100).toFixed(2)} €`);
           }
-        } else { openUnknownProduct(value.trim()); }
+        } else {
+          scanTrace('result_unknown', value.trim(), { source });
+          openUnknownProduct(value.trim());
+        }
       }
     } catch (e: any) {
-      const fuzzy = catalogue.find((p) => productMatchesQuery(p, value.toLowerCase().trim()));
+      // Une frappe MANUELLE peut être un nom de produit → correspondance floue.
+      // Un code de DOUCHETTE n'est jamais un nom : pas de fuzzy (mauvais produit).
+      const fuzzy = source === 'manual'
+        ? catalogue.find((p) => productMatchesQuery(p, value.toLowerCase().trim()))
+        : undefined;
       if (fuzzy) { handleSelectProduct(fuzzy); }
       else if (store.scanMode !== 'customer' && e?.response?.status === 404) {
         // Le backend confirme : ce code-barres n'existe pas → produit inconnu.
+        scanTrace('result_unknown', value.trim(), { source, via: '404' });
         openUnknownProduct(value.trim());
-      } else { setError(`Produit non trouve : ${value}`); }
+      } else if (!e?.response) {
+        // Panne réseau/synchronisation — JAMAIS présentée comme « introuvable ».
+        scanTrace('result_error', value.trim(), { source, error: e?.message || 'network' });
+        setError('Recherche impossible — vérifiez la connexion ou la synchronisation du catalogue.');
+        flashScannerStatus('error', 'Recherche impossible — connexion ?');
+      } else {
+        scanTrace('result_error', value.trim(), { source, status: e?.response?.status });
+        setError(`Recherche impossible (erreur ${e?.response?.status}) — réessayez ou vérifiez la synchronisation.`);
+        flashScannerStatus('error', `Erreur ${e?.response?.status}`);
+      }
     }
     setScanValue('');
     setSearchOpen(false);
@@ -659,6 +706,7 @@ export function POSPage() {
   // seule fois au montage. Le listener bas-niveau ignore déjà les scans tapés
   // DANS un input → aucun double ajout avec le champ de recherche.
   wedgeScanRef.current = (code: string) => {
+    scanTrace('scan_detected', code, { source: 'wedge' });
     const accept = shouldAcceptWedgeScan({
       hasActiveCashier: !!store.employee,
       paymentModalOpen: store.paymentModalOpen,
@@ -667,14 +715,20 @@ export function POSPage() {
       weightModalOpen: weightModal !== null,
       emailModalOpen: emailModal,
     });
-    if (!accept) return;
+    if (!accept) {
+      scanTrace('ignored_gate', code);
+      return;
+    }
     // Bloque un double-ajout accidentel issu d'un SEUL scan (double-émission),
     // tout en autorisant les scans rapides successifs (codes différents) et une
     // re-lecture volontaire du même produit après la fenêtre (→ quantité +1).
     const now = Date.now();
-    if (isDuplicateScan(lastWedgeScan.current, code, now)) return;
+    if (isDuplicateScan(lastWedgeScan.current, code, now)) {
+      scanTrace('ignored_duplicate', code);
+      return;
+    }
     lastWedgeScan.current = { code: code.trim(), ts: now };
-    void handleScan(code);
+    void handleScan(code, 'wedge');
   };
 
   /* ── Produit inconnu (aucune création depuis la caisse) ── */
@@ -1478,16 +1532,17 @@ export function POSPage() {
               <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full shadow-sm border transition-colors ${
                 scannerStatus.kind === 'added' ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                 : scannerStatus.kind === 'unknown' ? 'bg-amber-50 text-amber-700 border-amber-200'
-                : scannerStatus.kind === 'refused' ? 'bg-red-50 text-red-700 border-red-200'
+                : scannerStatus.kind === 'refused' || scannerStatus.kind === 'error' ? 'bg-red-50 text-red-700 border-red-200'
                 : 'bg-pos-subtle text-pos-muted border-pos-border/30'}`}>
                 <span className={`w-1.5 h-1.5 rounded-full ${
                   scannerStatus.kind === 'added' ? 'bg-emerald-500'
                   : scannerStatus.kind === 'unknown' ? 'bg-amber-500'
-                  : scannerStatus.kind === 'refused' ? 'bg-red-500'
+                  : scannerStatus.kind === 'refused' || scannerStatus.kind === 'error' ? 'bg-red-500'
                   : 'bg-pos-muted/50'}`} />
-                {scannerStatus.kind === 'added' ? 'Produit ajouté'
-                  : scannerStatus.kind === 'unknown' ? `Code inconnu${scannerStatus.msg ? ` — ${scannerStatus.msg}` : ''}`
+                {scannerStatus.kind === 'added' ? `Produit ajouté${scannerStatus.msg ? ` — ${scannerStatus.msg}` : ''}`
+                  : scannerStatus.kind === 'unknown' ? `Produit introuvable${scannerStatus.msg ? ` — code-barres : ${scannerStatus.msg}` : ''}`
                   : scannerStatus.kind === 'refused' ? (scannerStatus.msg || 'Vente refusée')
+                  : scannerStatus.kind === 'error' ? (scannerStatus.msg || 'Recherche impossible')
                   : 'Scanner prêt'}
               </span>
             </div>
@@ -1709,8 +1764,8 @@ export function POSPage() {
                 <ScanBarcode size={26} />
               </div>
               <div>
-                <h3 className="font-bold text-lg text-pos-text">Produit inconnu</h3>
-                <p className="text-sm text-pos-muted font-mono">{unknownProduct.barcode}</p>
+                <h3 className="font-bold text-lg text-pos-text">Produit introuvable</h3>
+                <p className="text-sm text-pos-muted font-mono select-all">code-barres : {unknownProduct.barcode}</p>
               </div>
             </div>
 

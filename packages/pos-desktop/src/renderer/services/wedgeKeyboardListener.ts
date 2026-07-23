@@ -34,6 +34,30 @@ export function attachWedgeKeyboardListener(
   const now = options.now ?? (() => Date.now());
   // Champ ayant reçu le 1er caractère (passthrough) de la séquence en cours.
   let leadEl: HTMLInputElement | HTMLTextAreaElement | null = null;
+  // Terminaison par SILENCE (douchette « sans suffixe ») : timer armé après
+  // chaque caractère de rafale ; s'il expire sans nouvelle touche, la rafale
+  // est close et émise comme scan — aucun scan ne meurt dans le buffer.
+  let flushTimer: ReturnType<typeof setTimeout> | null = null;
+  const FLUSH_AFTER_MS = 120; // > maxInterKeyMs (50) → jamais de coupure en pleine rafale
+
+  const clearFlushTimer = () => {
+    if (flushTimer) {
+      clearTimeout(flushTimer);
+      flushTimer = null;
+    }
+  };
+
+  const armFlushTimer = () => {
+    clearFlushTimer();
+    flushTimer = setTimeout(() => {
+      flushTimer = null;
+      const pending = decoder.flushPending(now());
+      if (pending) {
+        cleanupLeadChar();
+        onBarcode({ code: pending.code, format: pending.format });
+      }
+    }, FLUSH_AFTER_MS);
+  };
 
   const cleanupLeadChar = () => {
     const el = leadEl;
@@ -66,19 +90,25 @@ export function attachWedgeKeyboardListener(
       case 'swallow':
         e.preventDefault();
         e.stopPropagation();
+        armFlushTimer(); // rafale en cours → si plus rien n'arrive, clore et émettre
         return;
       case 'scan':
         e.preventDefault();
         e.stopPropagation();
+        clearFlushTimer();
         cleanupLeadChar(); // retire le 1er caractère éventuellement écrit dans un champ
         onBarcode({ code: r.code, format: r.format });
         return;
       default:
-        // 'none' (Entrée humaine, touche non imprimable) : rompt la séquence.
+        // 'none' (Entrée/Tab humain, touche non imprimable) : rompt la séquence.
+        clearFlushTimer();
         leadEl = null;
     }
   };
 
   doc.addEventListener('keydown', handler, { capture: true });
-  return () => doc.removeEventListener('keydown', handler, { capture: true });
+  return () => {
+    clearFlushTimer();
+    doc.removeEventListener('keydown', handler, { capture: true });
+  };
 }

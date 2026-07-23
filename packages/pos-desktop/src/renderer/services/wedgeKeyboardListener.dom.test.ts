@@ -126,4 +126,37 @@ describe('Douchette clavier-wedge — comportement DOM réel (champ focalisé)',
     expect(ev.defaultPrevented).toBe(false); // laissé passer
     expect(onBarcode).not.toHaveBeenCalled();
   });
+
+  it('suffixe TAB : scan reconnu, Tab neutralisé (pas de changement de focus parasite)', () => {
+    for (const ch of '3760012345678') {
+      clock += 5;
+      press(ch);
+    }
+    clock += 5;
+    const tab = press('Tab');
+    expect(onBarcode).toHaveBeenCalledTimes(1);
+    expect(onBarcode.mock.calls[0][0]).toMatchObject({ code: '3760012345678', format: 'EAN-13' });
+    expect(tab.defaultPrevented).toBe(true); // le Tab du scan n'altère pas le focus
+    expect(input.value).toBe(''); // aucun caractère ne reste dans le champ
+  });
+
+  it('douchette SANS suffixe : la rafale est close par silence (timer) → scan émis', () => {
+    vi.useFakeTimers();
+    try {
+      for (const ch of 'WESP12345') {
+        clock += 5;
+        press(ch);
+      }
+      expect(onBarcode).not.toHaveBeenCalled(); // rien tant que le silence n'est pas constaté
+      clock += 500; // l'horloge du décodeur avance au-delà de maxInterKeyMs
+      vi.advanceTimersByTime(200); // le timer DOM (120 ms) expire
+      expect(onBarcode).toHaveBeenCalledTimes(1);
+      expect(onBarcode.mock.calls[0][0]).toMatchObject({ code: 'WESP12345' });
+      expect(input.value).toBe(''); // le 1er caractère inséré a été retiré au flush
+      vi.advanceTimersByTime(1000); // une seule émission, jamais de rejeu
+      expect(onBarcode).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
