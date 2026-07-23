@@ -324,7 +324,8 @@ export function useDashboardData(): DashboardData {
           if (m >= 0 && m < 12) monthlyCA[m] += d.totalRevenueMinorUnits || 0;
         }
       }
-      // Série de la semaine (lun→dim) en euros par jour.
+      // Série de la semaine (lun→dim), en CENTIMES par jour (minor units) —
+      // même unité que weekAvg ; le graphique n'affiche que des proportions.
       const weekActual = Array(7).fill(0);
       if (week?.days) {
         (week.days as any[]).forEach((d, i) => {
