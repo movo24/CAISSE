@@ -126,6 +126,50 @@ describe('Affectation magasin à la création produit', () => {
 
     beforeEach(() => calls.splice(0));
 
+    describe('endpoints :id — le contexte ADMIN suit le magasin RÉEL du produit (bug The Wesley Test)', () => {
+      const updates: any[] = [];
+      const ctrl = new ProductsController({
+        // Le produit vit dans STORE_A ; l'admin a un JWT '_admin'.
+        storeIdOfProduct: (id: string) => Promise.resolve(id === 'prod-1' ? STORE_A : null),
+        update: (id: string, _d: any, _e: string, _r: any, storeId: string) => {
+          updates.push({ id, storeId });
+          return Promise.resolve({ id, storeId });
+        },
+        findOneForStore: (id: string, storeId: string) => Promise.resolve({ id, storeId }),
+      } as any);
+      beforeEach(() => updates.splice(0));
+
+      it("ADMIN (JWT '_admin') : PUT /products/:id est routé vers le magasin du PRODUIT — plus jamais « belongs to another store »", async () => {
+        await ctrl.update('prod-1', {} as any, {
+          user: { role: 'admin', storeId: '_admin', employeeId: EMP },
+          headers: {},
+        });
+        expect(updates[0].storeId).toBe(STORE_A);
+      });
+
+      it('ADMIN : GET /products/:id charge la fiche dans le magasin du produit', async () => {
+        const res: any = await ctrl.findOne('prod-1', {
+          user: { role: 'admin', storeId: '_admin', employeeId: EMP },
+        });
+        expect(res.storeId).toBe(STORE_A);
+      });
+
+      it('MANAGER : le contexte reste STRICTEMENT son magasin (isolation tenant intacte)', async () => {
+        await ctrl.update('prod-1', {} as any, {
+          user: { role: 'manager', storeId: STORE_B, employeeId: EMP },
+          headers: {},
+        });
+        expect(updates[0].storeId).toBe(STORE_B);
+      });
+
+      it('ADMIN sur produit inexistant : retombe sur le magasin du JWT (404 standard en aval)', async () => {
+        const res: any = await ctrl.findOne('prod-inconnu', {
+          user: { role: 'admin', storeId: '_admin', employeeId: EMP },
+        });
+        expect(res.storeId).toBe('_admin');
+      });
+    });
+
     it("ADMIN + storeId explicite → le magasin CIBLE est utilisé", async () => {
       await controller.create({ storeId: STORE_A } as any, {
         user: { role: 'admin', storeId: '_admin', employeeId: EMP },

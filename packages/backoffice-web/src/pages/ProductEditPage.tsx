@@ -148,6 +148,9 @@ export function ProductEditPage() {
   const [stepIssues, setStepIssues] = useState<string[]>([]);
   const [publishing, setPublishing] = useState(false);
   const [published, setPublished] = useState(false);
+  // Reprise d'une création partielle : l'EAN existe déjà (brouillon compris)
+  // → on propose de ROUVRIR la fiche existante, jamais de créer un doublon.
+  const [resumeExisting, setResumeExisting] = useState<{ id: string; name: string } | null>(null);
   const [tab, setTab] = useState<Tab>(
     (!isEdit || wizardParam) ? (WIZARD_STEPS[initialStep] as Tab) : 'general',
   );
@@ -600,7 +603,12 @@ export function ProductEditPage() {
       // avance aussi explicitement — l'URL sert de reprise après refresh.
       goToStep(stepIdx + 1);
     } catch (e: any) {
-      const mapped = mapApiError(e?.response?.data);
+      const data = e?.response?.data;
+      const existing = data?.details?.existingProduct;
+      if (data?.code === 'PRODUCT_BARCODE_ALREADY_EXISTS' && existing?.id) {
+        setResumeExisting({ id: existing.id, name: existing.name || 'fiche existante' });
+      }
+      const mapped = mapApiError(data);
       setFieldErrors(mapped.fieldErrors);
       const n = Object.keys(mapped.fieldErrors).length;
       setError(
@@ -1022,6 +1030,22 @@ export function ProductEditPage() {
               ))}
             </ul>
           )}
+        </div>
+      )}
+
+      {/* Reprise d'une création partielle : jamais de doublon EAN */}
+      {resumeExisting && (
+        <div className="rounded-xl bg-blue-50 border border-blue-200 px-4 py-3 text-sm text-blue-800 flex items-center justify-between gap-3 flex-wrap">
+          <p className="font-medium">
+            Une fiche existe déjà pour ce code-barres : <span className="font-bold">{resumeExisting.name}</span>.
+            Reprenez-la — un brouillon rouvre l'assistant là où il s'était arrêté.
+          </p>
+          <button
+            onClick={() => navigate(`/products/${resumeExisting.id}/edit`)}
+            className="px-4 py-2 rounded-xl bg-bo-accent text-white text-sm font-semibold whitespace-nowrap"
+          >
+            Reprendre la fiche existante
+          </button>
         </div>
       )}
 
