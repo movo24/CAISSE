@@ -33,6 +33,7 @@ import { AuditEntryEntity } from '../src/database/entities/audit-entry.entity';
 import { AuditService } from '../src/modules/audit/audit.service';
 import { ProductsService } from '../src/modules/products/products.service';
 import { ProductsController } from '../src/modules/products/products.controller';
+import { StockController } from '../src/modules/stock/stock.controller';
 
 describe('Générique multi-magasins — admin par produit, isolation par rôle', () => {
   let ds: DataSource;
@@ -148,6 +149,28 @@ describe('Générique multi-magasins — admin par produit, isolation par rôle'
   it('4 — un magasin créé APRÈS coup bénéficie de la même logique, sans aucune configuration', async () => {
     const futureStore = await newStore('FUTUR');
     await fullLifecycleOn(futureStore);
+  });
+
+  it('stock :productId/adjust — le contexte ADMIN suit aussi le magasin du produit (audit 2026-07-23)', async () => {
+    const calls: any[][] = [];
+    const stockCtrl = new StockController({
+      storeIdOfProduct: (id: string) => Promise.resolve(id === 'p1' ? 'store-reel-du-produit' : null),
+      adjustStock: (...args: any[]) => {
+        calls.push(args);
+        return Promise.resolve({});
+      },
+    } as any);
+
+    await stockCtrl.adjust('p1', { quantity: 5, reason: 'réassort' } as any, {
+      user: { role: 'admin', storeId: '_admin', employeeId: EMP },
+    });
+    expect(calls[0][2]).toBe('store-reel-du-produit');
+
+    // Manager : strictement son magasin, comme avant.
+    await stockCtrl.adjust('p1', { quantity: 5, reason: 'réassort' } as any, {
+      user: { role: 'manager', storeId: 'store-du-manager', employeeId: EMP },
+    });
+    expect(calls[1][2]).toBe('store-du-manager');
   });
 
   it('isolation NON-admin intacte : un manager d\'un autre magasin ne voit ni ne modifie la fiche', async () => {

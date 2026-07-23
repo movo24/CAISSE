@@ -108,6 +108,16 @@ export class StockService {
     return saved;
   }
 
+  /** store_id réel d'un produit (contexte admin des routes :productId). */
+  async storeIdOfProduct(productId: string): Promise<string | null> {
+    try {
+      const row = await this.productRepo.findOne({ where: { id: productId } });
+      return row?.storeId ?? null;
+    } catch {
+      return null; // id invalide → introuvable, jamais une 500
+    }
+  }
+
   async adjustStock(
     productId: string,
     quantity: number,
