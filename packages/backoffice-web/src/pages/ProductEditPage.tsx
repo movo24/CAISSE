@@ -4,7 +4,7 @@ import {
   ScanBarcode, Save, ArrowLeft, Loader2, Package, Euro, Boxes, Truck,
   Layers, GitBranch, Image as ImageIcon, Ruler, BadgePercent, BarChart3,
   History, Plus, Trash2, AlertCircle, CheckCircle2, Pencil, Link2,
-  Lock, ChevronLeft, ChevronRight, ClipboardCheck, Store as StoreIcon,
+  Lock, ChevronLeft, ChevronRight, ClipboardCheck, Store as StoreIcon, Tag,
 } from 'lucide-react';
 import { productsApi, storesApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
@@ -19,7 +19,7 @@ import {
   validateFiche, mapApiError, firstErrorField, errorSummary,
   tabOfField, labelOfField, type FicheErrors, type FicheFormShape,
 } from '../utils/ficheValidation';
-import { gtinIssue, GTIN_ISSUE_MESSAGE } from '../utils/gtin';
+import { productCodeIssue, PRODUCT_CODE_ISSUE_MESSAGE, isWesleyCode } from '../utils/gtin';
 
 /**
  * Fiche produit PROFESSIONNELLE (page complète — remplace la popup minimaliste).
@@ -122,6 +122,7 @@ export function ProductEditPage() {
   const [gate, setGate] = useState(!isEdit && !duplicateFrom);
   const [gateEan, setGateEan] = useState('');
   const [gateBusy, setGateBusy] = useState(false);
+  const [gateWesleyError, setGateWesleyError] = useState<string | null>(null);
   const [gateExisting, setGateExisting] = useState<any | null>(null);
   const gateRef = useRef<HTMLInputElement>(null);
   useEffect(() => { if (gate) gateRef.current?.focus(); }, [gate]);
@@ -397,6 +398,26 @@ export function ProductEditPage() {
     } catch {
       // introuvable → nouvelle fiche avec cet EAN
       set('ean', ean); setGate(false);
+    } finally { setGateBusy(false); }
+  };
+
+  // ── Produit SANS code-barres fabricant : identifiant interne Wesley ──
+  // Généré exclusivement par le SERVEUR (séquence atomique, unique pour toute
+  // l'organisation, jamais réutilisé). L'assistant s'ouvre avec le code déjà
+  // affecté — aucun produit n'entre dans la fiche sans identifiant.
+  const generateWesleyCode = async () => {
+    setGateBusy(true); setGateWesleyError(null);
+    try {
+      const r = await productsApi.generateInternalCode();
+      const code = r.data?.code;
+      if (!code) throw new Error('missing code');
+      set('ean', code);
+      setGate(false);
+    } catch (e: any) {
+      setGateWesleyError(
+        e?.response?.data?.message ||
+          'Génération impossible pour le moment — vérifiez la connexion au serveur et réessayez.',
+      );
     } finally { setGateBusy(false); }
   };
 
@@ -940,40 +961,63 @@ export function ProductEditPage() {
   // ══════════ PORTE SCANNER (création) ══════════
   if (gate) {
     // Contrôle de format immédiat au scan : un code invalide est signalé ICI,
-    // jamais silencieusement au moment de l'enregistrement.
-    const gateIssue = gateEan.trim() ? gtinIssue(gateEan) : null;
+    // jamais silencieusement au moment de l'enregistrement. Accepte les GTIN
+    // fabricant ET les identifiants internes Wesley (WES-P-…).
+    const gateIssue = gateEan.trim() ? productCodeIssue(gateEan) : null;
     return (
       <div className="p-6 lg:p-8 max-w-2xl mx-auto animate-fade-in">
         <button onClick={() => navigate('/products')} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 mb-6"><ArrowLeft size={15} /> Produits</button>
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-soft p-8 text-center space-y-5">
-          <div className="w-14 h-14 mx-auto rounded-2xl bg-bo-accent/10 flex items-center justify-center"><ScanBarcode size={26} className="text-bo-accent" /></div>
-          <div>
-            <h2 className="text-xl font-bold text-bo-text">Nouveau produit</h2>
-            <p className="text-sm text-gray-400 mt-1">Scannez le code-barres ou saisissez l'EAN — vérification immédiate de l'existant.</p>
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-soft p-8 space-y-6">
+          <div className="text-center">
+            <div className="w-14 h-14 mx-auto rounded-2xl bg-bo-accent/10 flex items-center justify-center"><ScanBarcode size={26} className="text-bo-accent" /></div>
+            <h2 className="text-xl font-bold text-bo-text mt-3">Nouveau produit</h2>
           </div>
-          <input
-            ref={gateRef} value={gateEan}
-            onChange={(e) => { setGateEan(e.target.value); setGateExisting(null); }}
-            onKeyDown={(e) => e.key === 'Enter' && checkEan()}
-            placeholder="Scanner l'EAN…" className={`${inputCls} text-center text-lg font-mono tracking-wider`}
-          />
-          {gateIssue && (
-            <p className="text-xs font-medium text-red-600 flex items-center justify-center gap-1.5" role="alert">
-              <AlertCircle size={13} /> {GTIN_ISSUE_MESSAGE[gateIssue]}
-            </p>
-          )}
-          {gateExisting && (
-            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-left">
-              <p className="text-sm font-semibold text-amber-800 flex items-center gap-2"><AlertCircle size={15} /> Ce code-barres existe déjà</p>
-              <p className="text-sm text-amber-700 mt-1">{gateExisting.name} — {eur(gateExisting.priceMinorUnits)}</p>
-              <button onClick={() => navigate(`/products/${gateExisting.id}/edit`)} className="mt-3 inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-bo-accent text-white text-xs font-semibold"><Pencil size={13} /> Éditer le produit existant</button>
+
+          {/* Parcours 1 — le produit possède un code-barres */}
+          <div className="rounded-xl border border-gray-200 p-5 space-y-3">
+            <p className="text-sm font-semibold text-bo-text">Le produit possède un code-barres</p>
+            <p className="text-xs text-gray-400">Scannez le code ou saisissez-le au clavier — contrôle du format et recherche immédiate d'un éventuel doublon.</p>
+            <input
+              ref={gateRef} value={gateEan}
+              onChange={(e) => { setGateEan(e.target.value); setGateExisting(null); }}
+              onKeyDown={(e) => e.key === 'Enter' && !gateIssue && checkEan()}
+              placeholder="Scanner ou saisir le code…" className={`${inputCls} text-center text-lg font-mono tracking-wider`}
+            />
+            {gateIssue && (
+              <p className="text-xs font-medium text-red-600 flex items-center justify-center gap-1.5" role="alert">
+                <AlertCircle size={13} /> {PRODUCT_CODE_ISSUE_MESSAGE[gateIssue]}
+              </p>
+            )}
+            {gateExisting && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-left">
+                <p className="text-sm font-semibold text-amber-800 flex items-center gap-2"><AlertCircle size={15} /> Ce code-barres existe déjà</p>
+                <p className="text-sm text-amber-700 mt-1">{gateExisting.name} — {eur(gateExisting.priceMinorUnits)}</p>
+                <button onClick={() => navigate(`/products/${gateExisting.id}/edit`)} className="mt-3 inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-bo-accent text-white text-xs font-semibold"><Pencil size={13} /> Éditer le produit existant</button>
+              </div>
+            )}
+            <div className="flex justify-center">
+              <button onClick={checkEan} disabled={gateBusy || !gateEan.trim() || !!gateIssue} className="px-5 py-2.5 rounded-xl bg-bo-accent text-white text-sm font-semibold disabled:opacity-40 flex items-center gap-2">
+                {gateBusy && <Loader2 size={14} className="animate-spin" />} Valider et continuer
+              </button>
             </div>
-          )}
-          <div className="flex gap-2 justify-center">
-            <button onClick={checkEan} disabled={gateBusy || !gateEan.trim() || !!gateIssue} className="px-5 py-2.5 rounded-xl bg-bo-accent text-white text-sm font-semibold disabled:opacity-40 flex items-center gap-2">
-              {gateBusy && <Loader2 size={14} className="animate-spin" />} Vérifier &amp; continuer
+          </div>
+
+          {/* Parcours 2 — aucun code-barres fabricant */}
+          <div className="rounded-xl border border-dashed border-gray-300 p-5 space-y-3 text-center">
+            <p className="text-sm font-semibold text-bo-text">Le produit ne possède pas de code-barres</p>
+            <p className="text-xs text-gray-400">
+              Le serveur attribue un identifiant interne Wesley unique (ex. WES-P-000000000042),
+              imprimé en Code 128 standard — ce n'est volontairement pas un EAN officiel (réservé à GS1).
+            </p>
+            {gateWesleyError && (
+              <p className="text-xs font-medium text-red-600" role="alert">{gateWesleyError}</p>
+            )}
+            <button
+              onClick={generateWesleyCode} disabled={gateBusy}
+              className="px-5 py-2.5 rounded-xl border-2 border-bo-accent text-bo-accent text-sm font-semibold disabled:opacity-40 inline-flex items-center gap-2 hover:bg-bo-accent/5"
+            >
+              {gateBusy && <Loader2 size={14} className="animate-spin" />} Générer un code-barres Wesley
             </button>
-            <button onClick={() => { set('ean', gateEan.trim()); setGate(false); }} disabled={!gateEan.trim()} className="px-5 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 disabled:opacity-40">Saisie manuelle</button>
           </div>
         </div>
       </div>
@@ -1008,9 +1052,20 @@ export function ProductEditPage() {
               <ClipboardCheck size={13} /> Assistant — étape {stepIdx + 1}/{WIZARD_STEPS.length} : {WIZARD_STEP_LABEL[WIZARD_STEPS[stepIdx]]}
             </span>
           ) : (
-            <button onClick={save} disabled={saving} className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-bo-accent text-white text-sm font-semibold disabled:opacity-40">
-              {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={15} />} Enregistrer
-            </button>
+            <>
+              {isEdit && form.ean && (
+                <button
+                  onClick={() => navigate(`/labels?q=${encodeURIComponent(form.ean)}`)}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:border-bo-accent/50"
+                  title="Imprimer ou télécharger l'étiquette (code-barres + nom + prix)"
+                >
+                  <Tag size={15} /> Étiquette
+                </button>
+              )}
+              <button onClick={save} disabled={saving} className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-bo-accent text-white text-sm font-semibold disabled:opacity-40">
+                {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={15} />} Enregistrer
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -1110,8 +1165,17 @@ export function ProductEditPage() {
         {tab === 'general' && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             <Field label="Nom du produit *" {...fp('name')}><input className={inputCls} value={form.name} onChange={(e) => applyNameChange(e.target.value)} /></Field>
-            <Field label={isEdit ? 'Code EAN' : 'Code EAN *'} {...fp('ean')} hint={isEdit ? 'Immuable après création (anti-doublon par magasin).' : 'EAN-8 ou EAN-13, chiffres uniquement (clé de contrôle vérifiée).'}>
-              <input className={`${inputCls} font-mono`} value={form.ean} disabled={isEdit} onChange={(e) => set('ean', e.target.value)} />
+            <Field
+              label={isEdit ? 'Code-barres' : 'Code-barres *'} {...fp('ean')}
+              hint={
+                isWesleyCode(form.ean)
+                  ? 'Identifiant interne Wesley — permanent, non modifiable, jamais réutilisé. Imprimé en Code 128 (non-GS1).'
+                  : isEdit
+                    ? 'Immuable après création (anti-doublon par magasin).'
+                    : 'EAN-8/EAN-13 (clé vérifiée) ou identifiant interne Wesley généré.'
+              }
+            >
+              <input className={`${inputCls} font-mono`} value={form.ean} disabled={isEdit || isWesleyCode(form.ean)} onChange={(e) => set('ean', e.target.value)} />
             </Field>
             <Field
               label="Magasin de publication *"

@@ -26,6 +26,26 @@ export function isValidGtin(code: string): boolean {
 export const GTIN_ERROR_MESSAGE =
   'Code EAN invalide : 8 ou 13 chiffres attendus (sans lettres ni espaces), avec une clé de contrôle valide.';
 
+/**
+ * Identifiant interne Wesley — attribué EXCLUSIVEMENT par le serveur via la
+ * séquence `wesley_product_code_seq` (jamais généré côté client). Rendu en
+ * Code 128 standard non-GS1 : ce n'est volontairement PAS un format EAN,
+ * pour ne jamais faire passer un code interne pour un GTIN officiel.
+ */
+export const WESLEY_CODE_REGEX = /^WES-P-\d{12}$/;
+
+export function isWesleyInternalCode(code: string): boolean {
+  return typeof code === 'string' && WESLEY_CODE_REGEX.test(code.trim());
+}
+
+/** Code produit accepté à la création : GTIN valide OU code interne Wesley. */
+export function isValidProductCode(code: string): boolean {
+  return isWesleyInternalCode(code) || isValidGtin(typeof code === 'string' ? code.trim() : code);
+}
+
+export const PRODUCT_CODE_ERROR_MESSAGE =
+  'Code-barres invalide : EAN-8/EAN-13 avec clé de contrôle valide, ou identifiant interne Wesley (WES-P- suivi de 12 chiffres, généré par le serveur).';
+
 /** Décorateur class-validator — à poser sur un champ code-barres. */
 export function IsGtinBarcode(validationOptions?: ValidationOptions) {
   return function (object: object, propertyName: string) {
@@ -37,6 +57,26 @@ export function IsGtinBarcode(validationOptions?: ValidationOptions) {
       validator: {
         validate(value: unknown) {
           return typeof value === 'string' && isValidGtin(value.trim());
+        },
+      },
+    });
+  };
+}
+
+/**
+ * Décorateur code produit principal : GTIN fabricant (clé vérifiée) OU
+ * identifiant interne Wesley `WES-P-############`.
+ */
+export function IsProductBarcode(validationOptions?: ValidationOptions) {
+  return function (object: object, propertyName: string) {
+    registerDecorator({
+      name: 'isProductBarcode',
+      target: object.constructor,
+      propertyName,
+      options: { message: PRODUCT_CODE_ERROR_MESSAGE, ...validationOptions },
+      validator: {
+        validate(value: unknown) {
+          return typeof value === 'string' && isValidProductCode(value);
         },
       },
     });

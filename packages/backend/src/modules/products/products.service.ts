@@ -26,6 +26,12 @@ import { PaginatedResult } from '../../common/dto/pagination.dto';
 import { computePriceVerdict, PriceVerdict } from './price-verdict';
 import { toCsv, parseCsvWithHeader, stripFormulaGuard } from '../../common/csv/csv.util';
 import { BusinessError } from '../../common/errors/business-error';
+import { isWesleyInternalCode } from '../../common/validators/gtin.validator';
+
+/** Formate un numéro de séquence en identifiant interne Wesley (12 chiffres). */
+export function formatWesleyCode(n: number | string | bigint): string {
+  return `WES-P-${String(n).padStart(12, '0')}`;
+}
 
 /** Canonical CSV columns — export emits these; import reads these (round-trip). */
 const CSV_COLUMNS = [
@@ -632,11 +638,59 @@ export class ProductsService {
     }
   }
 
+  /**
+   * Génère un identifiant interne Wesley `WES-P-############`.
+   *
+   * - EXCLUSIVEMENT côté serveur (séquence Postgres `wesley_product_code_seq`) ;
+   * - atomique : `nextval` garantit que deux créations simultanées obtiennent
+   *   deux numéros distincts ;
+   * - unicité à l'échelle de TOUTE l'organisation (la séquence est globale,
+   *   indépendante du magasin) ;
+   * - jamais réutilisé : la séquence est monotone (NO CYCLE) — un numéro
+   *   consommé reste consommé, même si l'assistant est abandonné ou le
+   *   produit archivé plus tard.
+   */
+  async generateInternalCode(): Promise<{ code: string; barcodeType: 'INTERNAL_WESLEY' }> {
+    const rows: Array<{ n: string }> = await this.productRepo.query(
+      `SELECT nextval('wesley_product_code_seq') AS n`,
+    );
+    return { code: formatWesleyCode(rows[0].n), barcodeType: 'INTERNAL_WESLEY' };
+  }
+
   async create(
     data: Partial<ProductEntity>,
     employeeId: string,
   ): Promise<ProductEntity> {
     await this.assertStoreAssignable(data.storeId);
+    // Nature du code principal — DÉRIVÉE du format côté serveur, jamais
+    // fournie par le client. Permanente une fois la fiche créée (l'EAN est
+    // immuable en modification).
+    if (data.ean) {
+      data.barcodeType = isWesleyInternalCode(data.ean) ? 'INTERNAL_WESLEY' : 'EXTERNAL_GTIN';
+    }
+    // Un code interne Wesley est unique pour TOUTE l'organisation : même
+    // saisi à la main dans un autre magasin, un code déjà attribué est refusé.
+    if (data.ean && data.barcodeType === 'INTERNAL_WESLEY') {
+      const orgDuplicate = await this.productRepo.findOne({
+        where: { ean: data.ean.trim() },
+      });
+      if (orgDuplicate && orgDuplicate.storeId !== data.storeId) {
+        throw new BusinessError(
+          'PRODUCT_BARCODE_ALREADY_EXISTS',
+          `Ce code interne Wesley (${data.ean}) est déjà attribué à « ${orgDuplicate.name} » dans un autre magasin.`,
+          HttpStatus.CONFLICT,
+          {
+            existingProduct: {
+              id: orgDuplicate.id,
+              name: orgDuplicate.name,
+              ean: orgDuplicate.ean,
+              status: orgDuplicate.status,
+              isActive: orgDuplicate.isActive,
+            },
+          },
+        );
+      }
+    }
     // Anti-doublon strict : un code-barres = une seule fiche par magasin,
     // quel que soit son statut (active, en attente, archivée…).
     if (data.ean && data.storeId) {

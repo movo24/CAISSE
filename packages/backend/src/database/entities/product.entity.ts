@@ -24,6 +24,14 @@ export class ProductEntity {
   @Column({ name: 'barcode_source', type: 'varchar', default: 'imported' })
   barcodeSource: 'imported' | 'manual' | 'generated';
 
+  /**
+   * Nature du code principal : GTIN fabricant officiel (GS1) ou identifiant
+   * interne Wesley (`WES-P-############`, Code 128 non-GS1, environnement
+   * fermé). Dérivé côté serveur du format du code — jamais fourni par le client.
+   */
+  @Column({ name: 'barcode_type', type: 'varchar', default: 'EXTERNAL_GTIN' })
+  barcodeType: 'EXTERNAL_GTIN' | 'INTERNAL_WESLEY';
+
   @Column()
   name: string;
 

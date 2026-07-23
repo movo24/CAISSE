@@ -4,7 +4,7 @@ import {
   validationExceptionFactory,
   collectFieldErrors,
 } from '../validation-exception.factory';
-import { GTIN_ERROR_MESSAGE, isValidGtin } from '../validators/gtin.validator';
+import { PRODUCT_CODE_ERROR_MESSAGE, isValidGtin } from '../validators/gtin.validator';
 
 /**
  * Contract test — reproduit la ValidationPipe globale EXACTE de main.ts
@@ -66,12 +66,22 @@ describe('CreateProductDto — contrat HTTP création produit', () => {
   ])('refuse un EAN %s avec un message exploitable sur le champ ean', async (_label, ean) => {
     const fields = await fieldsOf({ ...validBody, ean });
     expect(fields.ean).toBeDefined();
-    expect(fields.ean).toContain(GTIN_ERROR_MESSAGE);
+    expect(fields.ean).toContain(PRODUCT_CODE_ERROR_MESSAGE);
   });
 
   it('refuse un EAN vide avec un message dédié', async () => {
     const fields = await fieldsOf({ ...validBody, ean: '' });
     expect(fields.ean).toContain('Le code EAN est obligatoire pour créer un produit.');
+  });
+
+  it('accepte un identifiant interne Wesley (WES-P-############)', async () => {
+    const out = await pipe.transform({ ...validBody, ean: 'WES-P-000000000042' }, meta);
+    expect(out.ean).toBe('WES-P-000000000042');
+  });
+
+  it('refuse un code Wesley malformé avec le message combiné', async () => {
+    const fields = await fieldsOf({ ...validBody, ean: 'WES-P-42' });
+    expect(fields.ean?.join(' ')).toMatch(/identifiant interne Wesley/);
   });
 
   it('expose chaque champ fautif dans `fields` (prix manquant + propriété inconnue)', async () => {

@@ -33,3 +33,34 @@ export const GTIN_ISSUE_MESSAGE: Record<GtinIssue, string> = {
   checksum:
     'Code EAN invalide : clé de contrôle incorrecte — vérifiez la saisie (un chiffre est faux ou manquant).',
 };
+
+// ── Identifiants internes Wesley (environnement fermé — reconnu par GS1) ────
+// Générés EXCLUSIVEMENT par le serveur (séquence atomique) et rendus en
+// Code 128 standard non-GS1 : jamais un faux EAN.
+
+export const WESLEY_CODE_REGEX = /^WES-P-\d{12}$/;
+
+export function isWesleyCode(raw: string): boolean {
+  return WESLEY_CODE_REGEX.test((raw || '').trim());
+}
+
+export type ProductCodeIssue = GtinIssue | 'wesley';
+
+export const PRODUCT_CODE_ISSUE_MESSAGE: Record<ProductCodeIssue, string> = {
+  ...GTIN_ISSUE_MESSAGE,
+  wesley:
+    'Code Wesley invalide : format attendu WES-P- suivi de 12 chiffres — utilisez « Générer un code-barres Wesley », ne le saisissez pas à la main.',
+};
+
+/**
+ * Validation du code produit principal : GTIN valide OU code interne Wesley.
+ * Un code qui COMMENCE par « WES » mais ne respecte pas le format reçoit un
+ * message dédié (au lieu d'un message EAN trompeur).
+ */
+export function productCodeIssue(raw: string): ProductCodeIssue | null {
+  const code = (raw || '').trim();
+  if (!code) return 'empty';
+  if (WESLEY_CODE_REGEX.test(code)) return null;
+  if (/^wes/i.test(code)) return 'wesley';
+  return gtinIssue(code);
+}

@@ -46,6 +46,16 @@ export class ProductsController {
     return productStore ?? req.user.storeId;
   }
 
+  @Post('internal-code/generate')
+  @Roles('admin', 'manager')
+  @ApiOperation({
+    summary:
+      "Génère un identifiant interne Wesley (WES-P-############) — séquence serveur atomique, unique pour toute l'organisation, jamais réutilisé",
+  })
+  generateInternalCode() {
+    return this.productsService.generateInternalCode();
+  }
+
   @Post()
   @Roles('admin', 'manager')
   @ApiOperation({ summary: 'Create a product (admin may target a specific store)' })
