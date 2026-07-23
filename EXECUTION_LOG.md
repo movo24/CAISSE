@@ -229,3 +229,25 @@ activation du flag hors test local, tout merge.
 - **Vérifs globales** (vrai PG, exit 0) : pg-mem 967/0 ; F0 3/3 ; F1 5/5 ; F2 5/5 ; F1b 4/4 ;
   réconciliation 4/4 ; non-régression gated (packs 2/2, avoir-atomicité 1/1, fiscal-e2e 1/1, anti-survente 1/1).
 - **7 commits** sur `origin/main`. Restent gatés : activation flag hors test, F3, F4, tout merge.
+
+### 2026-07-17 — Douchette USB clavier-wedge Lenvii E655 (branche `feat/pos-wedge-scanner`, depuis `main` a7f6f59)
+- **Existant vérifié** : le scanner wedge existait déjà (peripheralBridge + `wedgeScanGate` + abonnement
+  POSPage + `handleScan` + `addToCart` incrémental + sync écran client). Complété/durci, pas réécrit.
+- `71bd10a` : décodeur pur (détection par la VITESSE, formats EAN-8/13/UPC-A/GTIN-14/CODE-128), résolveur
+  catalogue local (hors-ligne) → add / **refus produit désactivé** / inconnu, indicateur discret 3 états
+  (« Scanner prêt » = écoute active — **aucune détection matérielle prétendue**).
+- `5246dc9` : **2 défauts réels corrigés (owner)** — (1) « ignorer » un keydown n'empêche pas l'écriture dans
+  un champ (douchette = clavier) → **phase de CAPTURE** + rafale **avalée** ; (2) anti-doublon **200→50 ms**
+  (ne supprime plus une 2ᵉ lecture volontaire).
+- `124f91c` : **preuve DOM réelle** — `wedgeKeyboardListener.ts` (couche DOM extraite ; retire le seul 1er
+  caractère du champ à l'identification du scan → **zéro résiduel**) + `wedgeKeyboardListener.dom.test.ts`
+  (jsdom, champ focalisé, KeyboardEvent Lenvii, insertion navigateur modélisée). jsdom en devDependency.
+- **Vérif** : suite POS **376/0** (40 fichiers) · tsc **0** · lint **0** · build **✓**. Aucune surface
+  paiement/fiscale/hash touchée (ajout via `addToCart` existant).
+- **Distinction 2 vrais scans / double parasite** : écart entre 2 codes IDENTIQUES — <50 ms = double-émission
+  d'un seul scan (ignorée) ; ≥50 ms (E655 : re-présentation ≥300 ms) = 2 vrais scans → **quantité 2**. Codes
+  différents : jamais filtrés. Le décodeur émet 1 code par `Entrée`, pas par caractère.
+- **NON fait / gaté** : **test PHYSIQUE** sur la caisse Windows → checklist mécanique
+  `docs/pos-scanner-field-test.md` (build `124f91c`, non mergé ⇒ **non distribué** par electron-updater ⇒
+  installation manuelle requise ; Étape 0 = discriminant ancien/nouveau build). Décision **préfixe** ouverte :
+  `docs/pos-scanner-prefix-decision.md` (recommandation : **(a) sans préfixe**). **Aucune PR, aucun merge.**

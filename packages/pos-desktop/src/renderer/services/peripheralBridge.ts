@@ -8,6 +8,7 @@
  */
 
 import { DevicePlatform } from '../hooks/useDeviceProfile';
+import { attachWedgeKeyboardListener } from './wedgeKeyboardListener';
 
 /* ═══════════════════════════════════════════════════
    TYPES
@@ -197,8 +198,6 @@ class PeripheralBridge {
   private barcodeCallbacks: Set<BarcodeCallback> = new Set();
   private _btPrintFn: ((data: TicketData) => Promise<boolean>) | null = null;
   private _btDrawerFn: (() => Promise<boolean>) | null = null;
-  private keyboardBuffer = '';
-  private keyboardTimeout: ReturnType<typeof setTimeout> | null = null;
   private cameraStream: MediaStream | null = null;
   private scanInterval: ReturnType<typeof setInterval> | null = null;
 
@@ -714,32 +713,13 @@ class PeripheralBridge {
     if ((this as any)._keyboardListenerActive) return;
     (this as any)._keyboardListenerActive = true;
 
-    const handler = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement;
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
-
-      if (e.key === 'Enter' && this.keyboardBuffer.length >= 4) {
-        const code = this.keyboardBuffer;
-        this.keyboardBuffer = '';
-        const result: BarcodeResult = {
-          code,
-          format: code.length === 13 ? 'EAN-13' : code.length === 8 ? 'EAN-8' : 'CODE-128',
-          timestamp: Date.now(),
-        };
-        this.barcodeCallbacks.forEach(cb => cb(result));
-        e.preventDefault();
-        return;
-      }
-
-      if (e.key.length === 1) {
-        this.keyboardBuffer += e.key;
-        if (this.keyboardTimeout) clearTimeout(this.keyboardTimeout);
-        this.keyboardTimeout = setTimeout(() => { this.keyboardBuffer = ''; }, 80);
-      }
-    };
-
-    document.addEventListener('keydown', handler);
-    (this as any)._keyboardHandler = handler;
+    // Écoute clavier globale (phase de capture) — cf. wedgeKeyboardListener.ts :
+    // avale la rafale reconnue (le code n'est jamais laissé dans un champ), route au
+    // panier, préserve la frappe humaine. Testé au niveau DOM (wedgeKeyboardListener.dom.test).
+    (this as any)._keyboardDetach = attachWedgeKeyboardListener(document, (b) => {
+      const result: BarcodeResult = { code: b.code, format: b.format, timestamp: Date.now() };
+      this.barcodeCallbacks.forEach(cb => cb(result));
+    });
   }
 
   async startCameraScanner(videoElement: HTMLVideoElement): Promise<boolean> {
@@ -783,8 +763,9 @@ class PeripheralBridge {
   }
 
   private stopBarcodeListener(): void {
-    if ((this as any)._keyboardHandler) {
-      document.removeEventListener('keydown', (this as any)._keyboardHandler);
+    if ((this as any)._keyboardDetach) {
+      (this as any)._keyboardDetach();
+      (this as any)._keyboardDetach = null;
       (this as any)._keyboardListenerActive = false;
     }
     this.stopCameraScanner();

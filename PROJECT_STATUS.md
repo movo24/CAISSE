@@ -262,3 +262,11 @@ ARCHIVE** — ne plus l'utiliser comme véhicule de GO ni de merge.
 - **Dette D22 (rétrécie)** — moitié « couverture » fermée par F1b+F2 (tous les chemins caisse
   journalisés). Reste : legacy système B → F4, et solde d'ouverture → cutover F3. D21 réservée
   à la branche accès non mergée.
+
+### Douchette USB caisse (Lenvii E655) — `feat/pos-wedge-scanner` (2026-07-17)
+- Scanner wedge **préexistant**, complété/durci : capture-phase + rafale avalée (**zéro caractère résiduel**,
+  prouvé par test DOM jsdom avec champ focalisé), refus produit désactivé, indicateur 3 états, anti-doublon
+  50 ms (ne bloque pas une 2ᵉ lecture volontaire → qty 2).
+- Commits `71bd10a` → `5246dc9` → **`124f91c`** (poussés, local == remote). Suite POS **376/0**, tsc/lint 0, build ✓.
+- ⏸️ **Reste** : test physique caisse Windows (`docs/pos-scanner-field-test.md`) + décision préfixe
+  (`docs/pos-scanner-prefix-decision.md`). **Aucune PR, aucun merge** (gatés).
