@@ -1,6 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Users, TrendingUp, AlertTriangle, ChevronRight, Clock, Target, Zap } from 'lucide-react';
 import { useStaffingStore, StaffingLevel } from '../services/staffingEngine';
+import { PopoverHoverIntent } from '../services/popoverHoverIntent';
+import { attachDismissListeners } from '../services/dismissListeners';
 
 /* ═══════════════════════════════════════════════════════════════
    StaffingWidget — Indicateur IA staffing dans le header POS
@@ -24,12 +26,33 @@ export function StaffingWidget() {
   const staffing = useStaffingStore();
   const [open, setOpen] = useState(false);
   const [, setTick] = useState(0);
+  // Conteneur englobant badge + panneau = UNE seule zone de survol.
+  const zoneRef = useRef<HTMLDivElement>(null);
+  // Intention de survol : ferme au survol-sortie complet, avec grâce annulable.
+  const hoverRef = useRef<PopoverHoverIntent | null>(null);
+  if (!hoverRef.current) {
+    hoverRef.current = new PopoverHoverIntent({
+      schedule: (fn, ms) => window.setTimeout(fn, ms),
+      cancel: (h) => window.clearTimeout(h as number),
+      onClose: () => setOpen(false),
+    });
+  }
 
   // Force re-render every 60s for live numbers
   useEffect(() => {
     const iv = setInterval(() => setTick((t) => t + 1), 60_000);
     return () => clearInterval(iv);
   }, []);
+
+  // Nettoyage du timer de survol au démontage (jamais de fermeture fantôme).
+  useEffect(() => () => hoverRef.current?.dispose(), []);
+
+  // Écouteurs de fermeture (clic/tap extérieur + Échap) — seulement quand ouvert.
+  // Pas d'overlay plein écran : il empêcherait la détection de survol-sortie.
+  useEffect(() => {
+    if (!open) return;
+    return attachDismissListeners(document, () => zoneRef.current, { onDismiss: () => setOpen(false) });
+  }, [open]);
 
   if (!staffing.isRunning) return null;
 
@@ -40,7 +63,12 @@ export function StaffingWidget() {
   const txPerHour = staffing.getTxPerHourPerCashier();
 
   return (
-    <div className="relative">
+    <div
+      className="relative"
+      ref={zoneRef}
+      onPointerEnter={(e) => hoverRef.current?.handlePointerEnter(e.pointerType)}
+      onPointerLeave={(e) => hoverRef.current?.handlePointerLeave(e.pointerType)}
+    >
       {/* ── Badge compact ── */}
       <button
         onClick={() => setOpen(!open)}
@@ -62,11 +90,16 @@ export function StaffingWidget() {
         )}
       </button>
 
-      {/* ── Popover detail ── */}
+      {/* ── Popover detail ──
+          Le conteneur de positionnement colle au badge (top-full) et porte un
+          PONT transparent (pt-2) : le badge et le panneau forment ainsi une
+          zone de survol CONTIGUË (aucune zone morte entre les deux → pas de
+          clignotement). Fermeture au survol-sortie gérée par le conteneur
+          englobant (onPointerLeave), clic/tap extérieur + Échap par les
+          écouteurs document. Plus d'overlay plein écran. */}
       {open && (
-        <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute top-full left-0 mt-2 w-72 bg-white rounded-2xl shadow-elevated border border-pos-border/30 z-50 animate-scale-in overflow-hidden">
+        <div className="absolute top-full left-0 pt-2 z-50">
+          <div className="w-72 bg-white rounded-2xl shadow-elevated border border-pos-border/30 animate-scale-in overflow-hidden">
             {/* Header */}
             <div className={`px-4 py-3 border-b border-pos-border/20 ${cfg.bg}`}>
               <div className="flex items-center justify-between">
@@ -197,7 +230,7 @@ export function StaffingWidget() {
               </p>
             </div>
           </div>
-        </>
+        </div>
       )}
     </div>
   );
