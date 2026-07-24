@@ -24,6 +24,7 @@ import { FiscalJournalEntity } from '../../database/entities/fiscal-journal.enti
 import { PosSessionEntity } from '../../database/entities/pos-session.entity';
 import { SaleComponentMovementEntity } from '../../database/entities/sale-component-movement.entity';
 import { StockMovementEntity } from '../../database/entities/stock-movement.entity';
+import { StockAnomalyEntity, StockAnomalyItem } from '../../database/entities/stock-anomaly.entity';
 import { StoreEntity } from '../../database/entities/store.entity';
 import { PosMachineEntity } from '../../database/entities/pos-machine.entity';
 import { evaluateEnrollmentGate } from '../machine-enrollment/machine-enrollment.service';
@@ -70,7 +71,12 @@ export interface SaleStockAlert {
   productName: string;
   ean: string;
   remainingStock: number;
-  level: 'alert' | 'critical' | 'out_of_stock';
+  /**
+   * `negative_stock` (chantier 4) : la vente a fait passer/rester le stock en
+   * négatif — avertissement NON bloquant (la vente est déjà validée) + anomalie
+   * de stock transmise au BackOffice.
+   */
+  level: 'alert' | 'critical' | 'out_of_stock' | 'negative_stock';
   message: string;
 }
 
@@ -415,60 +421,18 @@ export class SalesService {
       resolvedProducts.set(item.ean, product);
     }
 
-    // --- Pre-transaction: validate stock availability ---
+    // --- Quantité demandée par EAN (agrégée si un EAN apparaît sur plusieurs
+    // lignes). RÈGLE MÉTIER (chantier 4, stock négatif) : le stock informatique
+    // ne bloque JAMAIS une vente en caisse — il n'y a AUCUNE validation de
+    // disponibilité, ni ici ni dans la transaction. Un stock insuffisant produit
+    // un stock négatif + une anomalie de stock (stock_anomalies, même tx que la
+    // vente) à contrôler au BackOffice, jamais un rejet. ---
     const requestedQty: Map<string, number> = new Map();
     for (const item of dto.items) {
       requestedQty.set(
         item.ean,
         (requestedQty.get(item.ean) || 0) + item.quantity,
       );
-    }
-    for (const [ean, qty] of requestedQty) {
-      const product = resolvedProducts.get(ean)!;
-      if (product.stockQuantity < qty) {
-        throw new BadRequestException(
-          `Insufficient stock for ${product.name} (${ean}): ` +
-            `${qty} requested, ${product.stockQuantity} available`,
-        );
-      }
-    }
-
-    // --- Pre-transaction: validate PACK COMPONENT stock (advisory, Product
-    // Packs). Comme le check parent ci-dessus, cette lecture peut être périmée
-    // sous concurrence — la garde AUTORITAIRE reste le décrément conditionnel
-    // dans la transaction. Ici on refuse tôt (message clair) au lieu d'ouvrir
-    // une transaction vouée au rollback. ---
-    {
-      const neededByComponent = new Map<string, number>();
-      for (const [ean, qty] of requestedQty) {
-        const product = resolvedProducts.get(ean)!;
-        const comps = await this.dataSource.query(
-          `SELECT component_product_id AS component_product_id,
-                  quantity_per_parent AS quantity_per_parent
-             FROM product_components
-            WHERE parent_product_id = $1 AND store_id = $2 AND is_active = true`,
-          [product.id, storeId],
-        );
-        for (const c of Array.isArray(comps) ? comps : []) {
-          neededByComponent.set(
-            c.component_product_id,
-            (neededByComponent.get(c.component_product_id) || 0) + Number(c.quantity_per_parent) * qty,
-          );
-        }
-      }
-      for (const [componentId, needed] of neededByComponent) {
-        const rows = await this.dataSource.query(
-          `SELECT name AS name, stock_quantity AS stock_quantity FROM products WHERE id = $1 AND store_id = $2`,
-          [componentId, storeId],
-        );
-        const comp = Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
-        if (!comp || Number(comp.stock_quantity) < needed) {
-          throw new BadRequestException(
-            `Stock insuffisant pour le composant « ${comp?.name ?? componentId} » du pack : ` +
-              `${needed} requis, ${comp ? Number(comp.stock_quantity) : 0} disponible — vente refusée.`,
-          );
-        }
-      }
     }
 
     let customerId: string | undefined;
@@ -839,29 +803,63 @@ export class SalesService {
       }
 
       // --- Decrement stock atomically within transaction ---
-      // BUG FIX (specs pg réels, bloc TEST_DATABASE_URL) : le check stock pré-tx
-      // (ligne ~276) lit une valeur PÉRIMÉE sous concurrence, et l'ancien
-      // `GREATEST(0, stock - qty)` n'échouait jamais → 10 ventes concurrentes sur
-      // un stock de 5 réussissaient TOUTES (sur-vente d'unités fantômes, prouvé
-      // par sales-stock-concurrency.pg.spec). Le décrément devient CONDITIONNEL
-      // (même patron race-safe que le cap promo) : 0 ligne touchée = stock
-      // insuffisant AU MOMENT du commit → la vente entière est rejetée/rollback.
-      for (const item of dto.items) {
-        const product = resolvedProducts.get(item.ean)!;
+      // RÈGLE MÉTIER (chantier 4) : décrément INCONDITIONNEL, jamais plafonné à
+      // zéro, jamais rejeté pour stock insuffisant. L'UPDATE relatif
+      // (`stock - qty`) reste race-safe : deux ventes concurrentes d'1 unité sur
+      // un stock 0 finissent à -2, sans perte de mouvement. Chaque décrément
+      // capture le stock résultant (RETURNING) ; tout stock final < 0 alimente
+      // l'anomalie de stock insérée plus bas dans la MÊME transaction.
+      const negativeByProduct: Map<
+        string,
+        {
+          productId: string;
+          productName: string;
+          ean: string;
+          sku: string | null;
+          isPackComponent: boolean;
+          quantitySold: number;
+          stockBefore: number;
+          stockAfter: number;
+        }
+      > = new Map();
+      // Stock réel APRÈS décrément par EAN parent (valeurs RETURNING, jamais la
+      // lecture pré-tx potentiellement périmée) — sert aux alertes de la réponse.
+      const parentStockAfterByEan: Map<string, number> = new Map();
+
+      // NOTE forme SQL : `stock_quantity + $1` avec paramètre NÉGATIF (et non
+      // `- $1`) — strictement équivalent sur PostgreSQL réel, mais pg-mem
+      // (suites non gated) évalue `col - $1` comme `$1 - col` (bug d'ordre des
+      // opérandes, prouvé) alors que l'addition commutative est exacte partout.
+      for (const [ean, qty] of requestedQty) {
+        const product = resolvedProducts.get(ean)!;
         const decRes = await queryRunner.query(
           `UPDATE products
-           SET stock_quantity = stock_quantity - $1,
+           SET stock_quantity = stock_quantity + $1,
                updated_at = NOW()
-           WHERE id = $2 AND store_id = $3 AND stock_quantity >= $1
+           WHERE id = $2 AND store_id = $3
            RETURNING stock_quantity`,
-          [item.quantity, product.id, storeId],
+          [-qty, product.id, storeId],
         );
-        if (returningRows(decRes).length === 0) {
-          throw new BadRequestException(
-            `Insufficient stock for ${product.name} (${item.ean}): ` +
-              `${item.quantity} requested, stock épuisé au moment de la validation`,
-          );
+        const decRows = returningRows(decRes);
+        if (decRows.length === 0) {
+          // Produit supprimé entre la résolution et la tx — pas un problème de
+          // stock : une vente ne peut pas référencer un produit absent.
+          throw new BadRequestException(`Product not found: ${ean}`);
         }
+        const stockAfter = Number((decRows[0] as { stock_quantity: unknown }).stock_quantity);
+        if (stockAfter < 0) {
+          negativeByProduct.set(product.id, {
+            productId: product.id,
+            productName: product.name,
+            ean: product.ean,
+            sku: product.sku ?? null,
+            isPackComponent: false,
+            quantitySold: qty,
+            stockBefore: stockAfter + qty,
+            stockAfter,
+          });
+        }
+        parentStockAfterByEan.set(ean, stockAfter);
       }
 
       // --- Journal de stock unifié — bloc F1 (shadow). Flag OFF par défaut :
@@ -874,10 +872,10 @@ export class SalesService {
 
       // --- Product Packs (GO owner 2026-07-09) : composants dans la MÊME tx ---
       // Le parent reste la seule ligne commerciale (CA/ticket inchangés). Chaque
-      // composant ACTIF sort du stock avec le même décrément conditionnel
-      // race-safe : 0 ligne touchée = stock composant insuffisant → la vente
-      // ENTIÈRE est rejetée (rollback — aucun mouvement partiel, aucun stock
-      // fantôme). La composition consommée est FIGÉE dans
+      // composant ACTIF sort du stock avec le MÊME décrément inconditionnel que
+      // le parent (chantier 4) : jamais de rejet pour stock insuffisant, un
+      // composant peut passer en négatif et alimente alors l'anomalie de stock
+      // de la vente. La composition consommée est FIGÉE dans
       // sale_component_movements (snapshot + traçabilité : vente, ligne,
       // parent, composant, quantités, session, employé) — HORS hash fiscal,
       // comme session_id/terminal_id ci-dessus.
@@ -885,7 +883,9 @@ export class SalesService {
         const components = await queryRunner.query(
           `SELECT pc.component_product_id AS component_product_id,
                   pc.quantity_per_parent AS quantity_per_parent,
-                  p.name AS component_name
+                  p.name AS component_name,
+                  p.ean AS component_ean,
+                  p.sku AS component_sku
              FROM product_components pc
              JOIN products p ON p.id = pc.component_product_id
             WHERE pc.parent_product_id = $1 AND pc.store_id = $2 AND pc.is_active = true`,
@@ -893,19 +893,37 @@ export class SalesService {
         );
         for (const comp of Array.isArray(components) ? components : []) {
           const consumed = Number(comp.quantity_per_parent) * li.quantity;
+          // Même forme `+ $1` négatif que le parent (équivalence PG réelle,
+          // exactitude pg-mem — voir note au décrément parent).
           const compDec = await queryRunner.query(
             `UPDATE products
-             SET stock_quantity = stock_quantity - $1,
+             SET stock_quantity = stock_quantity + $1,
                  updated_at = NOW()
-             WHERE id = $2 AND store_id = $3 AND stock_quantity >= $1
+             WHERE id = $2 AND store_id = $3
              RETURNING stock_quantity`,
-            [consumed, comp.component_product_id, storeId],
+            [-consumed, comp.component_product_id, storeId],
           );
-          if (returningRows(compDec).length === 0) {
+          const compRows = returningRows(compDec);
+          if (compRows.length === 0) {
             throw new BadRequestException(
-              `Stock insuffisant pour le composant « ${comp.component_name} » ` +
-                `(inclus dans ${li.productName}) : ${consumed} requis — vente refusée, aucun mouvement partiel.`,
+              `Composant introuvable pour le pack ${li.productName} (${comp.component_product_id})`,
             );
+          }
+          const compStockAfter = Number((compRows[0] as { stock_quantity: unknown }).stock_quantity);
+          if (compStockAfter < 0) {
+            // Un même composant peut être consommé par plusieurs lignes : on
+            // agrège (quantités additionnées, stock final = dernier RETURNING).
+            const prev = negativeByProduct.get(comp.component_product_id);
+            negativeByProduct.set(comp.component_product_id, {
+              productId: comp.component_product_id,
+              productName: comp.component_name,
+              ean: comp.component_ean,
+              sku: comp.component_sku ?? null,
+              isPackComponent: prev ? prev.isPackComponent : true,
+              quantitySold: (prev?.quantitySold ?? 0) + consumed,
+              stockBefore: prev ? prev.stockBefore : compStockAfter + consumed,
+              stockAfter: compStockAfter,
+            });
           }
           await queryRunner.manager.insert(SaleComponentMovementEntity, {
             storeId,
@@ -986,6 +1004,39 @@ export class SalesService {
 
       // --- Redeem store-credit avoirs as tender, atomically with the sale ---
       await this.applyStoreCreditRedemptions(queryRunner, storeId, saved.id, dto.payments);
+
+      // --- Anomalie de stock (chantier 4) : vente autorisée malgré indisponibilité.
+      // UNE anomalie par vente finalisée, regroupant tous les produits (parents
+      // ET composants de pack) dont le stock est passé/resté négatif. Écrite dans
+      // la MÊME transaction que la vente : un panier abandonné ou une vente
+      // rejetée n'en crée jamais ; un replay idempotent (clé déjà vue) sort
+      // avant d'arriver ici ; `sale_id` UNIQUE = défense en profondeur
+      // anti-doublon. L'anomalie est un fait historique : une régularisation de
+      // stock ultérieure ne l'efface pas. ---
+      const anomalyItems: StockAnomalyItem[] = [...negativeByProduct.values()].map((n) => ({
+        productId: n.productId,
+        productName: n.productName,
+        ean: n.ean,
+        sku: n.sku,
+        isPackComponent: n.isPackComponent,
+        stockBefore: n.stockBefore,
+        quantitySold: n.quantitySold,
+        stockAfter: n.stockAfter,
+      }));
+      if (anomalyItems.length > 0) {
+        await queryRunner.manager.insert(StockAnomalyEntity, {
+          storeId,
+          saleId: saved.id,
+          ticketNumber,
+          terminalId: registerBinding.terminalId ?? null,
+          sessionId: registerBinding.sessionId ?? null,
+          employeeId,
+          employeeName: sale.employeeNameSnapshot || null,
+          occurredAt: completedAt,
+          items: anomalyItems,
+          status: 'a_controler',
+        });
+      }
 
       // --- Persist idempotency key in the SAME transaction as the sale, so the
       // sale and its dedup record commit (or roll back) atomically. A concurrent
@@ -1141,8 +1192,24 @@ export class SalesService {
       this.logger.log(`[PERIPHERAL] Printing ticket ${ticketNumber}`);
       this.printTicketMock(saved);
 
-      // Stock alerts — compute synchronously to include in response
-      const stockAlerts = this.computeStockAlerts(resolvedProducts, dto.items);
+      // Stock alerts — compute synchronously to include in response.
+      // Chantier 4 : les produits passés en NÉGATIF (parents + composants pack)
+      // produisent un avertissement non bloquant dédié — la vente est déjà
+      // validée, la caisse informe le vendeur et l'anomalie est au BackOffice.
+      const negativeStockAlerts: SaleStockAlert[] = [...negativeByProduct.values()].map((n) => ({
+        productId: n.productId,
+        productName: n.productName,
+        ean: n.ean,
+        remainingStock: n.stockAfter,
+        level: 'negative_stock' as const,
+        message:
+          `${n.productName} : produit indisponible dans le stock informatique. ` +
+          `Vente autorisée et anomalie transmise au BackOffice. Nouveau stock : ${n.stockAfter}.`,
+      }));
+      const stockAlerts = [
+        ...negativeStockAlerts,
+        ...this.computeStockAlerts(resolvedProducts, requestedQty, parentStockAfterByEan),
+      ];
 
       // Log stock alerts asynchronously (fire-and-forget)
       this.logStockAlertsAsync(storeId, employeeId, stockAlerts, resolvedProducts);
@@ -1257,15 +1324,21 @@ export class SalesService {
    */
   private computeStockAlerts(
     products: Map<string, ProductEntity>,
-    items: { ean: string; quantity: number }[],
+    requestedQty: Map<string, number>,
+    stockAfterByEan: Map<string, number>,
   ): SaleStockAlert[] {
     const alerts: SaleStockAlert[] = [];
 
-    for (const item of items) {
-      const product = products.get(item.ean);
+    for (const [ean, quantity] of requestedQty) {
+      const product = products.get(ean);
       if (!product) continue;
-      const oldQty = product.stockQuantity;
-      const newQty = Math.max(0, oldQty - item.quantity);
+      // Valeur réelle post-décrément (RETURNING) — jamais la lecture pré-tx
+      // périmée, jamais plafonnée à zéro (chantier 4 : le négatif est un état
+      // légitime). Un stock final < 0 est signalé par l'alerte dédiée
+      // `negative_stock` construite au site d'appel — pas de doublon ici.
+      const newQty = stockAfterByEan.get(ean) ?? product.stockQuantity - quantity;
+      if (newQty < 0) continue;
+      const oldQty = newQty + quantity;
 
       // Edge-triggered: alert ONLY when this sale moves the product into a MORE
       // severe band (out_of_stock > critical > alert). A product already below a
@@ -1325,7 +1398,7 @@ export class SalesService {
       for (const alert of alerts) {
         const product = [...products.values()].find((p) => p.id === alert.productId);
         const threshold =
-          alert.level === 'critical' || alert.level === 'out_of_stock'
+          alert.level === 'critical' || alert.level === 'out_of_stock' || alert.level === 'negative_stock'
             ? product?.stockCriticalThreshold
             : product?.stockAlertThreshold;
 

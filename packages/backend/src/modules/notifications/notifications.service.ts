@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { CustomerEntity } from '../../database/entities/customer.entity';
 import { SaleEntity } from '../../database/entities/sale.entity';
 import { ProductEntity } from '../../database/entities/product.entity';
+import { StockAnomalyEntity } from '../../database/entities/stock-anomaly.entity';
 
 // ---------------------------------------------------------------------------
 // Notification types
@@ -26,7 +27,8 @@ export interface StockNotification {
   stockQuantity: number;
   alertThreshold: number;
   criticalThreshold: number;
-  level: 'alert' | 'critical' | 'out_of_stock';
+  /** `negative_stock` = dette de stock (chantier 4) : quantité < 0, ventes autorisées. */
+  level: 'alert' | 'critical' | 'out_of_stock' | 'negative_stock';
   message: string;
 }
 
@@ -38,6 +40,10 @@ export interface NotificationSummary {
     totalInactiveCustomers: number;
     totalStockAlerts: number;
     totalCriticalStock: number;
+    /** Produits en stock négatif (dette de stock). */
+    totalNegativeStock: number;
+    /** Anomalies de stock « À contrôler » (ventes autorisées malgré indisponibilité). */
+    pendingStockAnomalies: number;
   };
 }
 
@@ -57,6 +63,9 @@ export class NotificationsService {
 
     @InjectRepository(ProductEntity)
     private readonly productsRepo: Repository<ProductEntity>,
+
+    @InjectRepository(StockAnomalyEntity)
+    private readonly stockAnomaliesRepo: Repository<StockAnomalyEntity>,
   ) {}
 
   // -----------------------------------------------------------------------
@@ -180,7 +189,12 @@ export class NotificationsService {
       let level: StockNotification['level'] | null = null;
       let message = '';
 
-      if (product.stockQuantity <= 0) {
+      if (product.stockQuantity < 0) {
+        // Chantier 4 : stock négatif = dette de stock (ventes autorisées malgré
+        // indisponibilité) — état légitime, à résorber par réception/correction.
+        level = 'negative_stock';
+        message = `${product.name} : dette de stock (${product.stockQuantity}) — vente(s) autorisée(s) malgré indisponibilité, à régulariser par réception ou correction.`;
+      } else if (product.stockQuantity <= 0) {
         level = 'out_of_stock';
         message = `${product.name} est en rupture de stock !`;
       } else if (product.stockQuantity <= product.stockCriticalThreshold) {
@@ -205,8 +219,8 @@ export class NotificationsService {
       }
     }
 
-    // Sort: out_of_stock > critical > alert
-    const levelOrder = { out_of_stock: 0, critical: 1, alert: 2 };
+    // Sort: negative_stock > out_of_stock > critical > alert
+    const levelOrder = { negative_stock: 0, out_of_stock: 1, critical: 2, alert: 3 };
     notifications.sort(
       (a, b) => levelOrder[a.level] - levelOrder[b.level],
     );
@@ -221,9 +235,10 @@ export class NotificationsService {
     storeId: string,
     inactiveDays = 30,
   ): Promise<NotificationSummary> {
-    const [loyaltyReminders, stockNotifications] = await Promise.all([
+    const [loyaltyReminders, stockNotifications, pendingStockAnomalies] = await Promise.all([
       this.getLoyaltyReminders(storeId, inactiveDays),
       this.getStockNotifications(storeId),
+      this.stockAnomaliesRepo.count({ where: { storeId, status: 'a_controler' } }),
     ]);
 
     return {
@@ -238,6 +253,10 @@ export class NotificationsService {
         totalCriticalStock: stockNotifications.filter(
           (n) => n.level === 'critical' || n.level === 'out_of_stock',
         ).length,
+        totalNegativeStock: stockNotifications.filter(
+          (n) => n.level === 'negative_stock',
+        ).length,
+        pendingStockAnomalies,
       },
     };
   }

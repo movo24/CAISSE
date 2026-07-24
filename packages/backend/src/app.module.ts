@@ -37,6 +37,7 @@ import { MachineEnrollmentModule } from './modules/machine-enrollment/machine-en
 import { EmployeeScoreModule } from './modules/employee-score/employee-score.module';
 import { StockLocationsModule } from './modules/stock-locations/stock-locations.module';
 import { StockReconciliationModule } from './modules/stock-reconciliation/stock-reconciliation.module';
+import { StockAnomaliesModule } from './modules/stock-anomalies/stock-anomalies.module';
 import { PromoCodesModule } from './modules/promo-codes/promo-codes.module';
 import { DocumentsModule } from './modules/documents/documents.module';
 import { StripeModule } from './common/stripe/stripe.module';
@@ -128,6 +129,7 @@ const isProd = process.env.NODE_ENV === 'production';
     EmployeeScoreModule,
     StockLocationsModule,
     StockReconciliationModule,
+    StockAnomaliesModule,
     PromoCodesModule,
     AttractModule,
     DocumentsModule,

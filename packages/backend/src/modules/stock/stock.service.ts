@@ -47,12 +47,17 @@ export class StockService {
       .createQueryBuilder()
       .update(ProductEntity)
       .set({
-        stockQuantity: () => `GREATEST(0, "stock_quantity" - :qty)`,
+        // Chantier 4 (stock négatif) : décrément JAMAIS plafonné à zéro — le
+        // stock informatique peut être négatif (dette de stock), il ne bloque
+        // ni ne fausse jamais un mouvement réel. Forme `+ :negQty` (paramètre
+        // négatif) : équivalente sur PG réel, exacte sous pg-mem (bug d'ordre
+        // des opérandes sur `col - :param`).
+        stockQuantity: () => `"stock_quantity" + :negQty`,
       })
       .where('id = :id AND store_id = :storeId', {
         id: productId,
         storeId,
-        qty: quantity,
+        negQty: -quantity,
       })
       .execute();
 
@@ -144,12 +149,16 @@ export class StockService {
 
       const oldQty = product.stockQuantity ?? 0;
 
+      // Chantier 4 (stock négatif) : AUCUN plafonnement à zéro. Une réception
+      // (delta +10 sur un stock -3) compense naturellement la dette → 7 ; une
+      // correction peut poser toute valeur, y compris négative. L'historique
+      // (audit + journal shadow + anomalies de stock) n'est jamais effacé.
       if (mode === 'delta') {
         // Delta mode: add/subtract from current stock
-        product.stockQuantity = Math.max(0, oldQty + quantity);
+        product.stockQuantity = oldQty + quantity;
       } else {
-        // Absolute mode: set to exact value (must be >= 0)
-        product.stockQuantity = Math.max(0, quantity);
+        // Absolute mode: set to exact value
+        product.stockQuantity = quantity;
       }
 
       const saved = await manager.save(product);

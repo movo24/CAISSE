@@ -20,6 +20,7 @@ import { SalesService } from '../src/modules/sales/sales.service';
 import { SaleEntity } from '../src/database/entities/sale.entity';
 import { StoreEntity } from '../src/database/entities/store.entity';
 import { ProductEntity } from '../src/database/entities/product.entity';
+import { StockAnomalyEntity } from '../src/database/entities/stock-anomaly.entity';
 
 describe('Bloc 22 — createSale payment & stock error paths', () => {
   let moduleRef: TestingModule;
@@ -75,21 +76,44 @@ describe('Bloc 22 — createSale payment & stock error paths', () => {
     expect(await saleCount()).toBe(0);
   });
 
-  it('DECISIVE — insufficient stock is rejected before any write; stock untouched', async () => {
+  // RÈGLE MÉTIER (chantier 4) : le stock informatique ne bloque JAMAIS une
+  // vente en caisse. Un stock insuffisant → vente validée, stock NÉGATIF (dette
+  // de stock) + anomalie de stock (une par vente) à contrôler au BackOffice.
+  it('RÈGLE MÉTIER — insufficient stock does NOT block: sale completes, stock goes negative, anomaly created', async () => {
     const dto = { items: [{ ean: '3000000000001', quantity: 99 }], payments: [{ method: 'cash', amountMinorUnits: 49500 }] };
-    await expect(sales.createSale(STORE, EMP, dto as any, snap)).rejects.toThrow(/Insufficient stock/);
-    expect(await saleCount()).toBe(0);
-    expect(await stockOf()).toBe(5);
-  });
-
-  it('a COHERENT sale then succeeds and decrements stock (control)', async () => {
-    const before = await stockOf();
-    const dto = { items: [{ ean: '3000000000001', quantity: 2 }], payments: [{ method: 'cash', amountMinorUnits: 1000 }] };
     const sale: any = await sales.createSale(STORE, EMP, dto as any, snap);
     expect(sale.status).toBe('completed');
     expect(await saleCount()).toBe(1);
-    // Direction only: pg-mem mis-types GREATEST(0, stock - $1) (real PG is exact —
-    // the exact decrement + concurrent oversell are proven in the gated .pg spec).
-    expect(await stockOf()).toBeLessThan(before);
+    expect(await stockOf()).toBe(5 - 99); // -94, jamais plafonné à zéro
+
+    // Avertissement non bloquant renvoyé à la caisse
+    const negAlert = (sale.stockAlerts ?? []).find((a: any) => a.level === 'negative_stock');
+    expect(negAlert).toBeDefined();
+    expect(negAlert.remainingStock).toBe(-94);
+    expect(negAlert.message).toContain('Nouveau stock : -94');
+
+    // Anomalie créée dans la MÊME transaction, statut À contrôler
+    const anomalies = await ds.getRepository(StockAnomalyEntity).find({ where: { storeId: STORE } });
+    expect(anomalies).toHaveLength(1);
+    expect(anomalies[0].saleId).toBe(sale.id);
+    expect(anomalies[0].status).toBe('a_controler');
+    expect(anomalies[0].items).toHaveLength(1);
+    expect(anomalies[0].items[0]).toMatchObject({
+      ean: '3000000000001',
+      stockBefore: 5,
+      quantitySold: 99,
+      stockAfter: -94,
+      isPackComponent: false,
+    });
+  });
+
+  it('a COHERENT sale then succeeds and decrements exactly (control) — negative stock keeps decrementing', async () => {
+    const before = await stockOf(); // -94 après le test précédent
+    const dto = { items: [{ ean: '3000000000001', quantity: 2 }], payments: [{ method: 'cash', amountMinorUnits: 1000 }] };
+    const sale: any = await sales.createSale(STORE, EMP, dto as any, snap);
+    expect(sale.status).toBe('completed');
+    expect(await saleCount()).toBe(2);
+    // Décrément exact, sans GREATEST(0, …) : -94 - 2 = -96
+    expect(await stockOf()).toBe(before - 2);
   });
 });
