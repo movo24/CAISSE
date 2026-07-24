@@ -90,6 +90,12 @@ export function attachWedgeKeyboardListener(
       case 'swallow':
         e.preventDefault();
         e.stopPropagation();
+        // Rafale CONFIRMÉE dès ce 2e caractère : on retire le 1er caractère
+        // (passthrough) IMMÉDIATEMENT, sans attendre l'Entrée. Le flash éventuel
+        // dans la barre de recherche passe de ~la durée du code (~65 ms) à ~un
+        // inter-caractère (~5 ms) → invisible. `cleanupLeadChar` est idempotent
+        // (no-op si le 1er caractère a déjà été retiré).
+        if (leadEl) cleanupLeadChar();
         armFlushTimer(); // rafale en cours → si plus rien n'arrive, clore et émettre
         return;
       case 'scan':
