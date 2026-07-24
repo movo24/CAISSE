@@ -51,7 +51,10 @@ interface CreateSaleDto {
   customerQrCode?: string;
   payments: {
     method: string;
+    /** Montant APPLIQUÉ au ticket (jamais > reste dû). */
     amountMinorUnits: number;
+    /** Espèces physiquement reçues (cash) — mouvement distinct ; monnaie = reçu − appliqué. */
+    cashReceivedMinorUnits?: number;
     stripePaymentIntentId?: string;
     /** Required when method === 'store_credit': the avoir code to redeem. */
     creditNoteCode?: string;
@@ -606,7 +609,13 @@ export class SalesService {
       taxTotal += taxAmount;
     }
 
-    // Validate payments cover the total
+    // Validate payments cover the total.
+    // `amountMinorUnits` = montant APPLIQUÉ au ticket. Il ne représente JAMAIS les
+    // espèces reçues : celles-ci vivent dans `cashReceivedMinorUnits`, et la
+    // monnaie rendue est un mouvement de caisse DISTINCT. La somme des appliqués
+    // doit donc solder EXACTEMENT le ticket — sous-paiement ET sur-paiement
+    // refusés (P0 : un 2ᵉ tender de 300 € sur 3 € dus ne peut plus enregistrer
+    // 303 € encaissés ni générer 297 € de « monnaie » silencieuse côté serveur).
     const paymentTotal = dto.payments.reduce(
       (sum, p) => sum + p.amountMinorUnits,
       0,
@@ -629,6 +638,33 @@ export class SalesService {
       throw new BadRequestException(
         `Montant d'avoir (${storeCreditRequested}) dépasse le reste dû (${storeCreditAllowed})`,
       );
+    }
+
+    // --- P0 financier : SUR-PAIEMENT refusé (après le cap avoir, qui a son propre
+    // message). `amountMinorUnits` = montant APPLIQUÉ ; la somme des appliqués ne
+    // peut jamais dépasser le total. Les espèces reçues et la monnaie rendue sont
+    // des mouvements DISTINCTS (`cashReceivedMinorUnits`) — jamais imputés au ticket
+    // (empêche l'enregistrement de 303 € pour 6 € dus + 297 € de « monnaie »). ---
+    if (paymentTotal > totalAfterDiscount) {
+      throw new BadRequestException(
+        `Sur-paiement refusé : montant appliqué ${paymentTotal} > total ${totalAfterDiscount}. ` +
+          `La part imputée au ticket ne peut jamais dépasser le total ; les espèces reçues et la monnaie rendue sont des mouvements distincts (cashReceivedMinorUnits).`,
+      );
+    }
+    // Cohérence des espèces reçues : le reçu (si fourni) ≥ appliqué ; seul le cash
+    // peut dépasser (monnaie). Un « reçu » > appliqué sur carte/avoir est incohérent.
+    for (const p of dto.payments) {
+      if (p.cashReceivedMinorUnits == null) continue;
+      if (p.cashReceivedMinorUnits < p.amountMinorUnits) {
+        throw new BadRequestException(
+          `Espèces reçues (${p.cashReceivedMinorUnits}) < montant appliqué (${p.amountMinorUnits}) sur ${p.method}.`,
+        );
+      }
+      if (p.method !== 'cash' && p.cashReceivedMinorUnits > p.amountMinorUnits) {
+        throw new BadRequestException(
+          `Un dépassement (monnaie) est interdit sur ${p.method} : reçu ${p.cashReceivedMinorUnits} > appliqué ${p.amountMinorUnits}.`,
+        );
+      }
     }
 
     // --- GO WisePad 3 / Stripe prod: PROVE claimed card captures against the
