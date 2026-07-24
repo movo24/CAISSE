@@ -228,6 +228,18 @@ class PeripheralBridge {
     this.platform = platform;
     console.log(`[PERIPH] Initializing for platform: ${platform}`);
 
+    // Défaut SYNCHRONE : une douchette USB/BT se comporte comme un clavier, c'est
+    // le scanner par défaut de toute caisse. On fixe le type AVANT le moindre
+    // `await` pour qu'un `startBarcodeListener` abonné juste après `init()` (effet
+    // de montage frère, non-awaité) attache immédiatement l'écoute clavier globale.
+    // SANS cela, la détection asynchrone (`detectScanner`, qui sonde une caméra sur
+    // tablette) laisse `type='none'` au moment de l'abonnement → aucun écouteur
+    // global n'est posé → chaque scan est tapé dans le champ ayant le focus (barre
+    // de recherche). C'était la cause racine du P0 « le code-barres s'écrit dans la
+    // recherche produit ». `detectScanner` ne fait ensuite qu'UPGRADER une tablette
+    // vers la caméra si elle en a une.
+    this._status.scanner = { type: 'keyboard_wedge', connected: true, name: 'Douchette USB/BT' };
+
     await this.detectPrinter();
     await this.detectScanner();
     this.detectCashDrawer();
@@ -745,21 +757,35 @@ class PeripheralBridge {
      ═══════════════════════════════════════════════ */
 
   private async detectScanner(): Promise<void> {
+    // Le défaut keyboard_wedge est déjà posé SYNCHRONEMENT dans init(). Ici on ne
+    // fait qu'UPGRADER une tablette équipée d'une caméra vers le scan caméra — et,
+    // dans ce cas seulement, on retire l'écoute clavier globale déjà attachée (la
+    // caméra remplace la douchette sur ce poste, pas de double chemin).
     if (this.platform === 'ipad' || this.platform === 'android_tablet') {
       try {
         const devices = await navigator.mediaDevices.enumerateDevices();
         if (devices.some(d => d.kind === 'videoinput')) {
           this._status.scanner = { type: 'camera', connected: true, name: 'Camera' };
+          if ((this as any)._keyboardListenerActive) this.stopKeyboardWedgeListener();
           return;
         }
       } catch { /* no camera */ }
     }
+    // Reste en keyboard_wedge. Belt-and-suspenders : si un abonnement a eu lieu
+    // AVANT la fin de la détection (course d'init), l'écoute clavier peut ne pas
+    // être encore active — on l'attache maintenant que le type est confirmé.
     this._status.scanner = { type: 'keyboard_wedge', connected: true, name: 'Douchette USB/BT' };
+    if (this.barcodeCallbacks.size > 0) this.startKeyboardWedgeListener();
   }
 
   startBarcodeListener(callback: BarcodeCallback): () => void {
     this.barcodeCallbacks.add(callback);
-    if (this._status.scanner.type === 'keyboard_wedge') this.startKeyboardWedgeListener();
+    // Attache l'écoute clavier globale dès que le scanner PEUT être une douchette
+    // (tout sauf une tablette confirmée en mode caméra). Ne JAMAIS conditionner
+    // cette attache au seul résultat asynchrone de detectScanner : la course
+    // laisserait la caisse desktop sans écouteur et les scans fuiraient dans le
+    // champ ayant le focus (P0). Sur tablette-caméra, detectScanner détache.
+    if (this._status.scanner.type !== 'camera') this.startKeyboardWedgeListener();
     return () => {
       this.barcodeCallbacks.delete(callback);
       if (this.barcodeCallbacks.size === 0) this.stopBarcodeListener();
@@ -819,12 +845,16 @@ class PeripheralBridge {
     if (this.cameraStream) { this.cameraStream.getTracks().forEach(t => t.stop()); this.cameraStream = null; }
   }
 
-  private stopBarcodeListener(): void {
+  private stopKeyboardWedgeListener(): void {
     if ((this as any)._keyboardDetach) {
       (this as any)._keyboardDetach();
       (this as any)._keyboardDetach = null;
-      (this as any)._keyboardListenerActive = false;
     }
+    (this as any)._keyboardListenerActive = false;
+  }
+
+  private stopBarcodeListener(): void {
+    this.stopKeyboardWedgeListener();
     this.stopCameraScanner();
   }
 
