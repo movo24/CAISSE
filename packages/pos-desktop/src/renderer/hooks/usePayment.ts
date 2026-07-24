@@ -263,6 +263,29 @@ export function usePayment() {
           offlineStore.decrementLocalStock(item.ean, item.quantity);
         });
 
+        // Chantier 4 — même hors ligne, la vente n'est JAMAIS bloquée par le
+        // stock : si le cache local passe en négatif, on informe le vendeur
+        // sans bloquer. L'anomalie de stock est créée côté serveur à la
+        // resynchronisation (même vente, même clé d'idempotence — pas de
+        // doublon possible).
+        const localCache = useOfflineStore.getState().localStockCache;
+        const negativeLocal = store.cartItems
+          .filter((item) => (localCache[item.ean] ?? 0) < 0)
+          .map((item) => ({
+            productId: item.ean,
+            productName: item.name,
+            ean: item.ean,
+            remainingStock: localCache[item.ean] ?? 0,
+            level: 'negative_stock' as const,
+            message:
+              `${item.name} : produit indisponible dans le stock informatique. ` +
+              `Vente autorisée, anomalie transmise au BackOffice à la synchronisation. ` +
+              `Nouveau stock : ${localCache[item.ean] ?? 0}.`,
+          }));
+        if (negativeLocal.length > 0) {
+          posEventBus.emit('STOCK_ALERT', { alerts: negativeLocal });
+        }
+
         posEventBus.emit('SALE_OFFLINE', { ticketNumber, pendingCount: offlineStore.pendingCount + 1 });
         // Continue to confirmation (don't return — sale was accepted locally)
       } else {

@@ -4,12 +4,10 @@
  *
  *  1. deltas de stock EXACTS à la vente et au retour (pg-mem évalue mal
  *     l'arithmétique paramétrée `stock - $1` — voir product-packs.spec.ts) ;
- *  2. CONCURRENCE sur le stock d'un composant : N ventes simultanées ne
- *     vendent JAMAIS plus que le stock du composant (décrément conditionnel
- *     race-safe) ;
- *  3. ATOMICITÉ : une vente refusée pour composant insuffisant ne laisse RIEN
- *     — ni vente, ni décrément parent, ni mouvement composant partiel
- *     (pg-mem n'honore pas le rollback d'un queryRunner dédié).
+ *  2. CONCURRENCE sur le stock d'un composant (chantier 4 — stock négatif) :
+ *     N ventes simultanées aboutissent TOUTES ; le stock du composant devient
+ *     négatif SANS perte de mouvement (décrément relatif atomique), et chaque
+ *     vente passée sous zéro porte son anomalie de stock (isPackComponent).
  */
 import './helpers/env-setup';
 import { Test, TestingModule } from '@nestjs/testing';
@@ -32,6 +30,7 @@ import { ProductsService } from '../src/modules/products/products.service';
 import { StoreEntity } from '../src/database/entities/store.entity';
 import { ProductEntity } from '../src/database/entities/product.entity';
 import { SaleComponentMovementEntity } from '../src/database/entities/sale-component-movement.entity';
+import { StockAnomalyEntity } from '../src/database/entities/stock-anomaly.entity';
 
 const TEST_DB = process.env.TEST_DATABASE_URL;
 const d = TEST_DB ? describe : describe.skip;
@@ -118,34 +117,39 @@ d('Product Packs — deltas exacts, concurrence composant, atomicité (vrai Post
     expect(await stockOf(COMP2_ID)).toBe(48);
   });
 
-  it('CONCURRENCE composant + ATOMICITÉ — 10 ventes simultanées, Cristalline=5 : exactement 5 passent, zéro mouvement partiel', async () => {
+  it('CONCURRENCE composant (chantier 4) — 10 ventes simultanées, Cristalline=5 : TOUTES passent, composant à -5 sans perte de mouvement, 5 anomalies', async () => {
     await setStock(PACK_ID, 100);
-    await setStock(COMP1_ID, 5);   // goulot : 1 par pack → 5 ventes max
+    await setStock(COMP1_ID, 5);   // goulot : 1 par pack → dette de -5 attendue
     await setStock(COMP2_ID, 100);
     const salesBefore = await ds.getRepository('sales').count({ where: { storeId: STORE_ID } });
     const movesBefore = await ds.getRepository(SaleComponentMovementEntity).count({ where: { storeId: STORE_ID } });
 
     const results = await Promise.allSettled(Array.from({ length: 10 }, () => sellPack(1)));
     const ok = results.filter((r) => r.status === 'fulfilled');
-    const ko = results.filter((r) => r.status === 'rejected');
 
-    // Jamais de sur-vente du composant : exactement 5 réussites.
-    expect(ok).toHaveLength(5);
-    expect(ko).toHaveLength(5);
-    expect(await stockOf(COMP1_ID)).toBe(0);
+    // RÈGLE MÉTIER : le stock ne bloque JAMAIS la vente — les 10 aboutissent.
+    expect(ok).toHaveLength(10);
+    // Décrément relatif atomique : 5 - 10 = -5, aucun mouvement perdu.
+    expect(await stockOf(COMP1_ID)).toBe(-5);
+    expect(await stockOf(PACK_ID)).toBe(90);
+    expect(await stockOf(COMP2_ID)).toBe(80); // 2 × 10 ventes
 
-    // ATOMICITÉ des 5 échecs : le décrément PARENT (fait avant le composant
-    // dans la tx) a été ANNULÉ — parent -5 seulement, pas -10.
-    expect(await stockOf(PACK_ID)).toBe(95);
-    expect(await stockOf(COMP2_ID)).toBe(90); // 2 × 5 ventes réussies
-
-    // Aucune vente fantôme, aucun mouvement composant orphelin.
-    expect(await ds.getRepository('sales').count({ where: { storeId: STORE_ID } })).toBe(salesBefore + 5);
+    // 10 ventes réelles, 2 mouvements composant par vente.
+    expect(await ds.getRepository('sales').count({ where: { storeId: STORE_ID } })).toBe(salesBefore + 10);
     const movesAfter = await ds.getRepository(SaleComponentMovementEntity).count({ where: { storeId: STORE_ID } });
-    expect(movesAfter).toBe(movesBefore + 10); // 5 ventes × 2 composants
+    expect(movesAfter).toBe(movesBefore + 20);
 
-    // Les refus portent un message explicite sur le composant.
-    const reasons = ko.map((r: any) => String(r.reason?.message ?? r.reason));
-    expect(reasons.every((m) => /[Cc]omposant|Cristalline|stock/i.test(m))).toBe(true);
+    // Les 5 ventes descendues sous zéro portent chacune une anomalie ciblant
+    // le composant (isPackComponent), stockAfter -1..-5.
+    const anomalies = (await ds.getRepository(StockAnomalyEntity).find({ where: { storeId: STORE_ID } }))
+      .filter((a) => a.items.some((i) => i.productId === COMP1_ID));
+    expect(anomalies).toHaveLength(5);
+    for (const a of anomalies) {
+      const item = a.items.find((i) => i.productId === COMP1_ID)!;
+      expect(item.isPackComponent).toBe(true);
+      expect(item.stockAfter).toBeLessThan(0);
+    }
+    const afters = anomalies.map((a) => a.items.find((i) => i.productId === COMP1_ID)!.stockAfter).sort((x, y) => x - y);
+    expect(afters).toEqual([-5, -4, -3, -2, -1]);
   });
 });

@@ -43,9 +43,20 @@ describe('StockService — adjustStock', () => {
     expect(res.stockQuantity).toBe(15); // 10 + 5
   });
 
-  it('never goes below zero (absolute or delta)', async () => {
-    expect((await service.adjustStock('p1', -3, 's1', 'e1', 'x', 'absolute')).stockQuantity).toBe(0);
-    expect((await service.adjustStock('p1', -50, 's1', 'e1', 'x', 'delta')).stockQuantity).toBe(0);
+  // Chantier 4 (stock négatif) : AUCUN plafonnement à zéro — le stock
+  // informatique peut être négatif (dette de stock) et une réception (delta
+  // positif) compense naturellement la dette sans effacer l'historique.
+  it('allows negative stock (no clamp) — absolute and delta', async () => {
+    manager.findOne.mockResolvedValueOnce(product());
+    expect((await service.adjustStock('p1', -3, 's1', 'e1', 'x', 'absolute')).stockQuantity).toBe(-3);
+    manager.findOne.mockResolvedValueOnce(product());
+    expect((await service.adjustStock('p1', -50, 's1', 'e1', 'x', 'delta')).stockQuantity).toBe(-40); // 10 - 50
+  });
+
+  it('a goods reception (delta +10) on a stock debt of -3 yields 7', async () => {
+    manager.findOne.mockResolvedValue({ ...product(), stockQuantity: -3 });
+    const res = await service.adjustStock('p1', 10, 's1', 'e1', 'réception marchandises', 'delta');
+    expect(res.stockQuantity).toBe(7);
   });
 
   it('throws when the product is not found / cross-store', async () => {

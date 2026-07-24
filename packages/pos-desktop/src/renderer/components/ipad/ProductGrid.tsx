@@ -91,6 +91,9 @@ export function ProductGrid({ products, category, searchTerm, onAdd, isLandscape
     <div className={`grid ${gridCols} gap-3 p-3 overflow-y-auto cart-scroll content-start`}>
       {filtered.map((product) => {
         const isByWeight = product.unitType === 'kg';
+        // Chantier 4 : un stock ≤ 0 n'empêche JAMAIS l'ajout au panier ni le
+        // paiement — badge informatif seulement (dette de stock si négatif).
+        const isNegativeStock = product.stockQuantity < 0;
         const isLowStock = product.stockQuantity <= (product.stockAlertThreshold || 5);
         const color = getColorForProduct(productDisplayName(product), product.categoryId);
 
@@ -108,12 +111,17 @@ export function ProductGrid({ products, category, searchTerm, onAdd, isLandscape
             <div className={`absolute -top-4 -right-4 w-16 h-16 rounded-full ${color.accent}`} />
             <div className={`absolute -bottom-6 -left-6 w-20 h-20 rounded-full ${color.accent} opacity-50`} />
 
-            {/* Low stock badge */}
-            {isLowStock && (
+            {/* Low / negative stock badge — informatif, jamais bloquant */}
+            {isNegativeStock ? (
+              <div className="absolute top-2 right-2 flex items-center gap-1 bg-purple-700/80 rounded-full px-1.5 py-0.5">
+                <AlertTriangle size={10} className="text-white" />
+                <span className="text-[9px] font-bold text-white">{product.stockQuantity}</span>
+              </div>
+            ) : isLowStock ? (
               <div className="absolute top-2 right-2 bg-black/20 rounded-full p-1">
                 <AlertTriangle size={12} className="text-yellow-300" />
               </div>
-            )}
+            ) : null}
 
             {/* Weight badge */}
             {isByWeight && (

@@ -27,6 +27,7 @@ import { CustomerEntity } from '../src/database/entities/customer.entity';
 import { SaleEntity } from '../src/database/entities/sale.entity';
 import { ProductEntity } from '../src/database/entities/product.entity';
 import { StoreEntity } from '../src/database/entities/store.entity';
+import { StockAnomalyEntity } from '../src/database/entities/stock-anomaly.entity';
 
 // Product.store_id is a uuid FK to stores.id, so store ids must be valid uuids.
 const STORE_A = uuidv4();
@@ -43,6 +44,7 @@ describe('NotificationsService (service/DB layer)', () => {
       ds.getRepository(CustomerEntity),
       ds.getRepository(SaleEntity),
       ds.getRepository(ProductEntity),
+      ds.getRepository(StockAnomalyEntity),
     );
 
     // products.store_id is a FK to stores.id — seed both stores once.
@@ -426,6 +428,8 @@ describe('NotificationsService (service/DB layer)', () => {
         totalInactiveCustomers: 0,
         totalStockAlerts: 0,
         totalCriticalStock: 0,
+        totalNegativeStock: 0,
+        pendingStockAnomalies: 0,
       });
     });
   });

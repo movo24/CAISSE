@@ -8,6 +8,9 @@ import { posEventBus, StockAlertPayload } from '../services/posEventBus';
 */
 
 const levelConfig = {
+  // Chantier 4 : la vente N'EST PAS bloquée — le badge signale la dette de
+  // stock et la transmission de l'anomalie au BackOffice.
+  negative_stock: { bg: 'bg-purple-600', border: 'border-purple-700', label: 'STOCK NÉGATIF', icon: '!!!' },
   out_of_stock: { bg: 'bg-red-600', border: 'border-red-700', label: 'RUPTURE', icon: '!!!' },
   critical: { bg: 'bg-red-500', border: 'border-red-600', label: 'CRITIQUE', icon: '!!' },
   alert: { bg: 'bg-amber-500', border: 'border-amber-600', label: 'BAS', icon: '!' },
@@ -78,9 +81,11 @@ export function StockAlertToast() {
                     {a.productName}
                   </p>
                   <p className="text-gray-400 text-[11px]">
-                    {a.remainingStock === 0
-                      ? 'Plus de stock !'
-                      : `${a.remainingStock} unite${a.remainingStock > 1 ? 's' : ''} restante${a.remainingStock > 1 ? 's' : ''}`}
+                    {a.level === 'negative_stock'
+                      ? `Vente autorisée, anomalie transmise au BackOffice — stock après vente : ${a.remainingStock}`
+                      : a.remainingStock === 0
+                        ? 'Plus de stock !'
+                        : `${a.remainingStock} unite${a.remainingStock > 1 ? 's' : ''} restante${a.remainingStock > 1 ? 's' : ''}`}
                   </p>
                 </div>
               </div>

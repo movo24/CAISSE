@@ -36,6 +36,7 @@ import { StoreEntity } from '../src/database/entities/store.entity';
 import { ProductEntity } from '../src/database/entities/product.entity';
 import { SaleComponentMovementEntity } from '../src/database/entities/sale-component-movement.entity';
 import { FiscalJournalEntity } from '../src/database/entities/fiscal-journal.entity';
+import { StockAnomalyEntity } from '../src/database/entities/stock-anomaly.entity';
 
 const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
 
@@ -257,13 +258,32 @@ describe('Product Packs — produits composés (vente, snapshot, retours, anti-b
     await products.updateComponent(PACK_ID, cable.id, STORE_ID, { isActive: true });
   });
 
-  it('stock composant INSUFFISANT — vente refusée, aucun stock touché, aucune vente créée', async () => {
+  // RÈGLE MÉTIER (chantier 4) : même règle pour les composants de pack — un
+  // composant à stock insuffisant NE refuse PAS la vente : il passe en négatif
+  // et alimente l'anomalie de stock de la vente (isPackComponent: true).
+  it('stock composant INSUFFISANT — vente AUTORISÉE, composant en négatif, anomalie créée', async () => {
     await setStock(PACK_ID, 100); await setStock(COMP1_ID, 0); await setStock(COMP2_ID, 100);
     const salesBefore = await ds.getRepository('sales').count({ where: { storeId: STORE_ID } });
-    await expect(sellPack(1)).rejects.toThrow(/composant.*Cristalline|Cristalline.*composant/s);
-    expect(await stockOf(PACK_ID)).toBe(100);
-    expect(await stockOf(COMP2_ID)).toBe(100);
-    expect(await ds.getRepository('sales').count({ where: { storeId: STORE_ID } })).toBe(salesBefore);
+    const sale: any = await sellPack(1);
+    expect(sale.status).toBe('completed');
+    expect(await ds.getRepository('sales').count({ where: { storeId: STORE_ID } })).toBe(salesBefore + 1);
+    expect(await stockOf(COMP1_ID)).toBe(-1); // 0 - 1, jamais plafonné ni refusé
+
+    const anomaly = await ds
+      .getRepository(StockAnomalyEntity)
+      .findOne({ where: { saleId: sale.id } });
+    expect(anomaly).toBeTruthy();
+    expect(anomaly!.status).toBe('a_controler');
+    const compItem = anomaly!.items.find((i) => i.productId === COMP1_ID);
+    expect(compItem).toMatchObject({
+      isPackComponent: true,
+      stockBefore: 0,
+      quantitySold: 1,
+      stockAfter: -1,
+    });
+    // L'avertissement non bloquant remonte aussi à la caisse pour le composant.
+    const negAlert = (sale.stockAlerts ?? []).find((a: any) => a.level === 'negative_stock');
+    expect(negAlert).toBeDefined();
   });
 
   // ── Retours / avoirs ──────────────────────────────────────────────

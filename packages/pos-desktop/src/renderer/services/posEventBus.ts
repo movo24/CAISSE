@@ -49,7 +49,11 @@ export interface StockAlertPayload {
     productName: string;
     ean: string;
     remainingStock: number;
-    level: 'alert' | 'critical' | 'out_of_stock';
+    /**
+     * `negative_stock` (chantier 4) : vente autorisée malgré indisponibilité —
+     * avertissement NON bloquant, l'anomalie est transmise au BackOffice.
+     */
+    level: 'alert' | 'critical' | 'out_of_stock' | 'negative_stock';
     message: string;
   }[];
 }
