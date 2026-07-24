@@ -8,7 +8,10 @@ import type { PaymentMethod } from './paymentMachine';
 
 export interface WirePayment {
   method: PaymentMethod;
+  /** Montant APPLIQUÉ au ticket (jamais > reste dû). */
   amountMinorUnits: number;
+  /** Espèces physiquement reçues (cash) — mouvement distinct ; monnaie = reçu − appliqué. */
+  cashReceivedMinorUnits?: number;
   stripePaymentIntentId?: string;
   stripeReaderId?: string;
   terminalId?: string;
@@ -20,6 +23,7 @@ export interface WirePayment {
 export interface PartialPaymentLike {
   method: PaymentMethod;
   amountMinorUnits: number;
+  cashReceivedMinorUnits?: number;
   stripePaymentIntentId?: string;
   stripeReaderId?: string;
   terminalId?: string;
@@ -32,6 +36,11 @@ export function toWirePayments(payments: PartialPaymentLike[]): WirePayment[] {
   return payments.map((p) => ({
     method: p.method,
     amountMinorUnits: p.amountMinorUnits,
+    // N'émettre le reçu que s'il diffère de l'appliqué (cash avec monnaie) : évite
+    // le bruit et garde exact pour les non-espèces.
+    ...(p.cashReceivedMinorUnits != null && p.cashReceivedMinorUnits !== p.amountMinorUnits
+      ? { cashReceivedMinorUnits: p.cashReceivedMinorUnits }
+      : {}),
     stripePaymentIntentId: p.stripePaymentIntentId,
     stripeReaderId: p.stripeReaderId,
     terminalId: p.terminalId,

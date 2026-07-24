@@ -31,10 +31,16 @@ export class SalePaymentDto {
   @IsIn(['cash', 'card', 'mobile', 'check', 'voucher', 'store_credit'])
   method: string;
 
-  @ApiProperty({ example: 1500, description: 'Amount in minor units (cents)' })
+  @ApiProperty({ example: 1500, description: 'Amount APPLIED to the ticket in minor units (cents) — never exceeds the residual due' })
   @IsInt()
   @Min(0)
   amountMinorUnits: number;
+
+  @ApiPropertyOptional({ example: 2000, description: 'Cash physically received (cash only). >= amountMinorUnits; the excess is change given back — a distinct cash movement, never applied to the ticket.' })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  cashReceivedMinorUnits?: number;
 
   @ApiPropertyOptional({ example: 'pi_3ABC123', description: 'Stripe PaymentIntent ID (for card payments)' })
   @IsOptional()

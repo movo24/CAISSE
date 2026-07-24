@@ -27,7 +27,15 @@ import { useOfflineStore } from '../stores/offlineStore';
 import { getCardPaymentMode, CARD_DISABLED_MESSAGE } from '../services/cardPaymentMode';
 import { fetchFullCatalogue, loadCatalogueCache, saveCatalogueCache } from '../services/catalogSync';
 import { loadSettings as loadCustomerDisplaySettings, terminalLabel } from '../services/customerDisplay/settings';
-import { computePaymentState, type PaymentMethod } from '../services/paymentMachine';
+import {
+  computePaymentState,
+  allocateTender,
+  evaluateChangeApproval,
+  DEFAULT_CHANGE_POLICY,
+  assertPaymentsApplied,
+  type PaymentMethod,
+  type TenderAllocation,
+} from '../services/paymentMachine';
 import { PromoCodeControl } from '../components/PromoCodeControl';
 import { useOfflineMode } from '../hooks/useOfflineMode';
 import { useWakeLock } from '../hooks/useWakeLock';
@@ -99,7 +107,12 @@ interface CatalogueProduct {
 interface PartialPayment {
   id: string;
   method: PaymentMethod;
+  /** Montant APPLIQUÉ au ticket — jamais > reste dû (P0 : ≠ espèces reçues). */
   amountMinorUnits: number;
+  /** Espèces physiquement reçues (cash ; = appliqué sinon). Mouvement de caisse distinct. */
+  cashReceivedMinorUnits?: number;
+  /** Monnaie à rendre pour ce tender (cash) — jamais un remboursement client. */
+  changeMinorUnits?: number;
   creditNoteCode?: string;
   /** Card leg NOT really captured (demo) → sale lands payment_pending. */
   pendingCapture?: boolean;
@@ -855,9 +868,15 @@ export function POSPage() {
         setTimeout(() => {
           if (context === 'quick') {
             const totalAmount = store.total();
-            finalizePayment([{ id: `pay-${Date.now()}`, method: 'card', amountMinorUnits: totalAmount, ...facts }], 0);
+            // Carte plein pot : appliqué = total, aucune monnaie.
+            finalizePayment([{ id: `pay-${Date.now()}`, method: 'card', amountMinorUnits: totalAmount, cashReceivedMinorUnits: totalAmount, changeMinorUnits: 0, ...facts }], 0);
           } else {
-            commitPartialPayment('card', amountMinorUnits, undefined, facts);
+            // `amountMinorUnits` est déjà l'APPLIQUÉ (plafonné par allocateTender).
+            commitPartialPayment(
+              { method: 'card', appliedMinorUnits: amountMinorUnits, cashReceivedMinorUnits: amountMinorUnits, changeMinorUnits: 0 },
+              undefined,
+              facts,
+            );
           }
         }, 100);
       }, 2000);
@@ -895,45 +914,120 @@ export function POSPage() {
 
   /* ── Commit partial payment (after TPE approval for card) ── */
 
-  const commitPartialPayment = (method: PaymentMethod, amountMinor: number, creditNoteCode?: string, cardFacts?: { pendingCapture?: boolean }) => {
+  /** Politique de monnaie (config magasin si présente, sinon défaut). */
+  const changePolicy = () => {
+    const si = store.storeInfo as any;
+    return {
+      managerThresholdMinorUnits: Number.isFinite(si?.changeManagerThresholdMinorUnits)
+        ? si.changeManagerThresholdMinorUnits
+        : DEFAULT_CHANGE_POLICY.managerThresholdMinorUnits,
+      hardBlockMinorUnits: Number.isFinite(si?.changeHardBlockMinorUnits)
+        ? si.changeHardBlockMinorUnits
+        : DEFAULT_CHANGE_POLICY.hardBlockMinorUnits,
+    };
+  };
+
+  /** Journalise une décision de sécurité sur la monnaie (employé, caisse, ticket, montants). */
+  const journalChangeDecision = (
+    decision: 'accepted' | 'manager_required' | 'blocked',
+    changeMinor: number,
+    reason?: string,
+  ) => {
+    const entry = {
+      decision,
+      changeMinorUnits: changeMinor,
+      reason,
+      employeeId: store.employee?.id ?? 'unknown',
+      register: terminalLabel(loadCustomerDisplaySettings().terminalId),
+      storeId: store.employee?.storeId ?? store.storeInfo?.siret ?? 'unknown',
+      total: store.total(),
+      at: new Date().toISOString(),
+    };
+    // eslint-disable-next-line no-console
+    console.info('[PAYMENT-CHANGE-GUARD]', JSON.stringify(entry));
+    store.logScoreEvent?.('PAYMENT_CHANGE_DECISION', `${decision} · monnaie ${(changeMinor / 100).toFixed(2)}€`);
+  };
+
+  // Un tender DÉJÀ alloué (appliqué ≤ reste dû, monnaie séparée) est ajouté.
+  const commitPartialPayment = (
+    alloc: TenderAllocation,
+    creditNoteCode?: string,
+    cardFacts?: { pendingCapture?: boolean },
+  ) => {
     const payment: PartialPayment = {
       id: `pay-${Date.now()}`,
-      method,
-      amountMinorUnits: amountMinor,
+      method: alloc.method,
+      amountMinorUnits: alloc.appliedMinorUnits, // APPLIQUÉ (jamais > reste dû)
+      cashReceivedMinorUnits: alloc.cashReceivedMinorUnits,
+      changeMinorUnits: alloc.changeMinorUnits,
       creditNoteCode,
       ...(cardFacts || {}),
     };
 
     const newPayments = [...partialPayments, payment];
     const ticketTotal = store.total();
-    // Tender state machine: cash change only; voucher/gift-card overpay forfeited.
-    const state = computePaymentState(ticketTotal, newPayments);
+    // Reste dû = total − somme des APPLIQUÉS (jamais négatif).
+    const appliedSum = newPayments.reduce((s, p) => s + p.amountMinorUnits, 0);
+    const covered = appliedSum >= ticketTotal;
+    const changeSum = newPayments.reduce((s, p) => s + (p.changeMinorUnits || 0), 0);
 
-    if (state.isCovered) {
-      finalizePayment(newPayments, state.changeDue);
-    } else {
+    if (!covered) {
       setPartialPayments(newPayments);
       setSplitAmountInput('');
-    }
-  };
-
-  const addPartialPayment = (method: PaymentMethod) => {
-    const inputVal = splitAmountInput.trim().replace(',', '.');
-    const parsed = parseFloat(inputVal);
-    // If no amount entered or 0, use the full remaining amount
-    const amountEuros = (!inputVal || isNaN(parsed) || parsed <= 0) ? remaining / 100 : parsed;
-    const amountMinor = Math.round(amountEuros * 100);
-
-    if (amountMinor <= 0) return;
-
-    if (method === 'card') {
-      // CB → wait for TPE confirmation
-      startTpeWaiting(amountMinor, 'split');
       return;
     }
 
-    // Cash → immediate
-    commitPartialPayment(method, amountMinor);
+    // Ticket soldé : contrôle de sécurité de la monnaie AVANT de finaliser.
+    const approval = evaluateChangeApproval(changeSum, changePolicy());
+    if (approval.decision !== 'ok') {
+      // Monnaie aberrante (ex. 297 € pour 3 € dus) : jamais acceptée en silence.
+      journalChangeDecision(approval.decision === 'block' ? 'blocked' : 'manager_required', changeSum, approval.reason);
+      setError(
+        (approval.reason || 'Monnaie à rendre anormale.') +
+          (approval.decision === 'manager'
+            ? ' Validation manager requise pour poursuivre.'
+            : ''),
+      );
+      // On NE finalise PAS ; le tender aberrant n'est pas ajouté à l'état.
+      setSplitAmountInput('');
+      return;
+    }
+
+    journalChangeDecision('accepted', changeSum);
+    finalizePayment(newPayments, changeSum);
+  };
+
+  /** Alloue puis ajoute un tender à partir d'un montant (espèces reçues pour cash,
+   *  appliqué pour non-espèces). Refuse et affiche l'erreur si dépassement interdit. */
+  const commitByAmount = (method: PaymentMethod, requestedMinor: number, creditNoteCode?: string) => {
+    setError('');
+    const alloc = allocateTender(remaining, method, requestedMinor);
+    if (!alloc.ok) { setError(alloc.reason); return; }
+    commitPartialPayment(alloc.allocation, creditNoteCode);
+  };
+
+  const addPartialPayment = (method: PaymentMethod) => {
+    setError('');
+    const inputVal = splitAmountInput.trim().replace(',', '.');
+    const parsed = parseFloat(inputVal);
+    // Vide/0 → non-espèces : tout le reste ; espèces : reçu exactement le reste.
+    const amountEuros = (!inputVal || isNaN(parsed) || parsed <= 0) ? remaining / 100 : parsed;
+    const requestedMinor = Math.round(amountEuros * 100);
+
+    // Allocation SÉPARÉE : appliqué ≤ reste dû ; non-espèces jamais en dépassement.
+    const alloc = allocateTender(remaining, method, requestedMinor);
+    if (!alloc.ok) {
+      setError(alloc.reason);
+      return;
+    }
+
+    if (method === 'card') {
+      // CB → attente TPE, sur le montant APPLIQUÉ (carte = jamais de dépassement).
+      startTpeWaiting(alloc.allocation.appliedMinorUnits, 'split');
+      return;
+    }
+
+    commitPartialPayment(alloc.allocation);
   };
 
   const removePartialPayment = (id: string) => {
@@ -947,6 +1041,28 @@ export function POSPage() {
     // et la garde par ticketNumber : une seule vente, un seul ticket, un seul tiroir.
     if (finalizingRef.current) return;
     finalizingRef.current = true;
+
+    // ── GARDE SESSION (P0) : session de caisse NON OUVERTE → aucun encaissement.
+    // `posSessionOpenFailed` = l'ouverture a échoué (état « NON OUVERTE » du
+    // bandeau) ; on refuse la vente au lieu de la laisser partir sans session.
+    if (store.posSessionOpenFailed && !store.posSession?.id) {
+      setError('Caisse NON OUVERTE — encaissement impossible. Ouvrez la session de caisse avant de vendre.');
+      finalizingRef.current = false;
+      return;
+    }
+
+    // ── GARDE COMPTABLE (P0, couche store local) : la somme des montants APPLIQUÉS
+    // doit solder EXACTEMENT le ticket. Un surpaiement (ex. 303 € pour 6 €) est
+    // refusé AVANT tout envoi — la monnaie est un mouvement distinct, jamais
+    // imputée au ticket. Vaut online ET offline (même chemin).
+    try {
+      assertPaymentsApplied(store.total(), payments);
+    } catch (e: any) {
+      setError(e?.message || 'Incohérence de paiement.');
+      finalizingRef.current = false;
+      return;
+    }
+
     // Instant du clic « Valider » — jalon 0 de la trace de latence terrain
     // (la clé d'idempotence, identité de la trace, n'existe pas encore ici).
     const tValidateClick = Date.now();
@@ -2224,7 +2340,7 @@ export function POSPage() {
                       if (context === 'quick') {
                         handleQuickPayment('cash');
                       } else {
-                        commitPartialPayment('cash', amountMinorUnits);
+                        commitByAmount('cash', amountMinorUnits);
                       }
                     }}
                   >
@@ -2270,7 +2386,7 @@ export function POSPage() {
                       if (context === 'quick') {
                         handleQuickPayment('cash');
                       } else {
-                        commitPartialPayment('cash', amountMinorUnits);
+                        commitByAmount('cash', amountMinorUnits);
                       }
                     }}
                   >
@@ -2572,7 +2688,7 @@ export function POSPage() {
             // Même chemin que le paiement existant : le serveur re-valide et
             // verrouille l'avoir à l'encaissement (source de vérité unique).
             store.setPaymentModalOpen(true);
-            commitPartialPayment('store_credit', amt, code);
+            commitByAmount('store_credit', amt, code);
             setBonAchatOpen(false);
           }}
           onClose={() => setBonAchatOpen(false)}
@@ -2582,7 +2698,7 @@ export function POSPage() {
       {avoirOpen && (
         <AvoirTenderModal
           amountDueMinor={remaining}
-          onApply={(code, amt) => { commitPartialPayment('store_credit', amt, code); setAvoirOpen(false); }}
+          onApply={(code, amt) => { commitByAmount('store_credit', amt, code); setAvoirOpen(false); }}
           onClose={() => setAvoirOpen(false)}
         />
       )}
