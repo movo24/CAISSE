@@ -62,6 +62,16 @@ export function isEditableTarget(
   return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable === true;
 }
 
+/**
+ * ⚠️ CHEMIN LIVE : depuis le correctif « intégrité stricte du champ », l'écoute
+ * DOM réelle est portée par `wedgeKeyboardListener.ts` en modèle
+ * BUFFER-AVANT-INSERTION (aucun caractère de scan n'atteint jamais le champ, même
+ * face à une sélection). Cette classe reste comme MODÈLE DE RÉFÉRENCE PUR des
+ * seuils (vitesse/longueur/format), couverte par ses tests unitaires ; elle
+ * partage les mêmes constantes (minLength 4, maxInterKeyMs 50) que le listener.
+ * Les helpers `barcodeFormat` et `isEditableTarget` ci-dessus sont, eux, utilisés
+ * directement par le listener.
+ */
 export class WedgeDecoder {
   private buffer = '';
   private lastTs = 0;

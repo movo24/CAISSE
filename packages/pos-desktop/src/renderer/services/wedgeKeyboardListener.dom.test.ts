@@ -77,30 +77,30 @@ afterEach(() => {
 });
 
 describe('Douchette clavier-wedge — comportement DOM réel (champ focalisé)', () => {
-  it('scan rapide, champ focalisé : reconnu, et AUCUN caractère ne reste dans le champ', () => {
+  it('scan rapide, champ focalisé : reconnu, et AUCUN caractère n’atteint JAMAIS le champ', () => {
     const enter = type('3760012345678', 5); // 5 ms/car = douchette
     expect(onBarcode).toHaveBeenCalledTimes(1);
     expect(onBarcode.mock.calls[0][0]).toMatchObject({ code: '3760012345678', format: 'EAN-13' });
-    expect(input.value).toBe(''); // le 1er caractère a été inséré puis RETIRÉ
-    // Seul le 1er caractère a atteint le champ ; les 12 suivants ont été avalés.
-    expect(reachedField).toBe(1);
+    expect(input.value).toBe(''); // buffer-avant-insertion : rien n'a jamais été écrit
+    // Modèle buffer-avant-insertion : AUCUN caractère du scan n'atteint le champ.
+    expect(reachedField).toBe(0);
     // L'Entrée du scan est neutralisée (pas de submit / action parasite).
     expect(enter.defaultPrevented).toBe(true);
-    // Seul le 1er caractère (passthrough) remonte ; les 12 avalés ET l'Entrée du scan
-    // NE remontent PAS (stopPropagation) → aucune action parasite, aucun submit.
+    // Aucun caractère du scan ni l'Entrée ne remontent (preventDefault + stopPropagation
+    // en capture) → aucune action parasite, aucun submit.
     const bubbledKeys = bubbleSpy.mock.calls.map((c) => (c[0] as KeyboardEvent).key);
-    expect(bubbledKeys).toEqual(['3']); // uniquement le 1er caractère de "3760…"
-    expect(bubbledKeys).not.toContain('Enter');
+    expect(bubbledKeys).toEqual([]);
     expect(submitSpy).not.toHaveBeenCalled();
   });
 
-  it('frappe humaine lente : le champ reçoit le texte, aucun scan', () => {
+  it('frappe humaine lente : le champ reçoit le texte (restitué), aucun scan', () => {
     const enter = type('12345', 250); // 250 ms/car = humain
     expect(onBarcode).not.toHaveBeenCalled();
+    // Chaque caractère est avalé puis RESTITUÉ (setRangeText) quand le rythme lent
+    // révèle une frappe humaine → le champ contient bien le texte tapé.
     expect(input.value).toBe('12345');
-    expect(reachedField).toBe(5); // toutes les frappes ont atteint le champ
     expect(enter.defaultPrevented).toBe(false); // Entrée humaine non neutralisée
-    expect(bubbleSpy).toHaveBeenCalled(); // la frappe humaine remonte normalement
+    expect(bubbleSpy).toHaveBeenCalled(); // l'Entrée humaine remonte normalement
   });
 
   it('contenu préexistant du champ préservé après un scan', () => {
@@ -152,7 +152,7 @@ describe('Douchette clavier-wedge — comportement DOM réel (champ focalisé)',
       vi.advanceTimersByTime(200); // le timer DOM (120 ms) expire
       expect(onBarcode).toHaveBeenCalledTimes(1);
       expect(onBarcode.mock.calls[0][0]).toMatchObject({ code: 'WESP12345' });
-      expect(input.value).toBe(''); // le 1er caractère inséré a été retiré au flush
+      expect(input.value).toBe(''); // buffer-avant-insertion : rien n'a jamais été écrit
       vi.advanceTimersByTime(1000); // une seule émission, jamais de rejeu
       expect(onBarcode).toHaveBeenCalledTimes(1);
     } finally {
