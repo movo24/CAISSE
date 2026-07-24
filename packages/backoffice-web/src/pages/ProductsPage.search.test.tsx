@@ -72,6 +72,9 @@ beforeEach(() => {
   cleanup();
   listCalls.length = 0;
   autoResolve = null;
+  // Isolation du contexte de session du catalogue (persisté depuis la règle UX
+  // « retour de fiche » 2026-07-24) : chaque test repart sans état restauré.
+  sessionStorage.clear();
 });
 
 describe('Catalogue — recherche fluide (focus, pas de remount, debounce)', () => {

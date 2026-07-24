@@ -25,6 +25,7 @@ import {
 import { productsApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
 import { useCurrentStoreId } from '../hooks/useCurrentStoreId';
+import { loadCatalogContext, saveCatalogContext } from '../utils/catalogContext';
 import { PriceAnalyticsPanel } from '../components/PriceAnalyticsPanel';
 import { validateProductForm, apiErrorMessage, buildCreatePayload, buildUpdatePayload } from './productForm';
 
@@ -120,7 +121,12 @@ export function ProductsPage() {
   const storeId = useCurrentStoreId();
   const [products, setProducts] = useState<Product[]>([]);
   const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
+  // Contexte de session (règle UX 2026-07-24) : au retour d'une fiche produit,
+  // la liste se rouvre EXACTEMENT là où on l'avait quittée (recherche, filtres,
+  // tri, page, défilement). Aucun contexte (accès direct / nouvelle session)
+  // → défauts habituels, dont Statut : Actif. Lu UNE fois au montage.
+  const restoredCtx = useRef(loadCatalogContext()).current;
+  const [page, setPage] = useState(restoredCtx?.page ?? 1);
   const LIMIT = 50;
   const [loading, setLoading] = useState(true);
   // Ne devient true qu'après la PREMIÈRE réponse : le spinner plein-page ne
@@ -133,21 +139,21 @@ export function ProductsPage() {
   const fetchSeqRef = useRef(0);
   const [error, setError] = useState<string | null>(null);
 
-  // ── Filtres serveur ──
-  const [search, setSearch] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [fStatus, setFStatus] = useState('active');
-  const [fBrand, setFBrand] = useState('');
-  const [fSupplier, setFSupplier] = useState('');
-  const [fCategory, setFCategory] = useState('');
-  const [fTax, setFTax] = useState('');
-  const [fOutOfStock, setFOutOfStock] = useState(false);
-  const [fBelowThreshold, setFBelowThreshold] = useState(false);
-  const [fNoImage, setFNoImage] = useState(false);
-  const [fNoSupplier, setFNoSupplier] = useState(false);
-  const [fNoCategory, setFNoCategory] = useState(false);
-  const [sortBy, setSortBy] = useState<'name' | 'price' | 'stock' | 'updatedAt'>('name');
-  const [sortDir, setSortDir] = useState<'ASC' | 'DESC'>('ASC');
+  // ── Filtres serveur ── (initialisés depuis le contexte restauré s'il existe)
+  const [search, setSearch] = useState(restoredCtx?.search ?? '');
+  const [debouncedSearch, setDebouncedSearch] = useState(restoredCtx?.search ?? '');
+  const [fStatus, setFStatus] = useState(restoredCtx?.fStatus ?? 'active');
+  const [fBrand, setFBrand] = useState(restoredCtx?.fBrand ?? '');
+  const [fSupplier, setFSupplier] = useState(restoredCtx?.fSupplier ?? '');
+  const [fCategory, setFCategory] = useState(restoredCtx?.fCategory ?? '');
+  const [fTax, setFTax] = useState(restoredCtx?.fTax ?? '');
+  const [fOutOfStock, setFOutOfStock] = useState(restoredCtx?.fOutOfStock ?? false);
+  const [fBelowThreshold, setFBelowThreshold] = useState(restoredCtx?.fBelowThreshold ?? false);
+  const [fNoImage, setFNoImage] = useState(restoredCtx?.fNoImage ?? false);
+  const [fNoSupplier, setFNoSupplier] = useState(restoredCtx?.fNoSupplier ?? false);
+  const [fNoCategory, setFNoCategory] = useState(restoredCtx?.fNoCategory ?? false);
+  const [sortBy, setSortBy] = useState<'name' | 'price' | 'stock' | 'updatedAt'>(restoredCtx?.sortBy ?? 'name');
+  const [sortDir, setSortDir] = useState<'ASC' | 'DESC'>(restoredCtx?.sortDir ?? 'ASC');
 
   const [stats, setStats] = useState<CatalogStats | null>(null);
 
@@ -271,15 +277,60 @@ export function ProductsPage() {
     }
   }, []);
 
+  // Les effets « retour page 1 » ne doivent PAS s'exécuter au montage : ils
+  // écraseraient la pagination restaurée depuis le contexte de session.
+  // (Le drapeau est posé par un effet déclaré APRÈS eux — les effets s'exécutent
+  // dans l'ordre de déclaration au montage.)
+  const didMountRef = useRef(false);
+
   // Recherche débouncée (retour page 1)
   useEffect(() => {
+    if (!didMountRef.current) return;
     const t = setTimeout(() => { setDebouncedSearch(search); setPage(1); }, 300);
     return () => clearTimeout(t);
   }, [search]);
   // Un changement de filtre/tri repart page 1
-  useEffect(() => { setPage(1); }, [fStatus, fBrand, fSupplier, fCategory, fTax, fOutOfStock, fBelowThreshold, fNoImage, fNoSupplier, fNoCategory, sortBy, sortDir]);
+  useEffect(() => {
+    if (!didMountRef.current) return;
+    setPage(1);
+  }, [fStatus, fBrand, fSupplier, fCategory, fTax, fOutOfStock, fBelowThreshold, fNoImage, fNoSupplier, fNoCategory, sortBy, sortDir]);
+  // Pose le drapeau APRÈS les deux effets gardés ci-dessus (ordre de montage).
+  useEffect(() => { didMountRef.current = true; }, []);
   useEffect(() => { fetchProducts(); }, [fetchProducts]);
   useEffect(() => { fetchStats(); fetchRefs(); }, [fetchStats, fetchRefs]);
+
+  // Persistance CONTINUE du contexte (hors scrollY, capturé au départ vers une
+  // fiche) : le retour depuis une fiche restaure exactement cet état.
+  useEffect(() => {
+    saveCatalogContext({
+      search: debouncedSearch, fStatus, fBrand, fSupplier, fCategory, fTax,
+      fOutOfStock, fBelowThreshold, fNoImage, fNoSupplier, fNoCategory,
+      sortBy, sortDir, page,
+      scrollY: loadCatalogContext()?.scrollY ?? 0,
+    });
+  }, [debouncedSearch, fStatus, fBrand, fSupplier, fCategory, fTax, fOutOfStock, fBelowThreshold, fNoImage, fNoSupplier, fNoCategory, sortBy, sortDir, page]);
+
+  // Départ vers une fiche : fige le contexte AVEC la position de défilement.
+  const goToProduct = useCallback((path: string) => {
+    saveCatalogContext({
+      search: debouncedSearch, fStatus, fBrand, fSupplier, fCategory, fTax,
+      fOutOfStock, fBelowThreshold, fNoImage, fNoSupplier, fNoCategory,
+      sortBy, sortDir, page, scrollY: window.scrollY,
+    });
+    navigate(path);
+  }, [navigate, debouncedSearch, fStatus, fBrand, fSupplier, fCategory, fTax, fOutOfStock, fBelowThreshold, fNoImage, fNoSupplier, fNoCategory, sortBy, sortDir, page]);
+
+  // Restauration de la position dans la liste : une seule fois, dès que la
+  // première page de résultats est rendue.
+  const scrollRestoredRef = useRef(false);
+  useEffect(() => {
+    if (scrollRestoredRef.current || !hasLoadedOnce) return;
+    scrollRestoredRef.current = true;
+    if (restoredCtx && restoredCtx.scrollY > 0) {
+      window.scrollTo({ top: restoredCtx.scrollY });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasLoadedOnce]);
 
   const reload = useCallback(() => { fetchProducts(); fetchStats(); }, [fetchProducts, fetchStats]);
 
@@ -606,7 +657,7 @@ export function ProductsPage() {
             Exporter
           </button>
           <button
-            onClick={() => navigate('/products/new')}
+            onClick={() => goToProduct('/products/new')}
             className="flex items-center gap-2 bg-bo-accent text-white px-5 py-2.5 rounded-xl font-medium hover:bg-bo-accent/90 transition-colors shadow-lg shadow-bo-accent/25"
           >
             <Plus size={16} />
@@ -820,7 +871,7 @@ export function ProductsPage() {
               const st = STATUS_META[product.status] || { label: product.status, cls: 'bg-gray-100 text-gray-500' };
               return (
                 <React.Fragment key={product.id}>
-                  <tr className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors group cursor-pointer" onClick={() => navigate(`/products/${product.id}`)}>
+                  <tr className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors group cursor-pointer" onClick={() => goToProduct(`/products/${product.id}`)}>
                     <td className="py-3 px-4" onClick={(e) => e.stopPropagation()}>
                       <input type="checkbox" checked={selected.has(product.id)} onChange={() => toggleSelect(product.id)} className="accent-bo-accent" aria-label={`Sélectionner ${product.name}`} />
                     </td>
@@ -855,7 +906,7 @@ export function ProductsPage() {
                     <td className="py-3 px-4 text-right" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button onClick={() => setAnalyticsProductId(analyticsProductId === product.id ? null : product.id)} className={`p-2 rounded-lg transition-colors ${analyticsProductId === product.id ? 'bg-indigo-100 text-bo-accent' : 'hover:bg-indigo-50 text-gray-400 hover:text-bo-accent'}`} title="Historique tarifaire"><BarChart3 size={14} /></button>
-                        <button onClick={() => navigate(`/products/${product.id}/edit`)} className="p-2 rounded-lg hover:bg-indigo-50 text-gray-400 hover:text-bo-accent transition-colors" title="Fiche complète (modifier)"><Pencil size={14} /></button>
+                        <button onClick={() => goToProduct(`/products/${product.id}/edit`)} className="p-2 rounded-lg hover:bg-indigo-50 text-gray-400 hover:text-bo-accent transition-colors" title="Fiche complète (modifier)"><Pencil size={14} /></button>
                         <button onClick={() => openEdit(product)} className="p-2 rounded-lg hover:bg-indigo-50 text-gray-400 hover:text-bo-accent transition-colors" title="Édition rapide (secondaire)"><Zap size={14} /></button>
                         <button onClick={() => handleDelete(product.id)} className="p-2 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors" title="Supprimer"><Trash2 size={14} /></button>
                       </div>

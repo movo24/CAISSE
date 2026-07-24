@@ -505,6 +505,22 @@ export function ProductEditPage() {
     };
   };
 
+  /**
+   * Règle UX (owner, 2026-07-24) : succès CONFIRMÉ par le serveur → courte
+   * confirmation visuelle « Produit validé et enregistré » puis retour
+   * AUTOMATIQUE à Catalogue → Produits (le contexte — recherche, filtres,
+   * pagination, défilement — est restauré par la liste via catalogContext).
+   * Le timer est nettoyé au démontage : jamais de navigation fantôme.
+   */
+  const returnTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (returnTimerRef.current) clearTimeout(returnTimerRef.current);
+  }, []);
+  const scheduleReturnToCatalog = (delayMs = 900) => {
+    if (returnTimerRef.current) clearTimeout(returnTimerRef.current);
+    returnTimerRef.current = setTimeout(() => navigate('/products'), delayMs);
+  };
+
   const save = async () => {
     setError(null); setSaved(false);
     // Validation client complète : chaque problème est rattaché à SON champ,
@@ -527,15 +543,20 @@ export function ProductEditPage() {
           ...common,
           reason: priceChanged ? (reason.trim() || 'Fiche produit — modification prix') : undefined,
         } as any);
-        setSaved(true); load();
+        // Succès serveur confirmé : confirmation visible puis retour au catalogue.
+        setSaved(true);
+        scheduleReturnToCatalog();
       } else {
-        const r = await productsApi.create({
+        await productsApi.create({
           ...common,
           ean: form.ean.trim(),
           // Affectation magasin explicite (admin) — cause racine du bug sync.
           ...(isAdmin && storeId ? { storeId } : {}),
         } as any);
-        navigate(`/products/${r.data.id}/edit`, { replace: true });
+        // Création confirmée : même règle qu'en modification — confirmation
+        // puis retour au catalogue (plus de détour par la page d'édition).
+        setSaved(true);
+        scheduleReturnToCatalog();
       }
     } catch (e: any) {
       // Mappe la réponse serveur (400/409/…) vers les champs du formulaire :
@@ -678,10 +699,10 @@ export function ProductEditPage() {
     setError(null);
     try {
       await productsApi.update(id, { ...buildCommonPayload(), status: 'active' } as any);
+      // Publication confirmée : confirmation visible puis retour au catalogue
+      // (même règle qu'Enregistrer — l'utilisateur ne reste pas sur la fiche).
       setPublished(true);
-      setWizardMode(false);
-      await load();
-      setTab('general');
+      scheduleReturnToCatalog(1200);
     } catch (e: any) {
       const mapped = mapApiError(e?.response?.data);
       setFieldErrors(mapped.fieldErrors);
@@ -1041,10 +1062,14 @@ export function ProductEditPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {saved && <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600"><CheckCircle2 size={14} /> Enregistré</span>}
+          {saved && (
+            <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600">
+              <CheckCircle2 size={14} /> Produit validé et enregistré — retour au catalogue…
+            </span>
+          )}
           {published && (
             <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600">
-              <CheckCircle2 size={14} /> Publié en caisse — synchronisation automatique (≤ 15 s) ou bouton « PRODUITS » sur la caisse
+              <CheckCircle2 size={14} /> Produit validé et publié en caisse — retour au catalogue…
             </span>
           )}
           {wizardMode ? (
