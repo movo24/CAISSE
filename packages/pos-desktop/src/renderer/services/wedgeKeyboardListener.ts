@@ -24,9 +24,19 @@ import { barcodeFormat, isEditableTarget } from './wedgeDecoder';
  *  - les raccourcis Ctrl/Meta/Alt ne sont jamais interceptés (le buffer humain
  *    éventuel est d'abord restitué).
  *
- * Coût honnête : la 1ʳᵉ touche d'une frappe humaine est restituée après ~holdMs
- * (le temps de lever l'ambiguïté scan/humain). C'est le compromis explicite pour
- * une garantie de non-corruption totale, sans préfixe matériel.
+ * ── Mode « AUCUN CHAMP FOCALISÉ = SCANNER CERTAIN » (P0 terrain 2026-07-24) ──
+ * Sur l'écran de vente, aucun champ éditable n'a le focus : un humain NE PEUT PAS
+ * « taper dans le vide ». Toute touche imprimable reçue alors provient forcément
+ * de la douchette. Dans ce cas on N'APPLIQUE AUCUN seuil de vitesse (la Lenvii
+ * E655 réelle envoie plus lentement que les rafales simulées) : on accumule tout
+ * jusqu'au terminateur (Entrée/Tab/CR) ou au silence, puis on émet le code. C'est
+ * ce qui corrige « le scan ne marche que si on clique d'abord dans la recherche ».
+ * Le seuil `maxInterKeyMs` (et la détection de rafale) ne sert plus qu'à protéger
+ * la frappe humaine QUAND un champ est réellement focalisé.
+ *
+ * Coût honnête : la 1ʳᵉ touche d'une frappe humaine (champ focalisé) est restituée
+ * après ~holdMs. Trace `[WEDGE-TIMING]` : les écarts inter-touches réels sont
+ * journalisés (mesure terrain de la vraie douchette).
  */
 export interface WedgeBarcode {
   code: string;
@@ -36,12 +46,18 @@ export interface WedgeBarcode {
 export interface WedgeListenerOptions {
   /** Nombre minimal de caractères avant qu'un Entrée compte comme un scan. */
   minLength?: number;
-  /** Écart max (ms) entre deux touches d'un même scan ; au-delà → frappe humaine. */
+  /** Écart max (ms) entre deux touches d'un même scan ; au-delà → frappe humaine.
+   *  Ne s'applique QUE lorsqu'un champ éditable est focalisé (sinon = scanner). */
   maxInterKeyMs?: number;
   /** Délai (ms) avant de restituer une 1ʳᵉ touche isolée comme frappe humaine. */
   holdMs?: number;
-  /** Silence (ms) fermant une rafale sans suffixe. */
+  /** Silence (ms) fermant une rafale sans suffixe, champ focalisé. */
   flushMs?: number;
+  /** Silence (ms) fermant un scan sans suffixe en mode « aucun champ » (plus
+   *  généreux : tolère une douchette lente sans couper le code en deux). */
+  noFieldFlushMs?: number;
+  /** Journalise les écarts inter-touches réels ([WEDGE-TIMING]). Défaut: activé. */
+  logTiming?: boolean;
   /** Compat : ancien conteneur d'options de décodeur (minLength/maxInterKeyMs). */
   decoder?: { minLength?: number; maxInterKeyMs?: number };
   /** Horloge injectable (tests). Par défaut Date.now. */
@@ -60,15 +76,24 @@ export function attachWedgeKeyboardListener(
   options: WedgeListenerOptions = {},
 ): () => void {
   const minLength = options.minLength ?? options.decoder?.minLength ?? 4;
+  // Seuil de rafale (CHAMP FOCALISÉ uniquement) : maintenu à 50 ms — au-delà,
+  // c'est de la frappe humaine (préservée). Ne PAS relever (une frappe rapide à
+  // ~70 ms/car serait sinon prise pour un scan). Le P0 « scan sans focus » est
+  // résolu par le mode « aucun champ = scanner certain » ci-dessous, qui
+  // n'applique AUCUN seuil — donc insensible à la lenteur réelle de la E655.
   const maxInterKeyMs = options.maxInterKeyMs ?? options.decoder?.maxInterKeyMs ?? 50;
   const holdMs = options.holdMs ?? Math.max(maxInterKeyMs + 20, 70);
   const flushMs = options.flushMs ?? 120;
+  const noFieldFlushMs = options.noFieldFlushMs ?? 300;
+  const logTiming = options.logTiming !== false;
   const now = options.now ?? (() => Date.now());
 
   // Buffer des touches AVALÉES en attente de verdict (scan vs humain).
   let buffer = '';
   // Instantané du champ+sélection capturé au DÉBUT du buffer courant (pour restitution).
   let snap: FieldSnapshot | null = null;
+  // Séquence démarrée SANS champ éditable focalisé → scanner certain (aucun seuil).
+  let noField = false;
   let lastTs = 0;
   let burst = false; // une 2ᵉ touche rapide a confirmé une rafale (scan)
   let holdTimer: ReturnType<typeof setTimeout> | null = null;
@@ -82,6 +107,7 @@ export function attachWedgeKeyboardListener(
   const resetBuffer = () => {
     buffer = '';
     snap = null;
+    noField = false;
     lastTs = 0;
     burst = false;
     clearTimers();
@@ -133,12 +159,16 @@ export function attachWedgeKeyboardListener(
 
   const armFlushTimer = () => {
     if (flushTimer) clearTimeout(flushTimer);
-    // Rafale sans suffixe : après un silence, on clôt. Assez long → scan ; sinon humain.
+    // Scan sans suffixe : après un silence, on clôt. En mode « aucun champ »
+    // (scanner certain), on tolère une douchette lente (fenêtre plus large) et on
+    // émet dès que la longueur minimale est atteinte — jamais de restitution
+    // (aucun champ à restaurer). Champ focalisé : rafale confirmée → scan ; sinon humain.
+    const win = noField ? noFieldFlushMs : flushMs;
     flushTimer = setTimeout(() => {
       flushTimer = null;
-      if (burst && buffer.length >= minLength) emitScan();
+      if ((noField || burst) && buffer.length >= minLength) emitScan();
       else replayHuman();
-    }, flushMs);
+    }, win);
   };
 
   const handler = (e: KeyboardEvent) => {
@@ -152,8 +182,9 @@ export function attachWedgeKeyboardListener(
 
     // Terminateur de scan (Enter/Tab/CR).
     if (key === 'Enter' || key === 'Tab' || key === '\r') {
-      if (burst && buffer.length >= minLength) {
+      if ((noField || burst) && buffer.length >= minLength) {
         // Fin d'un scan : on avale l'Entrée et on émet le code — rien n'est inséré.
+        // `noField` couvre la douchette LENTE hors champ (aucune rafale rapide requise).
         e.preventDefault();
         e.stopPropagation();
         emitScan();
@@ -176,15 +207,35 @@ export function attachWedgeKeyboardListener(
         e.stopPropagation();
         buffer = key;
         snap = captureSnapshot();
+        // Aucun champ éditable focalisé → scanner certain (aucun seuil de vitesse).
+        noField = snap === null;
         lastTs = t;
         burst = false;
-        armHoldTimer();
+        if (noField) armFlushTimer();
+        else armHoldTimer();
         return;
       }
 
       const gap = t - lastTs;
+      if (logTiming) {
+        // eslint-disable-next-line no-console
+        console.info('[WEDGE-TIMING]', JSON.stringify({ gapMs: gap, pos: buffer.length, noField }));
+      }
+
+      if (noField) {
+        // Mode scanner-certain : on accumule TOUJOURS, quelle que soit la vitesse
+        // (la douchette réelle peut être lente). Rien n'est inséré (aucun champ).
+        e.preventDefault();
+        e.stopPropagation();
+        buffer += key;
+        lastTs = t;
+        burst = true;
+        armFlushTimer();
+        return;
+      }
+
       if (gap <= maxInterKeyMs) {
-        // Assez rapide → rafale (scan) : on continue d'avaler, rien n'est inséré.
+        // Champ focalisé + assez rapide → rafale (scan) : on continue d'avaler.
         e.preventDefault();
         e.stopPropagation();
         buffer += key;
@@ -195,16 +246,18 @@ export function attachWedgeKeyboardListener(
         return;
       }
 
-      // Trop lent → la séquence bufferisée était HUMAINE : on la restitue, puis on
+      // Champ focalisé + trop lent → séquence HUMAINE : on la restitue, puis on
       // repart avec la touche courante (elle aussi avalée + bufferisée).
       replayHuman();
       e.preventDefault();
       e.stopPropagation();
       buffer = key;
       snap = captureSnapshot();
+      noField = snap === null;
       lastTs = t;
       burst = false;
-      armHoldTimer();
+      if (noField) armFlushTimer();
+      else armHoldTimer();
       return;
     }
 
