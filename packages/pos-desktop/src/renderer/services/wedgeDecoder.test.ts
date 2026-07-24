@@ -69,6 +69,52 @@ describe('WedgeDecoder — séquence clavier douchette (Lenvii E655)', () => {
     expect(barcodeFormat('1234567890123')).toBe('EAN-13');
     expect(barcodeFormat('XYZ')).toBe('CODE-128');
   });
+
+  it('suffixe TAB (douchette configurée en Tab) → scan, jamais un silence', () => {
+    const d = new WedgeDecoder();
+    let t = 1000;
+    for (const ch of '3760012345678') {
+      d.feed(ch, t);
+      t += 5;
+    }
+    expect(d.feed('Tab', t)).toEqual({ kind: 'scan', code: '3760012345678', format: 'EAN-13' });
+  });
+
+  it('Tab humain (navigation, aucune rafale) → none, jamais intercepté', () => {
+    const d = new WedgeDecoder();
+    expect(d.feed('Tab', 1000)).toEqual({ kind: 'none' });
+  });
+
+  it('suffixe retour chariot \\r → scan', () => {
+    const d = new WedgeDecoder();
+    let t = 1000;
+    for (const ch of '20123452') {
+      d.feed(ch, t);
+      t += 4;
+    }
+    expect(d.feed('\r', t)).toMatchObject({ kind: 'scan', code: '20123452' });
+  });
+
+  it('flushPending : douchette SANS suffixe → la rafale est close par silence', () => {
+    const d = new WedgeDecoder();
+    let t = 1000;
+    for (const ch of 'WESP12345') {
+      d.feed(ch, t);
+      t += 5;
+    }
+    // Trop tôt (dernière touche récente) → rien.
+    expect(d.flushPending(t)).toBeNull();
+    // Silence dépassé → scan émis, buffer vidé.
+    expect(d.flushPending(t + 120)).toEqual({ code: 'WESP12345', format: 'CODE-128' });
+    expect(d.flushPending(t + 500)).toBeNull(); // une seule émission
+  });
+
+  it('flushPending : frappe humaine (pas de rafale) → jamais de faux scan', () => {
+    const d = new WedgeDecoder();
+    d.feed('a', 1000);
+    d.feed('b', 1400); // lent → humain
+    expect(d.flushPending(2000)).toBeNull();
+  });
 });
 
 describe('isEditableTarget', () => {

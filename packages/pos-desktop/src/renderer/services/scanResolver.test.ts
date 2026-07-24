@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolveLocalScan, isDuplicateScan, type ScanProduct } from './scanResolver';
+import { resolveLocalScan, isDuplicateScan, validateScanCode, type ScanProduct } from './scanResolver';
 
 const catalogue: ScanProduct[] = [
   { id: 'p1', ean: '3760012345678', name: 'Coca 33cl', priceMinorUnits: 150, isActive: true },
@@ -45,5 +45,34 @@ describe('isDuplicateScan (anti-double-ajout d\'un SEUL scan, fenêtre courte)',
 
   it('aucun scan précédent → autorisé', () => {
     expect(isDuplicateScan({ code: null, ts: 0 }, 'X', 1000)).toBe(false);
+  });
+});
+
+describe('validateScanCode (aucun scan invalide ne finit dans le silence)', () => {
+  it('EAN-13, EAN-8, UPC-A, code interne WES-P → valides', () => {
+    expect(validateScanCode('3760012345678')).toEqual({ ok: true, code: '3760012345678' });
+    expect(validateScanCode('20123452')).toEqual({ ok: true, code: '20123452' });
+    expect(validateScanCode('012345678905')).toEqual({ ok: true, code: '012345678905' });
+    expect(validateScanCode('WES-P-000042')).toEqual({ ok: true, code: 'WES-P-000042' });
+  });
+
+  it('espaces externes tolérés (trim)', () => {
+    expect(validateScanCode('  20123452  ')).toEqual({ ok: true, code: '20123452' });
+  });
+
+  it('trop court / vide → message « invalide ou incomplet » avec le code reçu', () => {
+    const r = validateScanCode('12');
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toContain('12');
+    const empty = validateScanCode('');
+    expect(empty.ok).toBe(false);
+    if (!empty.ok) expect(empty.reason).toContain('(vide)');
+  });
+
+  it('trop long, caractère non imprimable ou espace interne → invalide', () => {
+    expect(validateScanCode('X'.repeat(40)).ok).toBe(false);
+    expect(validateScanCode('ABC\u0007D').ok).toBe(false); // caractère de contrôle
+    expect(validateScanCode('café-123').ok).toBe(false); // hors ASCII imprimable
+    expect(validateScanCode('12 34 56').ok).toBe(false);
   });
 });

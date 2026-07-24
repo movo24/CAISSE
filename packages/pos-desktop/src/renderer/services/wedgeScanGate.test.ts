@@ -58,8 +58,11 @@ describe('POSPage — câblage de la douchette wedge globale (source guards)', (
 
   it('les scans globaux sont filtrés par shouldAcceptWedgeScan, dédoublonnés, puis routés vers handleScan', () => {
     expect(posPage).toMatch(/shouldAcceptWedgeScan\(\{/);
-    expect(posPage).toMatch(/if \(!accept\) return/);
+    // Le refus de la gate reste un retour immédiat (tracé, jamais silencieux).
+    expect(posPage).toMatch(/if \(!accept\) \{\s*scanTrace\('ignored_gate', code\);\s*return;/);
     expect(posPage).toMatch(/isDuplicateScan\(lastWedgeScan\.current, code, now\)/);
-    expect(posPage).toMatch(/void handleScan\(code\)/);
+    // Le scan douchette est routé avec sa SOURCE ('wedge') → même logique que le
+    // champ manuel, mais sans raccourci « résultat de recherche sélectionné ».
+    expect(posPage).toMatch(/void handleScan\(code, 'wedge'\)/);
   });
 });

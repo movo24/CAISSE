@@ -82,18 +82,21 @@ export class WedgeDecoder {
   }
 
   /**
-   * Consomme une touche imprimable ou `Entrée`. `now` = horodatage ms.
+   * Consomme une touche imprimable ou un TERMINATEUR de scan. `now` = horodatage ms.
+   * Terminateurs reconnus : `Enter` (couvre NumpadEnter — même `key`), `Tab` et le
+   * retour chariot `\r` — les trois suffixes configurables sur les douchettes
+   * usuelles (Lenvii E655 incluse). Un terminateur sans rafale = frappe humaine.
    * L'appelant NE doit PAS passer les combinaisons avec Ctrl/Meta/Alt (raccourcis).
    */
   feed(key: string, now: number): WedgeFeed {
-    if (key === 'Enter') {
+    if (key === 'Enter' || key === 'Tab' || key === '\r') {
       const code = this.buffer;
       const wasBurst = this.burst;
       this.reset();
       if (wasBurst && code.length >= this.minLength) {
         return { kind: 'scan', code, format: barcodeFormat(code) };
       }
-      // Entrée « humaine » (aucune rafale) → laissée au champ/formulaire.
+      // Entrée/Tab « humain » (aucune rafale) → laissé au champ/formulaire.
       return { kind: 'none' };
     }
 
@@ -122,5 +125,22 @@ export class WedgeDecoder {
 
     // Touches non imprimables (modificateurs, navigation, F-keys…) : hors périmètre.
     return { kind: 'none' };
+  }
+
+  /**
+   * Terminaison par SILENCE (douchette configurée « sans suffixe ») : si une
+   * rafale est en cours et qu'aucune touche n'est arrivée depuis plus de
+   * `maxInterKeyMs`, la rafale est close et renvoyée comme scan. L'appelant
+   * (couche DOM) appelle ceci depuis un timer armé après chaque `swallow`.
+   * Renvoie null si rien à clore (pas de rafale, trop court, ou touche trop
+   * récente — le timer a été devancé par une vraie touche).
+   */
+  flushPending(now: number): { code: string; format: string } | null {
+    if (!this.burst) return null;
+    if (now - this.lastTs <= this.maxInterKeyMs) return null;
+    const code = this.buffer;
+    this.reset();
+    if (code.length >= this.minLength) return { code, format: barcodeFormat(code) };
+    return null;
   }
 }
