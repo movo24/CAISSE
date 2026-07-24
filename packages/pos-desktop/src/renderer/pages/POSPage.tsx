@@ -17,6 +17,7 @@ import {
   type PrintStatus,
   type DrawerStatus,
 } from '../services/salePeripherals';
+import { printChainTrace } from '../services/printChainTrace';
 import { newIdempotencyKey } from '../services/idempotency';
 import { buildTicketUrl, makeTicketQrDataUrl } from '../services/ticketQr';
 import { getBrandLogoDataUrl } from '../services/brandLogo';
@@ -203,6 +204,29 @@ export function POSPage() {
   // d'écran, donc jamais 2 tickets ni 2 ouvertures tiroir pour une même vente.
   const [lastPrintStatus, setLastPrintStatus] = useState<PrintStatus | null>(null);
   const [lastDrawerStatus, setLastDrawerStatus] = useState<DrawerStatus | null>(null);
+  // Reprise MANUELLE du tiroir après échec (gatée manager) : une impulsion par
+  // clic, jamais de boucle — le résultat est journalisé dans la trace de vente.
+  const [drawerRetryBusy, setDrawerRetryBusy] = useState(false);
+
+  const retryDrawerOpen = async () => {
+    if (drawerRetryBusy) return;
+    setDrawerRetryBusy(true);
+    const saleId = printChainTrace.latest()?.saleId ?? 'manual';
+    printChainTrace.mark(saleId, 'drawer_retry', { by: store.employee ? `${store.employee.firstName} ${store.employee.lastName}` : 'inconnu' });
+    try {
+      const ok = await peripheralBridge.openCashDrawer();
+      printChainTrace.mark(saleId, 'drawer_retry_result', {
+        ok,
+        ...(ok ? {} : { error: peripheralBridge.lastDrawerError ?? 'échec' }),
+      });
+      setLastDrawerStatus(ok ? 'opened' : 'open_failed');
+    } catch (e) {
+      printChainTrace.mark(saleId, 'drawer_retry_result', { ok: false, error: String(e) });
+      setLastDrawerStatus('open_failed');
+    } finally {
+      setDrawerRetryBusy(false);
+    }
+  };
   // Garde SYNCHRONE de ré-entrée sur finalizePayment : bloque un 2ᵉ appel
   // (double-clic, retour d'écran, re-render) AVANT même le setProcessing async.
   const finalizingRef = useRef(false);
@@ -886,6 +910,9 @@ export function POSPage() {
     // et la garde par ticketNumber : une seule vente, un seul ticket, un seul tiroir.
     if (finalizingRef.current) return;
     finalizingRef.current = true;
+    // Instant du clic « Valider » — jalon 0 de la trace de latence terrain
+    // (la clé d'idempotence, identité de la trace, n'existe pas encore ici).
+    const tValidateClick = Date.now();
     // Decision 5 mirror: refuse an impossible manual discount before the network.
     const discCheck = validateManualDiscount({
       subtotalMinor: store.subtotal(),
@@ -920,6 +947,9 @@ export function POSPage() {
     // so the backend dedupes instead of creating a second sale + cash-in.
     if (!saleIdemKeyRef.current) saleIdemKeyRef.current = newIdempotencyKey();
     const idempotencyKey = saleIdemKeyRef.current;
+    // Trace latence : clic « Valider » (rétro-daté) puis départ de la requête.
+    printChainTrace.mark(idempotencyKey, 'validate_click', { method: primaryMethod, items: itemCount }, tValidateClick);
+    printChainTrace.mark(idempotencyKey, 'sale_request_start');
     try {
       const res = await salesApi.create({
         items: store.cartItems.map((i) => ({ ean: i.ean, quantity: i.quantity })),
@@ -931,6 +961,7 @@ export function POSPage() {
       }, idempotencyKey);
       ticketNumber = res.data.ticketNumber || `T-${Date.now().toString().slice(-6)}`;
       publicToken = res.data.publicToken || null;
+      printChainTrace.mark(idempotencyKey, 'sale_response', { ok: true, ticketNumber });
       saleIdemKeyRef.current = null; // confirmed online → next sale gets a fresh key
       if (res.data.jackpotResult) store.setJackpotResult(res.data.jackpotResult);
     } catch (err: any) {
@@ -969,6 +1000,7 @@ export function POSPage() {
           offlineStore.decrementLocalStock(item.ean, item.quantity);
         });
         posEventBus.emit('SALE_OFFLINE', { ticketNumber, pendingCount: offlineStore.pendingCount + 1 });
+        printChainTrace.mark(idempotencyKey, 'sale_response', { ok: true, offline: true, ticketNumber });
         // Continue to confirmation — the sale was honestly accepted locally
       } else {
         setProcessing(false);
@@ -1112,10 +1144,21 @@ export function POSPage() {
     });
     setLastPrintStatus(null);
     setLastDrawerStatus(null);
+    // Journal périphérique : chaque jalon porte vente + caisse + employé + heure
+    // (l'heure est dans la trace) + résultat — exigence tiroir NF/terrain.
+    const traceMeta = {
+      register: terminalLabel(loadCustomerDisplaySettings().terminalId),
+      employee: cashierName,
+      ticketNumber,
+    };
+    const saleTrace = (step: string, meta?: Record<string, unknown>) =>
+      printChainTrace.mark(idempotencyKey, step, { ...traceMeta, ...meta });
     void (async () => {
       // Le QR (ticket numérique) est généré puis fusionné dans le TicketData
       // déjà capturé — aucune relecture du panier après clearCart.
+      saleTrace('qr_start');
       const qrDataUrl = ticketUrl ? await makeTicketQrDataUrl(ticketUrl) : null;
+      saleTrace('qr_done', { hasQr: !!qrDataUrl });
       return finalizeSalePeripherals({
         // Identité STABLE de la vente = idempotency key (sale-<uuid>), jamais le
         // ticketNumber (séquentiel par magasin côté serveur, instable côté client).
@@ -1123,6 +1166,7 @@ export function POSPage() {
         saleValidated: true,
         payments: payments.map((p) => ({ method: p.method, amountMinorUnits: p.amountMinorUnits })),
         guard: salePeripheralGuard,
+        trace: saleTrace,
         ticketData: qrDataUrl
           ? {
               ...ticketData,
@@ -2320,9 +2364,22 @@ export function POSPage() {
                 <p className="mt-1 text-xs font-bold text-emerald-300">Tiroir-caisse ouvert.</p>
               )}
               {lastDrawerStatus === 'open_failed' && (
-                <p className="mt-1 text-xs font-black text-amber-300">
-                  Tiroir NON ouvert — vérifier le branchement. Vente validée, ouverture manuelle possible.
-                </p>
+                <div className="mt-1">
+                  <p className="text-xs font-black text-amber-300">
+                    Tiroir NON ouvert — vérifier le branchement. Vente validée, ouverture manuelle possible.
+                  </p>
+                  {/* Reprise UNIQUEMENT sous contrôle manager (droit canOpenDrawer),
+                      une impulsion par clic, résultat journalisé — jamais de boucle. */}
+                  {rights.canOpenDrawer && (
+                    <button
+                      onClick={retryDrawerOpen}
+                      disabled={drawerRetryBusy}
+                      className="mt-1.5 px-3 py-1.5 rounded-lg bg-amber-400/20 border border-amber-400/40 text-xs font-bold text-amber-200 hover:bg-amber-400/30 disabled:opacity-50"
+                    >
+                      {drawerRetryBusy ? 'Ouverture…' : 'Rouvrir le tiroir (manager)'}
+                    </button>
+                  )}
+                </div>
               )}
             </div>
 

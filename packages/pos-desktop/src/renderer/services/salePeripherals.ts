@@ -375,8 +375,20 @@ export async function finalizeSalePeripherals(params: {
   payments: SalePaymentLite[];
   saleValidated: boolean;
   guard: SalePeripheralGuard;
+  /**
+   * Jalonnage horodaté OPTIONNEL de la chaîne périphérique (diagnostic latence
+   * terrain). Purement passif : jamais bloquant, jamais une condition de vente.
+   */
+  trace?: (step: string, meta?: Record<string, unknown>) => void;
 }): Promise<FinalizeResult> {
   const { saleId, ticketData, payments, saleValidated, guard } = params;
+  const trace = (step: string, meta?: Record<string, unknown>) => {
+    try {
+      params.trace?.(step, meta);
+    } catch {
+      /* la trace ne casse jamais la vente */
+    }
+  };
 
   // Vente non validée (échec / en attente / annulée) → on ne touche à RIEN.
   if (!saleValidated) return { printStatus: 'skipped', drawerStatus: 'skipped', drawerOpened: false };
@@ -386,8 +398,10 @@ export async function finalizeSalePeripherals(params: {
   if (hasRealPrinter(peripheralBridge.status.printer)) {
     if (guard.beginAction(saleId, 'AUTO_PRINT')) {
       try {
+        trace('print_submit', { printer: peripheralBridge.status.printer.name });
         const ok = await peripheralBridge.printTicket(ticketData, { allowBrowserFallback: false });
         printStatus = ok ? 'printed' : 'print_failed';
+        trace('print_result', { ok, ...(peripheralBridge.lastPrintTimings ?? {}) });
         guard.settleAction(saleId, 'AUTO_PRINT', ok, ok ? undefined : 'printTicket returned false');
         if (!ok) {
           // eslint-disable-next-line no-console
@@ -395,6 +409,7 @@ export async function finalizeSalePeripherals(params: {
         }
       } catch (e) {
         printStatus = 'print_failed';
+        trace('print_result', { ok: false, error: String(e) });
         guard.settleAction(saleId, 'AUTO_PRINT', false, String(e));
         // eslint-disable-next-line no-console
         console.warn('[POS] Impression ticket échouée:', e);
@@ -413,14 +428,26 @@ export async function finalizeSalePeripherals(params: {
   if (shouldOpenDrawer(saleValidated, payments)) {
     if (guard.beginAction(saleId, 'AUTO_DRAWER_OPEN')) {
       try {
+        trace('drawer_submit');
         drawerOpened = await peripheralBridge.openCashDrawer();
         drawerStatus = drawerOpened ? 'opened' : 'open_failed';
-        guard.settleAction(saleId, 'AUTO_DRAWER_OPEN', drawerOpened, drawerOpened ? undefined : 'openCashDrawer returned false');
+        trace('drawer_result', {
+          ok: drawerOpened,
+          ...(peripheralBridge.lastDrawerTimings ?? {}),
+          ...(drawerOpened ? {} : { error: peripheralBridge.lastDrawerError ?? 'openCashDrawer returned false' }),
+        });
+        guard.settleAction(
+          saleId,
+          'AUTO_DRAWER_OPEN',
+          drawerOpened,
+          drawerOpened ? undefined : peripheralBridge.lastDrawerError ?? 'openCashDrawer returned false',
+        );
       } catch (e) {
         // eslint-disable-next-line no-console
         console.warn('[POS] Ouverture tiroir échouée:', e);
         drawerOpened = false;
         drawerStatus = 'open_failed';
+        trace('drawer_result', { ok: false, error: String(e) });
         guard.settleAction(saleId, 'AUTO_DRAWER_OPEN', false, String(e));
       }
     } else {

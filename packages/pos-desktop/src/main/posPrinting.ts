@@ -22,14 +22,31 @@ export function buildReceiptPrintOptions(deviceName?: string): Electron.WebConte
   };
 }
 
-async function printHtmlSilently(html: string, deviceName?: string): Promise<{ ok: boolean; error?: string }> {
+/** Chronométrage réel des étapes (diagnostic latence terrain — TSP143). */
+export interface PrintTimings {
+  /** Création de la fenêtre cachée (ms). */
+  windowMs: number;
+  /** Chargement/mise en page du HTML du ticket (ms). */
+  loadMs: number;
+  /** Remise au spooler → callback du driver (ms). */
+  spoolMs: number;
+  totalMs: number;
+}
+
+async function printHtmlSilently(
+  html: string,
+  deviceName?: string,
+): Promise<{ ok: boolean; error?: string; timings?: PrintTimings }> {
   let win: BrowserWindow | null = null;
+  const t0 = Date.now();
   try {
     win = new BrowserWindow({
       show: false,
       webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true },
     });
+    const t1 = Date.now();
     await win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
+    const t2 = Date.now();
     const result = await new Promise<{ ok: boolean; error?: string }>((resolve) => {
       const timer = setTimeout(() => resolve({ ok: false, error: 'print timeout' }), PRINT_TIMEOUT_MS);
       win!.webContents.print(buildReceiptPrintOptions(deviceName), (success, failureReason) => {
@@ -37,7 +54,16 @@ async function printHtmlSilently(html: string, deviceName?: string): Promise<{ o
         resolve(success ? { ok: true } : { ok: false, error: failureReason || 'print failed' });
       });
     });
-    return result;
+    const t3 = Date.now();
+    const timings: PrintTimings = {
+      windowMs: t1 - t0,
+      loadMs: t2 - t1,
+      spoolMs: t3 - t2,
+      totalMs: t3 - t0,
+    };
+    // eslint-disable-next-line no-console
+    console.info('[PRINT-TIMING]', JSON.stringify({ deviceName: deviceName ?? '(défaut OS)', ...timings, ok: result.ok }));
+    return { ...result, timings };
   } catch (e: any) {
     return { ok: false, error: e?.message || 'print error' };
   } finally {

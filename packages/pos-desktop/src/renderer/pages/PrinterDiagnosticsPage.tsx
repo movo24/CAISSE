@@ -4,6 +4,15 @@ import {
   ArrowLeft, Printer, Inbox, RefreshCw, CheckCircle2, XCircle, Loader2,
 } from 'lucide-react';
 import { peripheralBridge, getPaperWidthMm, setPaperWidthMm, type PaperWidthMm } from '../services/peripheralBridge';
+import {
+  getDrawerQueueName,
+  getDrawerStrategy,
+  printerModeLabel,
+  setDrawerQueueName,
+  setDrawerStrategy,
+  type DrawerStrategy,
+} from '../services/drawerStrategy';
+import { printChainTrace } from '../services/printChainTrace';
 
 /**
  * Écran diagnostic périphériques (desktop Windows). Permet, sur le poste, de :
@@ -29,6 +38,8 @@ export function PrinterDiagnosticsPage() {
   const [printResult, setPrintResult] = useState<TestResult>(null);
   const [paperWidth, setPaperWidth] = useState<PaperWidthMm>(getPaperWidthMm());
   const [drawerResult, setDrawerResult] = useState<TestResult>(null);
+  const [drawerStrategy, setDrawerStrategyState] = useState<DrawerStrategy>(getDrawerStrategy());
+  const [drawerQueue, setDrawerQueueState] = useState<string>(getDrawerQueueName() ?? '');
 
   const isDesktop = typeof window !== 'undefined' && (window as any).electronAPI?.getPrinters;
 
@@ -92,8 +103,8 @@ export function PrinterDiagnosticsPage() {
     try {
       const ok = await peripheralBridge.openCashDrawer();
       setDrawerResult(ok
-        ? { ok: true, msg: 'Commande d’ouverture envoyée au tiroir.' }
-        : { ok: false, msg: 'Échec : aucun tiroir n’a pu être ouvert (imprimante/tiroir ?).' });
+        ? { ok: true, msg: `Commande d’ouverture envoyée au tiroir (voie : ${peripheralBridge.lastDrawerTimings?.path ?? '?'}, ${peripheralBridge.lastDrawerTimings?.ms ?? '?'} ms).` }
+        : { ok: false, msg: peripheralBridge.lastDrawerError || 'Échec : aucun tiroir n’a pu être ouvert (imprimante/tiroir ?).' });
     } catch (e) {
       setDrawerResult({ ok: false, msg: `Erreur : ${e instanceof Error ? e.message : String(e)}` });
     } finally {
@@ -133,6 +144,27 @@ export function PrinterDiagnosticsPage() {
                 <div><span className="text-pos-muted">Connectée :</span> {printer.connected ? <span className="text-emerald-400 font-semibold">oui</span> : <span className="text-amber-400 font-semibold">non</span>}</div>
                 <div><span className="text-pos-muted">Tiroir :</span> <span className="font-mono text-xs">{drawer.type}</span> {drawer.connected ? '✓' : ''}</div>
               </div>
+            </div>
+
+            {/* Pilote & mode réel (Get-Printer) — clé du diagnostic TSP143 */}
+            <div className="rounded-2xl border border-pos-border/30 p-4 bg-white/5">
+              <h2 className="text-sm font-bold uppercase tracking-wide text-pos-muted mb-3">Pilote &amp; mode réel</h2>
+              {peripheralBridge.printerInfo ? (
+                <div className="space-y-1.5 text-sm">
+                  <div><span className="text-pos-muted">Driver Windows :</span> <span className="font-mono text-xs">{peripheralBridge.printerInfo.driverName || '—'}</span></div>
+                  <div><span className="text-pos-muted">Port :</span> <span className="font-mono text-xs">{peripheralBridge.printerInfo.portName || '—'}</span></div>
+                  <div><span className="text-pos-muted">Mode déduit :</span> <span className="font-semibold">{printerModeLabel(peripheralBridge.printerInfo.mode)}</span></div>
+                  {peripheralBridge.printerInfo.mode === 'star-raster' && (
+                    <p className="text-xs text-amber-300 mt-1">
+                      TSP100/TSP143 futurePRNT : imprimante raster pilotée par Windows — les commandes
+                      ESC/POS brutes (tiroir/coupe RAW) ne sont PAS interprétées par ce firmware.
+                      Utiliser la stratégie « file tiroir » ci-dessous.
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-pos-muted italic">Driver non lu (rafraîchir, ou hors Windows).</p>
+              )}
             </div>
 
             {/* Sélection imprimante */}
@@ -188,6 +220,47 @@ export function PrinterDiagnosticsPage() {
               </p>
             </div>
 
+            {/* Stratégie tiroir-caisse */}
+            <div className="rounded-2xl border border-pos-border/30 p-4 bg-white/5">
+              <h2 className="text-sm font-bold uppercase tracking-wide text-pos-muted mb-3">Ouverture du tiroir</h2>
+              <div className="space-y-1.5">
+                {(
+                  [
+                    ['auto', 'Automatique (selon le driver détecté) — recommandé'],
+                    ['raw_escpos', 'Kick ESC/POS brut (imprimantes ESC/POS uniquement)'],
+                    ['drawer_queue', 'File Windows dédiée au tiroir (TSP100/TSP143 futurePRNT)'],
+                  ] as Array<[DrawerStrategy, string]>
+                ).map(([value, label]) => (
+                  <label key={value} className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input
+                      type="radio"
+                      name="drawer-strategy"
+                      checked={drawerStrategy === value}
+                      onChange={() => { setDrawerStrategy(value); setDrawerStrategyState(value); }}
+                    />
+                    <span>{label}</span>
+                  </label>
+                ))}
+              </div>
+              <div className="mt-3">
+                <label className="text-xs text-pos-muted block mb-1">
+                  File Windows dédiée au tiroir (2ᵉ file sur le même port, driver configuré
+                  « Peripheral Unit = Cash Drawer, ouverture en début de document »)
+                </label>
+                <input
+                  type="text"
+                  value={drawerQueue}
+                  onChange={(e) => { setDrawerQueueState(e.target.value); setDrawerQueueName(e.target.value || null); }}
+                  placeholder="ex. Star TSP143 (Tiroir)"
+                  className="w-full px-3 py-2 rounded-xl bg-black/20 border border-pos-border/30 text-sm font-mono"
+                />
+              </div>
+              <p className="text-xs text-pos-muted mt-2">
+                Une impulsion = un job. Aucune commande brute n’est envoyée à une imprimante raster
+                (protection anti « tiroir en boucle »). Un refus est expliqué, jamais silencieux.
+              </p>
+            </div>
+
             {/* Tests */}
             <div className="rounded-2xl border border-pos-border/30 p-4 bg-white/5 space-y-3">
               <h2 className="text-sm font-bold uppercase tracking-wide text-pos-muted">Tests</h2>
@@ -212,8 +285,50 @@ export function PrinterDiagnosticsPage() {
                 </div>
               )}
               <p className="text-xs text-pos-muted">
-                Le tiroir est piloté par un job RAW ESC/POS envoyé à l’imprimante thermique (le tiroir doit être branché sur l’imprimante).
+                Le tiroir doit être branché sur le port RJ11 de l’imprimante. « Ouvrir le tiroir » envoie
+                UNE impulsion via la stratégie ci-dessus — sans ticket, sans vente, sans boucle.
               </p>
+            </div>
+
+            {/* Dernière chaîne d'impression (trace terrain horodatée) */}
+            <div className="rounded-2xl border border-pos-border/30 p-4 bg-white/5">
+              <h2 className="text-sm font-bold uppercase tracking-wide text-pos-muted mb-3">
+                Dernière chaîne de vente (durées réelles)
+              </h2>
+              {(() => {
+                const latest = printChainTrace.latest();
+                if (!latest) {
+                  return <p className="text-sm text-pos-muted italic">Aucune vente tracée sur cette caisse.</p>;
+                }
+                const rows = printChainTrace.durations(latest.saleId);
+                return (
+                  <div className="overflow-x-auto">
+                    <p className="text-xs text-pos-muted mb-2 font-mono">{latest.saleId} — {new Date(latest.startedAt).toLocaleString('fr-FR')}</p>
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="text-pos-muted text-left">
+                          <th className="py-1 pr-3">Étape</th>
+                          <th className="py-1 pr-3">T+ (ms)</th>
+                          <th className="py-1 pr-3">Δ étape (ms)</th>
+                          <th className="py-1">Détail</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rows.map((r, i) => (
+                          <tr key={i} className="border-t border-white/5">
+                            <td className="py-1 pr-3 font-mono">{r.step}</td>
+                            <td className="py-1 pr-3 tabular-nums">{r.atMs}</td>
+                            <td className="py-1 pr-3 tabular-nums">{r.sincePrevMs}</td>
+                            <td className="py-1 font-mono text-[10px] text-pos-muted break-all">
+                              {r.meta ? JSON.stringify(r.meta) : ''}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         )}

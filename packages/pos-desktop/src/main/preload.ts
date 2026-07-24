@@ -59,8 +59,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getPrinters: () => ipcRenderer.invoke('pos-print:getPrinters'),
   printTicketHtml: (html: string, deviceName?: string) =>
     ipcRenderer.invoke('pos-print:printHtml', html, deviceName),
-  // Tiroir-caisse + coupe via job RAW ESC/POS au spooler Windows (honest-fail).
-  openCashDrawer: (deviceName?: string) => ipcRenderer.invoke('pos-print:openDrawer', deviceName),
+  // Tiroir-caisse : `opts.path` = 'raw' (kick ESC/POS) ou 'queue' (job driver
+  // vers une file Windows dédiée — imprimantes raster TSP100/futurePRNT).
+  // Décision prise côté renderer selon le driver réel (honest-fail).
+  openCashDrawer: (deviceName?: string, opts?: { path?: 'raw' | 'queue'; queueName?: string }) =>
+    ipcRenderer.invoke('pos-print:openDrawer', deviceName, opts),
+  // Driver + port de la file Windows (détection du mode réel de l'imprimante).
+  getPrinterInfo: (deviceName?: string) => ipcRenderer.invoke('pos-print:getPrinterInfo', deviceName),
   cutPaper: (deviceName?: string) => ipcRenderer.invoke('pos-print:cut', deviceName),
   rawEscpos: (deviceName: string | undefined, bytes: number[]) =>
     ipcRenderer.invoke('pos-print:rawEscpos', deviceName, bytes),
