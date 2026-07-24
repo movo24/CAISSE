@@ -251,3 +251,14 @@ activation du flag hors test local, tout merge.
   `docs/pos-scanner-field-test.md` (build `124f91c`, non mergé ⇒ **non distribué** par electron-updater ⇒
   installation manuelle requise ; Étape 0 = discriminant ancien/nouveau build). Décision **préfixe** ouverte :
   `docs/pos-scanner-prefix-decision.md` (recommandation : **(a) sans préfixe**). **Aucune PR, aucun merge.**
+
+## 2026-07-24 — Chantier prioritaire n°4 : stock négatif autorisé (vente jamais bloquée)
+
+### Règle métier + anomalies BackOffice (branche `feat/stock-negatif-vente-non-bloquante`, PR #112)
+- **Règle owner** : le stock informatique ne bloque JAMAIS une vente en caisse (0→-1, 2-5→-3, -1-2→-3 ; réception +10 sur -3 → 7 ; idem composants de pack ; annulation ne décrémente jamais ; retour ré-augmente).
+- **Backend** : createSale — rejets « Insufficient stock » retirés (pré-tx + décréments conditionnels), décrément inconditionnel atomique `RETURNING` ; StockService déplafonné (GREATEST/Math.max supprimés). Audit DB : `stock_quantity integer` sans CHECK — négatif déjà permis, zéro migration nécessaire côté produits.
+- **Anomalies** : table `stock_anomalies` (migration **1774**, additive, up→down→up prouvé sur base vierge) — UNE anomalie par vente finalisée avec stock < 0, même tx, `sale_id UNIQUE` anti-doublon, statut À contrôler → Contrôlée avec justification obligatoire ; module `stock-anomalies` (list/pending-count/control) ; notifications summary enrichi.
+- **POS** : toast `negative_stock` non bloquant (« Vente autorisée et anomalie transmise au BackOffice. Nouveau stock : -N »), y compris hors ligne (cache local, anomalie créée à la resync par la même vente idempotente) ; badge dette sur la grille.
+- **BackOffice** : StockAlertsPage — section anomalies (détail complet, contrôle avec justification), niveau « Dette de stock », ajustement à valeurs négatives permis.
+- **Vérifs** : backend jest 1165 ✅ ; **PG réels forme CI exacte** (`--runInBand`, base partagée) 14 suites / 40 ✅ dont concurrence réécrite (10 ventes/stock 5 → toutes passent, -5, 5 anomalies exactes ; 2 ventes/stock 0 → -2 ; composant pack -5 sans perte de mouvement) ; POS vitest 467 ✅ ; backoffice vitest 180 ✅ ; tsc + eslint ✅ partout. Note : décréments en `stock + $1` (paramètre négatif) — équivalent PG réel, exact sous pg-mem (bug d'ordre des opérandes `col - $1` reproduit).
+- **Commits** `dabb9d5` (backend) · `fea92c1` (POS) · `5525bb7` (backoffice). **Merge + migration prod = Tier-2, GO nominatif owner.**
