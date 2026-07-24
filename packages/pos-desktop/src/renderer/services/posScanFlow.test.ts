@@ -52,6 +52,16 @@ describe('Flux scanner → panier', () => {
     expect(cart()[0].quantity).toBe(2);
   });
 
+  it('2bis. (spec P0) même produit scanné 4 fois → UNE ligne, quantité 4 (1→2→3→4)', () => {
+    const qtys: number[] = [];
+    for (let i = 0; i < 4; i++) {
+      applyScan('3760012345678');
+      qtys.push(cart()[0].quantity);
+    }
+    expect(qtys).toEqual([1, 2, 3, 4]); // incrément immédiat à chaque scan
+    expect(cart()).toHaveLength(1); // jamais de doublon de ligne
+  });
+
   it('3. deux produits scannés rapidement → deux lignes', () => {
     applyScan('3760012345678');
     applyScan('3760099999999');
