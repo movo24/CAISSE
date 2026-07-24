@@ -18,6 +18,8 @@ import {
 } from 'lucide-react';
 import { useDashboardData } from '../hooks/useDashboardData';
 import { ProductScanPanel } from '../components/ProductScanPanel';
+import { WeekBars } from '../components/dashboard/WeekBars';
+import { barHeightPct, chartMax, toFiniteNonNeg } from '../utils/chartScale';
 // Logos OFFICIELS (mêmes fichiers que la caisse — jamais recréés, jamais de texte de substitution)
 import wesleysLogoUrl from '../assets/wesleys-logo.png';
 import addxLogoUrl from '../assets/addx-logo.png';
@@ -368,9 +370,9 @@ export function DashboardPage() {
                 {fmtK(peakHour.ca)}
               </span>
             </div>
-            <div className="flex items-end gap-1.5 h-32">
+            <div className="flex items-end gap-1.5 h-32 overflow-hidden">
               {perfData.hourlyCA.map((h) => {
-                const pct = maxHourlyCA > 0 ? (h.ca / maxHourlyCA) * 100 : 0;
+                const pct = barHeightPct(h.ca, chartMax([perfData.hourlyCA.map((x) => x.ca)]));
                 const isPeak = h.ca === maxHourlyCA;
                 return (
                   <div key={h.h} className="flex-1 flex flex-col items-center gap-1 group">
@@ -407,37 +409,11 @@ export function DashboardPage() {
                 {weekProgressPct}% objectif
               </span>
             </div>
-            <div className="flex items-end gap-2 h-32">
-              {WEEK_DAYS.map((day, i) => {
-                const avg = perfData.weekAvg[i];
-                const actual = perfData.weekActual[i];
-                const isFuture = i > dayIndex;
-                const pct = avg > 0 ? (actual / avg) * 100 : 0;
-                const maxVal = Math.max(...perfData.weekAvg, 1);
-                return (
-                  <div key={day} className="flex-1 flex flex-col items-center gap-1">
-                    {!isFuture && actual > 0 && (
-                      <span className={`text-[9px] font-bold ${pct >= 100 ? 'text-emerald-500' : 'text-amber-500'}`}>
-                        {Math.round(pct)}%
-                      </span>
-                    )}
-                    <div className="w-full flex gap-0.5" style={{ height: '90px', alignItems: 'flex-end' }}>
-                      <div
-                        className="flex-1 bg-gray-100 rounded-t"
-                        style={{ height: `${(avg / maxVal) * 100}%`, minHeight: '4px' }}
-                      />
-                      {!isFuture && (
-                        <div
-                          className={`flex-1 rounded-t ${pct >= 100 ? 'bg-emerald-400' : 'bg-amber-400'}`}
-                          style={{ height: `${(actual / maxVal) * 100}%`, minHeight: actual > 0 ? '4px' : '0px' }}
-                        />
-                      )}
-                    </div>
-                    <span className={`text-[9px] font-medium ${i === dayIndex ? 'text-bo-text font-bold' : 'text-gray-400'}`}>{day}</span>
-                  </div>
-                );
-              })}
-            </div>
+            {/* Échelle SÛRE (chartScale) : domaine = moyenne N-1 ∪ réalisé, hauteurs
+                bornées 0-100 % — plus jamais de barre qui traverse le dashboard
+                (l'ancien domaine ignorait le réalisé : 10 € sur référence vide
+                rendait une barre à 100 000 %). */}
+            <WeekBars days={WEEK_DAYS} weekAvg={perfData.weekAvg} weekActual={perfData.weekActual} dayIndex={dayIndex} />
             <div className="flex items-center gap-4 mt-2 text-[9px] text-gray-400">
               <span className="flex items-center gap-1"><span className="w-2 h-2 bg-gray-100 rounded" /> Moyenne N-1</span>
               <span className="flex items-center gap-1"><span className="w-2 h-2 bg-emerald-400 rounded" /> Realise</span>
@@ -451,22 +427,22 @@ export function DashboardPage() {
             <Activity size={14} className="text-[#E5117A]" />
             Evolution CA mensuel — N vs N-1
           </h4>
-          <div className="flex items-end gap-1 h-24">
+          <div className="flex items-end gap-1 h-24 overflow-hidden">
             {MONTHS_SHORT.map((month, i) => {
-              const current = perfData.monthlyCA[i];
-              const prev = perfData.monthlyCAN1[i];
-              const maxVal = Math.max(...perfData.monthlyCA, ...perfData.monthlyCAN1, 1);
+              const current = toFiniteNonNeg(perfData.monthlyCA[i]);
+              const prev = toFiniteNonNeg(perfData.monthlyCAN1[i]);
+              const maxVal = chartMax([perfData.monthlyCA, perfData.monthlyCAN1]);
               const isCurrentMonth = i === new Date().getMonth();
               return (
                 <div key={month} className="flex-1 flex flex-col items-center gap-1 group">
-                  <div className="w-full flex gap-px" style={{ height: '70px', alignItems: 'flex-end' }}>
+                  <div className="w-full flex gap-px overflow-hidden" style={{ height: '70px', alignItems: 'flex-end' }}>
                     <div
                       className="flex-1 bg-gray-200 rounded-t"
-                      style={{ height: `${(prev / maxVal) * 100}%`, minHeight: '2px' }}
+                      style={{ height: `${barHeightPct(prev, maxVal)}%`, minHeight: prev > 0 ? '2px' : '0px' }}
                     />
                     <div
                       className={`flex-1 rounded-t ${current > prev ? 'bg-emerald-400' : current > 0 ? 'bg-amber-400' : 'bg-gray-100'}`}
-                      style={{ height: current > 0 ? `${(current / maxVal) * 100}%` : '0%', minHeight: current > 0 ? '2px' : '0px' }}
+                      style={{ height: `${barHeightPct(current, maxVal)}%`, minHeight: current > 0 ? '2px' : '0px' }}
                     />
                   </div>
                   <span className={`text-[8px] font-medium ${isCurrentMonth ? 'text-[#E5117A] font-bold' : 'text-gray-400'}`}>{month}</span>
