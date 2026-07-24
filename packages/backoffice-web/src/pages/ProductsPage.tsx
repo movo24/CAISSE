@@ -25,7 +25,7 @@ import {
 import { productsApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
 import { useCurrentStoreId } from '../hooks/useCurrentStoreId';
-import { loadCatalogContext, saveCatalogContext } from '../utils/catalogContext';
+import { loadCatalogContext, clearCatalogContext, saveCatalogContext } from '../utils/catalogContext';
 import { PriceAnalyticsPanel } from '../components/PriceAnalyticsPanel';
 import { validateProductForm, apiErrorMessage, buildCreatePayload, buildUpdatePayload } from './productForm';
 
@@ -121,10 +121,15 @@ export function ProductsPage() {
   const storeId = useCurrentStoreId();
   const [products, setProducts] = useState<Product[]>([]);
   const [total, setTotal] = useState(0);
-  // Contexte de session (règle UX 2026-07-24) : au retour d'une fiche produit,
-  // la liste se rouvre EXACTEMENT là où on l'avait quittée (recherche, filtres,
-  // tri, page, défilement). Aucun contexte (accès direct / nouvelle session)
-  // → défauts habituels, dont Statut : Actif. Lu UNE fois au montage.
+  // Contexte de session (règle UX 2026-07-24, durcie) : au retour d'une fiche
+  // produit, la liste se rouvre EXACTEMENT là où on l'avait quittée (recherche,
+  // filtres, tri, page, défilement). Aucun contexte → défauts (Statut : Actif).
+  //
+  // CONSOMMATION UNIQUE, StrictMode-safe : la LECTURE est PURE (initialiseur,
+  // rejouable sans effet de bord — React double-invoque les initialiseurs en
+  // dev) ; la SUPPRESSION est faite dans un effet de montage (idempotent). Ainsi
+  // le contexte n'est utilisé qu'une fois puis effacé : un accès direct ultérieur
+  // dans le même onglet ne réapplique jamais un ancien contexte.
   const restoredCtx = useRef(loadCatalogContext()).current;
   const [page, setPage] = useState(restoredCtx?.page ?? 1);
   const LIMIT = 50;
@@ -299,16 +304,14 @@ export function ProductsPage() {
   useEffect(() => { fetchProducts(); }, [fetchProducts]);
   useEffect(() => { fetchStats(); fetchRefs(); }, [fetchStats, fetchRefs]);
 
-  // Persistance CONTINUE du contexte (hors scrollY, capturé au départ vers une
-  // fiche) : le retour depuis une fiche restaure exactement cet état.
-  useEffect(() => {
-    saveCatalogContext({
-      search: debouncedSearch, fStatus, fBrand, fSupplier, fCategory, fTax,
-      fOutOfStock, fBelowThreshold, fNoImage, fNoSupplier, fNoCategory,
-      sortBy, sortDir, page,
-      scrollY: loadCatalogContext()?.scrollY ?? 0,
-    });
-  }, [debouncedSearch, fStatus, fBrand, fSupplier, fCategory, fTax, fOutOfStock, fBelowThreshold, fNoImage, fNoSupplier, fNoCategory, sortBy, sortDir, page]);
+  // Consommation : dès le montage, le contexte restauré est EFFACÉ du stockage.
+  // Idempotent (rejouable en StrictMode) ; ne dépend d'aucune valeur → une seule
+  // exécution logique. Après ça, plus rien en session tant qu'on n'a pas quitté
+  // vers une fiche → aucun « recollage » sur un accès direct ultérieur.
+  useEffect(() => { clearCatalogContext(); }, []);
+
+  // PAS de persistance continue : le contexte n'est écrit qu'au départ vers une
+  // fiche (ci-dessous). C'est la seule écriture.
 
   // Départ vers une fiche : fige le contexte AVEC la position de défilement.
   const goToProduct = useCallback((path: string) => {

@@ -14,6 +14,24 @@
 /** Statuts backend valides (validés serveur via @IsIn) — pour l'UI des sélecteurs. */
 export type ProductStatus = 'draft' | 'pending_validation' | 'active' | 'rejected' | 'archived';
 
+/**
+ * Le produit RENVOYÉ par le serveur est-il RÉELLEMENT disponible en caisse ?
+ *
+ * Honnêteté (owner, 2026-07-24) : on n'affiche « publié en caisse » que si le
+ * serveur CONFIRME la disponibilité POS, pas parce qu'on a *demandé* `active`.
+ * La caisse ne voit un produit au scan que si `isActive === true` (colonne
+ * filtrée par la vente : `products.service.ts` scan `where { …, isActive:true }`)
+ * — le backend maintient `isActive === (status === 'active')`. On exige donc les
+ * DEUX dans la réponse : `isActive === true` ET `status === 'active'`. Toute
+ * autre réponse (draft, pending_validation, isActive absent/false, réponse vide)
+ * → NON confirmée : on n'annonce que « enregistré ».
+ */
+export function confirmsPosAvailability(serverProduct: unknown): boolean {
+  if (!serverProduct || typeof serverProduct !== 'object') return false;
+  const p = serverProduct as { isActive?: unknown; status?: unknown };
+  return p.isActive === true && p.status === 'active';
+}
+
 export interface ProductFormValues {
   name: string;
   ean: string;

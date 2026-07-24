@@ -5,7 +5,7 @@
  * contexte) retombe sur les défauts (Statut : Actif côté liste).
  */
 import { describe, it, expect, beforeEach } from 'vitest';
-import { saveCatalogContext, loadCatalogContext, clearCatalogContext } from './catalogContext';
+import { saveCatalogContext, loadCatalogContext, clearCatalogContext, consumeCatalogContext } from './catalogContext';
 
 const FULL = {
   search: 'coca', fStatus: 'inactive', fBrand: 'b1', fSupplier: 's1',
@@ -47,5 +47,20 @@ describe('catalogContext', () => {
     saveCatalogContext(FULL);
     clearCatalogContext();
     expect(loadCatalogContext()).toBeNull();
+  });
+
+  it('consumeCatalogContext : lit UNE fois puis supprime (2ᵉ lecture = null)', () => {
+    saveCatalogContext(FULL);
+    // 1ʳᵉ consommation : renvoie le contexte…
+    expect(consumeCatalogContext()).toMatchObject(FULL);
+    // …et l'a supprimé : un accès direct ultérieur ne retrouve rien.
+    expect(consumeCatalogContext()).toBeNull();
+    expect(loadCatalogContext()).toBeNull();
+  });
+
+  it('consumeCatalogContext : un contexte corrompu est aussi effacé (pas de résidu collant)', () => {
+    sessionStorage.setItem('catalog.context', '{corrompu');
+    expect(consumeCatalogContext()).toBeNull();
+    expect(sessionStorage.getItem('catalog.context')).toBeNull();
   });
 });

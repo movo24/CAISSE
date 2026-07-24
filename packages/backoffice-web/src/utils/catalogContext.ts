@@ -1,17 +1,21 @@
 /**
- * Contexte de navigation du Catalogue Produits — persistance de session.
+ * Contexte de navigation du Catalogue Produits — jeton de session À USAGE UNIQUE.
  *
- * Règle UX (owner, 2026-07-24) : après l'enregistrement d'une fiche produit,
- * l'utilisateur revient AUTOMATIQUEMENT à Catalogue → Produits, dans EXACTEMENT
- * l'état où il l'avait quitté : recherche, filtres actifs, catégorie, statut,
- * tri, pagination et position de défilement. (Le magasin est un état GLOBAL —
- * `useCurrentStoreId` — déjà persistant, il n'est pas dupliqué ici.)
+ * Règle UX (owner, 2026-07-24, durcie) : après l'enregistrement d'une fiche
+ * produit, l'utilisateur revient AUTOMATIQUEMENT à Catalogue → Produits, dans
+ * EXACTEMENT l'état où il l'avait quitté : recherche, filtres actifs, catégorie,
+ * statut, tri, pagination et position de défilement. (Le magasin est un état
+ * GLOBAL — `useCurrentStoreId` — déjà persistant, il n'est pas dupliqué ici.)
  *
- * - `sessionStorage` : le contexte survit aux allers-retours fiche↔catalogue
- *   et au refresh, mais pas à la fermeture de l'onglet (comportement voulu :
- *   une nouvelle session repart sur le défaut « Statut : Actif »).
- * - Fiche ouverte en accès direct (lien profond, nouvelle session) → aucun
- *   contexte → le catalogue s'ouvre sur son défaut (Statut : Actif).
+ * CONSOMMATION UNIQUE (exigence owner) : le contexte n'est écrit QU'AU MOMENT de
+ * quitter la liste vers une fiche (`saveCatalogContext` dans `goToProduct`), et
+ * il est LU-PUIS-SUPPRIMÉ en un seul geste au montage du catalogue
+ * (`consumeCatalogContext`). Il n'existe donc que le temps d'UN aller-retour
+ * fiche → catalogue. Conséquences voulues :
+ *  - un accès DIRECT ultérieur au catalogue (menu, lien, refresh) dans le même
+ *    onglet ne retrouve AUCUN contexte → défauts, dont « Statut : Actif » ;
+ *  - il n'y a pas de persistance continue : rien ne peut « réapparaître » plus
+ *    tard.
  * - Données corrompues → null (jamais d'exception vers l'UI).
  */
 
@@ -88,4 +92,18 @@ export function clearCatalogContext(): void {
   } catch {
     /* ignore */
   }
+}
+
+/**
+ * Lit le contexte PUIS le supprime, atomiquement (usage unique). C'est la SEULE
+ * voie de restauration au montage du catalogue : après ce geste, un accès
+ * direct ultérieur dans le même onglet ne retrouve rien. Retourne null si aucun
+ * contexte (ou corrompu) — le catalogue applique alors ses défauts.
+ */
+export function consumeCatalogContext(): CatalogContext | null {
+  const ctx = loadCatalogContext();
+  // Suppression inconditionnelle : même un contexte corrompu (→ ctx null) est
+  // effacé, pour qu'un résidu illisible ne « colle » pas à l'onglet.
+  clearCatalogContext();
+  return ctx;
 }

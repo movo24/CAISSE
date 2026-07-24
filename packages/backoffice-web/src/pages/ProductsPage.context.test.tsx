@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import React from 'react';
 import { render, screen, waitFor, cleanup } from '@testing-library/react';
+import { loadCatalogContext } from '../utils/catalogContext';
 import { MemoryRouter } from 'react-router-dom';
 
 /**
@@ -90,5 +91,46 @@ describe('Catalogue — restauration du contexte de session', () => {
       (el) => (el as HTMLSelectElement).value === 'active',
     );
     expect(statusSelect).toBeTruthy();
+  });
+
+  it('CONSOMMATION UNIQUE : le contexte est effacé dès le montage (sessionStorage vidé)', async () => {
+    saveCatalogContext({
+      search: 'coca', fStatus: 'inactive', fBrand: '', fSupplier: '',
+      fCategory: '', fTax: '', fOutOfStock: false, fBelowThreshold: false,
+      fNoImage: false, fNoSupplier: false, fNoCategory: false,
+      sortBy: 'name', sortDir: 'ASC', page: 2, scrollY: 0,
+    });
+    renderList();
+    await waitFor(() => expect(listMock).toHaveBeenCalled());
+    // Dès le montage, le contexte a été CONSOMMÉ → plus rien en session.
+    await waitFor(() => expect(loadCatalogContext()).toBeNull());
+  });
+
+  it('RÉGRESSION owner : accès direct APRÈS un retour de fiche ne réapplique PAS l’ancien contexte', async () => {
+    // 1) Retour de fiche : contexte présent → restauré (page 3, statut inactive).
+    saveCatalogContext({
+      search: 'zzz', fStatus: 'inactive', fBrand: '', fSupplier: '',
+      fCategory: '', fTax: '', fOutOfStock: false, fBelowThreshold: false,
+      fNoImage: false, fNoSupplier: false, fNoCategory: false,
+      sortBy: 'name', sortDir: 'ASC', page: 3, scrollY: 0,
+    });
+    const first = renderList();
+    await waitFor(() => expect(listMock).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 400));
+    expect(listMock.mock.calls.at(-1)![0]).toMatchObject({ status: 'inactive', page: 3 });
+
+    // 2) L'utilisateur quitte le catalogue puis y revient EN ACCÈS DIRECT
+    //    (démontage + remontage, même onglet, SANS repasser par une fiche).
+    first.unmount();
+    listMock.mockClear();
+    const second = render(
+      <MemoryRouter initialEntries={['/products']}>
+        <ProductsPage />
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(listMock).toHaveBeenCalled());
+    // Aucun ancien contexte : retour aux défauts (Statut : Actif, page 1).
+    expect(listMock.mock.calls.at(-1)![0]).toMatchObject({ status: 'active', page: 1 });
+    second.unmount();
   });
 });

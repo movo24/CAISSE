@@ -133,16 +133,26 @@ describe('Fiche produit — retour au catalogue après enregistrement', () => {
     expect(screen.queryByText('page-catalogue')).toBeNull();
   });
 
-  it('création (wizard) : publication réussie → confirmation puis retour au catalogue', async () => {
-    updateMock.mockResolvedValue({ data: { ...PRODUCT, status: 'active' } });
-    // Brouillon créé par le wizard → route d'édition ?wizard=1, dernière étape
-    // (récap — pas de champ nom : on attend directement le bouton de publication).
+  it('publication (wizard) : le serveur CONFIRME la dispo caisse (isActive+active) → « publié en caisse »', async () => {
+    updateMock.mockResolvedValue({ data: { ...PRODUCT, isActive: true, status: 'active' } });
     renderEdit('/products/p1/edit?wizard=1&step=9');
     const publishBtn = await screen.findByRole('button', { name: /Valider et publier en caisse/ }, { timeout: 2000 });
     fireEvent.click(publishBtn);
     await screen.findByText(/Produit validé et publié en caisse/);
     expect(updateMock).toHaveBeenCalledTimes(1);
     expect(updateMock.mock.calls[0][1]).toMatchObject({ status: 'active' });
+    await waitFor(() => expect(screen.getByText('page-catalogue')).toBeTruthy(), { timeout: 2500 });
+  });
+
+  it('publication (wizard) : serveur NON confirmé (status pending / isActive false) → « enregistré », JAMAIS « publié en caisse »', async () => {
+    // Le serveur a bien enregistré mais NE confirme PAS la disponibilité caisse
+    // (ex. modération : pending_validation). On ne doit pas annoncer une synchro POS.
+    updateMock.mockResolvedValue({ data: { ...PRODUCT, isActive: false, status: 'pending_validation' } });
+    renderEdit('/products/p1/edit?wizard=1&step=9');
+    const publishBtn = await screen.findByRole('button', { name: /Valider et publier en caisse/ }, { timeout: 2000 });
+    fireEvent.click(publishBtn);
+    await screen.findByText(/Produit validé et enregistré/);
+    expect(screen.queryByText(/publié en caisse/)).toBeNull();
     await waitFor(() => expect(screen.getByText('page-catalogue')).toBeTruthy(), { timeout: 2500 });
   });
 });
