@@ -518,10 +518,22 @@ export const promosApi = {
 export const stockApi = {
   alerts: (storeId: string) =>
     api.get('/stock/alerts', { params: { storeId } }),
-  adjust: (productId: string, data: { quantity: number; reason: string }) =>
+  adjust: (productId: string, data: { quantity: number; reason: string; mode?: 'absolute' | 'delta' }) =>
     api.post(`/stock/${productId}/adjust`, data),
   updateDefaultThresholds: (data: { alertThreshold: number; criticalThreshold: number }) =>
     api.put('/stock/default-thresholds', data),
+};
+
+// ---------------------------------------------------------------------------
+// Anomalies de stock (chantier 4) — ventes autorisées malgré indisponibilité
+// ---------------------------------------------------------------------------
+export const stockAnomaliesApi = {
+  list: (storeId: string, params?: { status?: 'a_controler' | 'controlee'; limit?: number; offset?: number }) =>
+    api.get('/stock-anomalies', { params: { storeId, ...params } }),
+  pendingCount: (storeId: string) =>
+    api.get('/stock-anomalies/pending-count', { params: { storeId } }),
+  control: (id: string, justification: string, storeId: string) =>
+    api.patch(`/stock-anomalies/${id}/control`, { justification, storeId }),
 };
 
 // ---------------------------------------------------------------------------
