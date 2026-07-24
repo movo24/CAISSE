@@ -17,6 +17,36 @@ export function productDisplayName(p: DisplayableProduct): string {
   return short !== '' ? short : p.name;
 }
 
+/* ── Avatar de repli (quand aucune photo produit) — partagé POSPage + panier ── */
+
+/** Initiales (2 lettres) d'un libellé, pour l'avatar de repli. */
+export function initials(name: string): string {
+  return (name || '')
+    .split(' ')
+    .map((w) => w[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2);
+}
+
+const AVATAR_COLORS = [
+  'from-rose-100 to-rose-200 text-rose-600',
+  'from-blue-100 to-blue-200 text-blue-600',
+  'from-amber-100 to-amber-200 text-amber-600',
+  'from-emerald-100 to-emerald-200 text-emerald-600',
+  'from-violet-100 to-violet-200 text-violet-600',
+  'from-cyan-100 to-cyan-200 text-cyan-600',
+  'from-pink-100 to-pink-200 text-pink-600',
+  'from-lime-100 to-lime-200 text-lime-600',
+];
+
+/** Couleur d'avatar déterministe d'après le libellé (stable pour un même nom). */
+export function avatarColor(name: string): string {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+}
+
 export interface SearchableProduct extends DisplayableProduct {
   ean: string;
   description?: string | null;

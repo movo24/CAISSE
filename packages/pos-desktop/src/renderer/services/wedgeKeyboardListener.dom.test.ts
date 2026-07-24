@@ -160,3 +160,67 @@ describe('Douchette clavier-wedge — comportement DOM réel (champ focalisé)',
     }
   });
 });
+
+/**
+ * P0 terrain 2026-07-24 (CHARBON BLACK COCO, E655) : sur l'écran de vente, AUCUN
+ * champ n'a le focus. Le scan doit fonctionner SANS clic préalable, MÊME si la
+ * douchette envoie plus lentement que le seuil de rafale (le mode « aucun champ
+ * = scanner certain » n'applique aucun seuil de vitesse).
+ */
+describe('Douchette — mode « aucun champ focalisé = scanner certain »', () => {
+  /** Tape sur le DOCUMENT (aucun champ focalisé) avec un écart donné, puis Entrée. */
+  function typeNoField(str: string, gapMs: number, terminator: string | null = 'Enter'): KeyboardEvent | null {
+    input.blur();                 // aucun champ éditable focalisé
+    document.body.focus?.();
+    let last: KeyboardEvent | null = null;
+    for (const ch of str) {
+      clock += gapMs;
+      last = new KeyboardEvent('keydown', { key: ch, bubbles: true, cancelable: true });
+      document.body.dispatchEvent(last);
+    }
+    if (terminator) {
+      clock += gapMs;
+      last = new KeyboardEvent('keydown', { key: terminator, bubbles: true, cancelable: true });
+      document.body.dispatchEvent(last);
+    }
+    return last;
+  }
+
+  it('scan LENT (200 ms/car, > seuil) sans focus → reconnu (le bug « marche seulement avec focus »)', () => {
+    typeNoField('4260421350771', 200); // E655 lente, bien au-delà de maxInterKeyMs
+    expect(onBarcode).toHaveBeenCalledTimes(1);
+    expect(onBarcode.mock.calls[0][0]).toMatchObject({ code: '4260421350771', format: 'EAN-13' });
+  });
+
+  it('sans focus, aucun caractère n\'est laissé dans un champ (rien n\'est focalisé)', () => {
+    typeNoField('4260421350771', 150);
+    expect(input.value).toBe('');
+    expect(onBarcode).toHaveBeenCalledTimes(1);
+  });
+
+  it('deux scans successifs du même code sans focus → deux émissions (→ quantité +1 côté panier)', () => {
+    typeNoField('4260421350771', 120);
+    clock += 500;
+    typeNoField('4260421350771', 120);
+    expect(onBarcode).toHaveBeenCalledTimes(2);
+  });
+
+  it('suffixe Tab sans focus → reconnu', () => {
+    typeNoField('4260421350771', 180, 'Tab');
+    expect(onBarcode.mock.calls[0][0]).toMatchObject({ code: '4260421350771' });
+  });
+
+  it('sans suffixe (silence) sans focus → émis après le flush « aucun champ »', () => {
+    vi.useFakeTimers();
+    try {
+      typeNoField('4260421350771', 100, null); // pas de terminateur
+      expect(onBarcode).not.toHaveBeenCalled();
+      clock += 1000;
+      vi.advanceTimersByTime(400); // > noFieldFlushMs (300)
+      expect(onBarcode).toHaveBeenCalledTimes(1);
+      expect(onBarcode.mock.calls[0][0]).toMatchObject({ code: '4260421350771' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

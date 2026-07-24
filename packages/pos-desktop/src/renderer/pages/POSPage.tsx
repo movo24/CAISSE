@@ -65,29 +65,10 @@ import { CustomerDisplayPublisher } from '../components/CustomerDisplayPublisher
 import { UpdateBanner } from '../components/UpdateBanner';
 import { ActiveCashierBanner } from '../components/ActiveCashierBanner';
 import { ScoreDetailModal } from '../components/ScoreDetailModal';
-import { productDisplayName, productMatchesQuery } from '../utils/productDisplay';
+import { productDisplayName, productMatchesQuery, initials, avatarColor } from '../utils/productDisplay';
+import { CartItemThumb } from '../components/CartItemThumb';
 
 /* ── Helpers ── */
-
-function initials(name: string) {
-  return name.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2);
-}
-
-const avatarColors = [
-  'from-rose-100 to-rose-200 text-rose-600',
-  'from-blue-100 to-blue-200 text-blue-600',
-  'from-amber-100 to-amber-200 text-amber-600',
-  'from-emerald-100 to-emerald-200 text-emerald-600',
-  'from-violet-100 to-violet-200 text-violet-600',
-  'from-cyan-100 to-cyan-200 text-cyan-600',
-  'from-pink-100 to-pink-200 text-pink-600',
-  'from-lime-100 to-lime-200 text-lime-600',
-];
-function avatarColor(name: string) {
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
-  return avatarColors[Math.abs(hash) % avatarColors.length];
-}
 
 /* ── Product type (from backend API) ── */
 
@@ -605,6 +586,7 @@ export function POSPage() {
         name: `${productDisplayName(product)} (${kg.toFixed(3)} kg)`,
         unitPriceMinorUnits: priceMinor,
         taxRate: Number.isFinite(Number(product.taxRate)) ? Number(product.taxRate) : undefined,
+        imageUrl: product.imageUrl ?? null,
       });
     } else {
       store.addToCart({
@@ -613,6 +595,7 @@ export function POSPage() {
         name: productDisplayName(product),
         unitPriceMinorUnits: product.priceMinorUnits,
         taxRate: Number.isFinite(Number(product.taxRate)) ? Number(product.taxRate) : undefined,
+        imageUrl: product.imageUrl ?? null,
       });
     }
     setScanValue('');
@@ -689,7 +672,7 @@ export function POSPage() {
             flashScannerStatus('refused', 'Produit désactivé');
           } else {
             scanTrace('result_found', value.trim(), { name: res.data.name });
-            store.addToCart({ productId: res.data.id, ean: res.data.ean, name: productDisplayName(res.data), unitPriceMinorUnits: res.data.priceMinorUnits, taxRate: Number.isFinite(Number(res.data.taxRate)) ? Number(res.data.taxRate) : undefined });
+            store.addToCart({ productId: res.data.id, ean: res.data.ean, name: productDisplayName(res.data), unitPriceMinorUnits: res.data.priceMinorUnits, taxRate: Number.isFinite(Number(res.data.taxRate)) ? Number(res.data.taxRate) : undefined, imageUrl: res.data.imageUrl ?? null });
             flashScannerStatus('added', `${productDisplayName(res.data)} — ${(res.data.priceMinorUnits / 100).toFixed(2)} €`);
           }
         } else {
@@ -1682,7 +1665,7 @@ export function POSPage() {
                   >
                     {/* Produit */}
                     <div className="flex items-center gap-3.5 min-w-0">
-                      <div className={`product-avatar bg-gradient-to-br ${avatarColor(item.name)} flex-shrink-0`}>{initials(item.name)}</div>
+                      <CartItemThumb imageUrl={item.imageUrl} name={item.name} />
                       <div className="min-w-0">
                         <p className={`font-semibold truncate text-pos-text ${device.isTouch ? 'text-base' : 'text-[15px]'}`}>{item.name}</p>
                         <p className="text-xs text-pos-muted font-mono mt-0.5 truncate">{item.ean}</p>

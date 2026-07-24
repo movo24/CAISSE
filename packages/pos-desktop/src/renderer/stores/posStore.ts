@@ -20,6 +20,8 @@ export interface CartItem {
   promoName?: string;
   /** Taux de TVA du produit (%) — pour la ventilation TVA du ticket. */
   taxRate?: number;
+  /** Photo produit (data-URL persistée) — affichée dans la ligne du panier. */
+  imageUrl?: string | null;
 }
 
 interface Employee {
