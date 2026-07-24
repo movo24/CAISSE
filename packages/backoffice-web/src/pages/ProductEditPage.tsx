@@ -20,6 +20,7 @@ import {
   tabOfField, labelOfField, type FicheErrors, type FicheFormShape,
 } from '../utils/ficheValidation';
 import { productCodeIssue, PRODUCT_CODE_ISSUE_MESSAGE, isWesleyCode } from '../utils/gtin';
+import { confirmsPosAvailability } from './productForm';
 
 /**
  * Fiche produit PROFESSIONNELLE (page complète — remplace la popup minimaliste).
@@ -505,6 +506,22 @@ export function ProductEditPage() {
     };
   };
 
+  /**
+   * Règle UX (owner, 2026-07-24) : succès CONFIRMÉ par le serveur → courte
+   * confirmation visuelle « Produit validé et enregistré » puis retour
+   * AUTOMATIQUE à Catalogue → Produits (le contexte — recherche, filtres,
+   * pagination, défilement — est restauré par la liste via catalogContext).
+   * Le timer est nettoyé au démontage : jamais de navigation fantôme.
+   */
+  const returnTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (returnTimerRef.current) clearTimeout(returnTimerRef.current);
+  }, []);
+  const scheduleReturnToCatalog = (delayMs = 900) => {
+    if (returnTimerRef.current) clearTimeout(returnTimerRef.current);
+    returnTimerRef.current = setTimeout(() => navigate('/products'), delayMs);
+  };
+
   const save = async () => {
     setError(null); setSaved(false);
     // Validation client complète : chaque problème est rattaché à SON champ,
@@ -527,15 +544,20 @@ export function ProductEditPage() {
           ...common,
           reason: priceChanged ? (reason.trim() || 'Fiche produit — modification prix') : undefined,
         } as any);
-        setSaved(true); load();
+        // Succès serveur confirmé : confirmation visible puis retour au catalogue.
+        setSaved(true);
+        scheduleReturnToCatalog();
       } else {
-        const r = await productsApi.create({
+        await productsApi.create({
           ...common,
           ean: form.ean.trim(),
           // Affectation magasin explicite (admin) — cause racine du bug sync.
           ...(isAdmin && storeId ? { storeId } : {}),
         } as any);
-        navigate(`/products/${r.data.id}/edit`, { replace: true });
+        // Création confirmée : même règle qu'en modification — confirmation
+        // puis retour au catalogue (plus de détour par la page d'édition).
+        setSaved(true);
+        scheduleReturnToCatalog();
       }
     } catch (e: any) {
       // Mappe la réponse serveur (400/409/…) vers les champs du formulaire :
@@ -677,11 +699,17 @@ export function ProductEditPage() {
     setPublishing(true);
     setError(null);
     try {
-      await productsApi.update(id, { ...buildCommonPayload(), status: 'active' } as any);
-      setPublished(true);
-      setWizardMode(false);
-      await load();
-      setTab('general');
+      const r = await productsApi.update(id, { ...buildCommonPayload(), status: 'active' } as any);
+      // Honnêteté (owner) : « publié en caisse » UNIQUEMENT si le SERVEUR confirme
+      // la disponibilité POS (isActive === true ET status === 'active' dans SA
+      // réponse), jamais parce qu'on a demandé `active`. Sinon on n'annonce que
+      // l'enregistrement — pas de synchro caisse non vérifiée.
+      if (confirmsPosAvailability(r?.data)) {
+        setPublished(true);
+      } else {
+        setSaved(true);
+      }
+      scheduleReturnToCatalog(1200);
     } catch (e: any) {
       const mapped = mapApiError(e?.response?.data);
       setFieldErrors(mapped.fieldErrors);
@@ -1041,10 +1069,14 @@ export function ProductEditPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {saved && <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600"><CheckCircle2 size={14} /> Enregistré</span>}
+          {saved && (
+            <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600">
+              <CheckCircle2 size={14} /> Produit validé et enregistré — retour au catalogue…
+            </span>
+          )}
           {published && (
             <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600">
-              <CheckCircle2 size={14} /> Publié en caisse — synchronisation automatique (≤ 15 s) ou bouton « PRODUITS » sur la caisse
+              <CheckCircle2 size={14} /> Produit validé et publié en caisse — retour au catalogue…
             </span>
           )}
           {wizardMode ? (

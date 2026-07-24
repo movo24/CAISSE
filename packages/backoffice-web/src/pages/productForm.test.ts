@@ -3,6 +3,7 @@ import {
   validateProductForm,
   buildCreatePayload,
   buildUpdatePayload,
+  confirmsPosAvailability,
   type ProductFormValues,
 } from './productForm';
 
@@ -157,5 +158,26 @@ describe('extractFieldErrors — plus de générique muet', () => {
   it('apiErrorMessage relaie les messages métier précis (ex. EAN déjà utilisé)', () => {
     const msg = apiErrorMessage({ response: { data: { message: 'Un produit existe déjà avec ce code-barres (123) : Coca.' } } });
     expect(msg).toMatch(/existe déjà/);
+  });
+});
+
+describe('confirmsPosAvailability — honnêteté du message « publié en caisse »', () => {
+  it('serveur confirme isActive=true ET status=active → disponible en caisse', () => {
+    expect(confirmsPosAvailability({ id: 'p1', isActive: true, status: 'active' })).toBe(true);
+  });
+
+  it('enregistré mais NON disponible caisse : status draft / pending / isActive false → false', () => {
+    expect(confirmsPosAvailability({ isActive: true, status: 'draft' })).toBe(false);
+    expect(confirmsPosAvailability({ isActive: true, status: 'pending_validation' })).toBe(false);
+    expect(confirmsPosAvailability({ isActive: false, status: 'active' })).toBe(false);
+    expect(confirmsPosAvailability({ status: 'active' })).toBe(false); // isActive absent
+  });
+
+  it('réponse vide / non-objet / valeurs truthy non strictes → false (jamais d’annonce non vérifiée)', () => {
+    expect(confirmsPosAvailability(null)).toBe(false);
+    expect(confirmsPosAvailability(undefined)).toBe(false);
+    expect(confirmsPosAvailability('active')).toBe(false);
+    expect(confirmsPosAvailability({ isActive: 'true', status: 'active' })).toBe(false); // string, pas boolean
+    expect(confirmsPosAvailability({ isActive: 1, status: 'active' })).toBe(false);
   });
 });
