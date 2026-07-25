@@ -237,6 +237,22 @@ describe('Douchette — mode « aucun champ focalisé = scanner certain »', () 
  * sous minLength → aucun scan émis. Aucun test n'émettait de modificateur, d'où
  * trois correctifs verts en CI et toujours cassés sur la caisse.
  */
+/**
+ * Relevés BRUTS de la sonde passive posée sur la caisse Windows (scanner Lenvii
+ * E655 réel, application v1.8.3 officielle non modifiée, code CHARBON BLACK COCO
+ * 4260421350771). Couples [touche, écart réel en ms] tels qu'enregistrés.
+ * Noter le `Shift` réémis en 13ᵉ position, au milieu du code.
+ */
+const RELEVE_HORS_FOCUS: ReadonlyArray<readonly [string, number]> = [
+  ['Shift', 0], ['4', 5], ['2', 1], ['6', 4], ['0', 3], ['4', 7], ['2', 5], ['1', 3],
+  ['3', 3], ['5', 17], ['0', 3], ['7', 5], ['Shift', 8], ['7', 2], ['1', 3], ['Enter', 10],
+];
+
+const RELEVE_DANS_RECHERCHE: ReadonlyArray<readonly [string, number]> = [
+  ['Shift', 0], ['4', 13], ['2', 18], ['6', 7], ['0', 8], ['4', 8], ['2', 6], ['1', 6],
+  ['3', 7], ['5', 6], ['0', 6], ['7', 6], ['Shift', 5], ['7', 25], ['1', 4], ['Enter', 13],
+];
+
 describe('Douchette — modificateurs émis PENDANT la rafale (séquence réelle E655)', () => {
   /** Rejoue la séquence exacte du matériel : Shift initial, shiftKey sur chaque
    *  caractère, et un Shift réémis avant l'index `midShiftAt`. */
@@ -333,6 +349,56 @@ describe('Douchette — modificateurs émis PENDANT la rafale (séquence réelle
     clock += 5;
     document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Shift', shiftKey: true, bubbles: true, cancelable: true }));
     expect(onBarcode).not.toHaveBeenCalled();
+  });
+
+  it('séquence PHYSIQUE capturée le 2026-07-26 — hors focus → scan complet, une seule fois', () => {
+    // Relevé brut de la sonde passive sur la caisse (scanner réel, v1.8.3 intacte,
+    // `activeElement = BODY`). Couples [touche, écart réel en ms].
+    input.blur();
+    document.body.focus?.();
+    for (const [key, gap] of RELEVE_HORS_FOCUS) {
+      clock += gap;
+      document.body.dispatchEvent(
+        new KeyboardEvent('keydown', { key, shiftKey: key !== 'Enter', bubbles: true, cancelable: true }),
+      );
+    }
+    expect(onBarcode).toHaveBeenCalledTimes(1);
+    expect(onBarcode.mock.calls[0][0]).toMatchObject({ code: '4260421350771', format: 'EAN-13' });
+  });
+
+  it('séquence PHYSIQUE capturée le 2026-07-26 — champ focalisé → scan émis, champ NON pollué', () => {
+    // Même relevé, mais curseur dans « Recherche produit ». Avant correctif, le
+    // Shift médian déversait « 42604213507 » dans le champ (trace CHAMP à
+    // 01:10:26.651) et aucun scan n'était émis : le produit n'arrivait au panier
+    // que par le gestionnaire Entrée du champ de recherche. Désormais le chemin
+    // douchette émet un vrai scan et le champ reste intact.
+    input.focus();
+    for (const [key, gap] of RELEVE_DANS_RECHERCHE) {
+      clock += gap;
+      input.dispatchEvent(
+        new KeyboardEvent('keydown', { key, shiftKey: key !== 'Enter', bubbles: true, cancelable: true }),
+      );
+    }
+    expect(onBarcode).toHaveBeenCalledTimes(1);
+    expect(onBarcode.mock.calls[0][0]).toMatchObject({ code: '4260421350771' });
+    expect(input.value).toBe(''); // aucun caractère déversé dans la recherche
+    expect(reachedField).toBe(0);
+  });
+
+  it('trois scans physiques successifs hors focus → exactement trois émissions', () => {
+    for (let n = 0; n < 3; n++) {
+      input.blur();
+      document.body.focus?.();
+      for (const [key, gap] of RELEVE_HORS_FOCUS) {
+        clock += gap;
+        document.body.dispatchEvent(
+          new KeyboardEvent('keydown', { key, shiftKey: key !== 'Enter', bubbles: true, cancelable: true }),
+        );
+      }
+      clock += 600; // re-présentation de l'article
+    }
+    expect(onBarcode).toHaveBeenCalledTimes(3);
+    for (const call of onBarcode.mock.calls) expect(call[0].code).toBe('4260421350771');
   });
 
   it('la frappe humaine avec Shift (majuscules) reste intacte dans le champ', () => {
