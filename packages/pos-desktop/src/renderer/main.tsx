@@ -9,6 +9,7 @@ import { LoginPage } from './pages/LoginPage';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { EnrollmentGate } from './components/EnrollmentGate';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { ScanDiagnosticHUD } from './components/ScanDiagnosticHUD';
 import { resolveMachineId } from './services/machineIdentity';
 import './styles/globals.css';
 
@@ -38,6 +39,10 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
+    {/* HUD d'observabilité douchette (v1.8.3) — visible sans DevTools sur la
+        caisse packagée. Hors des Routes → présent sur tous les écrans. À retirer
+        après validation terrain du scanner. */}
+    <ScanDiagnosticHUD />
     </ErrorBoundary>
   </React.StrictMode>,
 );

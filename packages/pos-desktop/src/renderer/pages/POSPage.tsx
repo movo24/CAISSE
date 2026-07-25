@@ -60,6 +60,7 @@ import { BonAchatModal } from '../components/pos/BonAchatModal';
 import { WesleysWordmark } from '../components/WesleysWordmark';
 import { peripheralBridge } from '../services/peripheralBridge';
 import { attachWedgeKeyboardListener } from '../services/wedgeKeyboardListener';
+import { setScanDiagAttached, reportScanDiagScan } from '../services/scanDiag';
 import { shouldAcceptWedgeScan } from '../services/wedgeScanGate';
 import { isDuplicateScan, validateScanCode, type ScanDedupState } from '../services/scanResolver';
 import { scanTrace } from '../services/scanTrace';
@@ -360,12 +361,15 @@ export function POSPage() {
       // Diagnostic terrain (temporaire) : prouve la réception réelle sur la caisse.
       // eslint-disable-next-line no-console
       console.info('[SCAN-DIAG] scan reçu', JSON.stringify({ code: b.code, format: b.format, active: (document.activeElement as Element | null)?.tagName ?? null }));
+      reportScanDiagScan(b.code); // → HUD visible à l'écran (sans DevTools)
       wedgeScanRef.current(b.code);
     });
+    setScanDiagAttached(true); // → HUD : « écoute attachée = OUI »
     // eslint-disable-next-line no-console
     console.info('[SCAN-DIAG] écoute douchette ATTACHÉE au document (capture) — indépendante du focus');
     return () => {
       detach();
+      setScanDiagAttached(false);
       // eslint-disable-next-line no-console
       console.info('[SCAN-DIAG] écoute douchette détachée (démontage écran de vente)');
     };
