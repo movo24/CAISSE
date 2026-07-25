@@ -59,6 +59,7 @@ import { RemiseModal } from '../components/pos/RemiseModal';
 import { BonAchatModal } from '../components/pos/BonAchatModal';
 import { WesleysWordmark } from '../components/WesleysWordmark';
 import { peripheralBridge } from '../services/peripheralBridge';
+import { attachWedgeKeyboardListener } from '../services/wedgeKeyboardListener';
 import { shouldAcceptWedgeScan } from '../services/wedgeScanGate';
 import { isDuplicateScan, validateScanCode, type ScanDedupState } from '../services/scanResolver';
 import { scanTrace } from '../services/scanTrace';
@@ -342,13 +343,32 @@ export function POSPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Abonnement UNIQUE à la douchette wedge globale (au montage). Le callback
-  // délègue à `wedgeScanRef` (toujours à jour) ; `startBarcodeListener` n'attache
-  // le handler clavier que si le scanner est de type keyboard_wedge (poste
-  // desktop/Windows), et ignore les scans tapés dans un champ de saisie.
+  // ── Écoute globale de la douchette — capture UNIQUE, INCONDITIONNELLE ──
+  // P0 terrain (v1.8.1) : sur la vraie caisse, l'ancien chemin
+  // `peripheralBridge.startBarcodeListener` n'attachait PAS l'écoute (elle est
+  // gardée par `scanner.type !== 'camera'`, posé par `init()` de façon
+  // asynchrone → course, ou détachée par `detectScanner`/`destroy`). Résultat :
+  // sans focus dans Recherche, aucun événement n'était capté → « rien ne se
+  // passe ». On attache donc l'écoute DIRECTEMENT au `document` (phase capture),
+  // pour toute la durée de l'écran de vente, SANS dépendre du type détecté ni du
+  // cycle de vie de `peripheralBridge`. C'est la SOURCE UNIQUE de la douchette
+  // (le seul appelant de `startBarcodeListener` était ici ; le scan caméra iPad
+  // vit dans `ScannerTool`, chemin distinct). Le buffer-avant-insertion garantit
+  // qu'aucun caractère ne pollue le champ focalisé, focus ou pas.
   useEffect(() => {
-    const off = peripheralBridge.startBarcodeListener((r) => wedgeScanRef.current(r.code));
-    return off;
+    const detach = attachWedgeKeyboardListener(document, (b) => {
+      // Diagnostic terrain (temporaire) : prouve la réception réelle sur la caisse.
+      // eslint-disable-next-line no-console
+      console.info('[SCAN-DIAG] scan reçu', JSON.stringify({ code: b.code, format: b.format, active: (document.activeElement as Element | null)?.tagName ?? null }));
+      wedgeScanRef.current(b.code);
+    });
+    // eslint-disable-next-line no-console
+    console.info('[SCAN-DIAG] écoute douchette ATTACHÉE au document (capture) — indépendante du focus');
+    return () => {
+      detach();
+      // eslint-disable-next-line no-console
+      console.info('[SCAN-DIAG] écoute douchette détachée (démontage écran de vente)');
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

@@ -51,9 +51,14 @@ describe('shouldAcceptWedgeScan', () => {
 describe('POSPage — câblage de la douchette wedge globale (source guards)', () => {
   const posPage = readFileSync(join(__dirname, '..', 'pages', 'POSPage.tsx'), 'utf8');
 
-  it('le listener global est abonné une seule fois (startBarcodeListener + cleanup)', () => {
-    expect(posPage).toMatch(/peripheralBridge\.startBarcodeListener\(/);
-    expect(posPage).toMatch(/const off = peripheralBridge\.startBarcodeListener/);
+  it('l\'écoute globale est attachée DIRECTEMENT au document (capture), inconditionnelle, avec cleanup', () => {
+    // P0 v1.8.1 : plus de dépendance à peripheralBridge.startBarcodeListener
+    // (gardé par scanner.type → course d\'init/détachement). Attache directe.
+    expect(posPage).toMatch(/attachWedgeKeyboardListener\(document,/);
+    expect(posPage).toMatch(/const detach = attachWedgeKeyboardListener/);
+    expect(posPage).toMatch(/return \(\) => \{\s*detach\(\);/);
+    // L\'ancien ABONNEMENT fragile (call, pas une mention en commentaire) est parti.
+    expect(posPage).not.toMatch(/=\s*peripheralBridge\.startBarcodeListener\(/);
   });
 
   it('les scans globaux sont filtrés par shouldAcceptWedgeScan, dédoublonnés, puis routés vers handleScan', () => {
