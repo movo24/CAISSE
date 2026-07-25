@@ -34,6 +34,15 @@ import { barcodeFormat, isEditableTarget } from './wedgeDecoder';
  * Le seuil `maxInterKeyMs` (et la détection de rafale) ne sert plus qu'à protéger
  * la frappe humaine QUAND un champ est réellement focalisé.
  *
+ * ── Modificateurs pendant la rafale (P0 terrain 2026-07-25, cause racine réelle) ──
+ * La Lenvii E655 émet chaque chiffre avec Shift MAINTENU, et réémet un keydown
+ * « Shift » AU MILIEU de la rafale. Tant que ces modificateurs seuls étaient traités
+ * comme « touche non imprimable », ils vidaient le buffer en plein scan : le code
+ * était tronqué à ses derniers caractères, passait sous `minLength`, et AUCUN scan
+ * n'était émis hors champ. C'est la cause des échecs terrain des v1.7.0 → v1.8.2,
+ * invisible en jsdom car aucun test n'émettait de `Shift`. Les modificateurs seuls
+ * sont désormais ignorés (cf. `MODIFIER_KEYS`) : ils ne rompent plus rien.
+ *
  * Coût honnête : la 1ʳᵉ touche d'une frappe humaine (champ focalisé) est restituée
  * après ~holdMs. Trace `[WEDGE-TIMING]` : les écarts inter-touches réels sont
  * journalisés (mesure terrain de la vraie douchette).
@@ -69,6 +78,21 @@ interface FieldSnapshot {
   start: number;
   end: number;
 }
+
+/**
+ * Touches de MODIFICATION SEULES : jamais des caractères, jamais des terminateurs.
+ * Elles ne doivent JAMAIS rompre une séquence en cours (cf. P0 terrain 2026-07-25).
+ */
+const MODIFIER_KEYS = new Set([
+  'Shift',
+  'Control',
+  'Alt',
+  'Meta',
+  'AltGraph',
+  'CapsLock',
+  'NumLock',
+  'ScrollLock',
+]);
 
 export function attachWedgeKeyboardListener(
   doc: Document,
@@ -172,6 +196,21 @@ export function attachWedgeKeyboardListener(
   };
 
   const handler = (e: KeyboardEvent) => {
+    // ── Modificateurs SEULS : ignorés, sans jamais toucher au buffer ni aux minuteurs.
+    // MESURE TERRAIN 2026-07-25 (Lenvii E655 sur la caisse Windows) : la douchette
+    // maintient Shift enfoncé pendant TOUTE la rafale et réémet un keydown « Shift »
+    // EN COURS de scan (relevé : Shift, 4,2,6,0,4,2,1,3,5,0,7, **Shift**, 7,1, Enter).
+    // Ce Shift intermédiaire tombait jusqu'ici dans la branche « touche non imprimable »
+    // en fin de handler, qui rompt la séquence : le buffer était vidé (et, hors champ,
+    // silencieusement perdu — aucun champ où restituer). Le compteur le montrait :
+    // [WEDGE-TIMING] pos:10 → Shift → pos:1. À l'Entrée il ne restait que « 71 »,
+    // sous minLength (4) → AUCUN scan émis, panier inchangé. Avec un champ focalisé
+    // le même vidage écrivait le code dans la recherche, d'où « ça ne marche que si
+    // on clique d'abord dans Recherche ».
+    // Les caractères, eux, continuent d'arriver normalement (shiftKey inclus) :
+    // majuscules et frappe humaine restent intactes.
+    if (MODIFIER_KEYS.has(e.key)) return;
+
     // Raccourcis : jamais interceptés. Un buffer humain en attente est d'abord restitué.
     if (e.ctrlKey || e.metaKey || e.altKey) {
       if (buffer) replayHuman();
@@ -261,8 +300,10 @@ export function attachWedgeKeyboardListener(
       return;
     }
 
-    // Touche non imprimable (navigation, F-keys, modificateurs seuls) : rompt la
-    // séquence. Un buffer humain en attente est restitué ; la touche passe.
+    // Touche non imprimable (navigation, F-keys, Échap…) : rompt la séquence. Un
+    // buffer humain en attente est restitué ; la touche passe. Les modificateurs
+    // seuls n'arrivent JAMAIS ici (filtrés en tête de handler) : ils font partie
+    // intégrante de la rafale d'une douchette et ne doivent rien interrompre.
     if (buffer) replayHuman();
   };
 
