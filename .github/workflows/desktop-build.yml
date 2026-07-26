@@ -118,12 +118,7 @@ jobs:
         working-directory: packages/pos-desktop
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        # BRANCHE DE TEST UNIQUEMENT — ne doit JAMAIS être fusionnée dans main.
-        # `releaseType=prerelease` force la Release GitHub en pré-release : le
-        # canal stable (app-update.yml → releaseType: release) l'ignore, donc
-        # `latest.yml` de la v1.8.3 reste le manifeste de mise à jour des caisses
-        # et aucune vérification de mise à jour n'est perturbée.
-        run: npx electron-builder --config electron-builder.yml --win --x64 --publish always -c.publish.releaseType=prerelease
+        run: npx electron-builder --config electron-builder.yml --win --x64 --publish always
 
       # ── Distribution B : feed R2 (dépôt privé + auto-update SANS token) ──
       # Activée dès que la variable POS_UPDATE_URL est définie (voir

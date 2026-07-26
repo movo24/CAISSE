@@ -26,7 +26,13 @@ publish:
   - provider: github
     owner: movo24
     repo: CAISSE
-    releaseType: release
+    # BRANCHE DE TEST UNIQUEMENT — jamais fusionnée dans main (main garde `release`).
+    # `prerelease` marque la Release GitHub en pré-release. L'app embarque
+    # app-update.yml avec `releaseType: release` : electron-updater ignore les
+    # pré-releases, donc `latest.yml` de la v1.8.3 reste le manifeste vu par les
+    # caisses et aucune vérification de mise à jour n'est perturbée. La version
+    # 1.8.4-beta.1 alimente par ailleurs le canal pilote (beta.yml), pas latest.
+    releaseType: prerelease
 
 # What goes inside the app bundle. Renderer is the Vite `dist/` output.
 files:
