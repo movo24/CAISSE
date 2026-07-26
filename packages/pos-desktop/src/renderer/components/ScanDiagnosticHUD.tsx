@@ -6,8 +6,10 @@ import {
 } from '../services/scanDiag';
 
 /**
- * HUD d'observabilité douchette (v1.8.3) — panneau discret, coin bas-droit,
- * VISIBLE SANS DevTools sur la caisse packagée. Affiche en temps réel :
+ * HUD d'observabilité douchette — panneau discret, coin bas-droit, MASQUÉ par
+ * défaut (invisible pour le caissier). Réservé aux développeurs/administrateurs :
+ * s'active par option développeur ou raccourci réservé (voir plus bas). Affiche
+ * en temps réel, une fois activé :
  *  - version de l'app (pour confirmer que la caisse tourne bien la bonne build) ;
  *  - écoute douchette attachée (oui/non) ;
  *  - compteur de touches keydown reçues au niveau window (le HUD installe LUI-MÊME
@@ -21,9 +23,28 @@ import {
  *
  * Repliable (clic sur l'en-tête). Additif, réversible, à retirer après validation.
  */
+/**
+ * Le panneau visuel est MASQUÉ par défaut (invisible en caisse normale). Il ne
+ * s'affiche que si le mode diagnostic est activé — soit par une option
+ * développeur (`localStorage['caisse_scan_diag'] = '1'`), soit par un raccourci
+ * RÉSERVÉ (Ctrl+Alt+Shift+D) que ni un caissier ni une douchette ne produisent.
+ * Rien d'autre ne change : l'observabilité (compteur passif, souscription, logs)
+ * reste identique — seul le RENDU de l'encart est conditionné.
+ */
+export const SCAN_DIAG_FLAG = 'caisse_scan_diag';
+
+export function readScanDiagVisible(): boolean {
+  try {
+    return typeof localStorage !== 'undefined' && localStorage.getItem(SCAN_DIAG_FLAG) === '1';
+  } catch {
+    return false;
+  }
+}
+
 export function ScanDiagnosticHUD(): JSX.Element | null {
   const [s, setS] = useState<ScanDiagState | null>(null);
   const [collapsed, setCollapsed] = useState(false);
+  const [visible, setVisible] = useState<boolean>(readScanDiagVisible);
   const version = useRef<string>(
     (typeof window !== 'undefined' &&
       (window as unknown as { posDesktop?: { version?: string } }).posDesktop?.version) ||
@@ -45,7 +66,32 @@ export function ScanDiagnosticHUD(): JSX.Element | null {
 
   useEffect(() => subscribeScanDiag(setS), []);
 
+  // Raccourci RÉSERVÉ d'affichage : Ctrl+Alt+Shift+D bascule la visibilité et la
+  // persiste. Écouteur en phase de bouillonnement, PASSIF (jamais preventDefault
+  // ni stopPropagation) et filtré sur cet accord exact → aucun effet sur la
+  // douchette (qui n'émet que des caractères + Entrée, jamais ces modificateurs)
+  // ni sur la capture globale du scanner (attachée au document, intacte).
+  useEffect(() => {
+    const onToggle = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.altKey && e.shiftKey && (e.key === 'D' || e.key === 'd')) {
+        setVisible((v) => {
+          const next = !v;
+          try {
+            localStorage.setItem(SCAN_DIAG_FLAG, next ? '1' : '0');
+          } catch {
+            /* stockage indisponible : bascule en mémoire pour la session */
+          }
+          return next;
+        });
+      }
+    };
+    window.addEventListener('keydown', onToggle);
+    return () => window.removeEventListener('keydown', onToggle);
+  }, []);
+
   if (!s) return null;
+  // Invisible en utilisation normale (caissier). Seul le mode diagnostic l'affiche.
+  if (!visible) return null;
 
   const box: React.CSSProperties = {
     position: 'fixed',
