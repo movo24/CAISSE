@@ -194,6 +194,16 @@ function createPOSWindow(): void {
     if (input.type === 'keyDown' && input.key === 'F11') {
       posWindow?.setFullScreen(!posWindow.isFullScreen());
     }
+    // Diagnostic terrain (v1.8.3) : F12 ouvre/ferme DevTools MÊME EN PROD, afin de
+    // pouvoir lire les traces [SCAN-DIAG]/[WEDGE-TIMING] sur la caisse packagée
+    // (sinon aucune console n'est accessible). À retirer une fois le scanner validé.
+    if (input.type === 'keyDown' && input.key === 'F12') {
+      const wc = posWindow?.webContents;
+      if (wc) {
+        if (wc.isDevToolsOpened()) wc.closeDevTools();
+        else wc.openDevTools({ mode: 'detach' });
+      }
+    }
   });
 
   // Open external links in the user's browser, never in-app.
