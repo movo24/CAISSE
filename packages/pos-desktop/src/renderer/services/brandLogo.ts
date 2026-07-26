@@ -1,51 +1,45 @@
 /**
- * Logo officiel The Wesley embarqué dans la caisse (asset versionné
- * `wesleys-logo-official.png`) — REPLI de marque pour le ticket papier.
+ * Logo officiel The Wesley pour le TICKET PAPIER — embarqué en data-URL AU BUILD.
+ *
+ * Pourquoi cette forme (correctif prod 2026-07-24) :
+ *  - Le ticket réel est sérialisé en HTML autonome puis imprimé par le main dans
+ *    une fenêtre `data:text/html` isolée (voir main/posPrinting.ts). Dans cette
+ *    fenêtre, SEULE une image en `data:image/...;base64` s'affiche : une URL
+ *    relative/`app://`/`https://` ne résout pas (origine `data:`, ou pas encore
+ *    chargée au moment du `print()`). Le logo DOIT donc être une data-URL.
+ *  - L'ancienne version récupérait l'asset par `fetch()` au runtime (préchargement
+ *    async). En build packagé (protocole `app://`, asset haché séparé) ce fetch
+ *    est fragile et, s'il n'a pas abouti, `getBrandLogoDataUrl()` renvoyait `null`
+ *    → ticket sans logo, silencieusement. On supprime tout le runtime : le logo
+ *    est une CONSTANTE data-URL du code (`wesleyReceiptLogo.ts`), donc dans le
+ *    bundle JS, disponible SYNCHRONEMENT — indépendant de Vite/`app://`/fetch.
  *
  * Source de vérité du logo du ticket : la config magasin du Dashboard
- * (`receiptLogoUrl`). Ce repli embarqué ne sert QUE tant que le magasin n'a
- * pas encore importé son logo : le ticket porte alors le logo officiel de
- * l'enseigne plutôt que rien. Dès que le Dashboard est renseigné, il prime.
- *
- * L'impression HTML passe par une fenêtre `data:text/html` : les URL d'assets
- * relatives n'y résolvent pas → le logo doit être une data-URL. On précharge
- * l'asset au démarrage (fetch → data-URL, une seule fois) et on l'expose en
- * lecture synchrone pour la construction du ticket.
+ * (`receiptLogoUrl`) SI elle est une data-URL imprimable ; sinon ce logo officiel
+ * embarqué. Un `receiptLogoUrl` non conforme ne doit JAMAIS aboutir à « pas de
+ * logo » : il est ignoré au profit du repli embarqué.
  */
-import officialLogoUrl from '../assets/wesleys-logo-official.png';
+import { WESLEY_RECEIPT_LOGO_DATA_URL as officialLogoDataUrl } from '../assets/wesleyReceiptLogo';
 
-let cachedDataUrl: string | null = null;
-let loading: Promise<void> | null = null;
+/**
+ * Une image n'est imprimable dans la fenêtre `data:text/html` que si c'est une
+ * data-URL PNG/JPEG en base64 (même contrat que le rendu dans peripheralBridge).
+ */
+export function isPrintableLogoDataUrl(value: unknown): value is string {
+  return typeof value === 'string' && /^data:image\/(png|jpe?g);base64,/.test(value);
+}
 
-/** Data-URL du logo officiel embarqué (null tant que le préchargement n'a pas abouti). */
+/** Data-URL du logo officiel embarqué (garanti valide, disponible sans I/O). */
 export function getBrandLogoDataUrl(): string | null {
-  return cachedDataUrl;
+  return isPrintableLogoDataUrl(officialLogoDataUrl) ? officialLogoDataUrl : null;
 }
 
-/** Précharge le logo embarqué en data-URL (idempotent, jamais bloquant). */
-export function preloadBrandLogo(): Promise<void> {
-  if (cachedDataUrl) return Promise.resolve();
-  if (loading) return loading;
-  loading = (async () => {
-    try {
-      const res = await fetch(officialLogoUrl);
-      const blob = await res.blob();
-      cachedDataUrl = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result));
-        reader.onerror = () => reject(new Error('read failed'));
-        reader.readAsDataURL(blob);
-      });
-    } catch (e) {
-      // Pas de logo embarqué disponible → le ticket s'imprime sans logo
-      // (jamais bloquant, jamais de faux succès).
-      console.warn('[BRAND_LOGO] préchargement échoué:', e);
-      loading = null;
-    }
-  })();
-  return loading;
+/**
+ * Logo à imprimer sur le ticket : la config magasin si (et seulement si) c'est
+ * une data-URL imprimable, sinon le logo officiel embarqué. Ne renvoie jamais
+ * une valeur non imprimable (qui produirait un ticket sans logo).
+ */
+export function resolveReceiptLogo(configuredLogo?: string | null): string | null {
+  if (isPrintableLogoDataUrl(configuredLogo)) return configuredLogo;
+  return getBrandLogoDataUrl();
 }
-
-// Préchargement au démarrage du renderer — le logo est prêt bien avant la
-// première vente.
-preloadBrandLogo();

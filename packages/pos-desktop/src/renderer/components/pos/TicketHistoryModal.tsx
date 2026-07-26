@@ -9,7 +9,7 @@ import { useRights } from '../../hooks/useRights';
 import { peripheralBridge } from '../../services/peripheralBridge';
 import { buildTicketData } from '../../services/salePeripherals';
 import { buildTicketUrl, makeTicketQrDataUrl } from '../../services/ticketQr';
-import { getBrandLogoDataUrl } from '../../services/brandLogo';
+import { resolveReceiptLogo } from '../../services/brandLogo';
 
 /* ── Helpers ── */
 
@@ -446,7 +446,7 @@ export function TicketHistoryModal({
                       website: (si as any)?.websiteUrl || undefined,
                       nifCaisse: (si as any)?.nifCaisse,
                       softwareVersion: (si as any)?.softwareVersion || undefined,
-                      logoDataUrl: (si as any)?.receiptLogoUrl || getBrandLogoDataUrl(),
+                      logoDataUrl: resolveReceiptLogo((si as any)?.receiptLogoUrl),
                       ticketNumber: duplicatePreview.ticketNumber,
                       date: new Date(duplicatePreview.timestamp),
                       cashierName: duplicatePreview.cashierName,

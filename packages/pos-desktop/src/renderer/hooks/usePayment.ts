@@ -9,7 +9,7 @@ import { posEventBus } from '../services/posEventBus';
 import { peripheralBridge, TicketData } from '../services/peripheralBridge';
 import { buildTicketData } from '../services/salePeripherals';
 import { buildTicketUrl, makeTicketQrDataUrl } from '../services/ticketQr';
-import { getBrandLogoDataUrl } from '../services/brandLogo';
+import { resolveReceiptLogo } from '../services/brandLogo';
 import { useOfflineStore } from '../stores/offlineStore';
 import { computePaymentState, PaymentMethod } from '../services/paymentMachine';
 import { useStripeTerminal } from './useStripeTerminal';
@@ -360,7 +360,7 @@ export function usePayment() {
           headerMessage: storeInfo?.headerMessage || undefined,
           nifCaisse: storeInfo?.nifCaisse,
           softwareVersion: storeInfo?.softwareVersion || undefined,
-          logoDataUrl: storeInfo?.receiptLogoUrl || getBrandLogoDataUrl(),
+          logoDataUrl: resolveReceiptLogo(storeInfo?.receiptLogoUrl),
           ticketNumber,
           date: timestamp,
           cashierName,
