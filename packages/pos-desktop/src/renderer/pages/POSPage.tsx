@@ -1066,14 +1066,26 @@ export function POSPage() {
     if (finalizingRef.current) return;
     finalizingRef.current = true;
 
-    // ── GARDE SESSION (P0) : session de caisse NON OUVERTE → aucun encaissement.
-    // `posSessionOpenFailed` = l'ouverture a échoué (état « NON OUVERTE » du
-    // bandeau) ; on refuse la vente au lieu de la laisser partir sans session.
-    if (store.posSessionOpenFailed && !store.posSession?.id) {
-      setError('Caisse NON OUVERTE — encaissement impossible. Ouvrez la session de caisse avant de vendre.');
-      finalizingRef.current = false;
-      return;
-    }
+    // ── CONTINUITÉ DE CAISSE : session indisponible → on encaisse QUAND MÊME.
+    //
+    // L'ancien garde refusait toute vente quand l'ouverture de session avait
+    // échoué. Mesuré sur la caisse le 2026-07-28 : le serveur de sessions
+    // renvoie HTTP 500 sur `GET /pos-sessions/active` ET `POST /pos-sessions/open`
+    // (jeton, storeId et X-Terminal-Id valides ; les autres modules répondent 200).
+    // Ce garde transformait donc une panne d'un module serveur en arrêt total de
+    // l'encaissement — le magasin ne peut plus vendre.
+    //
+    // Le backend accepte déjà une vente sans session : `sales.session_id` est
+    // NULLABLE et le serveur le dérive du terminal (NULL s'il n'y a pas de
+    // session active). La vente conserve tout le reste : magasin, terminal,
+    // employé, moyens de paiement, montants, horodatages, clé d'idempotence.
+    //
+    // Ces ventes restent identifiables et réconciliables : `session_id IS NULL`
+    // côté serveur (endpoint dédié `GET /pos-sessions/off-session`), et trace
+    // locale `SALE_WITHOUT_POS_SESSION` posée ci-dessous. AUCUN rattachement
+    // rétroactif n'est tenté : il exige un mécanisme serveur audité (règle
+    // « no UPDATE on validated sale »).
+    const venteHorsSession = store.posSessionOpenFailed && !store.posSession?.id;
 
     // ── GARDE COMPTABLE (P0, couche store local) : la somme des montants APPLIQUÉS
     // doit solder EXACTEMENT le ticket. Un surpaiement (ex. 303 € pour 6 €) est
@@ -1126,6 +1138,23 @@ export function POSPage() {
     const idempotencyKey = saleIdemKeyRef.current;
     // Trace latence : clic « Valider » (rétro-daté) puis départ de la requête.
     printChainTrace.mark(idempotencyKey, 'validate_click', { method: primaryMethod, items: itemCount }, tValidateClick);
+    // Vente encaissée SANS session de caisse : trace explicite, posée AVANT
+    // l'envoi (elle survit même si la requête échoue). Rend ces ventes
+    // identifiables pour la réconciliation ultérieure — jamais un rattachement
+    // rétroactif, qui exige un mécanisme serveur audité.
+    if (venteHorsSession) {
+      printChainTrace.mark(idempotencyKey, 'SALE_WITHOUT_POS_SESSION', {
+        raison: 'session de caisse indisponible (ouverture serveur en échec)',
+        terminalId: store.posSession?.terminalId ?? null,
+        employeeId: store.employee?.id ?? null,
+        storeId: store.employee?.storeId ?? null,
+        totalMinorUnits: totalAmount,
+        method: primaryMethod,
+        at: new Date().toISOString(),
+      });
+      // eslint-disable-next-line no-console
+      console.warn('[POS] SALE_WITHOUT_POS_SESSION', idempotencyKey, `${(totalAmount / 100).toFixed(2)} €`);
+    }
     printChainTrace.mark(idempotencyKey, 'sale_request_start');
     try {
       const res = await salesApi.create({
@@ -1768,6 +1797,20 @@ export function POSPage() {
               </div>
             )}
           </div>
+
+          {/* Session de caisse indisponible : l'encaissement CONTINUE, mais la
+              vente ne sera rattachée à aucun comptage de session. Alerte visible
+              en permanence (pas seulement au moment de payer) pour que le
+              caissier le sache AVANT d'encaisser. */}
+          {store.posSessionOpenFailed && !store.posSession?.id && (
+            <div
+              role="status"
+              data-testid="alerte-session-indisponible"
+              className="w-full bg-amber-50 text-amber-800 border border-amber-300 rounded-2xl px-4 py-2.5 text-sm font-medium animate-slide-up"
+            >
+              Session de caisse indisponible — encaissement autorisé, vente non rattachée au comptage de session.
+            </div>
+          )}
 
           {error && (
             <div className="w-full bg-pos-danger/5 text-pos-danger rounded-2xl px-4 py-2.5 text-sm font-medium animate-slide-up">{error}</div>

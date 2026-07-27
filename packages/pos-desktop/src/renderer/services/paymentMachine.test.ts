@@ -179,7 +179,27 @@ describe('POSPage — câblage des gardes de paiement (source)', () => {
   it('garde comptable assertPaymentsApplied dans finalizePayment', () => {
     expect(src).toMatch(/assertPaymentsApplied\(store\.total\(\), payments\)/);
   });
-  it('garde session NON OUVERTE avant encaissement', () => {
-    expect(src).toMatch(/posSessionOpenFailed && !store\.posSession\?\.id/);
+  // ── CONTINUITÉ DE CAISSE (2026-07-28) ──────────────────────────────────────
+  // L'ancien garde REFUSAIT la vente quand l'ouverture de session avait échoué.
+  // Mesuré sur la caisse : le serveur de sessions renvoie 500 → le magasin ne
+  // pouvait plus encaisser du tout. Le backend accepte les ventes sans session
+  // (`sales.session_id` NULLABLE), donc on encaisse et on TRACE.
+  it('n’oppose plus de refus d’encaissement quand la session est indisponible', () => {
+    expect(src).not.toMatch(/encaissement impossible/i);
+    // le drapeau existe toujours, mais comme MARQUEUR, pas comme blocage
+    expect(src).toMatch(/const venteHorsSession = store\.posSessionOpenFailed && !store\.posSession\?\.id/);
+  });
+  it('trace explicitement les ventes encaissées sans session de caisse', () => {
+    expect(src).toMatch(/SALE_WITHOUT_POS_SESSION/);
+  });
+  it('affiche l’alerte orange exacte quand la session est indisponible', () => {
+    expect(src).toMatch(
+      /Session de caisse indisponible — encaissement autorisé, vente non rattachée au comptage de session\./,
+    );
+  });
+  it('ne conditionne pas le bouton Payer à la session de caisse', () => {
+    // le bouton ne dépend que du panier et de l'état d'envoi
+    expect(src).toMatch(/disabled=\{store\.cartItems\.length === 0 \|\| processing\}/);
+    expect(src).not.toMatch(/disabled=\{[^}]*posSession[^}]*\}/);
   });
 });

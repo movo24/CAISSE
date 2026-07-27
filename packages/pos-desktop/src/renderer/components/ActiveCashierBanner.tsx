@@ -103,10 +103,10 @@ export function ActiveCashierBanner({
           {posSession?.openedAt && <> · depuis {hhmm(posSession.openedAt)}</>}
           {!posSession && sessionOpenFailed && (
             <span
-              className="ml-1 inline-flex items-center rounded px-1.5 py-0.5 bg-red-100 text-red-700 font-bold uppercase tracking-wide"
-              title="La session de caisse n'a pas pu être ouverte sur le serveur : les ventes passent mais ne seront rattachées à aucun comptage de caisse. Reconnectez-vous quand le serveur répond."
+              className="ml-1 inline-flex items-center rounded px-1.5 py-0.5 bg-amber-100 text-amber-800 font-bold uppercase tracking-wide"
+              title="Session de caisse indisponible — encaissement autorisé, vente non rattachée au comptage de session. Ces ventes restent identifiables (session_id NULL) et réconciliables une fois le serveur de sessions rétabli ; aucun rattachement rétroactif n'est effectué."
             >
-              Session non ouverte
+              Session indisponible
             </span>
           )}
         </p>
