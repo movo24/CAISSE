@@ -69,6 +69,9 @@ import { Wifi, WifiOff, CloudOff, RefreshCw as SyncIcon, ShieldAlert, Upload, Lo
 import { IPadPOSLayout } from '../components/ipad/IPadPOSLayout';
 import { StockAlertToast } from '../components/StockAlertToast';
 import { SaleGuardsGate } from '../components/SaleGuardsGate';
+import { CashOpenModal } from '../components/pos/CashOpenModal';
+import { SessionReopenPrompt } from '../components/pos/SessionReopenPrompt';
+import { initSessionReopenWatcher } from '../services/sessionReopen';
 import { SalesCockpit } from '../components/SalesCockpit';
 import { AddxWordmark } from '../components/AddxWordmark';
 import { CustomerDisplayPublisher } from '../components/CustomerDisplayPublisher';
@@ -1414,6 +1417,16 @@ export function POSPage() {
     if (m === 'store_credit') return <Ticket size={14} className="text-emerald-500" />;
     return <Layers size={14} className="text-pos-muted" />;
   };
+
+  // ══════ RÉCUPÉRATION DE SESSION (niveau partagé desktop + iPad) ══════
+  // Watcher idempotent : propose la réouverture au retour réseau →online. Le
+  // panneau de réouverture (SessionReopenPrompt) s'affiche AUSSI immédiatement
+  // quand l'ouverture a échoué (posSessionOpenFailed), sans dépendre d'une
+  // future transition offline→online. Hook inconditionnel, avant le split de
+  // layout → couvre desktop ET iPad (initSessionReopenWatcher est idempotent).
+  useEffect(() => {
+    initSessionReopenWatcher();
+  }, []);
 
   // ══════ IPAD LAYOUT ROUTING ══════
   // On iPad, render the dedicated 3-column touch-first layout
@@ -2771,6 +2784,15 @@ export function POSPage() {
 
       {/* ═══════ SALE GUARDS (anti-error, before payment) ═══════ */}
       <SaleGuardsGate />
+
+      {/* ═══════ RÉCUPÉRATION DE SESSION (shell Windows) ═══════ */}
+      {/* Fond de caisse à l'ouverture + panneau de réouverture au retour serveur.
+          Rendus ici pour que le shell desktop dispose des MÊMES contrôles que
+          l'iPad — sans eux, la caisse reste bloquée « SESSION NON OUVERTE » sans
+          moyen de rouvrir. La garde fiscale d'encaissement reste INCHANGÉE :
+          aucune vente n'est possible sans session. */}
+      <CashOpenModal />
+      <SessionReopenPrompt />
     </div>
   );
 }

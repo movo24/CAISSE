@@ -3,6 +3,24 @@ import { Wallet, X } from 'lucide-react';
 import { usePOSStore } from '../../stores/posStore';
 
 /**
+ * Décision PURE : faut-il afficher le panneau de réouverture ?
+ *
+ * Visible dès qu'un caissier est connecté SANS session active, et que SOIT une
+ * proposition réseau existe (`offered`, produite par le watcher sur transition
+ * →online), SOIT l'ouverture de session a échoué (`openFailed`). Ce second cas
+ * rend le panneau visible IMMÉDIATEMENT au retour du serveur, sans dépendre
+ * d'une future transition offline→online — c'est le déblocage terrain.
+ */
+export function shouldShowReopenPrompt(opts: {
+  hasEmployee: boolean;
+  hasSession: boolean;
+  offered: boolean;
+  openFailed: boolean;
+}): boolean {
+  return opts.hasEmployee && !opts.hasSession && (opts.offered || opts.openFailed);
+}
+
+/**
  * Prompt NON BLOQUANT de réouverture de session au retour du serveur.
  *
  * Carte en coin d'écran — PAS de backdrop plein écran : les ventes continuent
@@ -13,6 +31,8 @@ import { usePOSStore } from '../../stores/posStore';
  */
 export function SessionReopenPrompt() {
   const offered = usePOSStore((s) => s.sessionReopenOffered);
+  const openFailed = usePOSStore((s) => s.posSessionOpenFailed);
+  const employee = usePOSStore((s) => s.employee);
   const posSession = usePOSStore((s) => s.posSession);
   const dismiss = usePOSStore((s) => s.dismissSessionReopen);
   const reopen = usePOSStore((s) => s.reopenSessionWithFloat);
@@ -21,7 +41,11 @@ export function SessionReopenPrompt() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  if (!offered || posSession?.id) return null;
+  // Les ventes restent bloquées par la garde fiscale tant qu'aucune session
+  // n'est adoptée — ce panneau EST le moyen de la rouvrir (décision pure ci-dessus).
+  if (!shouldShowReopenPrompt({ hasEmployee: !!employee, hasSession: !!posSession?.id, offered, openFailed })) {
+    return null;
+  }
 
   const parseCentimes = (): number | null => {
     const normalized = value.trim().replace(/\s/g, '').replace(',', '.');
