@@ -154,8 +154,12 @@ export const storesApi = {
 export const productsApi = {
   // Catalogue paginé : catalogSync.fetchFullCatalogue boucle sur les pages —
   // la caisse charge TOUT le catalogue du magasin, plus seulement la 1re page.
+  // `view: 'pos'` → projection légère SANS imageUrl (data-URL base64) : la grille
+  // n'affiche pas l'image et le poll tourne toutes les 15 s → gros gain de
+  // transfert (incident quota Railway). La vignette du panier récupère l'image
+  // à la demande via get(id), mise en cache.
   list: (params?: { page?: number; limit?: number }) =>
-    api.get('/products', { params: { limit: 100, ...params } }),
+    api.get('/products', { params: { limit: 100, view: 'pos', ...params } }),
   get: (id: string) => api.get(`/products/${id}`),
   scan: (ean: string) => api.get(`/products/scan/${ean}`),
   create: (data: any) => api.post('/products', data),

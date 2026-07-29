@@ -32,6 +32,7 @@ import {
 } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import helmet from 'helmet';
+import * as compression from 'compression';
 import * as cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 import { TenantInterceptor } from './common/interceptors/tenant.interceptor';
@@ -300,6 +301,11 @@ async function bootstrap() {
       preload: true,
     },
   }));
+  // Réponses compressées (gzip/brotli via Accept-Encoding) — réduit fortement
+  // le transfert sortant, surtout sur les payloads JSON volumineux (catalogue,
+  // rapports). Seuil 1 Ko : on ne compresse pas les tout petits corps. Purement
+  // additif, transparent pour les clients (le navigateur/axios déballe seul).
+  app.use(compression({ threshold: 1024 }));
   app.use(cookieParser());
   app.enableCors({
     origin: parseCorsOrigin(),

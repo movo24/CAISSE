@@ -1805,7 +1805,7 @@ export function POSPage() {
                   >
                     {/* Produit */}
                     <div className="flex items-center gap-3.5 min-w-0">
-                      <CartItemThumb imageUrl={item.imageUrl} name={item.name} />
+                      <CartItemThumb imageUrl={item.imageUrl} name={item.name} productId={item.productId} />
                       <div className="min-w-0">
                         <p className={`font-semibold truncate text-pos-text ${device.isTouch ? 'text-base' : 'text-[15px]'}`}>{item.name}</p>
                         <p className="text-xs text-pos-muted font-mono mt-0.5 truncate">{item.ean}</p>

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { avatarColor, initials } from '../utils/productDisplay';
+import { getProductImage } from '../services/productImageCache';
 
 /**
  * Vignette d'une ligne du panier : la VRAIE photo produit si disponible, sinon
@@ -20,15 +21,37 @@ export function isRenderableImage(url: string | null | undefined): url is string
   return /^data:image\/[a-z0-9.+-]+;base64,/i.test(v) || /^https?:\/\//i.test(v);
 }
 
-export function CartItemThumb({ imageUrl, name }: { imageUrl?: string | null; name: string }) {
+export function CartItemThumb({
+  imageUrl,
+  name,
+  productId,
+}: {
+  imageUrl?: string | null;
+  name: string;
+  /** Permet de récupérer la photo À LA DEMANDE quand le catalogue léger (view=pos)
+   *  ne l'a pas fournie. Sans productId, comportement historique inchangé. */
+  productId?: string;
+}) {
   const [failed, setFailed] = useState(false);
+  const [lazyUrl, setLazyUrl] = useState<string | null>(null);
   // Une nouvelle image (autre produit sur la même ligne) réarme le rendu photo.
-  useEffect(() => { setFailed(false); }, [imageUrl]);
+  useEffect(() => { setFailed(false); setLazyUrl(null); }, [imageUrl, productId]);
 
-  if (isRenderableImage(imageUrl) && !failed) {
+  // Récupération paresseuse : si aucune image fournie mais un productId connu,
+  // on va chercher la vraie photo (cache mémoire), puis on l'affiche.
+  useEffect(() => {
+    let alive = true;
+    if (!isRenderableImage(imageUrl) && productId) {
+      getProductImage(productId).then((url) => { if (alive) setLazyUrl(url); });
+    }
+    return () => { alive = false; };
+  }, [imageUrl, productId]);
+
+  const effective = isRenderableImage(imageUrl) ? imageUrl : lazyUrl;
+  if (isRenderableImage(effective) && !failed) {
     return (
       <img
-        src={imageUrl}
+        src={effective}
         alt={name}
         onError={() => setFailed(true)}
         className="product-avatar object-cover flex-shrink-0"
