@@ -93,6 +93,8 @@ export class ProductsController {
     @Query('noCategory') noCategory?: string,
     @Query('sortBy') sortBy?: string,
     @Query('sortDir') sortDir?: string,
+    // `view=pos` → projection légère sans imageUrl (poll catalogue caisse, 15 s).
+    @Query('view') view?: string,
   ) {
     const effectiveStoreId = (req.user.role === 'admin' && queryStoreId)
       ? queryStoreId
@@ -113,6 +115,7 @@ export class ProductsController {
       noCategory: noCategory === 'true',
       sortBy,
       sortDir,
+      lightImage: view === 'pos',
     });
   }
 

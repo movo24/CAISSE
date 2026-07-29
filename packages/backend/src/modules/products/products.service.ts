@@ -762,6 +762,14 @@ export class ProductsService {
       sortBy?: string;
       sortDir?: string;
       topLevelOnly?: boolean;
+      /**
+       * Projection légère : exclut `imageUrl` (data-URL base64, colonne `text`
+       * lourde). Utilisée par le poll catalogue POS (toutes les 15 s) — la grille
+       * n'affiche pas l'image, et la vignette du panier la récupère à la demande.
+       * Réduit fortement le transfert sortant (incident quota Railway). Défaut =
+       * false : backoffice et autres appelants gardent l'image.
+       */
+      lightImage?: boolean;
     },
   ): Promise<PaginatedResult<ProductEntity>> {
     const page = options?.page || 1;
@@ -797,6 +805,18 @@ export class ProductsService {
     if (options?.noSupplier) qb.andWhere('p.supplier_id IS NULL');
     if (options?.noCategory) qb.andWhere("(p.category_id IS NULL OR p.category_id = '')");
     if (options?.topLevelOnly) qb.andWhere('p.parent_product_id IS NULL'); // exclude variants
+
+    // Projection légère (POS) : sélectionne toutes les colonnes SAUF `imageUrl`,
+    // dérivé des métadonnées de l'entité (robuste à l'ajout de colonnes — seul
+    // `imageUrl` est exclu). L'image lourde n'est donc jamais lue ni transférée
+    // pour le poll catalogue POS.
+    if (options?.lightImage) {
+      const cols = this.productRepo.metadata.columns
+        .map((c) => c.propertyName)
+        .filter((name) => name !== 'imageUrl')
+        .map((name) => `p.${name}`);
+      qb.select(cols);
+    }
 
     const sortCol = ProductsService.PRODUCT_SORT_COLUMNS[options?.sortBy ?? 'name'] ?? 'p.name';
     const sortDir = options?.sortDir === 'DESC' ? 'DESC' : 'ASC';
