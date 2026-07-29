@@ -1,0 +1,94 @@
+# Diagnostic session POS (Backend B) — LECTURE SEULE.
+# Trace l'ouverture/restauration de session pour un magasin + terminal donnés :
+#   login (PIN) → GET /stores/me → GET /pos-sessions/active (X-Terminal-Id).
+# AUCUNE écriture (pas de POST open ici). Le token n'est JAMAIS affiché (::add-mask::).
+# But : capturer les réponses HTTP + corps EXACTS pour diagnostiquer « caisse non
+# ouverte » après la panne Neon, sans rien modifier.
+name: POS session diag (read-only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      store_code:
+        description: "Code magasin (storeId accepté par login/pin)"
+        required: false
+        default: "WESLEY01"
+      cashier_pin:
+        description: "PIN caissier"
+        required: false
+        default: "5678"
+      terminal:
+        description: "X-Terminal-Id"
+        required: false
+        default: "TERMINAL 01"
+  push:
+    branches:
+      - claude/customer-display-vertical-eolixp
+
+permissions:
+  contents: read
+
+concurrency: pos-session-diag
+
+env:
+  URL: https://caisse-backend-production.up.railway.app
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Login + stores/me + pos-sessions/active (read-only, token masqué)
+        env:
+          STORE: ${{ github.event.inputs.store_code || 'WESLEY01' }}
+          PIN: ${{ github.event.inputs.cashier_pin || '5678' }}
+          TERMINAL: ${{ github.event.inputs.terminal || 'TERMINAL 01' }}
+        run: |
+          set -o pipefail
+          echo "Backend : $URL"
+          echo "Magasin : $STORE   Terminal : $TERMINAL"
+          echo
+
+          echo "== 1) POST /api/auth/login/pin =="
+          LOGIN=$(curl -sS --max-time 25 -w $'\n%{http_code}' -X POST "$URL/api/auth/login/pin" \
+            -H "Content-Type: application/json" \
+            -d "{\"storeId\":\"$STORE\",\"pin\":\"$PIN\"}") || { echo "login: échec réseau"; exit 0; }
+          LOGIN_CODE=$(printf '%s' "$LOGIN" | tail -1)
+          LOGIN_BODY=$(printf '%s' "$LOGIN" | sed '$d')
+          echo "HTTP $LOGIN_CODE"
+          TOKEN=$(printf '%s' "$LOGIN_BODY" | jq -r '.accessToken // .token // empty' 2>/dev/null)
+          [ -n "$TOKEN" ] && echo "::add-mask::$TOKEN"
+          echo "Employé (sans secret) :"
+          printf '%s' "$LOGIN_BODY" | jq -c '{storeId: .employee.storeId, employeeId: .employee.id, role: .employee.role, name: ((.employee.firstName // "") + " " + (.employee.lastName // ""))}' 2>/dev/null \
+            || { echo "(corps login non-JSON — affiché sans champs secrets) :"; printf '%s' "$LOGIN_BODY" | jq -c 'del(.accessToken,.token,.refreshToken,.tokens)' 2>/dev/null || true; }
+
+          if [ -z "$TOKEN" ]; then
+            echo "→ Pas de token : impossible d'interroger la session. Message serveur :"
+            printf '%s' "$LOGIN_BODY" | jq -c '{message: .message, error: .error, statusCode: .statusCode}' 2>/dev/null || true
+            exit 0
+          fi
+
+          echo
+          echo "== 2) GET /api/stores/me (quel magasin exactement ?) =="
+          ME=$(curl -sS --max-time 25 -w $'\n%{http_code}' "$URL/api/stores/me" \
+            -H "Authorization: Bearer $TOKEN") || echo "(stores/me: échec réseau)"
+          echo "HTTP $(printf '%s' "$ME" | tail -1)"
+          printf '%s' "$ME" | sed '$d' | jq -c '{id: .id, code: .code, name: .name, organizationId: .organizationId}' 2>/dev/null || printf '%s\n' "$(printf '%s' "$ME" | sed '$d')"
+
+          echo
+          echo "== 3) GET /api/pos-sessions/active (X-Terminal-Id: $TERMINAL) =="
+          ACT=$(curl -sS --max-time 25 -w $'\n%{http_code}' "$URL/api/pos-sessions/active" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "X-Terminal-Id: $TERMINAL") || echo "(active: échec réseau)"
+          ACT_CODE=$(printf '%s' "$ACT" | tail -1)
+          ACT_BODY=$(printf '%s' "$ACT" | sed '$d')
+          echo "HTTP $ACT_CODE"
+          echo "Corps /pos-sessions/active :"
+          printf '%s' "$ACT_BODY" | jq . 2>/dev/null || printf '%s\n' "$ACT_BODY"
+
+          echo
+          echo "== VERDICT (lecture seule) =="
+          if [ "$ACT_CODE" = "200" ] && printf '%s' "$ACT_BODY" | jq -e '.id? // empty' >/dev/null 2>&1; then
+            echo "Une session ACTIVE existe déjà pour ce magasin+terminal → le POS doit la RESTAURER (re-login déclenche openPosSession→active)."
+          else
+            echo "AUCUNE session active pour ce magasin+terminal → il faut en OUVRIR une (POST /pos-sessions/open, non exécuté ici : lecture seule)."
+          fi
