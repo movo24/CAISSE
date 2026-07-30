@@ -68,8 +68,6 @@ interface CreateSaleDto {
   discountApproverId?: string;
   /** Owner-defined promo code applied at the sale (decision 6) — server validates + redeems atomically. */
   promoCode?: string;
-  /** MODE TEST pilote : marquer la vente comme vente de TEST (honoré seulement si POS_SESSION_TEST_BYPASS actif côté serveur — voir isSessionTestBypassEnabled). */
-  isTest?: boolean;
 }
 
 export interface SaleStockAlert {
@@ -386,6 +384,7 @@ export class SalesService {
     idempotencyKey?: string,
     terminalId?: string | null,
     machineId?: string | null,
+    testModeRequested = false,
   ): Promise<SaleEntity> {
     // --- Idempotency (NF525): a replayed offline-sync POST must NEVER create a
     // second sale. Fast path BEFORE validation so a replay does not falsely fail
@@ -799,7 +798,7 @@ export class SalesService {
       // si le serveur autorise LUI-MÊME le bypass pour ce magasin/terminal. Hors
       // de ce périmètre, la vente reste une vente réelle (is_test = false).
       sale.isTest =
-        dto.isTest === true &&
+        testModeRequested === true &&
         isSessionTestBypassEnabled(process.env, storeId, registerBinding.terminalId);
       if (sale.isTest) {
         this.logger.warn(

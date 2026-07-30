@@ -65,7 +65,18 @@ describe('garde-fous de source — MODE TEST cohérent avec les règles owner', 
     expect(page).toMatch(/store\.posSessionOpenFailed && !store\.posSession\?\.id && !sessionTestBypass/);
   });
 
-  it('les ventes du bypass sont marquées isTest (règle 6)', () => {
-    expect(page).toMatch(/markAsTest \? \{ isTest: true \}/);
+  it('les ventes du bypass sont marquées via l\'en-tête X-POS-Test-Mode (règle 6)', () => {
+    // Le marqueur passe par l'option testMode (en-tête), PAS par un champ du corps
+    // de salesApi.create → aucun 400 forbidNonWhitelisted sur un backend non à jour.
+    expect(page).toMatch(/idempotencyKey, \{ testMode: markAsTest \}/);
+    // Le corps de la requête EN LIGNE ne contient pas de champ isTest (la seule
+    // occurrence restante est le marqueur de la FILE offline, jamais envoyé tel quel).
+    expect(page).not.toMatch(/payments: toWirePayments\(payments\),\s*\.\.\.\(markAsTest \? \{ isTest: true \}/);
+  });
+
+  it('le marqueur test de la file offline n\'est PAS un champ de corps au rejeu (salePayload)', () => {
+    const salePayload = readFileSync(join(__dirname, './salePayload.ts'), 'utf8');
+    // toSyncCreateBody ne doit PAS réinjecter isTest dans le corps (header only).
+    expect(salePayload).not.toMatch(/isTest: true/);
   });
 });

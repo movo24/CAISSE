@@ -1150,11 +1150,7 @@ export function POSPage() {
         // This path silently DROPPED them before (P0 #3 of the field audit).
         ...toSaleDiscountFields(store),
         payments: toWirePayments(payments),
-        // MODE TEST pilote : marque la vente comme vente de TEST quand elle passe
-        // par le contournement de verrou (aucune session + bypass actif). Le
-        // serveur ne l'honore que s'il autorise lui-même le bypass (règle 3).
-        ...(markAsTest ? { isTest: true } : {}),
-      }, idempotencyKey);
+      }, idempotencyKey, { testMode: markAsTest });
       ticketNumber = res.data.ticketNumber || `T-${Date.now().toString().slice(-6)}`;
       publicToken = res.data.publicToken || null;
       printChainTrace.mark(idempotencyKey, 'sale_response', { ok: true, ticketNumber });

@@ -147,7 +147,12 @@ async function syncEntry(entry: OfflineQueueEntry): Promise<{ success: boolean; 
         // entry carries display-only extras (ticketNumber/totalMinorUnits/item names)
         // that forbidNonWhitelisted would 400. Keeps items/payments/discount/promo.
         {
-          const res = await salesApi.create(toSyncCreateBody(entry.payload), idemKey);
+          // MODE TEST pilote : une vente mise en file via le contournement reste
+          // marquée test au rejeu (en-tête X-POS-Test-Mode ; le serveur re-vérifie
+          // qu'il autorise lui-même le bypass).
+          const res = await salesApi.create(toSyncCreateBody(entry.payload), idemKey, {
+            testMode: !!(entry.payload as any)?.isTest,
+          });
           console.log(`[SYNC] Ticket ${entry.payload.ticketNumber} synced to server`);
           // Le serveur a émis le jeton public du ticket numérique : on le
           // rattache à l'entrée d'historique locale (réimpression = même QR).
