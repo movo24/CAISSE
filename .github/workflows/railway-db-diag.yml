@@ -1,0 +1,97 @@
+# Diagnostic READ-ONLY du schéma pos_sessions en PROD (Neon) pour prouver le 500.
+# Lit DATABASE_URL via l'API Railway (masqué, jamais affiché), puis en SELECT seul :
+#  - colonnes réelles de pos_sessions vs 25 colonnes attendues par l'entité déployée ;
+#  - table migrations (ce qui a réellement tourné) ;
+#  - REJOUE la requête explicite de TypeORM findActiveForTerminal → capture l'erreur PG exacte ;
+#  - lit (colonnes sûres) toute session active du magasin.
+# Aucune écriture. Objectif : preuve directe de la cause racine du 500.
+name: Railway DB diag (pos_sessions schema) — read-only
+
+on:
+  workflow_dispatch:
+    inputs:
+      store_id:
+        description: "storeId (UUID) à sonder"
+        required: false
+        default: "bd34898c-6028-4141-8028-f0e93390a286"
+      terminal:
+        required: false
+        default: "TERMINAL 01"
+  push:
+    branches:
+      - diag/railway-500-logs
+
+permissions:
+  contents: read
+
+concurrency: railway-db-diag
+
+env:
+  PROJECT: 2f5e0afc-d6ed-4360-9837-0356e9be0989
+  SERVICE: a7b2748a-6000-4a32-802b-0e9319287f43
+  ENVID: 7ade5bb3-4e17-4460-a6c0-f50995bded67
+
+jobs:
+  db-diag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - name: Install (pour disposer du client pg)
+        run: npm ci
+
+      - name: Résoudre DATABASE_URL via Railway (valeur masquée)
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -o pipefail
+          if [ -z "$RAILWAY_TOKEN" ]; then echo "RAILWAY_TOKEN absent — DB inaccessible"; exit 1; fi
+          gql() {
+            local out
+            out=$(curl -sS --max-time 30 -X POST https://backboard.railway.app/graphql/v2 \
+              -H "Authorization: Bearer $RAILWAY_TOKEN" -H "Content-Type: application/json" -d "$1")
+            if printf '%s' "$out" | grep -q 'Not Authorized'; then
+              out=$(curl -sS --max-time 30 -X POST https://backboard.railway.app/graphql/v2 \
+                -H "Project-Access-Token: $RAILWAY_TOKEN" -H "Content-Type: application/json" -d "$1")
+            fi
+            printf '%s' "$out"
+          }
+          gql "{\"query\":\"query { variables(projectId: \\\"$PROJECT\\\", environmentId: \\\"$ENVID\\\", serviceId: \\\"$SERVICE\\\") }\"}" > /tmp/v.json
+          DBURL="$(jq -r '.data.variables.DATABASE_URL // empty' /tmp/v.json)"; rm -f /tmp/v.json
+          if [ -z "$DBURL" ]; then echo "DATABASE_URL introuvable via Railway"; exit 1; fi
+          echo "::add-mask::$DBURL"
+          echo "DATABASE_URL=$DBURL" >> "$GITHUB_ENV"
+          echo "DATABASE_URL résolu (masqué)."
+
+      - name: Sonde schéma pos_sessions (SELECT seuls)
+        env:
+          STORE_ID: ${{ github.event.inputs.store_id || 'bd34898c-6028-4141-8028-f0e93390a286' }}
+          TERMINAL: ${{ github.event.inputs.terminal || 'TERMINAL 01' }}
+        run: |
+          cat > /tmp/dbdiag.js <<'EOF'
+          const { Client } = require('pg');
+          const EXPECTED = ['id','store_id','employee_id','terminal_id','employee_name','employee_role','max_discount','permissions','timewin_session_token','is_active','opening_cash_minor_units','opening_cash_set_at','opening_cash_corrected_by','opening_cash_corrected_at','cash_sales_minor_units','cash_refunds_minor_units','expected_cash_minor_units','counted_cash_minor_units','cash_difference_minor_units','cash_counted_at','cash_count_skipped_reason','cash_count_skipped_at','opened_at','closed_at','offline_mode'];
+          (async () => {
+            const c = new Client({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
+            await c.connect();
+            const ic = await c.query("SELECT column_name FROM information_schema.columns WHERE table_name='pos_sessions' ORDER BY 1");
+            const actual = ic.rows.map(r => r.column_name);
+            console.log('ACTUAL pos_sessions (' + actual.length + ') : ' + actual.join(', '));
+            const missing = EXPECTED.filter(x => !actual.includes(x));
+            const extra = actual.filter(x => !EXPECTED.includes(x));
+            console.log('ENTITÉ attend ' + EXPECTED.length + ' colonnes. MANQUANTES en prod : ' + JSON.stringify(missing));
+            console.log('EN PLUS en prod (non attendues) : ' + JSON.stringify(extra));
+            try { const m = await c.query('SELECT name FROM migrations ORDER BY "timestamp"'); console.log('MIGRATIONS (' + m.rows.length + ') : ' + m.rows.map(r => r.name).join(' | ')); }
+            catch (e) { console.log('lecture migrations : ' + e.message); }
+            const sql = 'SELECT ' + EXPECTED.map(x => '"' + x + '"').join(',') + ' FROM pos_sessions WHERE store_id=$1 AND terminal_id=$2 AND is_active=true LIMIT 1';
+            try { const r = await c.query(sql, [process.env.STORE_ID, process.env.TERMINAL]); console.log('REJEU REQUÊTE ENTITÉ : OK, rows=' + r.rowCount); }
+            catch (e) { console.log('REJEU REQUÊTE ENTITÉ : ERREUR ==> code=' + e.code + ' message=' + e.message); }
+            try { const r = await c.query('SELECT id, terminal_id, is_active, opened_at, closed_at FROM pos_sessions WHERE store_id=$1 ORDER BY opened_at DESC LIMIT 6', [process.env.STORE_ID]); console.log('SESSIONS magasin (colonnes sûres) : ' + JSON.stringify(r.rows)); }
+            catch (e) { console.log('lecture sessions : ' + e.message); }
+            await c.end();
+          })().catch(e => { console.error('FATAL ' + e.message); process.exit(0); });
+          EOF
+          node -e "require.resolve('pg')" 2>/dev/null && node /tmp/dbdiag.js || node --require=./node_modules/pg /tmp/dbdiag.js || (cd packages/backend && node /tmp/dbdiag.js)
