@@ -71,7 +71,7 @@ jobs:
           STORE_ID: ${{ github.event.inputs.store_id || 'bd34898c-6028-4141-8028-f0e93390a286' }}
           TERMINAL: ${{ github.event.inputs.terminal || 'TERMINAL 01' }}
         run: |
-          cat > /tmp/dbdiag.js <<'EOF'
+          cat > ./dbdiag.js <<'EOF'
           const { Client } = require('pg');
           const EXPECTED = ['id','store_id','employee_id','terminal_id','employee_name','employee_role','max_discount','permissions','timewin_session_token','is_active','opening_cash_minor_units','opening_cash_set_at','opening_cash_corrected_by','opening_cash_corrected_at','cash_sales_minor_units','cash_refunds_minor_units','expected_cash_minor_units','counted_cash_minor_units','cash_difference_minor_units','cash_counted_at','cash_count_skipped_reason','cash_count_skipped_at','opened_at','closed_at','offline_mode'];
           (async () => {
@@ -94,4 +94,5 @@ jobs:
             await c.end();
           })().catch(e => { console.error('FATAL ' + e.message); process.exit(0); });
           EOF
-          node -e "require.resolve('pg')" 2>/dev/null && node /tmp/dbdiag.js || node --require=./node_modules/pg /tmp/dbdiag.js || (cd packages/backend && node /tmp/dbdiag.js)
+          export NODE_PATH="$PWD/node_modules:$PWD/packages/backend/node_modules"
+          node ./dbdiag.js
