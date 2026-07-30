@@ -1,0 +1,119 @@
+# Diagnostic READ-ONLY du HTTP 500 sur GET /api/pos-sessions/active (prod).
+# 1) lit le déploiement Railway courant (id, statut, meta/commit) ;
+# 2) redéclenche un 500 frais (login + GET active, X-Terminal-Id: TERMINAL 01) ;
+# 3) récupère les LOGS RUNTIME Railway de ce déploiement et n'imprime QUE les
+#    lignes d'erreur (stack trace / SQL fautif / colonne), jamais le token ni un
+#    dump complet. Objectif : prouver la cause exacte du 500. Aucune écriture.
+name: Railway 500 diag (pos-sessions/active) — read-only
+
+on:
+  workflow_dispatch:
+    inputs:
+      terminal:
+        description: "X-Terminal-Id"
+        required: false
+        default: "TERMINAL 01"
+      store_code:
+        required: false
+        default: "WESLEY01"
+      cashier_pin:
+        required: false
+        default: "5678"
+  push:
+    branches:
+      - diag/railway-500-logs
+
+permissions:
+  contents: read
+
+concurrency: railway-500-diag
+
+env:
+  URL: https://caisse-backend-production.up.railway.app
+  PROJECT: 2f5e0afc-d6ed-4360-9837-0356e9be0989
+  SERVICE: a7b2748a-6000-4a32-802b-0e9319287f43
+  ENVID: 7ade5bb3-4e17-4460-a6c0-f50995bded67
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe token
+        id: probe
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          if [ -n "$RAILWAY_TOKEN" ]; then echo "present=true" >> "$GITHUB_OUTPUT"; echo "RAILWAY_TOKEN présent"; else echo "present=false" >> "$GITHUB_OUTPUT"; echo "RAILWAY_TOKEN ABSENT"; fi
+
+      - name: Helper gql (Bearer puis Project-Access-Token)
+        if: steps.probe.outputs.present == 'true'
+        run: |
+          cat > /tmp/gql.sh <<'EOF'
+          gql() {
+            local out
+            out=$(curl -sS --max-time 30 -X POST https://backboard.railway.app/graphql/v2 \
+              -H "Authorization: Bearer $RAILWAY_TOKEN" -H "Content-Type: application/json" -d "$1")
+            if printf '%s' "$out" | grep -q 'Not Authorized'; then
+              out=$(curl -sS --max-time 30 -X POST https://backboard.railway.app/graphql/v2 \
+                -H "Project-Access-Token: $RAILWAY_TOKEN" -H "Content-Type: application/json" -d "$1")
+            fi
+            printf '%s' "$out"
+          }
+          EOF
+
+      - name: Déploiement courant (id, statut, commit)
+        if: steps.probe.outputs.present == 'true'
+        id: dep
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          source /tmp/gql.sh
+          RESP=$(gql "{\"query\":\"{ deployments(first:1, input:{projectId:\\\"$PROJECT\\\", serviceId:\\\"$SERVICE\\\", environmentId:\\\"$ENVID\\\"}) { edges { node { id status createdAt meta } } } }\"}")
+          echo "$RESP" | jq '.data.deployments.edges[0].node | {id, status, createdAt, meta}' 2>/dev/null || echo "$RESP"
+          DID=$(echo "$RESP" | jq -r '.data.deployments.edges[0].node.id // empty' 2>/dev/null)
+          echo "deployment_id=$DID" >> "$GITHUB_OUTPUT"
+          echo "Deployment id: $DID"
+
+      - name: Reproduire le 500 (login + GET active) — read-only
+        env:
+          STORE: ${{ github.event.inputs.store_code || 'WESLEY01' }}
+          PIN: ${{ github.event.inputs.cashier_pin || '5678' }}
+          TERMINAL: ${{ github.event.inputs.terminal || 'TERMINAL 01' }}
+        run: |
+          echo "== login =="
+          LOGIN=$(curl -sS --max-time 25 -X POST "$URL/api/auth/login/pin" -H "Content-Type: application/json" -d "{\"storeId\":\"$STORE\",\"pin\":\"$PIN\"}")
+          TOKEN=$(printf '%s' "$LOGIN" | jq -r '.accessToken // .token // empty' 2>/dev/null)
+          [ -n "$TOKEN" ] && echo "::add-mask::$TOKEN"
+          printf '%s' "$LOGIN" | jq -c '{storeId: .employee.storeId, employeeId: .employee.id, role: .employee.role}' 2>/dev/null || echo "(login non-JSON)"
+          echo "== GET /api/pos-sessions/active (X-Terminal-Id: $TERMINAL) =="
+          date -u +"marqueur temps AVANT: %Y-%m-%dT%H:%M:%SZ"
+          curl -sS --max-time 25 -w $'\nHTTP %{http_code}\n' "$URL/api/pos-sessions/active" \
+            -H "Authorization: Bearer $TOKEN" -H "X-Terminal-Id: $TERMINAL"
+          date -u +"marqueur temps APRÈS: %Y-%m-%dT%H:%M:%SZ"
+
+      - name: Logs runtime Railway — lignes d'erreur seulement (token masqué)
+        if: steps.probe.outputs.present == 'true' && steps.dep.outputs.deployment_id != ''
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          DID: ${{ steps.dep.outputs.deployment_id }}
+        run: |
+          set -o pipefail
+          source /tmp/gql.sh
+          sleep 6   # laisser le log arriver
+          RESP=$(gql "{\"query\":\"query { deploymentLogs(deploymentId: \\\"$DID\\\", limit: 400) { message timestamp severity } }\"}") || { echo "logs: échec réseau/auth"; exit 0; }
+          if echo "$RESP" | jq -e '.errors' >/dev/null 2>&1; then
+            echo "deploymentLogs errors :"; echo "$RESP" | jq -c '.errors' 2>/dev/null
+            echo "(tentative avec le champ 'environmentLogs' si nécessaire — sinon voir dashboard)"
+          fi
+          echo "$RESP" | jq -r '.data.deploymentLogs[]?.message' 2>/dev/null > /tmp/logs.txt || true
+          echo "Lignes de log récupérées : $(wc -l < /tmp/logs.txt 2>/dev/null || echo 0)"
+          echo "──────── LIGNES D'ERREUR PERTINENTES (pos-session / SQL / stack) ────────"
+          grep -nEi 'pos.?session|findActive|QueryFailed|column .* does not exist|relation .* does not exist|ERROR|Error:|Exception|500|Internal server|terminal|invalid input syntax|violates|type .* does not exist|cannot|at [A-Za-z].*\(' /tmp/logs.txt \
+            | grep -viE 'GET /api/health|login/pin 200|stores/me 200' \
+            | tail -120 || echo "(aucune ligne d'erreur ne correspond au filtre — voir remarque)"
+          echo "────────────────────────────────────────────────────────────────────────"
+          echo "Remarque : si vide, les logs sont peut-être rotés ou le champ diffère (deploymentLogs vs environmentLogs). Le marqueur temps ci-dessus borne l'instant du 500 pour recoupement dashboard."
+
+      - name: Verdict accès
+        if: steps.probe.outputs.present == 'false'
+        run: echo "RAILWAY_TOKEN absent — logs Railway inaccessibles depuis l'agent. Accès manquant à signaler."
