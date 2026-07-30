@@ -52,6 +52,7 @@ export class ReportsService {
       .where('s.store_id = :storeId', { storeId })
       .andWhere('DATE(s.created_at) = :date', { date })
       .andWhere('s.status = :status', { status: 'completed' })
+      .andWhere('s.is_test = false') // MODE TEST : exclut les ventes de test des rapports réels (règle 6)
       .getMany();
 
     const voidedCount = await this.saleRepo
@@ -255,6 +256,7 @@ export class ReportsService {
       .leftJoinAndSelect('s.payments', 'p')
       .where('s.store_id = :storeId', { storeId })
       .andWhere('s.status = :status', { status: 'completed' })
+      .andWhere('s.is_test = false') // MODE TEST : exclut les ventes de test des rapports réels (règle 6)
       .andWhere('s.created_at >= :gte', { gte })
       .andWhere('s.created_at < :lt', { lt })
       .getMany();
@@ -302,6 +304,7 @@ export class ReportsService {
       .where('s.storeId = :storeId', { storeId })
       .andWhere('DATE(s.completedAt) = :date', { date })
       .andWhere("s.status = 'completed'")
+      .andWhere('s.is_test = false') // MODE TEST : exclut les ventes de test des KPI réels (règle 6)
       .getRawOne();
 
     const txCount = parseInt(result?.transactionCount || '0', 10);

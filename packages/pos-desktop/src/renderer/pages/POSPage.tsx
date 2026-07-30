@@ -72,6 +72,8 @@ import { SaleGuardsGate } from '../components/SaleGuardsGate';
 import { CashOpenModal } from '../components/pos/CashOpenModal';
 import { SessionReopenPrompt } from '../components/pos/SessionReopenPrompt';
 import { initSessionReopenWatcher } from '../services/sessionReopen';
+import { isSessionTestBypassActive } from '../services/sessionTestBypass';
+import { SessionTestBypassBanner } from '../components/pos/SessionTestBypassBanner';
 import { SalesCockpit } from '../components/SalesCockpit';
 import { AddxWordmark } from '../components/AddxWordmark';
 import { CustomerDisplayPublisher } from '../components/CustomerDisplayPublisher';
@@ -1072,11 +1074,21 @@ export function POSPage() {
     // ── GARDE SESSION (P0) : session de caisse NON OUVERTE → aucun encaissement.
     // `posSessionOpenFailed` = l'ouverture a échoué (état « NON OUVERTE » du
     // bandeau) ; on refuse la vente au lieu de la laisser partir sans session.
-    if (store.posSessionOpenFailed && !store.posSession?.id) {
+    //
+    // MODE TEST pilote (autorisé par l'owner) : quand le contournement de verrou
+    // est activé par variable d'env pour ce magasin/terminal, on LÈVE cette garde
+    // pour que la caisse continue à encaisser malgré le 500 sur /pos-sessions/active
+    // (règles 1 & 2). Les ventes ainsi réalisées seront marquées `isTest` (règle 6).
+    // Hors mode test, la garde reste STRICTEMENT inchangée (règle 8).
+    const sessionTestBypass = isSessionTestBypassActive();
+    if (store.posSessionOpenFailed && !store.posSession?.id && !sessionTestBypass) {
       setError('Caisse NON OUVERTE — encaissement impossible. Ouvrez la session de caisse avant de vendre.');
       finalizingRef.current = false;
       return;
     }
+    // Vente réalisée VIA le contournement (aucune session, mode test actif) →
+    // à marquer comme vente de TEST pour ne pas contaminer les rapports réels.
+    const markAsTest = sessionTestBypass && !store.posSession?.id;
 
     // ── GARDE COMPTABLE (P0, couche store local) : la somme des montants APPLIQUÉS
     // doit solder EXACTEMENT le ticket. Un surpaiement (ex. 303 € pour 6 €) est
@@ -1138,6 +1150,10 @@ export function POSPage() {
         // This path silently DROPPED them before (P0 #3 of the field audit).
         ...toSaleDiscountFields(store),
         payments: toWirePayments(payments),
+        // MODE TEST pilote : marque la vente comme vente de TEST quand elle passe
+        // par le contournement de verrou (aucune session + bypass actif). Le
+        // serveur ne l'honore que s'il autorise lui-même le bypass (règle 3).
+        ...(markAsTest ? { isTest: true } : {}),
       }, idempotencyKey);
       ticketNumber = res.data.ticketNumber || `T-${Date.now().toString().slice(-6)}`;
       publicToken = res.data.publicToken || null;
@@ -1167,6 +1183,9 @@ export function POSPage() {
             totalMinorUnits: totalAmount,
             customerQrCode: store.customerQrCode || undefined,
             ...toSaleDiscountFields(store),
+            // MODE TEST pilote : la vente reste une vente de TEST même rejouée
+            // après synchronisation (le serveur re-vérifie l'autorisation).
+            ...(markAsTest ? { isTest: true } : {}),
             // Same key as the failed online attempt → a lost-response create is
             // deduped on sync replay, not duplicated.
             idempotencyKey,
@@ -2793,6 +2812,9 @@ export function POSPage() {
           aucune vente n'est possible sans session. */}
       <CashOpenModal />
       <SessionReopenPrompt />
+      {/* MODE TEST pilote (règle 5) : bandeau permanent quand le contournement de
+          verrou de session est activé par variable d'env. Inerte hors mode test. */}
+      <SessionTestBypassBanner />
     </div>
   );
 }

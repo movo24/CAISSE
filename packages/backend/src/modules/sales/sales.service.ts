@@ -41,6 +41,7 @@ import { logBusinessEvent } from '../../common/business-logger';
 import { RealtimeService } from '../../common/realtime/realtime.service';
 import { returningRows } from '../../common/utils/returning-rows';
 import { stockCrossingBand } from './stock-alert-crossing.util';
+import { isSessionTestBypassEnabled } from './session-test-bypass.util';
 
 function sha256(data: string): string {
   return createHash('sha256').update(data).digest('hex');
@@ -67,6 +68,8 @@ interface CreateSaleDto {
   discountApproverId?: string;
   /** Owner-defined promo code applied at the sale (decision 6) — server validates + redeems atomically. */
   promoCode?: string;
+  /** MODE TEST pilote : marquer la vente comme vente de TEST (honoré seulement si POS_SESSION_TEST_BYPASS actif côté serveur — voir isSessionTestBypassEnabled). */
+  isTest?: boolean;
 }
 
 export interface SaleStockAlert {
@@ -194,6 +197,7 @@ export class SalesService {
       return { terminalId: t, sessionId: null };
     }
   }
+
 
   /**
    * GO WisePad 3 / Stripe prod — verify claimed card captures SERVER-SIDE.
@@ -790,6 +794,19 @@ export class SalesService {
       const registerBinding = await this.resolveRegisterBinding(storeId, employeeId, terminalId);
       sale.terminalId = registerBinding.terminalId;
       sale.sessionId = registerBinding.sessionId;
+
+      // MODE TEST pilote (règles 3 & 6) : n'honore le drapeau client `isTest` que
+      // si le serveur autorise LUI-MÊME le bypass pour ce magasin/terminal. Hors
+      // de ce périmètre, la vente reste une vente réelle (is_test = false).
+      sale.isTest =
+        dto.isTest === true &&
+        isSessionTestBypassEnabled(process.env, storeId, registerBinding.terminalId);
+      if (sale.isTest) {
+        this.logger.warn(
+          `[POS_SESSION_TEST_BYPASS] sale ${sale.ticketNumber} flagged is_test ` +
+            `(store ${storeId}, terminal ${registerBinding.terminalId ?? 'n/a'}) — exclue des rapports réels`,
+        );
+      }
 
       for (const li of lineItems) {
         li.saleId = sale.id;

@@ -103,4 +103,16 @@ export class CreateSaleDto {
   @IsOptional()
   @IsString()
   promoCode?: string;
+
+  /**
+   * MODE TEST pilote : la caisse demande à marquer cette vente comme vente de
+   * TEST (contournement de verrou de session `POS_SESSION_TEST_BYPASS`). La parole
+   * du client NE SUFFIT PAS — le serveur n'honore ce drapeau que si le bypass est
+   * activé côté serveur pour ce magasin/terminal (voir SalesService). Hors mode
+   * test, il est ignoré et la vente reste une vente réelle (règle 8).
+   */
+  @ApiPropertyOptional({ description: 'Pilote: marquer la vente comme vente de TEST (honoré seulement si POS_SESSION_TEST_BYPASS actif côté serveur)' })
+  @IsOptional()
+  @IsBoolean()
+  isTest?: boolean;
 }

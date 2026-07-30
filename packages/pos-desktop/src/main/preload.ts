@@ -20,6 +20,22 @@ try {
   appVersion = 'dev';
 }
 
+// MODE TEST pilote — configuration du contournement de verrou de session, lue
+// SYNCHRONE au chargement depuis le main (variables d'env système). Le renderer
+// ne fait que LIRE cet objet ; il ne peut jamais activer le bypass lui-même.
+// Hors desktop / erreur → mode test désactivé (comportement de sécurité normal).
+let sessionTestBypass: { enabled: boolean; stores: string; terminals: string } = {
+  enabled: false,
+  stores: '',
+  terminals: '',
+};
+try {
+  const cfg = ipcRenderer.sendSync('app:sessionTestBypass') as typeof sessionTestBypass;
+  if (cfg && typeof cfg.enabled === 'boolean') sessionTestBypass = cfg;
+} catch {
+  /* mode test désactivé par défaut */
+}
+
 contextBridge.exposeInMainWorld('posDesktop', {
   isDesktop: true,
   platform: process.platform,
@@ -27,6 +43,8 @@ contextBridge.exposeInMainWorld('posDesktop', {
   // Sonde réseau côté MAIN (sans CORS) — diagnostic terrain du login.
   // Retourne { ok, status } ou { ok:false, errorCode } + ms.
   diagProbe: (url: string) => ipcRenderer.invoke('diag:probe', url),
+  // MODE TEST pilote : { enabled, stores, terminals } — voir main/index.ts.
+  sessionTestBypass,
 });
 
 /**

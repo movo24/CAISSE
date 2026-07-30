@@ -65,6 +65,9 @@ export function toSyncCreateBody(p: any): Record<string, unknown> {
       discountApproverId: p?.discountApproverId ?? null,
       promoCode: p?.promoCode ?? null,
     }),
+    // MODE TEST pilote : une vente mise en file via le contournement reste une
+    // vente de TEST au rejeu (le serveur re-vérifie l'autorisation, règle 3).
+    ...(p?.isTest ? { isTest: true } : {}),
     payments: p?.payments ?? [],
   };
 }
