@@ -37,6 +37,8 @@ export function SessionReopenPrompt() {
   const dismiss = usePOSStore((s) => s.dismissSessionReopen);
   const reopen = usePOSStore((s) => s.reopenSessionWithFloat);
 
+  const reopenError = usePOSStore((s) => s.sessionReopenError);
+
   const [value, setValue] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -65,7 +67,15 @@ export function SessionReopenPrompt() {
     setSaving(true);
     const ok = await reopen(centimes);
     setSaving(false);
-    if (!ok) setError('Réouverture impossible — le serveur ne répond pas. Réessaie.');
+    if (!ok) {
+      // Jamais un message générique : on affiche le CODE réel + l'identifiant.
+      const e = usePOSStore.getState().sessionReopenError;
+      setError(
+        e
+          ? `Réouverture impossible — ${e.message} · réf ${e.errorId}. Réessaie.`
+          : 'Réouverture impossible — réessaie.',
+      );
+    }
   };
 
   return (
@@ -83,6 +93,13 @@ export function SessionReopenPrompt() {
         Rouvrir une session de caisse ? Saisis le contenu <strong>actuel</strong> du tiroir
         (il devient le fond de la session). Les ventes déjà passées resteront hors comptage.
       </p>
+      {reopenError && (
+        // Diagnostic RÉEL du dernier échec serveur (code HTTP + identifiant) —
+        // jamais masqué derrière « le serveur ne répond pas ».
+        <p className="mt-1 rounded bg-amber-50 px-2 py-1 text-[11px] font-mono text-amber-800">
+          Dernier échec serveur : {reopenError.message} · réf {reopenError.errorId}
+        </p>
+      )}
       <div className="mt-3 flex items-center gap-2">
         <input
           value={value}

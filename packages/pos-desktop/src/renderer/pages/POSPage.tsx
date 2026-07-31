@@ -1086,9 +1086,11 @@ export function POSPage() {
       finalizingRef.current = false;
       return;
     }
-    // Vente réalisée VIA le contournement (aucune session, mode test actif) →
-    // à marquer comme vente de TEST pour ne pas contaminer les rapports réels.
-    const markAsTest = sessionTestBypass && !store.posSession?.id;
+    // Vente réalisée VIA le contournement (aucune session, OU session locale
+    // provisoire non synchronisée) alors que le mode test est actif → à marquer
+    // comme vente de TEST pour ne pas contaminer les rapports réels.
+    const markAsTest =
+      sessionTestBypass && (!store.posSession?.id || store.posSession?.provisional === true);
 
     // ── GARDE COMPTABLE (P0, couche store local) : la somme des montants APPLIQUÉS
     // doit solder EXACTEMENT le ticket. Un surpaiement (ex. 303 € pour 6 €) est

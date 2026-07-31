@@ -1,11 +1,91 @@
 import { create } from 'zustand';
-import { authApi, posSessionApi, employeeScoreApi } from '../services/api';
+import { authApi, posSessionApi, employeeScoreApi, posTerminalId } from '../services/api';
+import { decideSessionTestBypass, readSessionTestBypassConfig } from '../services/sessionTestBypassCore';
 
 /** Session POS active (une caisse appartient à un caissier pendant une session). */
 export interface PosSession {
   id: string;
   openedAt: string; // ISO
   terminalId: string | null;
+  /**
+   * Session LOCALE PROVISOIRE (MODE TEST) : ouverte côté caisse quand le serveur
+   * de session renvoie 5xx/timeout ET que le mode test est autorisé. Non
+   * synchronisée avec le backend ; les ventes réalisées dessous sont isolées
+   * (is_test). Remplacée par une vraie session dès que le serveur répond.
+   */
+  provisional?: boolean;
+}
+
+/**
+ * Descripteur d'erreur RÉEL d'un appel de session — jamais un message générique.
+ * Porte le statut HTTP exact (401/403/409/500/…) ou 'timeout'/'network', le code
+ * métier éventuel, le message serveur, et un identifiant d'erreur traçable.
+ */
+export interface SessionReopenError {
+  status: number | null;
+  kind: 'http' | 'timeout' | 'network';
+  code: string | null;
+  message: string;
+  errorId: string;
+}
+
+/** Extrait un descripteur d'erreur réel d'une erreur axios (aucun masquage). */
+export function describeSessionError(e: any): SessionReopenError {
+  const errorId =
+    'ERR-' +
+    Date.now().toString(36).toUpperCase() +
+    '-' +
+    Math.floor(Math.random() * 1e6).toString(36).toUpperCase();
+  const status: number | null = e?.response?.status ?? null;
+  const serverMsg: string | undefined =
+    e?.response?.data?.message || e?.response?.data?.error || e?.response?.data?.details?.[0];
+  const code: string | null = e?.response?.data?.code || e?.code || null;
+  let kind: 'http' | 'timeout' | 'network' = 'http';
+  if (!e?.response) {
+    kind =
+      e?.code === 'ECONNABORTED' || /timeout/i.test(e?.message || '') ? 'timeout' : 'network';
+  }
+  const message =
+    status != null
+      ? `HTTP ${status}${serverMsg ? ` — ${serverMsg}` : ''}`
+      : kind === 'timeout'
+        ? 'Délai dépassé (timeout) — le serveur n’a pas répondu à temps'
+        : 'Réseau injoignable (aucune réponse du serveur)';
+  return { status, kind, code, message, errorId };
+}
+
+/** Une erreur 5xx ou un timeout justifie la session locale provisoire (MODE TEST). */
+export function isServerDownError(err: SessionReopenError): boolean {
+  return err.kind === 'timeout' || (err.status != null && err.status >= 500);
+}
+
+/**
+ * Le mode test est-il actif ICI ? Calculé SANS importer sessionTestBypass.ts (qui
+ * importe ce store → cycle) : on lit la config du shell + l'état courant du store.
+ */
+function sessionTestBypassActive(get: () => POSState): boolean {
+  const cfg = readSessionTestBypassConfig();
+  if (!cfg.enabled) return false;
+  const st = get();
+  return decideSessionTestBypass(cfg, {
+    storeIds: [st.employee?.storeId, st.storeInfo?.siret],
+    terminalId: posTerminalId(),
+  });
+}
+
+/**
+ * Construit une session LOCALE PROVISOIRE (MODE TEST — non synchronisée). Le fond
+ * saisi reste local (aucune session serveur) ; il sera redéclaré sur la vraie
+ * session dès que le serveur répond et que l'ouverture réelle la remplace.
+ */
+function adoptProvisionalSession(): PosSession {
+  const terminalId = posTerminalId();
+  return {
+    id: `LOCAL-${terminalId}-${Date.now().toString(36).toUpperCase()}`,
+    openedAt: new Date().toISOString(),
+    terminalId,
+    provisional: true,
+  };
 }
 import type { PaymentMethod } from '../services/paymentMachine';
 import { computePromoDiscount } from '../services/discount-policy';
@@ -217,6 +297,9 @@ interface POSState {
   posSessionOpenFailed: boolean;
   /** Prompt « Serveur de retour — rouvrir une session ? » (jamais silencieux). */
   sessionReopenOffered: boolean;
+  /** Dernière erreur RÉELLE d'un appel de session (code HTTP + id), jamais un
+   *  message générique — affichée telle quelle dans le prompt de réouverture. */
+  sessionReopenError: SessionReopenError | null;
   dismissSessionReopen: () => void;
   /** Rouvre une session avec le contenu ACTUEL du tiroir comme fond.
    *  Single-flight ; 409 → adopte la session active existante (aucun doublon).
@@ -290,6 +373,7 @@ export const usePOSStore = create<POSState>((set, get) => ({
   openingCashRequired: false,
   posSessionOpenFailed: false,
   sessionReopenOffered: false,
+  sessionReopenError: null,
   cartItems: [],
   customerQrCode: null,
   customer: null,
@@ -379,35 +463,62 @@ export const usePOSStore = create<POSState>((set, get) => ({
     if (reopenInFlight) return false;
     if (get().posSession?.id) { set({ sessionReopenOffered: false }); return true; }
     reopenInFlight = true;
+    // On mémorise l'erreur RÉELLE (open puis active) pour l'afficher telle quelle.
+    let realError: SessionReopenError | null = null;
     try {
-      const res = await posSessionApi.open(openingCashMinorUnits);
-      const s = res.data;
-      if (s?.id) {
-        set({
-          posSession: { id: s.id, openedAt: s.openedAt || new Date().toISOString(), terminalId: s.terminalId ?? null },
-          openingCashRequired: s.openingCashMinorUnits == null,
-          posSessionOpenFailed: false,
-          sessionReopenOffered: false,
-        });
-        return true;
-      }
-      return false;
-    } catch {
-      // 409 : une session est déjà active sur ce terminal → on l'ADOPTE, jamais
-      // de doublon (le fond saisi est ignoré : la session existante fait foi).
       try {
-        const act = await posSessionApi.active();
-        const s = act.data;
+        const res = await posSessionApi.open(openingCashMinorUnits);
+        const s = res.data;
         if (s?.id) {
           set({
             posSession: { id: s.id, openedAt: s.openedAt || new Date().toISOString(), terminalId: s.terminalId ?? null },
             openingCashRequired: s.openingCashMinorUnits == null,
             posSessionOpenFailed: false,
             sessionReopenOffered: false,
+            sessionReopenError: null,
           });
           return true;
         }
-      } catch { /* le prompt reste affiché, le caissier peut réessayer */ }
+      } catch (openErr: any) {
+        realError = describeSessionError(openErr);
+        // 409 : une session est déjà active sur ce terminal → on l'ADOPTE, jamais
+        // de doublon (le fond saisi est ignoré : la session existante fait foi).
+        try {
+          const act = await posSessionApi.active();
+          const s = act.data;
+          if (s?.id) {
+            set({
+              posSession: { id: s.id, openedAt: s.openedAt || new Date().toISOString(), terminalId: s.terminalId ?? null },
+              openingCashRequired: s.openingCashMinorUnits == null,
+              posSessionOpenFailed: false,
+              sessionReopenOffered: false,
+              sessionReopenError: null,
+            });
+            return true;
+          }
+        } catch (activeErr: any) {
+          // Garde l'erreur la plus parlante (open d'abord ; active si open était réseau).
+          realError = describeSessionError(openErr?.response ? openErr : activeErr);
+        }
+      }
+
+      // MODE TEST pilote (règle owner) : serveur de session en 5xx/timeout →
+      // ouverture d'une SESSION LOCALE PROVISOIRE (non synchronisée), avec le fond
+      // saisi, pour débloquer la caisse. Strictement réservé au mode test autorisé.
+      if (realError && isServerDownError(realError) && sessionTestBypassActive(get)) {
+        set({
+          posSession: adoptProvisionalSession(),
+          openingCashRequired: false,
+          posSessionOpenFailed: false,
+          sessionReopenOffered: false,
+          sessionReopenError: realError, // conservé pour la traçabilité (code + id)
+        });
+        return true;
+      }
+
+      // Échec sans mode test (ou 4xx) : on EXPOSE le code réel + l'id, jamais un
+      // message générique. Le prompt reste affiché pour un nouvel essai.
+      set({ sessionReopenError: realError ?? describeSessionError(new Error('réponse sans id')) });
       return false;
     } finally {
       reopenInFlight = false;
@@ -425,12 +536,14 @@ export const usePOSStore = create<POSState>((set, get) => ({
           // Fond non déclaré → on demande la saisie à l'ouverture.
           openingCashRequired: s.openingCashMinorUnits == null,
           posSessionOpenFailed: false,
+          sessionReopenError: null,
         });
-      } else {
-        // Réponse sans id : la session n'existe pas côté serveur — état visible.
-        set({ posSession: null, posSessionOpenFailed: true });
+        return;
       }
+      // Réponse sans id : la session n'existe pas côté serveur — état visible.
+      set({ posSession: null, posSessionOpenFailed: true });
     } catch (e: any) {
+      let realError = describeSessionError(e);
       // 409 = une session est déjà active sur ce terminal → on la récupère.
       try {
         const act = await posSessionApi.active();
@@ -441,16 +554,27 @@ export const usePOSStore = create<POSState>((set, get) => ({
             // Session récupérée : ne redemande que si le fond n'a jamais été déclaré.
             openingCashRequired: s.openingCashMinorUnits == null,
             posSessionOpenFailed: false,
+            sessionReopenError: null,
           });
-        } else {
-          set({ posSession: null, posSessionOpenFailed: true });
+          return;
         }
-      } catch {
-        // Échec TOTAL (réseau/serveur) : la caisse continue mais SANS session —
-        // les ventes partiront avec session_id NULL (hors comptage de caisse).
-        // Cet état ne doit JAMAIS être silencieux : le bandeau l'affiche.
-        set({ posSession: null, posSessionOpenFailed: true });
+      } catch (activeErr: any) {
+        realError = describeSessionError(e?.response ? e : activeErr);
       }
+      // MODE TEST : serveur en 5xx/timeout → session locale provisoire immédiate,
+      // pour que la caisse soit utilisable dès la connexion (sans clic « Rouvrir »).
+      if (isServerDownError(realError) && sessionTestBypassActive(get)) {
+        set({
+          posSession: adoptProvisionalSession(),
+          openingCashRequired: false,
+          posSessionOpenFailed: false,
+          sessionReopenError: realError,
+        });
+        return;
+      }
+      // Échec TOTAL (réseau/serveur) hors mode test : la caisse continue mais SANS
+      // session — état JAMAIS silencieux : le bandeau + l'erreur réelle l'affichent.
+      set({ posSession: null, posSessionOpenFailed: true, sessionReopenError: realError });
     }
   },
 

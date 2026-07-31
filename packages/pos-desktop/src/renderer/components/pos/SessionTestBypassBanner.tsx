@@ -1,6 +1,7 @@
 import React from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { readSessionTestBypassConfig } from '../../services/sessionTestBypass';
+import { usePOSStore } from '../../stores/posStore';
 
 /**
  * Bandeau PERMANENT du MODE TEST (règle 5).
@@ -17,7 +18,14 @@ import { readSessionTestBypassConfig } from '../../services/sessionTestBypass';
  */
 export function SessionTestBypassBanner() {
   const cfg = readSessionTestBypassConfig();
+  const provisional = usePOSStore((s) => s.posSession?.provisional === true);
   if (!cfg.enabled) return null;
+
+  // Session locale provisoire (serveur de session en échec) → libellé explicite
+  // « NON SYNCHRONISÉE » ; sinon, session non vérifiée (bypass de garde).
+  const label = provisional
+    ? 'MODE TEST — SESSION LOCALE NON SYNCHRONISÉE'
+    : 'MODE TEST — SESSION DE CAISSE NON VÉRIFIÉE';
 
   return (
     <div
@@ -25,7 +33,7 @@ export function SessionTestBypassBanner() {
       className="fixed top-0 inset-x-0 z-[60] flex items-center justify-center gap-2 bg-amber-500 px-4 py-1.5 text-center text-sm font-extrabold uppercase tracking-wide text-black shadow-md"
     >
       <AlertTriangle size={16} className="shrink-0" />
-      <span>MODE TEST — SESSION DE CAISSE NON VÉRIFIÉE</span>
+      <span>{label}</span>
     </div>
   );
 }
