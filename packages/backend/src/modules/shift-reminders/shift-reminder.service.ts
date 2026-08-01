@@ -4,6 +4,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { TimewinService } from '../timewin/timewin.service';
 import { NotificationService } from '../../common/messaging/notification.service';
 import { NormalizedShift, normalizeShiftRecords } from './shift-normalize.util';
+import { isQuietHour, isHoliday } from './quiet-hours';
 
 export { NormalizedShift } from './shift-normalize.util';
 
@@ -22,6 +23,10 @@ export class ShiftReminderService {
   /** shift ids already reminded today (cleared on date change). */
   private firedToday = new Set<string>();
   private firedDay = '';
+  // POS-055 — heures calmes / jours fériés (pur, OFF par défaut : start===end → fenêtre vide).
+  private readonly quietStart: number;
+  private readonly quietEnd: number;
+  private readonly holidays: Set<string>;
 
   constructor(
     private readonly config: ConfigService,
@@ -29,6 +34,20 @@ export class ShiftReminderService {
     private readonly notifications: NotificationService,
   ) {
     this.lookaheadMin = parseInt(this.config.get('SHIFT_REMINDER_LOOKAHEAD_MIN', '60'), 10);
+    // Heures SERVEUR-LOCALES ; sans env → start===end → fenêtre vide → zéro changement.
+    this.quietStart = parseInt(this.config.get('SHIFT_REMINDER_QUIET_START_HOUR', '0'), 10);
+    this.quietEnd = parseInt(this.config.get('SHIFT_REMINDER_QUIET_END_HOUR', '0'), 10);
+    this.holidays = new Set(
+      (this.config.get('SHIFT_REMINDER_HOLIDAYS_ISO', '') as string)
+        .split(',')
+        .map((x) => x.trim())
+        .filter((x) => /^\d{4}-\d{2}-\d{2}$/.test(x)),
+    );
+  }
+
+  /** POS-055 — true quand le sweep doit rester silencieux (fenêtre calme ou jour férié). */
+  isSuppressed(now: Date): boolean {
+    return isQuietHour(now.getHours(), this.quietStart, this.quietEnd) || isHoliday(now, this.holidays);
   }
 
   isEnabled(): boolean {
@@ -42,7 +61,9 @@ export class ShiftReminderService {
   @Cron(CronExpression.EVERY_30_MINUTES)
   async scheduledSweep(): Promise<void> {
     if (!this.isEnabled()) return;
-    await this.runReminderSweep(new Date());
+    const now = new Date();
+    if (this.isSuppressed(now)) return; // POS-055 : silencieux en heures calmes / férié
+    await this.runReminderSweep(now);
   }
 
   /**

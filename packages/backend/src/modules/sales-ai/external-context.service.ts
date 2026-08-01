@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import axios from 'axios';
+import { weatherImpact } from './weather-impact';
 
 /* ═══════════════════════════════════════════════════════════════
    EXTERNAL CONTEXT SERVICE — Weather + Transport enrichment
@@ -75,26 +76,8 @@ export class ExternalContextService {
       const condition = d.weather?.[0]?.main?.toLowerCase() || 'unknown';
       const desc = d.weather?.[0]?.description || '';
 
-      // Impact scoring
-      let impactScore = 0;
-      let impactReason = 'Conditions normales';
-
-      if (condition.includes('rain') || condition.includes('drizzle')) {
-        impactScore = -0.3;
-        impactReason = 'Pluie — trafic piéton réduit, clients dépannage';
-      } else if (condition.includes('snow') || condition.includes('storm')) {
-        impactScore = -0.6;
-        impactReason = 'Intempéries — forte baisse trafic attendue';
-      } else if (temp > 30) {
-        impactScore = 0.4;
-        impactReason = 'Chaleur — forte demande boissons fraîches';
-      } else if (temp < 5) {
-        impactScore = -0.2;
-        impactReason = 'Froid — clients rapides, paniers plus petits';
-      } else if (condition.includes('clear') && temp > 15 && temp < 28) {
-        impactScore = 0.3;
-        impactReason = 'Beau temps — bon trafic piéton attendu';
-      }
+      // Impact scoring (pure helper — see weather-impact.ts)
+      const { impactScore, impactReason } = weatherImpact(temp, condition);
 
       const weather: WeatherContext = {
         temperature: Math.round(temp),
