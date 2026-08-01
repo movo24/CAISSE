@@ -103,4 +103,8 @@ export class CreateSaleDto {
   @IsOptional()
   @IsString()
   promoCode?: string;
+  // MODE TEST pilote : le marqueur de vente de test est porté par l'EN-TÊTE
+  // `X-POS-Test-Mode` (pas le corps) — voir SalesController. Un backend qui ne
+  // le connaît pas l'ignore, donc la caisse vend même s'il n'est pas à jour ;
+  // aucun champ de corps supplémentaire ne peut déclencher forbidNonWhitelisted.
 }

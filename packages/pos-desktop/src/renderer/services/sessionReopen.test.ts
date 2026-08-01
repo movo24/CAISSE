@@ -22,6 +22,7 @@ vi.mock('./api', () => ({
 
 import { usePOSStore } from '../stores/posStore';
 import { shouldOfferReopen, initSessionReopenWatcher, disposeSessionReopenWatcher } from './sessionReopen';
+import { shouldShowReopenPrompt } from '../components/pos/SessionReopenPrompt';
 import { useOfflineStore } from '../stores/offlineStore';
 
 const emp = { id: 'emp-1', firstName: 'Karim', lastName: 'B.', role: 'cashier', storeId: 'store-1' };
@@ -55,6 +56,26 @@ describe('shouldOfferReopen — décision pure sur TRANSITION réseau', () => {
   });
   it('aucun caissier connecté → pas de prompt', () => {
     expect(shouldOfferReopen({ prevStatus: 'offline', nextStatus: 'online', hasEmployee: false, hasSession: false })).toBe(false);
+  });
+});
+
+describe('shouldShowReopenPrompt — visible SANS transition réseau (déblocage terrain)', () => {
+  it('caissier connecté, aucune session, ouverture ÉCHOUÉE → visible immédiatement', () => {
+    // Cas exact du retour de Neon : le POS se croit « online » (aucune transition
+    // →online n\'aura lieu), mais l\'ouverture a échoué. Le panneau doit s\'afficher.
+    expect(shouldShowReopenPrompt({ hasEmployee: true, hasSession: false, offered: false, openFailed: true })).toBe(true);
+  });
+  it('proposition réseau (offered) sans échec → visible aussi', () => {
+    expect(shouldShowReopenPrompt({ hasEmployee: true, hasSession: false, offered: true, openFailed: false })).toBe(true);
+  });
+  it('une session est active → JAMAIS visible (rien à rouvrir)', () => {
+    expect(shouldShowReopenPrompt({ hasEmployee: true, hasSession: true, offered: true, openFailed: true })).toBe(false);
+  });
+  it('aucun caissier connecté → jamais visible', () => {
+    expect(shouldShowReopenPrompt({ hasEmployee: false, hasSession: false, offered: false, openFailed: true })).toBe(false);
+  });
+  it('ni proposition ni échec → jamais visible (état nominal)', () => {
+    expect(shouldShowReopenPrompt({ hasEmployee: true, hasSession: false, offered: false, openFailed: false })).toBe(false);
   });
 });
 

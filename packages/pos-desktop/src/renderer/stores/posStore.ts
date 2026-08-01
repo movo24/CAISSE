@@ -1,11 +1,138 @@
 import { create } from 'zustand';
-import { authApi, posSessionApi, employeeScoreApi } from '../services/api';
+import { authApi, posSessionApi, employeeScoreApi, posTerminalId } from '../services/api';
 
 /** Session POS active (une caisse appartient à un caissier pendant une session). */
 export interface PosSession {
   id: string;
   openedAt: string; // ISO
   terminalId: string | null;
+  /**
+   * Session LOCALE D'URGENCE (mode secours) : ouverte côté caisse quand le serveur
+   * de session renvoie 5xx/timeout, pour que la caisse encaisse malgré la panne.
+   * Non synchronisée avec le backend (session_id résolu serveur = null). Les VENTES
+   * réalisées dessous sont RÉELLES et passent par la file offline persistante
+   * (aucune perte, sync idempotente au retour serveur). Remplacée par une vraie
+   * session dès que le serveur répond.
+   */
+  provisional?: boolean;
+  /** Fond de caisse local saisi à l'ouverture d'urgence (centimes). */
+  openingCashMinorUnits?: number | null;
+  /** Employé associé à la session locale (pour la restauration après redémarrage). */
+  employeeId?: string | null;
+}
+
+/** Clé de persistance de la session locale d'urgence (survit au redémarrage). */
+const PROVISIONAL_SESSION_KEY = 'pos_provisional_session';
+
+/**
+ * Clé de persistance des infos magasin (identité, mentions légales, logo, QR).
+ * Chargées au login uniquement — sans persistance, un redémarrage en MODE SECOURS
+ * (serveur down, pas de re-login) laissait `storeInfo` null → ticket « presque
+ * vide » (ni logo, ni magasin, ni TVA, ni QR). On les persiste pour que le ticket
+ * du mode secours soit STRICTEMENT identique au ticket normal.
+ */
+const STORE_INFO_KEY = 'pos_store_info';
+
+function persistStoreInfo(info: unknown): void {
+  try {
+    if (info) localStorage.setItem(STORE_INFO_KEY, JSON.stringify(info));
+  } catch {
+    /* best-effort */
+  }
+}
+
+function readPersistedStoreInfo(): StoreInfo | null {
+  try {
+    const raw = localStorage.getItem(STORE_INFO_KEY);
+    return raw ? (JSON.parse(raw) as StoreInfo) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Persiste la session locale d'urgence (survie au redémarrage — exigence terrain). */
+function persistProvisionalSession(s: PosSession | null): void {
+  try {
+    if (s && s.provisional) localStorage.setItem(PROVISIONAL_SESSION_KEY, JSON.stringify(s));
+    else localStorage.removeItem(PROVISIONAL_SESSION_KEY);
+  } catch {
+    /* stockage indisponible — best-effort */
+  }
+}
+
+/** Relit la session locale d'urgence persistée (restaurée à l'ouverture de l'app). */
+function readPersistedProvisionalSession(): PosSession | null {
+  try {
+    const raw = localStorage.getItem(PROVISIONAL_SESSION_KEY);
+    if (!raw) return null;
+    const s = JSON.parse(raw) as PosSession;
+    return s && s.provisional && s.id ? s : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Descripteur d'erreur RÉEL d'un appel de session — jamais un message générique.
+ * Porte le statut HTTP exact (401/403/409/500/…) ou 'timeout'/'network', le code
+ * métier éventuel, le message serveur, et un identifiant d'erreur traçable.
+ */
+export interface SessionReopenError {
+  status: number | null;
+  kind: 'http' | 'timeout' | 'network';
+  code: string | null;
+  message: string;
+  errorId: string;
+}
+
+/** Extrait un descripteur d'erreur réel d'une erreur axios (aucun masquage). */
+export function describeSessionError(e: any): SessionReopenError {
+  const errorId =
+    'ERR-' +
+    Date.now().toString(36).toUpperCase() +
+    '-' +
+    Math.floor(Math.random() * 1e6).toString(36).toUpperCase();
+  const status: number | null = e?.response?.status ?? null;
+  const serverMsg: string | undefined =
+    e?.response?.data?.message || e?.response?.data?.error || e?.response?.data?.details?.[0];
+  const code: string | null = e?.response?.data?.code || e?.code || null;
+  let kind: 'http' | 'timeout' | 'network' = 'http';
+  if (!e?.response) {
+    kind =
+      e?.code === 'ECONNABORTED' || /timeout/i.test(e?.message || '') ? 'timeout' : 'network';
+  }
+  const message =
+    status != null
+      ? `HTTP ${status}${serverMsg ? ` — ${serverMsg}` : ''}`
+      : kind === 'timeout'
+        ? 'Délai dépassé (timeout) — le serveur n’a pas répondu à temps'
+        : 'Réseau injoignable (aucune réponse du serveur)';
+  return { status, kind, code, message, errorId };
+}
+
+/** Une erreur 5xx ou un timeout justifie la session locale provisoire (MODE TEST). */
+export function isServerDownError(err: SessionReopenError): boolean {
+  return err.kind === 'timeout' || (err.status != null && err.status >= 500);
+}
+
+/**
+ * Construit une SESSION LOCALE D'URGENCE (mode secours) et la PERSISTE (survie au
+ * redémarrage). Le fond saisi devient le fond local ; employé + terminal courants
+ * restent associés ; id local unique. Les ventes dessous sont réelles (file
+ * offline persistante), jamais perdues ; remplacée par une vraie session au retour.
+ */
+function adoptProvisionalSession(get: () => POSState, openingCashMinorUnits: number | null): PosSession {
+  const terminalId = posTerminalId();
+  const session: PosSession = {
+    id: `LOCAL-${terminalId}-${Date.now().toString(36).toUpperCase()}-${Math.floor(Math.random() * 1e6).toString(36).toUpperCase()}`,
+    openedAt: new Date().toISOString(),
+    terminalId,
+    provisional: true,
+    openingCashMinorUnits: openingCashMinorUnits ?? null,
+    employeeId: get().employee?.id ?? null,
+  };
+  persistProvisionalSession(session);
+  return session;
 }
 import type { PaymentMethod } from '../services/paymentMachine';
 import { computePromoDiscount } from '../services/discount-policy';
@@ -217,11 +344,17 @@ interface POSState {
   posSessionOpenFailed: boolean;
   /** Prompt « Serveur de retour — rouvrir une session ? » (jamais silencieux). */
   sessionReopenOffered: boolean;
+  /** Dernière erreur RÉELLE d'un appel de session (code HTTP + id), jamais un
+   *  message générique — affichée telle quelle dans le prompt de réouverture. */
+  sessionReopenError: SessionReopenError | null;
   dismissSessionReopen: () => void;
   /** Rouvre une session avec le contenu ACTUEL du tiroir comme fond.
    *  Single-flight ; 409 → adopte la session active existante (aucun doublon).
    *  Retourne true si une session est active à l'issue de l'appel. */
   reopenSessionWithFloat: (openingCashMinorUnits: number) => Promise<boolean>;
+  /** Bouton manager « Forcer le déverrouillage local » : ouvre INCONDITIONNELLEMENT
+   *  une session locale d'urgence (contourne réellement le verrou serveur). */
+  forceLocalUnlock: (openingCashMinorUnits?: number | null) => void;
   openPosSession: () => Promise<void>;
   /** Changement de caissier explicite : ferme la session précédente, ouvre une
    *  nouvelle et journalise EMPLOYEE_SWITCHED (jamais de switch silencieux). */
@@ -284,12 +417,16 @@ let reopenInFlight = false;
 export const usePOSStore = create<POSState>((set, get) => ({
   employee: null,
   accessToken: null,
-  posSession: null,
+  // MODE SECOURS : restaure une session locale d'urgence persistée au démarrage —
+  // la caisse ne repart JAMAIS verrouillée après un redémarrage en mode secours.
+  // (openPosSession la remplacera par une vraie session dès que le serveur répond.)
+  posSession: readPersistedProvisionalSession(),
   lockRequested: false,
   cashCountOpen: false,
   openingCashRequired: false,
   posSessionOpenFailed: false,
   sessionReopenOffered: false,
+  sessionReopenError: null,
   cartItems: [],
   customerQrCode: null,
   customer: null,
@@ -304,7 +441,9 @@ export const usePOSStore = create<POSState>((set, get) => ({
   occupancy: null,
   weather: null,
   ticketHistory: [],
-  storeInfo: null,
+  // Restaurées au démarrage (persistées au login) → le ticket du MODE SECOURS
+  // garde logo/magasin/mentions légales/QR même après un redémarrage hors ligne.
+  storeInfo: readPersistedStoreInfo(),
   suspendedTickets: (() => {
     try {
       const raw = localStorage.getItem('caisse_suspended_tickets');
@@ -331,6 +470,14 @@ export const usePOSStore = create<POSState>((set, get) => ({
   declareOpeningCash: async (openingCashMinorUnits) => {
     const { posSession } = get();
     if (!posSession?.id) { set({ openingCashRequired: false }); return; }
+    // Session locale d'urgence : le fond reste LOCAL (aucun appel serveur avec un
+    // id LOCAL-… qui échouerait). On l'enregistre sur la session persistée.
+    if (posSession.provisional) {
+      const updated = { ...posSession, openingCashMinorUnits };
+      persistProvisionalSession(updated);
+      set({ posSession: updated, openingCashRequired: false });
+      return;
+    }
     try {
       await posSessionApi.setOpeningCash(posSession.id, openingCashMinorUnits);
     } catch {
@@ -339,6 +486,21 @@ export const usePOSStore = create<POSState>((set, get) => ({
     } finally {
       set({ openingCashRequired: false });
     }
+  },
+
+  forceLocalUnlock: (openingCashMinorUnits) => {
+    // Bouton manager « Forcer le déverrouillage local » : ouvre une session locale
+    // d'urgence INCONDITIONNELLEMENT (même si la bascule automatique n'a pas eu
+    // lieu), contourne réellement le verrou de session serveur. Aucune vente
+    // existante ni la base ne sont touchées.
+    const session = adoptProvisionalSession(get, openingCashMinorUnits ?? null);
+    set({
+      posSession: session,
+      openingCashRequired: openingCashMinorUnits == null,
+      posSessionOpenFailed: false,
+      sessionReopenOffered: false,
+    });
+    get().logScoreEvent('SESSION_FORCED_LOCAL', 'manager force local unlock');
   },
   dismissOpeningCash: () => set({ openingCashRequired: false }),
 
@@ -379,35 +541,66 @@ export const usePOSStore = create<POSState>((set, get) => ({
     if (reopenInFlight) return false;
     if (get().posSession?.id) { set({ sessionReopenOffered: false }); return true; }
     reopenInFlight = true;
+    // On mémorise l'erreur RÉELLE (open puis active) pour l'afficher telle quelle.
+    let realError: SessionReopenError | null = null;
     try {
-      const res = await posSessionApi.open(openingCashMinorUnits);
-      const s = res.data;
-      if (s?.id) {
-        set({
-          posSession: { id: s.id, openedAt: s.openedAt || new Date().toISOString(), terminalId: s.terminalId ?? null },
-          openingCashRequired: s.openingCashMinorUnits == null,
-          posSessionOpenFailed: false,
-          sessionReopenOffered: false,
-        });
-        return true;
-      }
-      return false;
-    } catch {
-      // 409 : une session est déjà active sur ce terminal → on l'ADOPTE, jamais
-      // de doublon (le fond saisi est ignoré : la session existante fait foi).
       try {
-        const act = await posSessionApi.active();
-        const s = act.data;
+        const res = await posSessionApi.open(openingCashMinorUnits);
+        const s = res.data;
         if (s?.id) {
+          persistProvisionalSession(null); // vraie session serveur → efface le secours
           set({
             posSession: { id: s.id, openedAt: s.openedAt || new Date().toISOString(), terminalId: s.terminalId ?? null },
             openingCashRequired: s.openingCashMinorUnits == null,
             posSessionOpenFailed: false,
             sessionReopenOffered: false,
+            sessionReopenError: null,
           });
           return true;
         }
-      } catch { /* le prompt reste affiché, le caissier peut réessayer */ }
+      } catch (openErr: any) {
+        realError = describeSessionError(openErr);
+        // 409 : une session est déjà active sur ce terminal → on l'ADOPTE, jamais
+        // de doublon (le fond saisi est ignoré : la session existante fait foi).
+        try {
+          const act = await posSessionApi.active();
+          const s = act.data;
+          if (s?.id) {
+            persistProvisionalSession(null); // vraie session serveur → efface le secours
+            set({
+              posSession: { id: s.id, openedAt: s.openedAt || new Date().toISOString(), terminalId: s.terminalId ?? null },
+              openingCashRequired: s.openingCashMinorUnits == null,
+              posSessionOpenFailed: false,
+              sessionReopenOffered: false,
+              sessionReopenError: null,
+            });
+            return true;
+          }
+        } catch (activeErr: any) {
+          // Garde l'erreur la plus parlante (open d'abord ; active si open était réseau).
+          realError = describeSessionError(openErr?.response ? openErr : activeErr);
+        }
+      }
+
+      // MODE SECOURS (GO owner) : serveur de session en 5xx/timeout → bascule
+      // AUTOMATIQUE et INCONDITIONNELLE sur une session locale d'urgence, avec le
+      // fond saisi, pour que la caisse encaisse malgré la panne. Plus aucune
+      // dépendance à une variable d'env : la caisse ne doit jamais rester verrouillée
+      // sur un 500.
+      if (realError && isServerDownError(realError)) {
+        set({
+          posSession: adoptProvisionalSession(get, openingCashMinorUnits),
+          openingCashRequired: false,
+          posSessionOpenFailed: false,
+          sessionReopenOffered: false,
+          sessionReopenError: realError, // conservé pour la traçabilité (code + id)
+        });
+        return true;
+      }
+
+      // Échec sans mode test (ou 4xx) : on EXPOSE le code réel + l'id, jamais un
+      // message générique. Le prompt reste affiché pour un nouvel essai.
+      set({ sessionReopenError: realError ?? describeSessionError(new Error('réponse sans id')) });
       return false;
     } finally {
       reopenInFlight = false;
@@ -420,43 +613,73 @@ export const usePOSStore = create<POSState>((set, get) => ({
       const res = await posSessionApi.open();
       const s = res.data;
       if (s?.id) {
+        persistProvisionalSession(null); // vraie session serveur → efface le secours
         set({
           posSession: { id: s.id, openedAt: s.openedAt || new Date().toISOString(), terminalId: s.terminalId ?? null },
           // Fond non déclaré → on demande la saisie à l'ouverture.
           openingCashRequired: s.openingCashMinorUnits == null,
           posSessionOpenFailed: false,
+          sessionReopenError: null,
         });
-      } else {
-        // Réponse sans id : la session n'existe pas côté serveur — état visible.
-        set({ posSession: null, posSessionOpenFailed: true });
+        return;
       }
+      // Réponse sans id : la session n'existe pas côté serveur. Si une session locale
+      // d'urgence est déjà en place (restaurée/adoptée), on la CONSERVE (jamais de
+      // reverrouillage) ; sinon état visible.
+      if (get().posSession?.provisional) { set({ posSessionOpenFailed: false }); return; }
+      set({ posSession: null, posSessionOpenFailed: true });
     } catch (e: any) {
+      let realError = describeSessionError(e);
       // 409 = une session est déjà active sur ce terminal → on la récupère.
       try {
         const act = await posSessionApi.active();
         const s = act.data;
         if (s?.id) {
+          persistProvisionalSession(null); // vraie session serveur → efface le secours
           set({
             posSession: { id: s.id, openedAt: s.openedAt || new Date().toISOString(), terminalId: s.terminalId ?? null },
             // Session récupérée : ne redemande que si le fond n'a jamais été déclaré.
             openingCashRequired: s.openingCashMinorUnits == null,
             posSessionOpenFailed: false,
+            sessionReopenError: null,
           });
-        } else {
-          set({ posSession: null, posSessionOpenFailed: true });
+          return;
         }
-      } catch {
-        // Échec TOTAL (réseau/serveur) : la caisse continue mais SANS session —
-        // les ventes partiront avec session_id NULL (hors comptage de caisse).
-        // Cet état ne doit JAMAIS être silencieux : le bandeau l'affiche.
-        set({ posSession: null, posSessionOpenFailed: true });
+      } catch (activeErr: any) {
+        realError = describeSessionError(e?.response ? e : activeErr);
       }
+      // MODE SECOURS (GO owner) : serveur en 5xx/timeout → session locale d'urgence
+      // IMMÉDIATE dès la connexion, AUTOMATIQUE et inconditionnelle, pour que la
+      // caisse ne soit jamais verrouillée sur un 500. Si une session locale existe
+      // déjà (restaurée au démarrage), on la CONSERVE avec son fond ; sinon on en
+      // ouvre une (le fond sera saisi via CashOpenModal → declareOpeningCash local).
+      if (isServerDownError(realError)) {
+        const existing = get().posSession;
+        if (existing?.provisional) {
+          set({ posSessionOpenFailed: false, sessionReopenError: realError });
+        } else {
+          set({
+            posSession: adoptProvisionalSession(get, null),
+            openingCashRequired: true,
+            posSessionOpenFailed: false,
+            sessionReopenError: realError,
+          });
+        }
+        return;
+      }
+      // Échec TOTAL (réseau/serveur) hors mode test : la caisse continue mais SANS
+      // session — état JAMAIS silencieux : le bandeau + l'erreur réelle l'affichent.
+      set({ posSession: null, posSessionOpenFailed: true, sessionReopenError: realError });
     }
   },
 
   logout: (countedCashMinorUnits?: number, skipReason?: string) => {
     const { posSession } = get();
-    if (posSession?.id) {
+    // Session locale d'urgence : rien à fermer côté serveur (id LOCAL-…). On efface
+    // seulement la persistance locale — les ventes déjà passées restent dans la file.
+    if (posSession?.provisional) {
+      persistProvisionalSession(null);
+    } else if (posSession?.id) {
       // Le compté est la seule valeur transmise ; l'attendu/écart sont dérivés
       // côté serveur. skipReason encadre une fermeture explicite sans comptage.
       // Best-effort : une panne réseau ne bloque pas la fermeture.
@@ -574,7 +797,7 @@ export const usePOSStore = create<POSState>((set, get) => ({
     });
   },
 
-  setStoreInfo: (info) => set({ storeInfo: info }),
+  setStoreInfo: (info) => { persistStoreInfo(info); set({ storeInfo: info }); },
 
   logReprint: (ticketNumber, by) => {
     const { ticketHistory } = get();

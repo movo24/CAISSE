@@ -65,6 +65,9 @@ export function toSyncCreateBody(p: any): Record<string, unknown> {
       discountApproverId: p?.discountApproverId ?? null,
       promoCode: p?.promoCode ?? null,
     }),
+    // NB : le marqueur MODE TEST n'est PAS un champ de corps (il déclencherait
+    // forbidNonWhitelisted sur un backend non à jour). Il est porté par l'en-tête
+    // `X-POS-Test-Mode`, positionné au rejeu depuis `entry.payload.isTest`.
     payments: p?.payments ?? [],
   };
 }

@@ -57,6 +57,7 @@ export class ProductAnalyticsService {
       .addSelect('SUM(li.quantity)', 'units')
       .where('s.store_id = :storeId', { storeId })
       .andWhere("s.status = 'completed'")
+      .andWhere('s.is_test = false') // MODE TEST : exclut les ventes de test des analytics réels (règle 6)
       .andWhere('s.created_at >= :from', { from })
       .andWhere('s.created_at < :to', { to })
       .andWhere('li.product_id IS NOT NULL')
@@ -74,6 +75,7 @@ export class ProductAnalyticsService {
       .addSelect('SUM(li.line_total_minor_units)', 'revenue')
       .where('s.store_id = :storeId', { storeId })
       .andWhere("s.status = 'completed'")
+      .andWhere('s.is_test = false') // MODE TEST : exclut les ventes de test des analytics réels (règle 6)
       .andWhere('s.created_at >= :from', { from })
       .andWhere('s.created_at < :to', { to })
       .andWhere('li.product_id IS NOT NULL')
@@ -91,6 +93,7 @@ export class ProductAnalyticsService {
       .addSelect('MAX(s.created_at)', 'lastSoldAt')
       .where('s.store_id = :storeId', { storeId })
       .andWhere("s.status = 'completed'")
+      .andWhere('s.is_test = false') // MODE TEST : exclut les ventes de test des analytics réels (règle 6)
       .andWhere('li.product_id IS NOT NULL')
       .groupBy('li.product_id')
       .getRawMany<{ productId: string; lastSoldAt: string | Date }>();
@@ -145,6 +148,7 @@ export class ProductAnalyticsService {
       .addSelect('s.total_minor_units', 'total')
       .where('s.store_id = :storeId', { storeId })
       .andWhere("s.status = 'completed'")
+      .andWhere('s.is_test = false') // MODE TEST : exclut les ventes de test des analytics réels (règle 6)
       .andWhere('s.created_at >= :since', { since })
       .getRawMany<{ createdAt: string | Date; total: string | number }>();
     const map: DailyCaMap = {};

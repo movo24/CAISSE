@@ -246,7 +246,7 @@ export const salesApi = {
   // idempotencyKey: stable per offline-queue entry, so a sync replay is deduped server-side.
   // X-Terminal-Id lets the server bind the sale to the terminal's active POS session
   // (resolved server-side; the header is only a terminal signature, never the session id).
-  create: (data: any, idempotencyKey?: string) =>
+  create: (data: any, idempotencyKey?: string, opts?: { testMode?: boolean }) =>
     api.post('/sales', data, {
       headers: {
         'X-Terminal-Id': currentTerminalId(),
@@ -254,6 +254,10 @@ export const salesApi = {
         // exige l'enrôlement et que cette machine n'est pas approuvée.
         ...(currentMachineId() ? { 'X-Machine-Id': currentMachineId() } : {}),
         ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
+        // MODE TEST pilote : marqueur en EN-TÊTE (jamais dans le corps). Un backend
+        // qui l'ignore laisse quand même passer la vente (aucun 400) → la caisse
+        // n'est jamais cassée par ce marqueur ; un backend à jour marque is_test.
+        ...(opts?.testMode ? { 'X-POS-Test-Mode': '1' } : {}),
       },
     }),
   list: (date?: string) => api.get('/sales', { params: { date } }),

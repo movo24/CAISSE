@@ -29,6 +29,29 @@ ipcMain.on('app:getVersion', (e) => {
 });
 
 /**
+ * MODE TEST pilote — contournement de verrou de session, autorisé par l'owner
+ * en phase pilote (le 500 sur `/pos-sessions/active` bloque l'ouverture de
+ * session ; la cause définitive sera corrigée séparément). Le main lit la
+ * configuration UNIQUEMENT depuis l'environnement du système (variables d'env
+ * au lancement de l'app) — donc activable/désactivable INSTANTANÉMENT sans
+ * nouvelle build (règle 7). Le renderer ne peut jamais l'activer lui-même.
+ *
+ *   POS_SESSION_TEST_BYPASS=true              → active le mode test
+ *   POS_SESSION_TEST_BYPASS_STORES=code1,code2  (optionnel) magasins pilotes
+ *   POS_SESSION_TEST_BYPASS_TERMINALS=T01,T02   (optionnel) terminaux pilotes
+ *
+ * Hors mode test (valeur absente/≠ "true") → { enabled:false } → comportement
+ * de sécurité actuel strictement inchangé (règle 8).
+ */
+ipcMain.on('app:sessionTestBypass', (e) => {
+  e.returnValue = {
+    enabled: process.env.POS_SESSION_TEST_BYPASS === 'true',
+    stores: process.env.POS_SESSION_TEST_BYPASS_STORES || '',
+    terminals: process.env.POS_SESSION_TEST_BYPASS_TERMINALS || '',
+  };
+});
+
+/**
  * Sonde réseau côté MAIN (diagnostic terrain, bug login v1.0.3→v1.0.4).
  *
  * `net.request` du process main N'EST PAS soumis au CORS ni au sandbox du

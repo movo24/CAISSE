@@ -71,6 +71,19 @@ export class SaleEntity {
   @Column({ name: 'public_token', type: 'varchar', length: 64, nullable: true })
   publicToken: string | null;
 
+  /**
+   * Vente réalisée en MODE TEST (contournement de verrou de session autorisé par
+   * l'owner en phase pilote — `POS_SESSION_TEST_BYPASS`). Marquée `true` UNIQUEMENT
+   * quand le serveur a lui-même autorisé le bypass pour ce magasin/terminal ; la
+   * parole du client ne suffit jamais (hors mode test, reste `false`). Sert à
+   * EXCLURE ces ventes des rapports/analytics réels (règle 6) pour qu'elles ne
+   * contaminent pas le chiffre. Additive & DÉLIBÉRÉMENT HORS de l'empreinte de
+   * hash fiscale (comme sessionId/terminalId/publicToken) — aucune vente existante
+   * n'est rehashée.
+   */
+  @Column({ name: 'is_test', type: 'boolean', default: false })
+  isTest: boolean;
+
   @Column({ default: 'pending' })
   status: string;
 

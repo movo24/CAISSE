@@ -31,6 +31,11 @@ export class SalesController {
     @Headers('idempotency-key') idempotencyKey?: string,
     @Headers('x-terminal-id') terminalId?: string,
     @Headers('x-machine-id') machineId?: string,
+    // MODE TEST pilote : marqueur porté par un EN-TÊTE (pas le corps) — un backend
+    // qui ne connaît pas ce header l'ignore (aucun rejet forbidNonWhitelisted),
+    // donc la caisse vend même si le backend n'est pas encore à jour. Honoré
+    // seulement si le serveur autorise lui-même le bypass (voir SalesService).
+    @Headers('x-pos-test-mode') testMode?: string,
   ) {
     return this.salesService.createSale(
       req.user.storeId,
@@ -44,6 +49,7 @@ export class SalesController {
       idempotencyKey,
       terminalId,
       machineId,
+      testMode === '1' || testMode === 'true',
     );
   }
 
