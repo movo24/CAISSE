@@ -1,13 +1,32 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
-import { ShieldCheck, Store } from 'lucide-react';
+import { ShieldCheck, Store, KeyRound, ServerCrash, WifiOff, TriangleAlert } from 'lucide-react';
+import type { AuthErrorKind } from '../utils/authError';
 
 type LoginMode = 'admin' | 'store';
 
+/** Rendu de l'échec : l'icône et la couleur doivent trancher entre « c'est vous »
+ *  (identifiants) et « c'est l'infrastructure » (serveur HS / réseau absent). */
+const ERROR_STYLES: Record<AuthErrorKind, { Icon: typeof KeyRound; tone: string; label: string }> = {
+  credentials: { Icon: KeyRound, tone: 'amber', label: 'Identifiants refusés' },
+  rate_limited: { Icon: TriangleAlert, tone: 'amber', label: 'Trop de tentatives' },
+  bad_request: { Icon: TriangleAlert, tone: 'amber', label: 'Requête refusée' },
+  unavailable: { Icon: ServerCrash, tone: 'red', label: 'Serveur indisponible' },
+  server: { Icon: ServerCrash, tone: 'red', label: 'Erreur interne du serveur' },
+  offline: { Icon: WifiOff, tone: 'slate', label: 'Aucun réseau' },
+  unknown: { Icon: TriangleAlert, tone: 'red', label: 'Échec de la connexion' },
+};
+
+const TONE_CLASSES: Record<string, string> = {
+  amber: 'bg-amber-500/10 border-amber-500/30 text-amber-200',
+  red: 'bg-red-500/10 border-red-500/30 text-red-200',
+  slate: 'bg-slate-500/10 border-slate-400/30 text-slate-200',
+};
+
 export function LoginPage() {
   const navigate = useNavigate();
-  const { login, loginAdmin, isLoading, error } = useAuthStore();
+  const { login, loginAdmin, isLoading, error, errorKind, errorDetail } = useAuthStore();
   const [mode, setMode] = useState<LoginMode>(
     () => (localStorage.getItem('caisse_login_mode') as LoginMode) || 'admin',
   );
@@ -89,11 +108,33 @@ export function LoginPage() {
 
         {/* Login form */}
         <form onSubmit={handleSubmit} className="bg-white/5 backdrop-blur-xl rounded-2xl border border-white/10 p-8 space-y-5">
-          {error && (
-            <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3 text-sm text-red-300">
-              {typeof error === 'string' ? error : 'Erreur de connexion'}
-            </div>
-          )}
+          {error && (() => {
+            const style = ERROR_STYLES[errorKind ?? 'unknown'] ?? ERROR_STYLES.unknown;
+            const { Icon } = style;
+            return (
+              <div
+                role="alert"
+                data-testid="login-error"
+                data-error-kind={errorKind ?? 'unknown'}
+                className={`border rounded-xl px-4 py-3 ${TONE_CLASSES[style.tone]}`}
+              >
+                <div className="flex items-start gap-2.5">
+                  <Icon size={16} className="mt-0.5 shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold uppercase tracking-wider opacity-80">
+                      {style.label}
+                    </p>
+                    <p className="text-sm mt-0.5">{error}</p>
+                    {errorDetail && (
+                      <p className="text-[11px] font-mono mt-2 opacity-60 break-all">
+                        {errorDetail}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
 
           {mode === 'admin' ? (
             <div>

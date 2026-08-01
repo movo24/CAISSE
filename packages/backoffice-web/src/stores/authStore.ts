@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { authApi, storesApi } from '../services/api';
+import { classifyAuthError, type AuthErrorKind } from '../utils/authError';
 
 // ── JWT expiry helper ──
 function isTokenExpired(token: string): boolean {
@@ -34,6 +35,10 @@ interface AuthState {
   accessToken: string | null;
   isLoading: boolean;
   error: string | null;
+  /** Nature de l'échec : distingue identifiants refusés / serveur HS / réseau absent. */
+  errorKind: AuthErrorKind | null;
+  /** Ligne technique (URL réellement appelée + code HTTP) pour le diagnostic. */
+  errorDetail: string | null;
 
   // Multi-store context (independent of auth)
   currentStoreId: string | null;
@@ -58,12 +63,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   accessToken: null,
   isLoading: false,
   error: null,
+  errorKind: null,
+  errorDetail: null,
   currentStoreId: null,
   stores: [],
   currentApp: (localStorage.getItem('currentApp') as AppType) || 'pos',
 
   login: async (storeId: string, pin: string) => {
-    set({ isLoading: true, error: null });
+    set({ isLoading: true, error: null, errorKind: null, errorDetail: null });
     try {
       const response = await authApi.loginPin(storeId, pin);
       const { accessToken, refreshToken, employee } = response.data;
@@ -86,16 +93,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         get().loadStores();
       }
     } catch (err: any) {
-      const msg = err.response?.data?.message;
+      const classified = classifyAuthError(err);
+      console.error('[Auth] Échec login magasin:', classified.kind, classified.detail);
       set({
         isLoading: false,
-        error: typeof msg === 'string' ? msg : Array.isArray(msg) ? msg.join(', ') : 'Erreur de connexion',
+        error: classified.message,
+        errorKind: classified.kind,
+        errorDetail: classified.detail,
       });
     }
   },
 
   loginAdmin: async (email: string, pin: string) => {
-    set({ isLoading: true, error: null });
+    set({ isLoading: true, error: null, errorKind: null, errorDetail: null });
     try {
       const response = await authApi.loginAdmin(email, pin);
       const { accessToken, refreshToken, employee } = response.data;
@@ -115,10 +125,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       get().loadStores();
     } catch (err: any) {
-      const msg = err.response?.data?.message;
+      const classified = classifyAuthError(err);
+      console.error('[Auth] Échec login admin:', classified.kind, classified.detail);
       set({
         isLoading: false,
-        error: typeof msg === 'string' ? msg : Array.isArray(msg) ? msg.join(', ') : 'Erreur de connexion',
+        error: classified.message,
+        errorKind: classified.kind,
+        errorDetail: classified.detail,
       });
     }
   },
@@ -137,6 +150,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       currentStoreId: null,
       stores: [],
       currentApp: 'pos',
+      error: null,
+      errorKind: null,
+      errorDetail: null,
     });
   },
 
