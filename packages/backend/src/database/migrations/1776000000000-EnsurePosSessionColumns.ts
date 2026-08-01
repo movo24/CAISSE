@@ -27,13 +27,18 @@ export class EnsurePosSessionColumns1776000000000 implements MigrationInterface 
   name = 'EnsurePosSessionColumns1776000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
-    // Colonne directement pointée par la sonde (jeton de session TimeWin).
+    // Colonne directement pointée par la sonde ET reproduite en local (42703 :
+    // « column PosSessionEntity.timewin_session_token does not exist ») — LA cause.
     await queryRunner.query(
       `ALTER TABLE "pos_sessions" ADD COLUMN IF NOT EXISTS "timewin_session_token" varchar`,
     );
-    // Autres colonnes CREATE-only à défaut sûr / nullable (défense en profondeur).
+    // Autres colonnes de l'entité présentes UNIQUEMENT dans le CREATE TABLE (aucun
+    // ALTER) — noms RÉELS des colonnes, défaut sûr/nullable, défense en profondeur.
+    // (La sonde a échoué sur timewin_session_token, donc les colonnes qui la
+    //  précèdent — dont "permissions" — existent déjà ; ces ADD sont des no-op si
+    //  présentes, jamais destructeurs.)
     await queryRunner.query(
-      `ALTER TABLE "pos_sessions" ADD COLUMN IF NOT EXISTS "metadata" jsonb NOT NULL DEFAULT '{}'`,
+      `ALTER TABLE "pos_sessions" ADD COLUMN IF NOT EXISTS "permissions" jsonb NOT NULL DEFAULT '{}'`,
     );
     await queryRunner.query(
       `ALTER TABLE "pos_sessions" ADD COLUMN IF NOT EXISTS "max_discount" numeric NOT NULL DEFAULT 0`,
