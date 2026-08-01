@@ -24,6 +24,32 @@ export interface PosSession {
 /** Clé de persistance de la session locale d'urgence (survit au redémarrage). */
 const PROVISIONAL_SESSION_KEY = 'pos_provisional_session';
 
+/**
+ * Clé de persistance des infos magasin (identité, mentions légales, logo, QR).
+ * Chargées au login uniquement — sans persistance, un redémarrage en MODE SECOURS
+ * (serveur down, pas de re-login) laissait `storeInfo` null → ticket « presque
+ * vide » (ni logo, ni magasin, ni TVA, ni QR). On les persiste pour que le ticket
+ * du mode secours soit STRICTEMENT identique au ticket normal.
+ */
+const STORE_INFO_KEY = 'pos_store_info';
+
+function persistStoreInfo(info: unknown): void {
+  try {
+    if (info) localStorage.setItem(STORE_INFO_KEY, JSON.stringify(info));
+  } catch {
+    /* best-effort */
+  }
+}
+
+function readPersistedStoreInfo(): StoreInfo | null {
+  try {
+    const raw = localStorage.getItem(STORE_INFO_KEY);
+    return raw ? (JSON.parse(raw) as StoreInfo) : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Persiste la session locale d'urgence (survie au redémarrage — exigence terrain). */
 function persistProvisionalSession(s: PosSession | null): void {
   try {
@@ -415,7 +441,9 @@ export const usePOSStore = create<POSState>((set, get) => ({
   occupancy: null,
   weather: null,
   ticketHistory: [],
-  storeInfo: null,
+  // Restaurées au démarrage (persistées au login) → le ticket du MODE SECOURS
+  // garde logo/magasin/mentions légales/QR même après un redémarrage hors ligne.
+  storeInfo: readPersistedStoreInfo(),
   suspendedTickets: (() => {
     try {
       const raw = localStorage.getItem('caisse_suspended_tickets');
@@ -769,7 +797,7 @@ export const usePOSStore = create<POSState>((set, get) => ({
     });
   },
 
-  setStoreInfo: (info) => set({ storeInfo: info }),
+  setStoreInfo: (info) => { persistStoreInfo(info); set({ storeInfo: info }); },
 
   logReprint: (ticketNumber, by) => {
     const { ticketHistory } = get();

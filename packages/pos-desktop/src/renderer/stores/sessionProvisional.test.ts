@@ -157,6 +157,28 @@ describe('forceLocalUnlock — bouton manager (contourne réellement le verrou s
   });
 });
 
+describe('storeInfo — persisté et restauré (ticket du mode secours identique au normal)', () => {
+  const store = { storeName: 'The Wesley', siret: '12345678900011', tvaIntracom: 'FR00', receiptLogoUrl: 'data:x', receiptQrEnabled: true } as never;
+
+  it('setStoreInfo persiste les infos magasin', () => {
+    usePOSStore.getState().setStoreInfo(store);
+    expect(localStorage.getItem('pos_store_info')).toBeTruthy();
+    expect(JSON.parse(localStorage.getItem('pos_store_info') as string).storeName).toBe('The Wesley');
+  });
+
+  it('un store fraîchement (ré)importé restaure storeInfo (logo/magasin/TVA/QR au redémarrage)', async () => {
+    localStorage.setItem('pos_store_info', JSON.stringify(store));
+    vi.resetModules();
+    vi.doMock('../services/api', () => ({
+      authApi: { logout }, posSessionApi: { open: () => Promise.resolve(open()), close: () => Promise.resolve(undefined), active: () => Promise.resolve(active()), setOpeningCash: () => Promise.resolve(undefined) },
+      employeeScoreApi: { logEvent: () => Promise.resolve(undefined) }, posTerminalId: () => 'TERMINAL 01',
+    }));
+    const mod = await import('./posStore');
+    expect(mod.usePOSStore.getState().storeInfo?.storeName).toBe('The Wesley');
+    expect(mod.usePOSStore.getState().storeInfo?.siret).toBe('12345678900011');
+  });
+});
+
 describe('declareOpeningCash sur session locale — reste LOCAL (aucun appel serveur)', () => {
   it('enregistre le fond localement et le persiste, sans appeler setOpeningCash', async () => {
     usePOSStore.getState().forceLocalUnlock(null);
