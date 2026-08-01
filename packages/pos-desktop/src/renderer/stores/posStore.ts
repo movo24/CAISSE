@@ -1,6 +1,5 @@
 import { create } from 'zustand';
 import { authApi, posSessionApi, employeeScoreApi, posTerminalId } from '../services/api';
-import { decideSessionTestBypass, readSessionTestBypassConfig } from '../services/sessionTestBypassCore';
 
 /** Session POS active (une caisse appartient à un caissier pendant une session). */
 export interface PosSession {
@@ -8,12 +7,43 @@ export interface PosSession {
   openedAt: string; // ISO
   terminalId: string | null;
   /**
-   * Session LOCALE PROVISOIRE (MODE TEST) : ouverte côté caisse quand le serveur
-   * de session renvoie 5xx/timeout ET que le mode test est autorisé. Non
-   * synchronisée avec le backend ; les ventes réalisées dessous sont isolées
-   * (is_test). Remplacée par une vraie session dès que le serveur répond.
+   * Session LOCALE D'URGENCE (mode secours) : ouverte côté caisse quand le serveur
+   * de session renvoie 5xx/timeout, pour que la caisse encaisse malgré la panne.
+   * Non synchronisée avec le backend (session_id résolu serveur = null). Les VENTES
+   * réalisées dessous sont RÉELLES et passent par la file offline persistante
+   * (aucune perte, sync idempotente au retour serveur). Remplacée par une vraie
+   * session dès que le serveur répond.
    */
   provisional?: boolean;
+  /** Fond de caisse local saisi à l'ouverture d'urgence (centimes). */
+  openingCashMinorUnits?: number | null;
+  /** Employé associé à la session locale (pour la restauration après redémarrage). */
+  employeeId?: string | null;
+}
+
+/** Clé de persistance de la session locale d'urgence (survit au redémarrage). */
+const PROVISIONAL_SESSION_KEY = 'pos_provisional_session';
+
+/** Persiste la session locale d'urgence (survie au redémarrage — exigence terrain). */
+function persistProvisionalSession(s: PosSession | null): void {
+  try {
+    if (s && s.provisional) localStorage.setItem(PROVISIONAL_SESSION_KEY, JSON.stringify(s));
+    else localStorage.removeItem(PROVISIONAL_SESSION_KEY);
+  } catch {
+    /* stockage indisponible — best-effort */
+  }
+}
+
+/** Relit la session locale d'urgence persistée (restaurée à l'ouverture de l'app). */
+function readPersistedProvisionalSession(): PosSession | null {
+  try {
+    const raw = localStorage.getItem(PROVISIONAL_SESSION_KEY);
+    if (!raw) return null;
+    const s = JSON.parse(raw) as PosSession;
+    return s && s.provisional && s.id ? s : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -60,32 +90,23 @@ export function isServerDownError(err: SessionReopenError): boolean {
 }
 
 /**
- * Le mode test est-il actif ICI ? Calculé SANS importer sessionTestBypass.ts (qui
- * importe ce store → cycle) : on lit la config du shell + l'état courant du store.
+ * Construit une SESSION LOCALE D'URGENCE (mode secours) et la PERSISTE (survie au
+ * redémarrage). Le fond saisi devient le fond local ; employé + terminal courants
+ * restent associés ; id local unique. Les ventes dessous sont réelles (file
+ * offline persistante), jamais perdues ; remplacée par une vraie session au retour.
  */
-function sessionTestBypassActive(get: () => POSState): boolean {
-  const cfg = readSessionTestBypassConfig();
-  if (!cfg.enabled) return false;
-  const st = get();
-  return decideSessionTestBypass(cfg, {
-    storeIds: [st.employee?.storeId, st.storeInfo?.siret],
-    terminalId: posTerminalId(),
-  });
-}
-
-/**
- * Construit une session LOCALE PROVISOIRE (MODE TEST — non synchronisée). Le fond
- * saisi reste local (aucune session serveur) ; il sera redéclaré sur la vraie
- * session dès que le serveur répond et que l'ouverture réelle la remplace.
- */
-function adoptProvisionalSession(): PosSession {
+function adoptProvisionalSession(get: () => POSState, openingCashMinorUnits: number | null): PosSession {
   const terminalId = posTerminalId();
-  return {
-    id: `LOCAL-${terminalId}-${Date.now().toString(36).toUpperCase()}`,
+  const session: PosSession = {
+    id: `LOCAL-${terminalId}-${Date.now().toString(36).toUpperCase()}-${Math.floor(Math.random() * 1e6).toString(36).toUpperCase()}`,
     openedAt: new Date().toISOString(),
     terminalId,
     provisional: true,
+    openingCashMinorUnits: openingCashMinorUnits ?? null,
+    employeeId: get().employee?.id ?? null,
   };
+  persistProvisionalSession(session);
+  return session;
 }
 import type { PaymentMethod } from '../services/paymentMachine';
 import { computePromoDiscount } from '../services/discount-policy';
@@ -305,6 +326,9 @@ interface POSState {
    *  Single-flight ; 409 → adopte la session active existante (aucun doublon).
    *  Retourne true si une session est active à l'issue de l'appel. */
   reopenSessionWithFloat: (openingCashMinorUnits: number) => Promise<boolean>;
+  /** Bouton manager « Forcer le déverrouillage local » : ouvre INCONDITIONNELLEMENT
+   *  une session locale d'urgence (contourne réellement le verrou serveur). */
+  forceLocalUnlock: (openingCashMinorUnits?: number | null) => void;
   openPosSession: () => Promise<void>;
   /** Changement de caissier explicite : ferme la session précédente, ouvre une
    *  nouvelle et journalise EMPLOYEE_SWITCHED (jamais de switch silencieux). */
@@ -367,7 +391,10 @@ let reopenInFlight = false;
 export const usePOSStore = create<POSState>((set, get) => ({
   employee: null,
   accessToken: null,
-  posSession: null,
+  // MODE SECOURS : restaure une session locale d'urgence persistée au démarrage —
+  // la caisse ne repart JAMAIS verrouillée après un redémarrage en mode secours.
+  // (openPosSession la remplacera par une vraie session dès que le serveur répond.)
+  posSession: readPersistedProvisionalSession(),
   lockRequested: false,
   cashCountOpen: false,
   openingCashRequired: false,
@@ -415,6 +442,14 @@ export const usePOSStore = create<POSState>((set, get) => ({
   declareOpeningCash: async (openingCashMinorUnits) => {
     const { posSession } = get();
     if (!posSession?.id) { set({ openingCashRequired: false }); return; }
+    // Session locale d'urgence : le fond reste LOCAL (aucun appel serveur avec un
+    // id LOCAL-… qui échouerait). On l'enregistre sur la session persistée.
+    if (posSession.provisional) {
+      const updated = { ...posSession, openingCashMinorUnits };
+      persistProvisionalSession(updated);
+      set({ posSession: updated, openingCashRequired: false });
+      return;
+    }
     try {
       await posSessionApi.setOpeningCash(posSession.id, openingCashMinorUnits);
     } catch {
@@ -423,6 +458,21 @@ export const usePOSStore = create<POSState>((set, get) => ({
     } finally {
       set({ openingCashRequired: false });
     }
+  },
+
+  forceLocalUnlock: (openingCashMinorUnits) => {
+    // Bouton manager « Forcer le déverrouillage local » : ouvre une session locale
+    // d'urgence INCONDITIONNELLEMENT (même si la bascule automatique n'a pas eu
+    // lieu), contourne réellement le verrou de session serveur. Aucune vente
+    // existante ni la base ne sont touchées.
+    const session = adoptProvisionalSession(get, openingCashMinorUnits ?? null);
+    set({
+      posSession: session,
+      openingCashRequired: openingCashMinorUnits == null,
+      posSessionOpenFailed: false,
+      sessionReopenOffered: false,
+    });
+    get().logScoreEvent('SESSION_FORCED_LOCAL', 'manager force local unlock');
   },
   dismissOpeningCash: () => set({ openingCashRequired: false }),
 
@@ -470,6 +520,7 @@ export const usePOSStore = create<POSState>((set, get) => ({
         const res = await posSessionApi.open(openingCashMinorUnits);
         const s = res.data;
         if (s?.id) {
+          persistProvisionalSession(null); // vraie session serveur → efface le secours
           set({
             posSession: { id: s.id, openedAt: s.openedAt || new Date().toISOString(), terminalId: s.terminalId ?? null },
             openingCashRequired: s.openingCashMinorUnits == null,
@@ -487,6 +538,7 @@ export const usePOSStore = create<POSState>((set, get) => ({
           const act = await posSessionApi.active();
           const s = act.data;
           if (s?.id) {
+            persistProvisionalSession(null); // vraie session serveur → efface le secours
             set({
               posSession: { id: s.id, openedAt: s.openedAt || new Date().toISOString(), terminalId: s.terminalId ?? null },
               openingCashRequired: s.openingCashMinorUnits == null,
@@ -502,12 +554,14 @@ export const usePOSStore = create<POSState>((set, get) => ({
         }
       }
 
-      // MODE TEST pilote (règle owner) : serveur de session en 5xx/timeout →
-      // ouverture d'une SESSION LOCALE PROVISOIRE (non synchronisée), avec le fond
-      // saisi, pour débloquer la caisse. Strictement réservé au mode test autorisé.
-      if (realError && isServerDownError(realError) && sessionTestBypassActive(get)) {
+      // MODE SECOURS (GO owner) : serveur de session en 5xx/timeout → bascule
+      // AUTOMATIQUE et INCONDITIONNELLE sur une session locale d'urgence, avec le
+      // fond saisi, pour que la caisse encaisse malgré la panne. Plus aucune
+      // dépendance à une variable d'env : la caisse ne doit jamais rester verrouillée
+      // sur un 500.
+      if (realError && isServerDownError(realError)) {
         set({
-          posSession: adoptProvisionalSession(),
+          posSession: adoptProvisionalSession(get, openingCashMinorUnits),
           openingCashRequired: false,
           posSessionOpenFailed: false,
           sessionReopenOffered: false,
@@ -531,6 +585,7 @@ export const usePOSStore = create<POSState>((set, get) => ({
       const res = await posSessionApi.open();
       const s = res.data;
       if (s?.id) {
+        persistProvisionalSession(null); // vraie session serveur → efface le secours
         set({
           posSession: { id: s.id, openedAt: s.openedAt || new Date().toISOString(), terminalId: s.terminalId ?? null },
           // Fond non déclaré → on demande la saisie à l'ouverture.
@@ -540,7 +595,10 @@ export const usePOSStore = create<POSState>((set, get) => ({
         });
         return;
       }
-      // Réponse sans id : la session n'existe pas côté serveur — état visible.
+      // Réponse sans id : la session n'existe pas côté serveur. Si une session locale
+      // d'urgence est déjà en place (restaurée/adoptée), on la CONSERVE (jamais de
+      // reverrouillage) ; sinon état visible.
+      if (get().posSession?.provisional) { set({ posSessionOpenFailed: false }); return; }
       set({ posSession: null, posSessionOpenFailed: true });
     } catch (e: any) {
       let realError = describeSessionError(e);
@@ -549,6 +607,7 @@ export const usePOSStore = create<POSState>((set, get) => ({
         const act = await posSessionApi.active();
         const s = act.data;
         if (s?.id) {
+          persistProvisionalSession(null); // vraie session serveur → efface le secours
           set({
             posSession: { id: s.id, openedAt: s.openedAt || new Date().toISOString(), terminalId: s.terminalId ?? null },
             // Session récupérée : ne redemande que si le fond n'a jamais été déclaré.
@@ -561,15 +620,23 @@ export const usePOSStore = create<POSState>((set, get) => ({
       } catch (activeErr: any) {
         realError = describeSessionError(e?.response ? e : activeErr);
       }
-      // MODE TEST : serveur en 5xx/timeout → session locale provisoire immédiate,
-      // pour que la caisse soit utilisable dès la connexion (sans clic « Rouvrir »).
-      if (isServerDownError(realError) && sessionTestBypassActive(get)) {
-        set({
-          posSession: adoptProvisionalSession(),
-          openingCashRequired: false,
-          posSessionOpenFailed: false,
-          sessionReopenError: realError,
-        });
+      // MODE SECOURS (GO owner) : serveur en 5xx/timeout → session locale d'urgence
+      // IMMÉDIATE dès la connexion, AUTOMATIQUE et inconditionnelle, pour que la
+      // caisse ne soit jamais verrouillée sur un 500. Si une session locale existe
+      // déjà (restaurée au démarrage), on la CONSERVE avec son fond ; sinon on en
+      // ouvre une (le fond sera saisi via CashOpenModal → declareOpeningCash local).
+      if (isServerDownError(realError)) {
+        const existing = get().posSession;
+        if (existing?.provisional) {
+          set({ posSessionOpenFailed: false, sessionReopenError: realError });
+        } else {
+          set({
+            posSession: adoptProvisionalSession(get, null),
+            openingCashRequired: true,
+            posSessionOpenFailed: false,
+            sessionReopenError: realError,
+          });
+        }
         return;
       }
       // Échec TOTAL (réseau/serveur) hors mode test : la caisse continue mais SANS
@@ -580,7 +647,11 @@ export const usePOSStore = create<POSState>((set, get) => ({
 
   logout: (countedCashMinorUnits?: number, skipReason?: string) => {
     const { posSession } = get();
-    if (posSession?.id) {
+    // Session locale d'urgence : rien à fermer côté serveur (id LOCAL-…). On efface
+    // seulement la persistance locale — les ventes déjà passées restent dans la file.
+    if (posSession?.provisional) {
+      persistProvisionalSession(null);
+    } else if (posSession?.id) {
       // Le compté est la seule valeur transmise ; l'attendu/écart sont dérivés
       // côté serveur. skipReason encadre une fermeture explicite sans comptage.
       // Best-effort : une panne réseau ne bloque pas la fermeture.
