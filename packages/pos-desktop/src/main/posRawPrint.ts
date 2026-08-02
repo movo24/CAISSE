@@ -192,6 +192,101 @@ export async function getPrinterInfo(
   });
 }
 
+/* ── État RÉEL des files Windows ─────────────────────────────────────────
+ *
+ * `webContents.print()` rend « success » dès que le job est REMIS AU SPOULEUR.
+ * Cela ne prouve pas que le papier sort : une file hors connexion, suspendue,
+ * ou en erreur accepte le job et l'empile indéfiniment. Sans cette lecture,
+ * le terrain voit « impression réussie » et un tiroir muet, sans explication.
+ * On lit donc l'état réel de CHAQUE file (statut, hors connexion, jobs en
+ * attente) pour pouvoir le dire honnêtement à l'opérateur.
+ */
+
+/** Séparateur d'unité — un nom d'imprimante ne peut pas le contenir. */
+const FIELD_SEP = '';
+
+export interface QueueInfo {
+  name: string;
+  driverName: string;
+  portName: string;
+  /** Statut Windows brut (ex. « Normal », « Offline », « Paused », « Error »). */
+  status: string;
+  /** File marquée « Utiliser l'imprimante hors connexion ». */
+  workOffline: boolean;
+  /** Jobs en attente dans la file (-1 si non lisible). */
+  queuedJobs: number;
+}
+
+/**
+ * Parse la sortie PowerShell de `listPrinterQueues`. PUR et testable — c'est
+ * ici que vit toute la logique fragile (aucune I/O).
+ */
+export function parseQueueLines(stdout: string): QueueInfo[] {
+  const out: QueueInfo[] = [];
+  for (const raw of String(stdout ?? '').split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line.startsWith('Q' + FIELD_SEP)) continue;
+    const parts = line.split(FIELD_SEP);
+    // Q | name | driver | port | status | workOffline | jobs
+    if (parts.length < 7) continue;
+    const name = parts[1].trim();
+    if (!name) continue;
+    const jobs = Number.parseInt(parts[6].trim(), 10);
+    out.push({
+      name,
+      driverName: parts[2].trim(),
+      portName: parts[3].trim(),
+      status: parts[4].trim() || 'Unknown',
+      workOffline: /^true$/i.test(parts[5].trim()),
+      queuedJobs: Number.isFinite(jobs) ? jobs : -1,
+    });
+  }
+  return out;
+}
+
+// NB : l'INTERPRÉTATION de cet état (message opérateur) vit côté renderer, dans
+// `drawerStrategy.describeQueueState` — une seule implémentation, pas deux
+// jeux de règles à maintenir en parallèle. Ici on ne fait que LIRE Windows.
+
+/** Liste toutes les files Windows avec leur état réel (une seule invocation). */
+export async function listPrinterQueues(): Promise<{ ok: boolean; queues: QueueInfo[]; error?: string }> {
+  if (process.platform !== 'win32') return { ok: false, queues: [], error: 'Windows uniquement' };
+  return new Promise((resolve) => {
+    const script = [
+      '$ErrorActionPreference = "Stop"',
+      '$d = [char]31',
+      'try {',
+      '  foreach ($p in (Get-Printer | Sort-Object Name)) {',
+      '    $jobs = -1',
+      '    try { $jobs = (Get-PrintJob -PrinterName $p.Name -ErrorAction SilentlyContinue | Measure-Object).Count } catch { $jobs = -1 }',
+      '    Write-Output ("Q" + $d + $p.Name + $d + $p.DriverName + $d + $p.PortName + $d + $p.PrinterStatus + $d + $p.WorkOffline + $d + $jobs)',
+      '  }',
+      '} catch { Write-Output ("ERR:" + $_.Exception.Message) }',
+    ].join('\n');
+    let stdout = '';
+    const child = spawn(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script],
+      { env: { ...process.env } },
+    );
+    const timer = setTimeout(() => {
+      child.kill();
+      resolve({ ok: false, queues: [], error: 'Get-Printer timeout' });
+    }, 12_000);
+    child.stdout.on('data', (d) => (stdout += String(d)));
+    child.on('error', (e) => {
+      clearTimeout(timer);
+      resolve({ ok: false, queues: [], error: e?.message || 'powershell spawn error' });
+    });
+    child.on('close', () => {
+      clearTimeout(timer);
+      const errLine = stdout.split(/\r?\n/).find((l) => l.trim().startsWith('ERR:'));
+      if (errLine) return resolve({ ok: false, queues: [], error: errLine.trim().slice(4) });
+      resolve({ ok: true, queues: parseQueueLines(stdout) });
+    });
+  });
+}
+
 /**
  * Kick tiroir via FILE WINDOWS DÉDIÉE (imprimantes raster type TSP100/TSP143
  * futurePRNT, où l'ESC/POS brut est inopérant) : on imprime un job driver (GDI)
@@ -256,6 +351,10 @@ export function registerPosRawPrintIpc(): void {
     }
     return sendRawEscpos(printer, drawerKickBytes(0));
   });
+
+  // Lecture seule : état RÉEL de toutes les files (statut, hors connexion,
+  // jobs en attente) — permet de dire pourquoi un job « réussi » ne sort pas.
+  ipcMain.handle('pos-print:listQueues', async () => listPrinterQueues());
 
   // Lecture seule : driver + port de la file (détection du mode réel).
   ipcMain.handle('pos-print:getPrinterInfo', async (_e, deviceName?: unknown) => {

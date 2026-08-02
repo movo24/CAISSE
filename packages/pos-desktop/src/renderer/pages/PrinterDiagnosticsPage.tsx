@@ -5,12 +5,15 @@ import {
 } from 'lucide-react';
 import { peripheralBridge, getPaperWidthMm, setPaperWidthMm, type PaperWidthMm } from '../services/peripheralBridge';
 import {
+  describeQueueState,
   getDrawerQueueName,
   getDrawerStrategy,
   printerModeLabel,
+  resolveDrawerQueue,
   setDrawerQueueName,
   setDrawerStrategy,
   type DrawerStrategy,
+  type WindowsQueueState,
 } from '../services/drawerStrategy';
 import { printChainTrace } from '../services/printChainTrace';
 
@@ -40,6 +43,7 @@ export function PrinterDiagnosticsPage() {
   const [drawerResult, setDrawerResult] = useState<TestResult>(null);
   const [drawerStrategy, setDrawerStrategyState] = useState<DrawerStrategy>(getDrawerStrategy());
   const [drawerQueue, setDrawerQueueState] = useState<string>(getDrawerQueueName() ?? '');
+  const [queues, setQueues] = useState<WindowsQueueState[]>([]);
 
   const isDesktop = typeof window !== 'undefined' && (window as any).electronAPI?.getPrinters;
 
@@ -50,11 +54,22 @@ export function PrinterDiagnosticsPage() {
       setPrinters(list);
     } catch {
       setPrinters([]);
-    } finally {
-      setStatus({ ...peripheralBridge.status });
-      setLoadingList(false);
     }
+    // État RÉEL des files Windows : c'est lui qui explique un job « soumis »
+    // qui ne sort pas physiquement (hors connexion, suspendue, jobs empilés).
+    try {
+      const res = await (window as any).electronAPI?.listQueues?.();
+      setQueues(res?.ok && Array.isArray(res.queues) ? res.queues : []);
+    } catch {
+      setQueues([]);
+    }
+    setStatus({ ...peripheralBridge.status });
+    setLoadingList(false);
   };
+
+  /** État Windows d'une file nommée (null si inconnue/non lue). */
+  const queueOf = (name: string | null | undefined): WindowsQueueState | null =>
+    (name && queues.find((q) => q.name === name)) || null;
 
   useEffect(() => {
     if (isDesktop) refresh();
@@ -87,9 +102,20 @@ export function PrinterDiagnosticsPage() {
         },
         { allowBrowserFallback: false },
       );
+      // HONNÊTETÉ : Electron confirme la REMISE AU SPOULEUR, jamais la sortie
+      // physique du papier. On ne dit donc PAS « ticket imprimé ». Si la file
+      // est hors connexion/suspendue, on l'annonce ici plutôt que de laisser
+      // l'opérateur chercher un papier qui ne sortira pas.
+      const blocked = describeQueueState(queueOf(peripheralBridge.status.printer.name));
       setPrintResult(ok
-        ? { ok: true, msg: 'Impression envoyée et confirmée par Windows.' }
-        : { ok: false, msg: 'Échec : Windows/l’imprimante n’a pas confirmé l’impression.' });
+        ? {
+            ok: !blocked,
+            msg: blocked
+              ? `Travail envoyé à la file Windows « ${peripheralBridge.status.printer.name} », mais elle ne peut pas imprimer : ${blocked}`
+              : `Travail envoyé à la file Windows « ${peripheralBridge.status.printer.name} ». `
+                + 'Vérifiez la sortie papier : Windows ne confirme pas l’impression physique.',
+          }
+        : { ok: false, msg: 'Échec : Windows a refusé le travail d’impression (aucun job créé).' });
     } catch (e) {
       setPrintResult({ ok: false, msg: `Erreur : ${e instanceof Error ? e.message : String(e)}` });
     } finally {
@@ -144,6 +170,26 @@ export function PrinterDiagnosticsPage() {
                 <div><span className="text-pos-muted">Connectée :</span> {printer.connected ? <span className="text-emerald-400 font-semibold">oui</span> : <span className="text-amber-400 font-semibold">non</span>}</div>
                 <div><span className="text-pos-muted">Tiroir :</span> <span className="font-mono text-xs">{drawer.type}</span> {drawer.connected ? '✓' : ''}</div>
               </div>
+
+              {/* Avertissement de configuration — jamais silencieux. */}
+              {peripheralBridge.printerWarning && (
+                <p className="text-xs text-amber-300 mt-3">{peripheralBridge.printerWarning}</p>
+              )}
+
+              {/* État Windows RÉEL de la file tickets : explique un job soumis
+                  qui ne produit aucun papier. */}
+              {(() => {
+                const q = queueOf(printer.name);
+                if (!q) return null;
+                const blocked = describeQueueState(q);
+                return (
+                  <p className={`text-xs mt-2 ${blocked ? 'text-red-400' : 'text-emerald-400'}`}>
+                    File tickets « {q.name} » — statut Windows : {q.status}
+                    {q.workOffline ? ' (hors connexion)' : ''}, {q.queuedJobs < 0 ? '?' : q.queuedJobs} job(s) en attente.
+                    {blocked ? ` ${blocked}` : ' Prête.'}
+                  </p>
+                );
+              })()}
             </div>
 
             {/* Pilote & mode réel (Get-Printer) — clé du diagnostic TSP143 */}
@@ -244,16 +290,41 @@ export function PrinterDiagnosticsPage() {
               </div>
               <div className="mt-3">
                 <label className="text-xs text-pos-muted block mb-1">
-                  File Windows dédiée au tiroir (2ᵉ file sur le même port, driver configuré
+                  File Windows dédiée au tiroir (2ᵉ file sur le même port Star, driver configuré
                   « Peripheral Unit = Cash Drawer, ouverture en début de document »)
                 </label>
-                <input
-                  type="text"
-                  value={drawerQueue}
+                {/* Sélecteur sur les files RÉELLES : une saisie libre laissait
+                    passer une faute de frappe → Windows refuse en silence et le
+                    tiroir reste muet sans explication. */}
+                <select
+                  value={queues.some((q) => q.name === drawerQueue) ? drawerQueue : ''}
                   onChange={(e) => { setDrawerQueueState(e.target.value); setDrawerQueueName(e.target.value || null); }}
-                  placeholder="ex. Star TSP143 (Tiroir)"
                   className="w-full px-3 py-2 rounded-xl bg-black/20 border border-pos-border/30 text-sm font-mono"
-                />
+                >
+                  <option value="">— Aucune file tiroir sélectionnée —</option>
+                  {queues.map((q) => (
+                    <option key={q.name} value={q.name}>{q.name}</option>
+                  ))}
+                </select>
+
+                {/* File mémorisée qui n'existe plus : dit précisément le cas. */}
+                {(() => {
+                  const res = resolveDrawerQueue(drawerQueue, queues.map((q) => q.name));
+                  if (res.ok) {
+                    const blocked = describeQueueState(queueOf(res.queueName));
+                    return blocked ? (
+                      <p className="text-xs text-amber-300 mt-2">File tiroir « {res.queueName} » : {blocked}</p>
+                    ) : (
+                      <p className="text-xs text-emerald-400 mt-2">File tiroir « {res.queueName} » prête.</p>
+                    );
+                  }
+                  if (res.reason === 'vanished') {
+                    return <p className="text-xs text-red-400 mt-2">{res.message}</p>;
+                  }
+                  return queues.length > 0 ? (
+                    <p className="text-xs text-amber-300 mt-2">{res.message}</p>
+                  ) : null;
+                })()}
               </div>
               <p className="text-xs text-pos-muted mt-2">
                 Une impulsion = un job. Aucune commande brute n’est envoyée à une imprimante raster

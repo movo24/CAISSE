@@ -84,6 +84,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('pos-print:openDrawer', deviceName, opts),
   // Driver + port de la file Windows (détection du mode réel de l'imprimante).
   getPrinterInfo: (deviceName?: string) => ipcRenderer.invoke('pos-print:getPrinterInfo', deviceName),
+  // État RÉEL de toutes les files Windows (statut, hors connexion, jobs en
+  // attente) : sert à expliquer un job « soumis » qui ne sort pas physiquement.
+  listQueues: () => ipcRenderer.invoke('pos-print:listQueues'),
   cutPaper: (deviceName?: string) => ipcRenderer.invoke('pos-print:cut', deviceName),
   rawEscpos: (deviceName: string | undefined, bytes: number[]) =>
     ipcRenderer.invoke('pos-print:rawEscpos', deviceName, bytes),

@@ -95,6 +95,92 @@ export function decideDrawerPath(
   return { path: 'raw' };
 }
 
+/* ── Résolution d'une file Windows mémorisée ────────────────────────────
+ *
+ * Une file mémorisée peut DISPARAÎTRE (imprimante désinstallée, renommée,
+ * profil Windows différent). Sans contrôle, l'app envoie le job à un nom
+ * inexistant : Windows refuse en silence et le tiroir reste muet SANS que
+ * l'opérateur comprenne pourquoi. On valide donc toujours le nom mémorisé
+ * contre la liste RÉELLE des files, et on nomme précisément le cas.
+ */
+
+export type QueueResolution =
+  | { ok: true; queueName: string }
+  | { ok: false; reason: 'not_configured' | 'vanished'; message: string; configured?: string };
+
+/**
+ * Résout une file mémorisée contre les files réellement présentes.
+ *
+ * La comparaison est faite sur le nom EXACT retourné par Windows (c'est le
+ * `deviceName` attendu par le spooler), en tolérant seulement les espaces de
+ * bord — jamais une correspondance approximative : imprimer sur « presque la
+ * bonne » file est pire que refuser.
+ */
+export function resolveDrawerQueue(
+  configured: string | null | undefined,
+  availableQueues: readonly string[],
+): QueueResolution {
+  const wanted = (configured || '').trim();
+  if (!wanted) {
+    return {
+      ok: false,
+      reason: 'not_configured',
+      message:
+        'Aucune file Windows dédiée au tiroir n’est configurée. ' +
+        'Écran diagnostic → « Ouverture du tiroir » → choisir la file futurePRNT du tiroir.',
+    };
+  }
+  const match = availableQueues.find((q) => (q || '').trim() === wanted);
+  if (!match) {
+    return {
+      ok: false,
+      reason: 'vanished',
+      configured: wanted,
+      message:
+        `La file tiroir mémorisée « ${wanted} » n’existe plus sous Windows ` +
+        '(imprimante renommée, désinstallée, ou autre session Windows). ' +
+        'La resélectionner dans l’écran diagnostic.',
+    };
+  }
+  return { ok: true, queueName: match };
+}
+
+/* ── Lecture de l'état réel d'une file Windows ──────────────────────────── */
+
+/** État d'une file Windows tel que remonté par le main (`pos-print:listQueues`). */
+export interface WindowsQueueState {
+  name: string;
+  driverName: string;
+  portName: string;
+  status: string;
+  workOffline: boolean;
+  queuedJobs: number;
+}
+
+/**
+ * Pourquoi cette file ne sortira PAS de papier maintenant — ou `null` si rien
+ * ne s'y oppose. C'est la traduction honnête du « job soumis mais rien ne
+ * sort » : Windows accepte le job même quand la file est hors connexion,
+ * suspendue ou en erreur.
+ *
+ * PUR (aucune I/O) — implémentation UNIQUE, testée.
+ */
+export function describeQueueState(q: WindowsQueueState | null | undefined): string | null {
+  if (!q) return 'File Windows introuvable.';
+  if (q.workOffline) {
+    return 'File marquée « Utiliser l’imprimante hors connexion » dans Windows — les jobs s’empilent sans imprimer.';
+  }
+  if (/offline/i.test(q.status)) return 'Imprimante hors connexion (éteinte, ou câble USB débranché).';
+  if (/paused/i.test(q.status)) return 'File d’impression suspendue dans Windows (« Reprendre l’impression »).';
+  if (/paper.?out|paper.?jam|error/i.test(q.status)) {
+    return `Imprimante en erreur (${q.status}) — papier, capot ou bourrage.`;
+  }
+  if (q.queuedJobs > 0) {
+    return `${q.queuedJobs} job(s) en attente dans la file — rien ne sort : file bloquée en amont.`;
+  }
+  return null;
+}
+
 /* ── Persistance du choix opérateur (localStorage, garde SSR/tests) ── */
 
 const STRATEGY_KEY = 'caisse_drawer_strategy';

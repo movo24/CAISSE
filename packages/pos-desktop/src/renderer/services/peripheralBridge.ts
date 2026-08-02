@@ -14,6 +14,7 @@ import {
   decideDrawerPath,
   getDrawerQueueName,
   getDrawerStrategy,
+  resolveDrawerQueue,
   type PrinterCommandMode,
 } from './drawerStrategy';
 
@@ -217,6 +218,13 @@ class PeripheralBridge {
   lastDrawerTimings: { ms?: number; path?: string } | null = null;
   /** Dernière raison d'échec/refus tiroir (affichée à l'écran diagnostic). */
   lastDrawerError: string | null = null;
+  /**
+   * Avertissement de configuration à afficher SANS attendre une panne :
+   * imprimante mémorisée disparue, ou entrée Bluetooth résiduelle ignorée sur
+   * le poste Windows. Jamais silencieux — c'est ce silence qui a coûté du temps
+   * terrain (caisse « branchée » mais aucune sortie papier).
+   */
+  printerWarning: string | null = null;
   private _btPrintFn: ((data: TicketData) => Promise<boolean>) | null = null;
   private _btDrawerFn: (() => Promise<boolean>) | null = null;
   private cameraStream: MediaStream | null = null;
@@ -257,16 +265,21 @@ class PeripheralBridge {
      ═══════════════════════════════════════════════ */
 
   private async detectPrinter(): Promise<void> {
-    // Check for saved Bluetooth printer first (works on all platforms)
+    this.printerWarning = null;
+
+    // Entrée Bluetooth mémorisée (iPad essentiellement).
+    let btSavedName: string | null = null;
     try {
       const saved = localStorage.getItem('caisse_bt_printer');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        this._status.printer = { type: 'thermal_bluetooth', connected: false, name: parsed.name || 'Imprimante BLE' };
-        // Actual connection managed by useBluetoothPrinter hook
-        return;
-      }
-    } catch { /* ignore */ }
+      if (saved) btSavedName = JSON.parse(saved)?.name || 'Imprimante BLE';
+    } catch { /* entrée illisible → ignorée */ }
+
+    // Hors desktop (iPad/navigateur) : le Bluetooth reste prioritaire, la
+    // connexion réelle étant gérée par le hook useBluetoothPrinter. Inchangé.
+    if (btSavedName && !this.isElectron()) {
+      this._status.printer = { type: 'thermal_bluetooth', connected: false, name: btSavedName };
+      return;
+    }
 
     if (this.isElectron()) {
       try {
@@ -275,9 +288,31 @@ class PeripheralBridge {
           // Respecte l'imprimante choisie par l'opérateur (persistée) si elle
           // est toujours présente ; sinon la 1ʳᵉ de l'OS.
           const saved = this.getSelectedOsPrinter();
-          const name = saved && electronPrinters.includes(saved) ? saved : electronPrinters[0];
+          const savedStillThere = !!saved && electronPrinters.includes(saved);
+          const name = savedStillThere ? (saved as string) : electronPrinters[0];
+          if (saved && !savedStillThere) {
+            this.printerWarning =
+              `L’imprimante mémorisée « ${saved} » n’existe plus sous Windows — ` +
+              `« ${name} » est utilisée à la place. La resélectionner ci-dessous.`;
+            console.warn('[PERIPH]', this.printerWarning);
+          }
+          // Le shell Windows n'enregistre JAMAIS les fonctions Bluetooth
+          // (seul l'iPad le fait) : une entrée BLE résiduelle rendait la caisse
+          // muette — ni ticket ni tiroir — en masquant l'imprimante USB. On
+          // privilégie donc l'imprimante Windows, et on le DIT.
+          if (btSavedName) {
+            this.printerWarning =
+              `Une imprimante Bluetooth mémorisée (« ${btSavedName} ») est ignorée sur ce poste Windows : ` +
+              `l’imprimante USB « ${name} » est utilisée.`;
+            console.warn('[PERIPH]', this.printerWarning);
+          }
           this._status.printer = { type: 'thermal_usb', connected: true, name };
           await this.refreshPrinterInfo(name);
+          return;
+        }
+        // Aucune imprimante Windows : on retombe sur le Bluetooth mémorisé.
+        if (btSavedName) {
+          this._status.printer = { type: 'thermal_bluetooth', connected: false, name: btSavedName };
           return;
         }
       } catch (e) {
@@ -916,6 +951,22 @@ class PeripheralBridge {
         console.warn('[PERIPH] Drawer kick refused (honest):', decision.reason);
         return false;
       }
+      // La file tiroir mémorisée peut avoir DISPARU (imprimante renommée /
+      // désinstallée). Sans ce contrôle, Windows refuse le job en silence et le
+      // tiroir reste muet sans explication : on valide contre la liste réelle.
+      if (decision.path === 'queue') {
+        const live = await this.listWindowsQueueNames();
+        if (live) {
+          const resolved = resolveDrawerQueue(decision.queueName, live);
+          if (!resolved.ok) {
+            this.lastDrawerError = resolved.message;
+            this.lastDrawerTimings = { path: 'refuse' };
+            console.warn('[PERIPH] Drawer queue unresolved (honest):', resolved.message);
+            return false;
+          }
+          decision.queueName = resolved.queueName;
+        }
+      }
       try {
         const device = this._status.printer.name ?? undefined;
         const opts =
@@ -958,6 +1009,24 @@ class PeripheralBridge {
     } catch { /* ignore */ }
     await this.detectPrinter();
     this.detectCashDrawer();
+  }
+
+  /**
+   * Noms des files Windows réellement présentes (via `Get-Printer`).
+   * `null` = information indisponible (hors Windows, IPC absent, échec) — dans
+   * ce cas on NE bloque pas : on laisse la tentative se faire et échouer
+   * honnêtement, plutôt que de refuser sur une information qu'on n'a pas.
+   */
+  private async listWindowsQueueNames(): Promise<string[] | null> {
+    try {
+      const api = (window as any).electronAPI;
+      if (!api?.listQueues) return null;
+      const res = await api.listQueues();
+      if (!res?.ok || !Array.isArray(res.queues)) return null;
+      return res.queues.map((q: { name: string }) => q.name).filter(Boolean);
+    } catch {
+      return null;
+    }
   }
 
   /* ── Helpers ── */
