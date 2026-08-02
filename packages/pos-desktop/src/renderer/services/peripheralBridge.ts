@@ -528,7 +528,15 @@ class PeripheralBridge {
     style.textContent = `
       @page { size: ${width}mm auto; margin: 0; }
       :root { color-scheme: light; }
-      body { font-family: 'Courier New', monospace; font-size: ${width === 58 ? 10 : 12}px; width: ${bodyMm}mm; margin: 3mm auto; color: #000; background: #fff; }
+      /* ALIGNÉ À GAUCHE, jamais centré (pas de "margin: auto").
+         L'impression compose sur la page du PILOTE Windows, pas sur le
+         "@page size" ci-dessus : si le pilote est resté en Letter/A4, un corps
+         centré démarre à ~69-72 mm alors que la zone imprimable d'un rouleau
+         80 mm s'arrête vers 72 mm, et le ticket sort BLANC (mesuré sous
+         Chromium : page 210 mm = 3 mm de contenu visible sur 72 ; page 216 mm
+         = 0). Aligné à gauche, le rendu est correct à TOUTE largeur de page. */
+      html { margin: 0; padding: 0; }
+      body { font-family: 'Courier New', monospace; font-size: ${width === 58 ? 10 : 12}px; width: ${bodyMm}mm; margin: 3mm; color: #000; background: #fff; }
       .center { text-align: center; }
       .bold { font-weight: bold; }
       .small { font-size: ${width === 58 ? 8 : 9}px; }
