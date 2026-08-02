@@ -52,12 +52,13 @@ describe('garde-fous de source — MODE TEST cohérent avec les règles owner', 
   const banner = readFileSync(join(__dirname, '../components/pos/SessionTestBypassBanner.tsx'), 'utf8');
   const page = readFileSync(join(__dirname, '../pages/POSPage.tsx'), 'utf8');
 
-  it('le bandeau affiche EXACTEMENT le libellé exigé (règle 5)', () => {
+  it('le bandeau affiche le libellé MODE SECOURS et le libellé MODE TEST', () => {
+    expect(banner).toContain('MODE SECOURS — SYNCHRONISATION EN ATTENTE');
     expect(banner).toContain('MODE TEST — SESSION DE CAISSE NON VÉRIFIÉE');
   });
 
-  it('le bandeau ne s\'affiche que si le mode test est activé (règle 8)', () => {
-    expect(banner).toMatch(/if \(!cfg\.enabled\) return null/);
+  it('le bandeau s\'affiche en mode SECOURS (session provisoire) OU en mode test env', () => {
+    expect(banner).toMatch(/if \(!provisional && !cfg\.enabled\) return null/);
   });
 
   it('la garde de session est levée UNIQUEMENT sous bypass (règles 2 & 8)', () => {

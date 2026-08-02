@@ -19,12 +19,14 @@ import { usePOSStore } from '../../stores/posStore';
 export function SessionTestBypassBanner() {
   const cfg = readSessionTestBypassConfig();
   const provisional = usePOSStore((s) => s.posSession?.provisional === true);
-  if (!cfg.enabled) return null;
 
-  // Session locale provisoire (serveur de session en échec) → libellé explicite
-  // « NON SYNCHRONISÉE » ; sinon, session non vérifiée (bypass de garde).
+  // Bannière visible si : session locale d'urgence active (mode secours,
+  // INDÉPENDANT de toute variable d'env), OU mode test pilote activé par env.
+  // NON bloquante : elle informe, elle n'empêche jamais l'encaissement.
+  if (!provisional && !cfg.enabled) return null;
+
   const label = provisional
-    ? 'MODE TEST — SESSION LOCALE NON SYNCHRONISÉE'
+    ? 'MODE SECOURS — SYNCHRONISATION EN ATTENTE'
     : 'MODE TEST — SESSION DE CAISSE NON VÉRIFIÉE';
 
   return (

@@ -39,6 +39,10 @@ export function SessionReopenPrompt() {
 
   const reopenError = usePOSStore((s) => s.sessionReopenError);
 
+  const forceLocalUnlock = usePOSStore((s) => s.forceLocalUnlock);
+  const role = usePOSStore((s) => s.employee?.role);
+  const isManager = role === 'manager' || role === 'admin';
+
   const [value, setValue] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -118,6 +122,22 @@ export function SessionReopenPrompt() {
         </button>
       </div>
       {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
+      {isManager && (
+        // Bouton MANAGER « Forcer le déverrouillage local » — filet de sécurité si
+        // la bascule automatique en mode secours n'a pas eu lieu. Contourne
+        // RÉELLEMENT le verrou de session serveur : ouvre une session locale
+        // d'urgence avec le fond saisi (ou sans, à saisir ensuite). Les ventes
+        // partent en file offline (aucune perte, sync idempotente au retour).
+        <button
+          onClick={() => {
+            const centimes = parseCentimes();
+            forceLocalUnlock(centimes);
+          }}
+          className="mt-2 w-full rounded-lg border border-amber-500 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100"
+        >
+          Forcer le déverrouillage local (manager)
+        </button>
+      )}
     </div>
   );
 }

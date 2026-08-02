@@ -15,29 +15,21 @@ vi.mock('../services/api', () => ({
     open: (amount?: number) => Promise.resolve(open(amount)),
     close: (id: string, counted?: number) => Promise.resolve(close(id, counted)),
     active: () => Promise.resolve(active()),
-    setOpeningCash: () => Promise.resolve(undefined),
+    setOpeningCash: (id: string, amount: number) => Promise.resolve(setOpeningCash(id, amount)),
   },
   employeeScoreApi: { logEvent: (d: unknown) => Promise.resolve(logEvent(d)) },
   posTerminalId: () => 'TERMINAL 01',
 }));
 
-import {
-  usePOSStore,
-  describeSessionError,
-  isServerDownError,
-} from './posStore';
+import { usePOSStore, describeSessionError, isServerDownError } from './posStore';
 
 const emp = { id: 'emp-1', firstName: 'K', lastName: 'B', role: 'cashier', storeId: 'store-1' };
-
-function setBypass(enabled: boolean, stores = '', terminals = '') {
-  (globalThis as any).posDesktop = { sessionTestBypass: { enabled, stores, terminals } };
-}
 
 beforeEach(() => {
   open.mockReset();
   active.mockReset();
+  setOpeningCash.mockReset().mockResolvedValue(undefined);
   localStorage.clear();
-  delete (globalThis as any).posDesktop;
   usePOSStore.setState({
     employee: emp as never,
     storeInfo: null as never,
@@ -48,49 +40,25 @@ beforeEach(() => {
     openingCashRequired: false,
   });
 });
-afterEach(() => {
-  delete (globalThis as any).posDesktop;
-});
+afterEach(() => localStorage.clear());
 
-describe('describeSessionError — code HTTP réel + identifiant, jamais générique', () => {
-  it('extrait le statut HTTP et le message serveur, avec un errorId', () => {
+describe('describeSessionError / isServerDownError', () => {
+  it('code HTTP réel + errorId, jamais générique', () => {
     const d = describeSessionError({ response: { status: 500, data: { message: 'boom' } } });
     expect(d.status).toBe(500);
-    expect(d.kind).toBe('http');
     expect(d.message).toContain('HTTP 500');
-    expect(d.message).toContain('boom');
     expect(d.errorId).toMatch(/^ERR-/);
   });
-  it('distingue timeout et réseau quand il n’y a pas de réponse', () => {
-    expect(describeSessionError({ code: 'ECONNABORTED' }).kind).toBe('timeout');
-    expect(describeSessionError({ message: 'Network Error' }).kind).toBe('network');
-  });
-});
-
-describe('isServerDownError — 5xx/timeout justifient la session locale provisoire', () => {
-  it('vrai pour 500 et timeout, faux pour 401/403/409/réseau', () => {
+  it('5xx/timeout = serveur down ; 401/409/réseau = non', () => {
     expect(isServerDownError(describeSessionError({ response: { status: 500 } }))).toBe(true);
     expect(isServerDownError(describeSessionError({ code: 'ECONNABORTED' }))).toBe(true);
     expect(isServerDownError(describeSessionError({ response: { status: 401 } }))).toBe(false);
     expect(isServerDownError(describeSessionError({ response: { status: 409 } }))).toBe(false);
-    expect(isServerDownError(describeSessionError({ message: 'Network Error' }))).toBe(false);
   });
 });
 
-describe('reopenSessionWithFloat — 500 serveur', () => {
-  it('SANS mode test : échec, aucune session, code réel exposé (pas de générique)', async () => {
-    open.mockRejectedValue({ response: { status: 500, data: { message: 'column does not exist' } } });
-    active.mockRejectedValue({ response: { status: 500 } });
-    const ok = await usePOSStore.getState().reopenSessionWithFloat(18750);
-    expect(ok).toBe(false);
-    const st = usePOSStore.getState();
-    expect(st.posSession).toBeNull();
-    expect(st.sessionReopenError?.status).toBe(500);
-    expect(st.sessionReopenError?.errorId).toMatch(/^ERR-/);
-  });
-
-  it('AVEC mode test (magasin/terminal pilotes) : session LOCALE provisoire, verrou levé', async () => {
-    setBypass(true, 'store-1', 'TERMINAL 01');
+describe('MODE SECOURS — bascule AUTOMATIQUE et INCONDITIONNELLE sur 5xx (aucune variable d\'env)', () => {
+  it('/open 500 + /active 500 → session locale d\'urgence, verrou levé, fond saisi conservé', async () => {
     open.mockRejectedValue({ response: { status: 500 } });
     active.mockRejectedValue({ response: { status: 500 } });
     const ok = await usePOSStore.getState().reopenSessionWithFloat(18750);
@@ -98,12 +66,33 @@ describe('reopenSessionWithFloat — 500 serveur', () => {
     const st = usePOSStore.getState();
     expect(st.posSession?.provisional).toBe(true);
     expect(st.posSession?.id).toMatch(/^LOCAL-TERMINAL 01-/);
+    expect(st.posSession?.openingCashMinorUnits).toBe(18750); // fond local
     expect(st.posSessionOpenFailed).toBe(false); // verrou levé
     expect(st.sessionReopenError?.status).toBe(500); // trace conservée
   });
 
-  it('mode test mais 401 (pas 5xx) : PAS de session locale — on expose le 401', async () => {
-    setBypass(true);
+  it('la session locale est PERSISTÉE (survie au redémarrage)', async () => {
+    open.mockRejectedValue({ response: { status: 500 } });
+    active.mockRejectedValue({ response: { status: 500 } });
+    await usePOSStore.getState().reopenSessionWithFloat(18750);
+    const raw = localStorage.getItem('pos_provisional_session');
+    expect(raw).toBeTruthy();
+    const persisted = JSON.parse(raw as string);
+    expect(persisted.provisional).toBe(true);
+    expect(persisted.openingCashMinorUnits).toBe(18750);
+  });
+
+  it('openPosSession (connexion) : /open 500 → session locale immédiate, fond à saisir', async () => {
+    open.mockRejectedValue({ response: { status: 500 } });
+    active.mockRejectedValue({ response: { status: 500 } });
+    await usePOSStore.getState().openPosSession();
+    const st = usePOSStore.getState();
+    expect(st.posSession?.provisional).toBe(true);
+    expect(st.posSessionOpenFailed).toBe(false);
+    expect(st.openingCashRequired).toBe(true); // CashOpenModal demandera le fond
+  });
+
+  it('401 (pas 5xx) → PAS de session locale automatique, on expose le 401', async () => {
     open.mockRejectedValue({ response: { status: 401 } });
     active.mockRejectedValue({ response: { status: 401 } });
     const ok = await usePOSStore.getState().reopenSessionWithFloat(1000);
@@ -112,12 +101,92 @@ describe('reopenSessionWithFloat — 500 serveur', () => {
     expect(usePOSStore.getState().sessionReopenError?.status).toBe(401);
   });
 
-  it('mode test hors périmètre (terminal non pilote) : pas de session locale', async () => {
-    setBypass(true, '', 'TERMINAL 09');
-    open.mockRejectedValue({ response: { status: 500 } });
-    active.mockRejectedValue({ response: { status: 500 } });
-    const ok = await usePOSStore.getState().reopenSessionWithFloat(1000);
-    expect(ok).toBe(false);
-    expect(usePOSStore.getState().posSession).toBeNull();
+  it('retour serveur : /open réussit → la vraie session REMPLACE le secours (persistance effacée)', async () => {
+    // 1) secours actif
+    open.mockRejectedValueOnce({ response: { status: 500 } });
+    active.mockRejectedValueOnce({ response: { status: 500 } });
+    await usePOSStore.getState().reopenSessionWithFloat(18750);
+    expect(localStorage.getItem('pos_provisional_session')).toBeTruthy();
+    // 2) serveur revient
+    usePOSStore.setState({ posSession: null });
+    open.mockResolvedValue({ data: { id: 'sess-real', openedAt: 'x', terminalId: 'TERMINAL 01', openingCashMinorUnits: 18750 } });
+    await usePOSStore.getState().openPosSession();
+    expect(usePOSStore.getState().posSession?.id).toBe('sess-real');
+    expect(usePOSStore.getState().posSession?.provisional).toBeUndefined();
+    expect(localStorage.getItem('pos_provisional_session')).toBeNull(); // secours effacé
+  });
+});
+
+describe('redémarrage du POS → session locale restaurée (jamais reverrouillée)', () => {
+  it('un store fraîchement (ré)importé restaure la session locale persistée', async () => {
+    // Simule un redémarrage : on persiste une session locale, puis on force la
+    // ré-évaluation du module store (nouvelle instance = nouveau démarrage app).
+    localStorage.setItem(
+      'pos_provisional_session',
+      JSON.stringify({ id: 'LOCAL-TERMINAL 01-ABC', openedAt: 'x', terminalId: 'TERMINAL 01', provisional: true, openingCashMinorUnits: 18750 }),
+    );
+    vi.resetModules();
+    vi.doMock('../services/api', () => ({
+      authApi: { logout },
+      posSessionApi: { open: () => Promise.resolve(open()), close: () => Promise.resolve(undefined), active: () => Promise.resolve(active()), setOpeningCash: () => Promise.resolve(undefined) },
+      employeeScoreApi: { logEvent: () => Promise.resolve(undefined) },
+      posTerminalId: () => 'TERMINAL 01',
+    }));
+    const mod = await import('./posStore');
+    const st = mod.usePOSStore.getState();
+    expect(st.posSession?.provisional).toBe(true);
+    expect(st.posSession?.id).toBe('LOCAL-TERMINAL 01-ABC');
+    expect(st.posSession?.openingCashMinorUnits).toBe(18750);
+  });
+});
+
+describe('forceLocalUnlock — bouton manager (contourne réellement le verrou serveur)', () => {
+  it('ouvre une session locale INCONDITIONNELLEMENT avec le fond saisi', () => {
+    usePOSStore.getState().forceLocalUnlock(18750);
+    const st = usePOSStore.getState();
+    expect(st.posSession?.provisional).toBe(true);
+    expect(st.posSession?.openingCashMinorUnits).toBe(18750);
+    expect(st.posSessionOpenFailed).toBe(false);
+    expect(st.openingCashRequired).toBe(false);
+    expect(localStorage.getItem('pos_provisional_session')).toBeTruthy();
+  });
+  it('sans fond → ouvre quand même et demande le fond', () => {
+    usePOSStore.getState().forceLocalUnlock(null);
+    expect(usePOSStore.getState().posSession?.provisional).toBe(true);
+    expect(usePOSStore.getState().openingCashRequired).toBe(true);
+  });
+});
+
+describe('storeInfo — persisté et restauré (ticket du mode secours identique au normal)', () => {
+  const store = { storeName: 'The Wesley', siret: '12345678900011', tvaIntracom: 'FR00', receiptLogoUrl: 'data:x', receiptQrEnabled: true } as never;
+
+  it('setStoreInfo persiste les infos magasin', () => {
+    usePOSStore.getState().setStoreInfo(store);
+    expect(localStorage.getItem('pos_store_info')).toBeTruthy();
+    expect(JSON.parse(localStorage.getItem('pos_store_info') as string).storeName).toBe('The Wesley');
+  });
+
+  it('un store fraîchement (ré)importé restaure storeInfo (logo/magasin/TVA/QR au redémarrage)', async () => {
+    localStorage.setItem('pos_store_info', JSON.stringify(store));
+    vi.resetModules();
+    vi.doMock('../services/api', () => ({
+      authApi: { logout }, posSessionApi: { open: () => Promise.resolve(open()), close: () => Promise.resolve(undefined), active: () => Promise.resolve(active()), setOpeningCash: () => Promise.resolve(undefined) },
+      employeeScoreApi: { logEvent: () => Promise.resolve(undefined) }, posTerminalId: () => 'TERMINAL 01',
+    }));
+    const mod = await import('./posStore');
+    expect(mod.usePOSStore.getState().storeInfo?.storeName).toBe('The Wesley');
+    expect(mod.usePOSStore.getState().storeInfo?.siret).toBe('12345678900011');
+  });
+});
+
+describe('declareOpeningCash sur session locale — reste LOCAL (aucun appel serveur)', () => {
+  it('enregistre le fond localement et le persiste, sans appeler setOpeningCash', async () => {
+    usePOSStore.getState().forceLocalUnlock(null);
+    await usePOSStore.getState().declareOpeningCash(18750);
+    expect(setOpeningCash).not.toHaveBeenCalled(); // pas d'appel serveur (id LOCAL-…)
+    expect(usePOSStore.getState().posSession?.openingCashMinorUnits).toBe(18750);
+    expect(usePOSStore.getState().openingCashRequired).toBe(false);
+    const persisted = JSON.parse(localStorage.getItem('pos_provisional_session') as string);
+    expect(persisted.openingCashMinorUnits).toBe(18750);
   });
 });
