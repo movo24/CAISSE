@@ -12,6 +12,43 @@ import { BrowserWindow, ipcMain } from 'electron';
 
 const PRINT_TIMEOUT_MS = 20_000;
 
+/**
+ * `loadURL` résout sur `did-finish-load` : cela ne garantit PAS que le logo et
+ * le QR (deux <img> en data-URL) sont décodés ni que la police est prête. Un
+ * ticket imprimé avant décodage sort vide ou amputé de son en-tête, alors que
+ * Windows a bien accepté le job. Borné : on n'attend jamais indéfiniment.
+ */
+const RENDER_READY_TIMEOUT_MS = 5_000;
+
+/**
+ * Le callback de `webContents.print()` signale la REMISE au spouleur, pas la
+ * fin de l'aspiration du document. Détruire la fenêtre dans la foulée peut
+ * tronquer le job — cause classique de « print success » sans papier. On laisse
+ * donc le spouleur finir avant `destroy()`.
+ */
+const SPOOL_SETTLE_MS = 1_500;
+
+/** Attend polices + images réellement décodées. Jamais bloquant, jamais throw. */
+async function waitForRenderReady(win: BrowserWindow): Promise<void> {
+  const script = `(async () => {
+    try { if (document.fonts && document.fonts.ready) await document.fonts.ready; } catch (e) {}
+    const imgs = Array.from(document.images || []);
+    await Promise.all(imgs.map((i) => {
+      if (i.complete && i.naturalWidth > 0) return null;
+      return i.decode ? i.decode().catch(() => null) : null;
+    }));
+    return document.images.length;
+  })()`;
+  try {
+    await Promise.race([
+      win.webContents.executeJavaScript(script, true),
+      new Promise((resolve) => setTimeout(resolve, RENDER_READY_TIMEOUT_MS)),
+    ]);
+  } catch {
+    /* rendu non sondable → on imprime quand même, jamais de blocage */
+  }
+}
+
 /** Options d'impression silencieuse pour un reçu thermique 80 mm. */
 export function buildReceiptPrintOptions(deviceName?: string): Electron.WebContentsPrintOptions {
   return {
@@ -46,6 +83,8 @@ async function printHtmlSilently(
     });
     const t1 = Date.now();
     await win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
+    // Logo + QR décodés AVANT l'impression (sinon ticket vide/amputé).
+    await waitForRenderReady(win);
     const t2 = Date.now();
     const result = await new Promise<{ ok: boolean; error?: string }>((resolve) => {
       const timer = setTimeout(() => resolve({ ok: false, error: 'print timeout' }), PRINT_TIMEOUT_MS);
@@ -55,11 +94,16 @@ async function printHtmlSilently(
       });
     });
     const t3 = Date.now();
+    // Laisse le spouleur aspirer le document avant `destroy()` (finally) :
+    // détruire trop tôt tronque le job et ne produit aucun papier.
+    if (result.ok) {
+      await new Promise((resolve) => setTimeout(resolve, SPOOL_SETTLE_MS));
+    }
     const timings: PrintTimings = {
       windowMs: t1 - t0,
       loadMs: t2 - t1,
       spoolMs: t3 - t2,
-      totalMs: t3 - t0,
+      totalMs: Date.now() - t0,
     };
     // eslint-disable-next-line no-console
     console.info('[PRINT-TIMING]', JSON.stringify({ deviceName: deviceName ?? '(défaut OS)', ...timings, ok: result.ok }));
