@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Printer, Inbox, RefreshCw, CheckCircle2, XCircle, Loader2,
@@ -16,6 +16,9 @@ import {
   type WindowsQueueState,
 } from '../services/drawerStrategy';
 import { printChainTrace } from '../services/printChainTrace';
+import { buildTestTicket } from '../services/testTicket';
+import { resolveReceiptLogo } from '../services/brandLogo';
+import { makeTicketQrDataUrl } from '../services/ticketQr';
 
 /**
  * Écran diagnostic périphériques (desktop Windows). Permet, sur le poste, de :
@@ -44,6 +47,10 @@ export function PrinterDiagnosticsPage() {
   const [drawerStrategy, setDrawerStrategyState] = useState<DrawerStrategy>(getDrawerStrategy());
   const [drawerQueue, setDrawerQueueState] = useState<string>(getDrawerQueueName() ?? '');
   const [queues, setQueues] = useState<WindowsQueueState[]>([]);
+  /** Dernier diagnostic d'impression, affiché à l'écran (pas besoin de DevTools). */
+  const [printDiag, setPrintDiag] = useState<Record<string, unknown> | null>(null);
+  /** Garde synchrone anti-double-clic (un état React arrive trop tard). */
+  const printBusyRef = useRef(false);
 
   const isDesktop = typeof window !== 'undefined' && (window as any).electronAPI?.getPrinters;
 
@@ -83,25 +90,25 @@ export function PrinterDiagnosticsPage() {
   };
 
   const runTestPrint = async () => {
+    // Garde SYNCHRONE anti-double-clic : `printBusy` est un état React, donc
+    // appliqué au re-render suivant — deux clics rapprochés passeraient au
+    // travers et enverraient DEUX jobs à l'imprimante.
+    if (printBusyRef.current) return;
+    printBusyRef.current = true;
     setPrintBusy(true);
     setPrintResult(null);
     try {
-      const ok = await peripheralBridge.printTicket(
-        {
-          storeName: 'POS CAISSE',
-          storeAddress: '', siret: '', tvaIntracom: '',
-          ticketNumber: 'TEST-IMPRESSION',
-          date: new Date().toLocaleString('fr-FR'),
-          cashierName: 'Diagnostic',
-          items: [{ name: 'Impression de test — éàçùî', quantity: 1, unitPrice: 0, total: 0 }],
-          subtotal: 0, discount: 0, total: 0,
-          payments: [], change: 0,
-          footer: 'Test imprimante OK', nifCaisse: '', softwareVersion: '1.0',
-          // Marquage explicite : jamais confondable avec un ticket de vente.
-          testMarker: 'TEST — SANS VALEUR FISCALE',
-        },
-        { allowBrowserFallback: false },
+      // Ticket de test COMPLET : logo, 4 articles (quantités, remise, 2 taux de
+      // TVA), totaux, ventilation TVA, espèces/rendu, QR. Même chemin exact
+      // qu'une vente réelle — c'est ce qui rend la mesure comparable.
+      const logo = resolveReceiptLogo(null);
+      const qr = await makeTicketQrDataUrl('https://thewesleys.fr/ticket/TEST');
+      const ticket = buildTestTicket(logo, qr, getPaperWidthMm());
+      console.info(
+        '[PERIPH] Test print — ticket construit',
+        JSON.stringify({ logo: !!logo, qr: !!qr, items: ticket.items.length, total: ticket.total }),
       );
+      const ok = await peripheralBridge.printTicket(ticket, { allowBrowserFallback: false });
       // HONNÊTETÉ : Electron confirme la REMISE AU SPOULEUR, jamais la sortie
       // physique du papier. On ne dit donc PAS « ticket imprimé ». Si la file
       // est hors connexion/suspendue, on l'annonce ici plutôt que de laisser
@@ -117,8 +124,13 @@ export function PrinterDiagnosticsPage() {
           }
         : { ok: false, msg: 'Échec : Windows a refusé le travail d’impression (aucun job créé).' });
     } catch (e) {
+      console.error('[PERIPH] Test print — exception', e);
       setPrintResult({ ok: false, msg: `Erreur : ${e instanceof Error ? e.message : String(e)}` });
     } finally {
+      // Diagnostic lisible À L'ÉCRAN : évite d'avoir à ouvrir DevTools sur la
+      // caisse pour lire `htmlBytes` (le chiffre qui dit si le ticket est vide).
+      setPrintDiag(peripheralBridge.lastPrintTimings as Record<string, unknown> | null);
+      printBusyRef.current = false;
       setPrintBusy(false);
     }
   };
@@ -359,6 +371,36 @@ export function PrinterDiagnosticsPage() {
                 Le tiroir doit être branché sur le port RJ11 de l’imprimante. « Ouvrir le tiroir » envoie
                 UNE impulsion via la stratégie ci-dessus — sans ticket, sans vente, sans boucle.
               </p>
+
+              {/* Diagnostic d'impression LISIBLE SANS DEVTOOLS. `htmlBytes` dit
+                  si le ticket envoyé était réellement rempli ou quasi vide. */}
+              {printDiag && (
+                <div className="rounded-xl bg-black/20 border border-pos-border/30 p-3 mt-2">
+                  <p className="text-xs font-bold uppercase tracking-wide text-pos-muted mb-2">
+                    Diagnostic de la dernière impression
+                  </p>
+                  {(() => {
+                    const bytes = Number(printDiag.htmlBytes ?? 0);
+                    const verdict =
+                      bytes < 2000
+                        ? { cls: 'text-red-400', txt: `Ticket QUASI VIDE (${bytes} octets) — le document généré est incomplet.` }
+                        : bytes >= 50000
+                          ? { cls: 'text-emerald-400', txt: `Ticket COMPLET (${bytes.toLocaleString('fr-FR')} octets, logo inclus) — le problème est en aval : pilote, format papier ou marges.` }
+                          : { cls: 'text-amber-300', txt: `Ticket PARTIEL (${bytes.toLocaleString('fr-FR')} octets) — probablement sans logo ni QR.` };
+                    return <p className={`text-xs mb-2 ${verdict.cls}`}>{verdict.txt}</p>;
+                  })()}
+                  <table className="w-full text-[11px]">
+                    <tbody>
+                      {Object.entries(printDiag).map(([k, v]) => (
+                        <tr key={k} className="border-t border-white/5">
+                          <td className="py-0.5 pr-3 font-mono text-pos-muted">{k}</td>
+                          <td className="py-0.5 font-mono break-all">{v === null ? '(défaut pilote)' : String(v)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
 
             {/* Dernière chaîne d'impression (trace terrain horodatée) */}

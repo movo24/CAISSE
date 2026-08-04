@@ -429,13 +429,28 @@ class PeripheralBridge {
         // Cible l'imprimante sélectionnée (sinon défaut OS).
         const device = this._status.printer.name ?? undefined;
         const result = await (window as any).electronAPI.printTicketHtml(html, device);
-        // Chronométrage réel (main) + construction HTML — pour la trace terrain.
-        this.lastPrintTimings = { buildMs, htmlBytes: html.length, ...(result?.timings ?? {}) };
+        // Trace terrain STRUCTURÉE : tout ce qu'il faut pour diagnostiquer une
+        // sortie blanche/tronquée sans accès à la machine — taille réelle du
+        // document, imprimante visée, et FORMAT réellement transmis au moteur
+        // d'impression (`pageSize: null` = format par défaut du pilote).
+        const diag = {
+          buildMs,
+          htmlBytes: html.length,
+          printerName: device ?? '(défaut OS)',
+          paperWidthMm: data.paperWidthMm ?? getPaperWidthMm(),
+          pageSize: result?.optionsUsed?.pageSize ?? null,
+          margins: result?.optionsUsed?.margins ?? 'default',
+          printBackground: result?.optionsUsed?.printBackground ?? false,
+          ...(result?.timings ?? {}),
+          status: result?.ok ? 'submitted_to_spooler' : 'failed',
+          ...(result?.ok ? {} : { error: result?.error ?? 'inconnu' }),
+        };
+        this.lastPrintTimings = diag as unknown as Record<string, number>;
         if (result?.ok) {
-          console.log('[PERIPH] Desktop OS print success', JSON.stringify(this.lastPrintTimings));
+          console.log('[PERIPH] Desktop OS print success', JSON.stringify(diag));
           return true;
         }
-        console.warn('[PERIPH] Desktop OS print failed:', result?.error);
+        console.warn('[PERIPH] Desktop OS print failed', JSON.stringify(diag));
         return allowBrowserFallback ? this.printBrowserFallback(data) : false;
       }
       if ('usb' in navigator) return this.printWebUSB(data, allowBrowserFallback);

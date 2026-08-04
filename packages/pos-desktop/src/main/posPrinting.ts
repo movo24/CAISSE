@@ -70,10 +70,33 @@ export interface PrintTimings {
   totalMs: number;
 }
 
+/**
+ * Ce qui est RÉELLEMENT transmis au moteur d'impression — remonté au renderer
+ * pour être journalisé et affiché. `pageSize: null` signifie « aucun format
+ * imposé : c'est le format par défaut du pilote Windows qui s'applique », une
+ * information décisive quand un ticket sort blanc ou tronqué.
+ */
+export interface PrintOptionsUsed {
+  deviceName: string | null;
+  pageSize: string | null;
+  margins: string;
+  printBackground: boolean;
+}
+
+function describePrintOptions(o: Electron.WebContentsPrintOptions): PrintOptionsUsed {
+  const ps = (o as { pageSize?: unknown }).pageSize;
+  return {
+    deviceName: o.deviceName ?? null,
+    pageSize: ps == null ? null : typeof ps === 'string' ? ps : JSON.stringify(ps),
+    margins: o.margins?.marginType ?? 'default',
+    printBackground: o.printBackground === true,
+  };
+}
+
 async function printHtmlSilently(
   html: string,
   deviceName?: string,
-): Promise<{ ok: boolean; error?: string; timings?: PrintTimings }> {
+): Promise<{ ok: boolean; error?: string; timings?: PrintTimings; optionsUsed?: PrintOptionsUsed }> {
   let win: BrowserWindow | null = null;
   const t0 = Date.now();
   try {
@@ -86,9 +109,11 @@ async function printHtmlSilently(
     // Logo + QR décodés AVANT l'impression (sinon ticket vide/amputé).
     await waitForRenderReady(win);
     const t2 = Date.now();
+    const printOptions = buildReceiptPrintOptions(deviceName);
+    const optionsUsed = describePrintOptions(printOptions);
     const result = await new Promise<{ ok: boolean; error?: string }>((resolve) => {
       const timer = setTimeout(() => resolve({ ok: false, error: 'print timeout' }), PRINT_TIMEOUT_MS);
-      win!.webContents.print(buildReceiptPrintOptions(deviceName), (success, failureReason) => {
+      win!.webContents.print(printOptions, (success, failureReason) => {
         clearTimeout(timer);
         resolve(success ? { ok: true } : { ok: false, error: failureReason || 'print failed' });
       });
@@ -106,8 +131,8 @@ async function printHtmlSilently(
       totalMs: Date.now() - t0,
     };
     // eslint-disable-next-line no-console
-    console.info('[PRINT-TIMING]', JSON.stringify({ deviceName: deviceName ?? '(défaut OS)', ...timings, ok: result.ok }));
-    return { ...result, timings };
+    console.info('[PRINT-TIMING]', JSON.stringify({ ...optionsUsed, ...timings, ok: result.ok }));
+    return { ...result, timings, optionsUsed };
   } catch (e: any) {
     return { ok: false, error: e?.message || 'print error' };
   } finally {
