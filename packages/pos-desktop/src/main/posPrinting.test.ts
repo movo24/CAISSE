@@ -46,7 +46,9 @@ describe('preload — narrow electronAPI exposure', () => {
   it('exposes ONLY getPrinters + printTicketHtml (no fs/shell/raw ipc)', () => {
     const block = preloadSrc.slice(preloadSrc.indexOf("exposeInMainWorld('electronAPI'"));
     expect(block).toMatch(/getPrinters: \(\) => ipcRenderer\.invoke\('pos-print:getPrinters'\)/);
-    expect(block).toMatch(/printTicketHtml: \(html: string, deviceName\?: string\)/);
+    // Signature élargie à `paperWidthMm` (format de page explicite) — l'API
+    // reste étroite : trois arguments de données, aucun accès système.
+    expect(block).toMatch(/printTicketHtml: \(html: string, deviceName\?: string, paperWidthMm\?: 58 \| 80\)/);
     expect(block).not.toMatch(/require|shell|fs\.|exec/);
   });
 });

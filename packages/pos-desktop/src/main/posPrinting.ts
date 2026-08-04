@@ -28,8 +28,62 @@ const RENDER_READY_TIMEOUT_MS = 5_000;
  */
 const SPOOL_SETTLE_MS = 1_500;
 
-/** Attend polices + images réellement décodées. Jamais bloquant, jamais throw. */
-async function waitForRenderReady(win: BrowserWindow): Promise<void> {
+/** 1 px CSS à 96 dpi = 25,4/96 mm. Conversion exacte px → microns. */
+export const MICRONS_PER_CSS_PX = (25.4 / 96) * 1000;
+
+/** Marge de sécurité en bas du ticket (évite une dernière ligne rognée). */
+export const PAGE_HEIGHT_SAFETY_MICRONS = 5_000; // 5 mm
+
+/** Bornes de hauteur : ni page dégénérée, ni mètre de papier gaspillé. */
+export const MIN_PAGE_HEIGHT_MICRONS = 30_000; // 30 mm
+export const MAX_PAGE_HEIGHT_MICRONS = 1_200_000; // 1,2 m
+
+/**
+ * Mesure du ticket + format de page qui en découle. PUR — c'est ici que vit la
+ * règle qui remplace `@page size: 80mm auto` et le format par défaut du pilote.
+ */
+export interface PageGeometry {
+  scrollHeightPx: number;
+  pageWidthMicrons: number;
+  pageHeightMicrons: number;
+  /** true si la hauteur mesurée a été bornée (donc suspecte). */
+  clamped: boolean;
+}
+
+/**
+ * Convertit une hauteur de contenu (px CSS) en format de page explicite.
+ *
+ * `@page { size: 80mm auto }` n'est PAS honoré par `webContents.print()` : le
+ * format vient du pilote Windows. Sur une Star restée en Letter/A4, cela donne
+ * une page immense (ticket perdu) ou un format court (ticket tronqué). On
+ * impose donc un `pageSize` calculé sur la hauteur RÉELLE du document.
+ */
+export function computePageGeometry(scrollHeightPx: number, paperWidthMm: number): PageGeometry {
+  const px = Number.isFinite(scrollHeightPx) && scrollHeightPx > 0 ? scrollHeightPx : 0;
+  const raw = Math.round(px * MICRONS_PER_CSS_PX) + PAGE_HEIGHT_SAFETY_MICRONS;
+  const bounded = Math.min(MAX_PAGE_HEIGHT_MICRONS, Math.max(MIN_PAGE_HEIGHT_MICRONS, raw));
+  return {
+    scrollHeightPx: px,
+    pageWidthMicrons: Math.round(paperWidthMm * 1000),
+    pageHeightMicrons: bounded,
+    clamped: bounded !== raw,
+  };
+}
+
+/** Largeur de la fenêtre de rendu, en px CSS, pour composer à la largeur du rouleau. */
+export function paperWidthToPx(paperWidthMm: number): number {
+  return Math.max(120, Math.round((paperWidthMm / 25.4) * 96));
+}
+
+/**
+ * Attend que le document soit VRAIMENT peint, puis mesure sa hauteur.
+ *
+ * Polices prêtes + images décodées + DEUX cycles de rendu (double
+ * `requestAnimationFrame`) : après le second, la mise en page est stabilisée et
+ * `scrollHeight` reflète le ticket complet. Retourne 0 si non sondable —
+ * l'appelant décide alors, il n'y a jamais de blocage.
+ */
+async function waitForRenderReadyAndMeasure(win: BrowserWindow): Promise<number> {
   const script = `(async () => {
     try { if (document.fonts && document.fonts.ready) await document.fonts.ready; } catch (e) {}
     const imgs = Array.from(document.images || []);
@@ -37,24 +91,43 @@ async function waitForRenderReady(win: BrowserWindow): Promise<void> {
       if (i.complete && i.naturalWidth > 0) return null;
       return i.decode ? i.decode().catch(() => null) : null;
     }));
-    return document.images.length;
+    // DEUX cycles de rendu : le premier applique la mise en page, le second
+    // garantit qu'elle est stabilisée avant toute mesure.
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    const d = document.documentElement, b = document.body;
+    return Math.max(
+      d ? d.scrollHeight : 0, b ? b.scrollHeight : 0,
+      b ? Math.ceil(b.getBoundingClientRect().bottom) : 0,
+    );
   })()`;
   try {
-    await Promise.race([
+    const h = await Promise.race([
       win.webContents.executeJavaScript(script, true),
-      new Promise((resolve) => setTimeout(resolve, RENDER_READY_TIMEOUT_MS)),
+      new Promise<number>((resolve) => setTimeout(() => resolve(0), RENDER_READY_TIMEOUT_MS)),
     ]);
+    return typeof h === 'number' && Number.isFinite(h) ? h : 0;
   } catch {
-    /* rendu non sondable → on imprime quand même, jamais de blocage */
+    return 0; /* rendu non sondable → on imprime quand même */
   }
 }
 
-/** Options d'impression silencieuse pour un reçu thermique 80 mm. */
-export function buildReceiptPrintOptions(deviceName?: string): Electron.WebContentsPrintOptions {
+/**
+ * Options d'impression. `pageSize` EXPLICITE : on ne dépend plus du format par
+ * défaut du pilote. Marges à zéro, fond imprimé, imprimante nommée exactement.
+ */
+export function buildReceiptPrintOptions(
+  deviceName?: string,
+  geometry?: PageGeometry,
+): Electron.WebContentsPrintOptions {
   return {
     silent: true,
-    printBackground: false,
+    // Le ticket est noir sur blanc, mais certains éléments (bandeau de test,
+    // séparateurs) reposent sur des fonds : sans cela ils disparaissent.
+    printBackground: true,
     margins: { marginType: 'none' },
+    ...(geometry
+      ? { pageSize: { width: geometry.pageWidthMicrons, height: geometry.pageHeightMicrons } }
+      : {}),
     ...(deviceName ? { deviceName } : {}),
   };
 }
@@ -93,23 +166,55 @@ function describePrintOptions(o: Electron.WebContentsPrintOptions): PrintOptions
   };
 }
 
+/**
+ * Capture la fenêtre EXACTE qui part à l'impression, au moment précis du
+ * lancement. C'est la seule preuve directe que le document imprimé contenait
+ * bien le ticket — un « print success » ne dit rien du contenu.
+ */
+async function capturePreview(win: BrowserWindow): Promise<string | null> {
+  try {
+    const img = await win.webContents.capturePage();
+    if (img.isEmpty()) return null;
+    // Réduit pour l'IPC : l'aperçu sert à VOIR le ticket, pas à l'archiver.
+    const scaled = img.resize({ width: 300, quality: 'good' });
+    const url = scaled.toDataURL();
+    return url && url.length > 128 ? url : null;
+  } catch {
+    return null;
+  }
+}
+
 async function printHtmlSilently(
   html: string,
   deviceName?: string,
-): Promise<{ ok: boolean; error?: string; timings?: PrintTimings; optionsUsed?: PrintOptionsUsed }> {
+  paperWidthMm = 80,
+): Promise<{
+  ok: boolean;
+  error?: string;
+  timings?: PrintTimings;
+  optionsUsed?: PrintOptionsUsed;
+  geometry?: PageGeometry;
+  previewDataUrl?: string | null;
+}> {
   let win: BrowserWindow | null = null;
   const t0 = Date.now();
   try {
     win = new BrowserWindow({
       show: false,
+      // Fenêtre à la LARGEUR DU ROULEAU : le document se compose exactement
+      // comme il sera imprimé, donc `scrollHeight` mesure la vraie hauteur.
+      width: paperWidthToPx(paperWidthMm),
+      height: 1200,
       webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true },
     });
     const t1 = Date.now();
     await win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
-    // Logo + QR décodés AVANT l'impression (sinon ticket vide/amputé).
-    await waitForRenderReady(win);
+    // Polices + images décodées + 2 cycles de rendu, PUIS mesure réelle.
+    const scrollHeightPx = await waitForRenderReadyAndMeasure(win);
+    const geometry = computePageGeometry(scrollHeightPx, paperWidthMm);
+    const previewDataUrl = await capturePreview(win);
     const t2 = Date.now();
-    const printOptions = buildReceiptPrintOptions(deviceName);
+    const printOptions = buildReceiptPrintOptions(deviceName, geometry);
     const optionsUsed = describePrintOptions(printOptions);
     const result = await new Promise<{ ok: boolean; error?: string }>((resolve) => {
       const timer = setTimeout(() => resolve({ ok: false, error: 'print timeout' }), PRINT_TIMEOUT_MS);
@@ -131,8 +236,20 @@ async function printHtmlSilently(
       totalMs: Date.now() - t0,
     };
     // eslint-disable-next-line no-console
-    console.info('[PRINT-TIMING]', JSON.stringify({ ...optionsUsed, ...timings, ok: result.ok }));
-    return { ...result, timings, optionsUsed };
+    console.info(
+      '[PRINT-TIMING]',
+      JSON.stringify({
+        ...optionsUsed,
+        scrollHeightPx: geometry.scrollHeightPx,
+        pageWidthMicrons: geometry.pageWidthMicrons,
+        pageHeightMicrons: geometry.pageHeightMicrons,
+        heightClamped: geometry.clamped,
+        previewCaptured: !!previewDataUrl,
+        ...timings,
+        ok: result.ok,
+      }),
+    );
+    return { ...result, timings, optionsUsed, geometry, previewDataUrl };
   } catch (e: any) {
     return { ok: false, error: e?.message || 'print error' };
   } finally {
@@ -149,11 +266,15 @@ export function registerPosPrintingIpc(): void {
     return printers.map((p) => p.name);
   });
 
-  ipcMain.handle('pos-print:printHtml', async (_event, html: unknown, deviceName?: unknown) => {
-    if (typeof html !== 'string' || html.length === 0 || html.length > 500_000) {
-      return { ok: false, error: 'invalid html payload' };
-    }
-    const device = typeof deviceName === 'string' && deviceName ? deviceName : undefined;
-    return printHtmlSilently(html, device);
-  });
+  ipcMain.handle(
+    'pos-print:printHtml',
+    async (_event, html: unknown, deviceName?: unknown, paperWidthMm?: unknown) => {
+      if (typeof html !== 'string' || html.length === 0 || html.length > 500_000) {
+        return { ok: false, error: 'invalid html payload' };
+      }
+      const device = typeof deviceName === 'string' && deviceName ? deviceName : undefined;
+      const width = paperWidthMm === 58 || paperWidthMm === 80 ? paperWidthMm : 80;
+      return printHtmlSilently(html, device, width);
+    },
+  );
 }

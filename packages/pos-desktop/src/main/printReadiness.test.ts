@@ -24,7 +24,7 @@ const bridgeSrc = readFileSync(
 
 describe('attente du rendu réel avant impression', () => {
   it('attend polices ET images décodées avant print()', () => {
-    expect(mainSrc).toMatch(/await waitForRenderReady\(win\)/);
+    expect(mainSrc).toMatch(/await waitForRenderReadyAndMeasure\(win\)/);
     expect(mainSrc).toMatch(/document\.fonts\.ready/);
     expect(mainSrc).toMatch(/i\.decode\(\)/);
   });
@@ -35,13 +35,14 @@ describe('attente du rendu réel avant impression', () => {
   });
 
   it('une sonde de rendu qui échoue n’empêche PAS d’imprimer', () => {
-    // Le catch ne doit ni throw ni retourner : on imprime quand même.
-    expect(mainSrc).toMatch(/catch \{\s*\n\s*\/\* rendu non sondable/);
+    // La sonde retourne 0 (mesure inconnue) au lieu de throw : on imprime
+    // quand même, avec une hauteur de page bornée au minimum.
+    expect(mainSrc).toMatch(/return 0; \/\* rendu non sondable/);
   });
 
   it('l’attente a lieu APRÈS loadURL et AVANT print()', () => {
     const load = mainSrc.indexOf('await win.loadURL(');
-    const ready = mainSrc.indexOf('await waitForRenderReady(win)');
+    const ready = mainSrc.indexOf('await waitForRenderReadyAndMeasure(win)');
     const print = mainSrc.indexOf('win!.webContents.print(');
     expect(load).toBeGreaterThan(-1);
     expect(ready).toBeGreaterThan(load);

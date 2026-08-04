@@ -51,6 +51,8 @@ export function PrinterDiagnosticsPage() {
   const [printDiag, setPrintDiag] = useState<Record<string, unknown> | null>(null);
   /** Garde synchrone anti-double-clic (un état React arrive trop tard). */
   const printBusyRef = useRef(false);
+  /** Aperçu de la fenêtre réellement envoyée à l'impression. */
+  const [printPreview, setPrintPreview] = useState<string | null>(null);
 
   const isDesktop = typeof window !== 'undefined' && (window as any).electronAPI?.getPrinters;
 
@@ -130,6 +132,7 @@ export function PrinterDiagnosticsPage() {
       // Diagnostic lisible À L'ÉCRAN : évite d'avoir à ouvrir DevTools sur la
       // caisse pour lire `htmlBytes` (le chiffre qui dit si le ticket est vide).
       setPrintDiag(peripheralBridge.lastPrintTimings as Record<string, unknown> | null);
+      setPrintPreview(peripheralBridge.lastPrintPreview);
       printBusyRef.current = false;
       setPrintBusy(false);
     }
@@ -399,6 +402,33 @@ export function PrinterDiagnosticsPage() {
                       ))}
                     </tbody>
                   </table>
+
+                  {/* APERÇU de la fenêtre EXACTE partie à l'impression, capturé
+                      au moment du lancement. Si cette image montre le ticket,
+                      le rendu est bon et le problème est purement pilote. */}
+                  <div className="mt-3">
+                    <p className="text-xs font-bold uppercase tracking-wide text-pos-muted mb-2">
+                      Aperçu de la fenêtre envoyée à l’impression
+                    </p>
+                    {printPreview ? (
+                      <>
+                        <img
+                          src={printPreview}
+                          alt="Aperçu du document envoyé à l’imprimante"
+                          className="bg-white rounded-lg border border-pos-border/30 max-w-[300px]"
+                        />
+                        <p className="text-xs text-pos-muted mt-1">
+                          Si le ticket est lisible ci-dessus mais que le papier sort blanc, le
+                          rendu est correct : la cause est le pilote ou le format papier.
+                        </p>
+                      </>
+                    ) : (
+                      <p className="text-xs text-amber-300">
+                        Aperçu non capturé (capturePage indisponible sur cette fenêtre) — l’absence
+                        d’aperçu ne signifie PAS que le ticket était vide.
+                      </p>
+                    )}
+                  </div>
                 </div>
               )}
             </div>

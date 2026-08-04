@@ -219,6 +219,12 @@ class PeripheralBridge {
   /** Dernière raison d'échec/refus tiroir (affichée à l'écran diagnostic). */
   lastDrawerError: string | null = null;
   /**
+   * Aperçu (data-URL PNG) de la fenêtre EXACTE partie à l'impression, capturé
+   * au moment du lancement. Seule preuve directe que le document imprimé
+   * contenait le ticket — un « print success » ne dit rien du contenu.
+   */
+  lastPrintPreview: string | null = null;
+  /**
    * Avertissement de configuration à afficher SANS attendre une panne :
    * imprimante mémorisée disparue, ou entrée Bluetooth résiduelle ignorée sur
    * le poste Windows. Jamais silencieux — c'est ce silence qui a coûté du temps
@@ -428,7 +434,9 @@ class PeripheralBridge {
         const buildMs = Date.now() - tBuild;
         // Cible l'imprimante sélectionnée (sinon défaut OS).
         const device = this._status.printer.name ?? undefined;
-        const result = await (window as any).electronAPI.printTicketHtml(html, device);
+        const widthMm = data.paperWidthMm ?? getPaperWidthMm();
+        const result = await (window as any).electronAPI.printTicketHtml(html, device, widthMm);
+        this.lastPrintPreview = result?.previewDataUrl ?? null;
         // Trace terrain STRUCTURÉE : tout ce qu'il faut pour diagnostiquer une
         // sortie blanche/tronquée sans accès à la machine — taille réelle du
         // document, imprimante visée, et FORMAT réellement transmis au moteur
@@ -437,10 +445,17 @@ class PeripheralBridge {
           buildMs,
           htmlBytes: html.length,
           printerName: device ?? '(défaut OS)',
-          paperWidthMm: data.paperWidthMm ?? getPaperWidthMm(),
+          paperWidthMm: widthMm,
+          // Mesure RÉELLE du document dans la fenêtre qui part à l'impression,
+          // et format explicitement imposé au moteur (fin du « défaut pilote »).
+          scrollHeightPx: result?.geometry?.scrollHeightPx ?? null,
+          pageWidthMicrons: result?.geometry?.pageWidthMicrons ?? null,
+          pageHeightMicrons: result?.geometry?.pageHeightMicrons ?? null,
+          heightClamped: result?.geometry?.clamped ?? null,
           pageSize: result?.optionsUsed?.pageSize ?? null,
           margins: result?.optionsUsed?.margins ?? 'default',
           printBackground: result?.optionsUsed?.printBackground ?? false,
+          previewCaptured: !!result?.previewDataUrl,
           ...(result?.timings ?? {}),
           status: result?.ok ? 'submitted_to_spooler' : 'failed',
           ...(result?.ok ? {} : { error: result?.error ?? 'inconnu' }),
