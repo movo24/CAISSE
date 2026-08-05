@@ -1074,6 +1074,20 @@ class PeripheralBridge {
     return !!res?.ok;
   }
 
+  /**
+   * Rend le ticket en PDF (même pipeline de mise en page) et ouvre le fichier.
+   * Partitionne le problème : PDF correct → Chromium compose bien, la panne est
+   * dans la remise au pilote ; PDF vide → la panne est dans le rendu.
+   */
+  async renderDiagnosticPdf(data: TicketData): Promise<{ ok: boolean; filePath?: string; bytes?: number; error?: string }> {
+    const api = (window as any).electronAPI;
+    if (!this.isElectron() || !api?.diagnosticPdf) return { ok: false, error: 'desktop uniquement' };
+    const html = this.buildReceiptHtml(data);
+    const res = await api.diagnosticPdf(html, data.paperWidthMm ?? getPaperWidthMm());
+    console.log('[PERIPH] PDF diagnostic', JSON.stringify({ htmlBytes: html.length, ...res }));
+    return res;
+  }
+
   /** Imprimante OS choisie par l'opérateur (persistée), ou null. */
   getSelectedOsPrinter(): string | null {
     try {

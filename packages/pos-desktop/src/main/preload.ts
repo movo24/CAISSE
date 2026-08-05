@@ -93,6 +93,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // État RÉEL de toutes les files Windows (statut, hors connexion, jobs en
   // attente) : sert à expliquer un job « soumis » qui ne sort pas physiquement.
   listQueues: () => ipcRenderer.invoke('pos-print:listQueues'),
+  // Diagnostic : rend le ticket en PDF par le même pipeline Chromium et ouvre
+  // le fichier — seul moyen de VOIR ce que le moteur d'impression a composé.
+  diagnosticPdf: (html: string, paperWidthMm?: 58 | 80) =>
+    ipcRenderer.invoke('pos-print:diagnosticPdf', html, paperWidthMm),
   cutPaper: (deviceName?: string) => ipcRenderer.invoke('pos-print:cut', deviceName),
   rawEscpos: (deviceName: string | undefined, bytes: number[]) =>
     ipcRenderer.invoke('pos-print:rawEscpos', deviceName, bytes),

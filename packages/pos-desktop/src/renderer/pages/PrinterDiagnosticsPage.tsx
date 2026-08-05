@@ -174,6 +174,36 @@ export function PrinterDiagnosticsPage() {
     }
   };
 
+  /** Rend le ticket en PDF et l'ouvre : on VOIT ce que Chromium a composé. */
+  const runPdfDiagnostic = async () => {
+    if (printBusyRef.current) return;
+    printBusyRef.current = true;
+    setPrintBusy(true);
+    setPrintResult(null);
+    try {
+      const logo = resolveReceiptLogo(null);
+      const qr = await makeTicketQrDataUrl('https://thewesleys.fr/ticket/TEST');
+      const res = await peripheralBridge.renderDiagnosticPdf(buildTestTicket(logo, qr, getPaperWidthMm()));
+      setPrintResult(
+        res.ok
+          ? {
+              ok: true,
+              msg:
+                `PDF généré (${res.bytes?.toLocaleString('fr-FR')} octets) et ouvert : ${res.filePath}. ` +
+                'S’il montre le ticket entier, Chromium compose correctement et la panne est ' +
+                'dans la remise du job au pilote Star.',
+            }
+          : { ok: false, msg: `Échec génération PDF : ${res.error ?? 'inconnu'}` },
+      );
+    } catch (e) {
+      console.error('[PERIPH] PDF diagnostic — exception', e);
+      setPrintResult({ ok: false, msg: `Erreur : ${e instanceof Error ? e.message : String(e)}` });
+    } finally {
+      printBusyRef.current = false;
+      setPrintBusy(false);
+    }
+  };
+
   const runTestDrawer = async () => {
     setDrawerBusy(true);
     setDrawerResult(null);
@@ -415,6 +445,9 @@ export function PrinterDiagnosticsPage() {
                 </button>
                 <button onClick={runMinimalPrint} disabled={printBusy} className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 text-white font-semibold hover:opacity-90 disabled:opacity-60">
                   {printBusy ? <Loader2 size={16} className="animate-spin" /> : <Printer size={16} />} Test HTML minimal
+                </button>
+                <button onClick={runPdfDiagnostic} disabled={printBusy} className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-700 text-white font-semibold hover:opacity-90 disabled:opacity-60">
+                  {printBusy ? <Loader2 size={16} className="animate-spin" /> : <Printer size={16} />} Voir le PDF du ticket
                 </button>
                 <button onClick={runTestDrawer} disabled={drawerBusy} className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-700 text-white font-semibold hover:opacity-90 disabled:opacity-60">
                   {drawerBusy ? <Loader2 size={16} className="animate-spin" /> : <Inbox size={16} />} Ouvrir le tiroir

@@ -8,7 +8,7 @@
  * HONNÊTETÉ (règle PR #27) : toute défaillance résout `{ ok: false }` — jamais
  * un faux succès. Aucune dépendance native ; IPC borné à deux canaux.
  */
-import { BrowserWindow, ipcMain } from 'electron';
+import { BrowserWindow, ipcMain, shell } from 'electron';
 import * as os from 'os';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -328,6 +328,71 @@ async function printHtmlSilently(
   }
 }
 
+/**
+ * DIAGNOSTIC DÉCISIF — rend le MÊME document en PDF, par le MÊME pipeline de
+ * mise en page Chromium, et l'écrit sur le disque.
+ *
+ * `webContents.print()` est une boîte noire : on ne voit jamais ce que Chromium
+ * a réellement composé. `printToPDF` emprunte la même pagination mais produit
+ * un fichier INSPECTABLE. Cela partitionne le problème sans ambiguïté :
+ *   - PDF correct (ticket lisible, bonne hauteur) → Chromium compose bien ;
+ *     la panne est dans la remise GDI au pilote Star ;
+ *   - PDF vide ou de hauteur nulle → la panne est en amont, dans le rendu.
+ */
+export async function renderDiagnosticPdf(
+  html: string,
+  paperWidthMm = 80,
+): Promise<{ ok: boolean; filePath?: string; bytes?: number; probe?: RenderProbe; error?: string }> {
+  let win: BrowserWindow | null = null;
+  let tmpHtml: string | null = null;
+  try {
+    win = new BrowserWindow({
+      show: true,
+      x: -32000,
+      y: -32000,
+      width: paperWidthToPx(paperWidthMm),
+      height: 1200,
+      frame: false,
+      skipTaskbar: true,
+      focusable: false,
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        sandbox: true,
+        backgroundThrottling: false,
+      },
+    });
+    win.setIgnoreMouseEvents(true);
+    tmpHtml = path.join(os.tmpdir(), `poscaisse-pdf-${Date.now()}.html`);
+    fs.writeFileSync(tmpHtml, html, 'utf-8');
+    await win.loadFile(tmpHtml);
+    const probe = await waitForRenderReadyAndMeasure(win);
+    const geometry = computePageGeometry(probe.h, paperWidthMm);
+    const pdf = await win.webContents.printToPDF({
+      printBackground: true,
+      margins: { top: 0, bottom: 0, left: 0, right: 0 },
+      // Microns → pouces (printToPDF attend des pouces).
+      pageSize: {
+        width: geometry.pageWidthMicrons / 25400,
+        height: geometry.pageHeightMicrons / 25400,
+      },
+    });
+    const filePath = path.join(os.tmpdir(), `ticket-diagnostic-${Date.now()}.pdf`);
+    fs.writeFileSync(filePath, pdf);
+    // eslint-disable-next-line no-console
+    console.info(
+      '[PERIPH] PDF diagnostic',
+      JSON.stringify({ filePath, bytes: pdf.length, ...probe, ...geometry }),
+    );
+    return { ok: true, filePath, bytes: pdf.length, probe };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || 'printToPDF error' };
+  } finally {
+    win?.destroy();
+    if (tmpHtml) { try { fs.unlinkSync(tmpHtml); } catch { /* best-effort */ } }
+  }
+}
+
 /** Enregistre les canaux IPC d'impression (appelé au démarrage du main). */
 export function registerPosPrintingIpc(): void {
   ipcMain.handle('pos-print:getPrinters', async () => {
@@ -335,6 +400,20 @@ export function registerPosPrintingIpc(): void {
     if (!win) return [];
     const printers = await win.webContents.getPrintersAsync();
     return printers.map((p) => p.name);
+  });
+
+  // Génère le PDF diagnostic et l'OUVRE dans la visionneuse Windows : le
+  // caissier voit immédiatement ce que Chromium a composé.
+  ipcMain.handle('pos-print:diagnosticPdf', async (_e, html: unknown, paperWidthMm?: unknown) => {
+    if (typeof html !== 'string' || html.length === 0 || html.length > 500_000) {
+      return { ok: false, error: 'invalid html payload' };
+    }
+    const width = paperWidthMm === 58 || paperWidthMm === 80 ? paperWidthMm : 80;
+    const res = await renderDiagnosticPdf(html, width);
+    if (res.ok && res.filePath) {
+      try { await shell.openPath(res.filePath); } catch { /* ouverture best-effort */ }
+    }
+    return res;
   });
 
   ipcMain.handle(
