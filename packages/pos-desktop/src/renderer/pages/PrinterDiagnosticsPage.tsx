@@ -147,7 +147,9 @@ export function PrinterDiagnosticsPage() {
     try {
       const ok = await peripheralBridge.openCashDrawer();
       setDrawerResult(ok
-        ? { ok: true, msg: `Commande d’ouverture envoyée au tiroir (voie : ${peripheralBridge.lastDrawerTimings?.path ?? '?'}, ${peripheralBridge.lastDrawerTimings?.ms ?? '?'} ms).` }
+        ? peripheralBridge.lastDrawerTimings?.path === 'delegated'
+          ? { ok: true, msg: 'Ouverture déléguée au pilote Star : le tiroir s’ouvre à l’impression du ticket. Aucune commande envoyée par la caisse.' }
+          : { ok: true, msg: `Commande d’ouverture envoyée au tiroir (voie : ${peripheralBridge.lastDrawerTimings?.path ?? '?'}, ${peripheralBridge.lastDrawerTimings?.ms ?? '?'} ms).` }
         : { ok: false, msg: peripheralBridge.lastDrawerError || 'Échec : aucun tiroir n’a pu être ouvert (imprimante/tiroir ?).' });
     } catch (e) {
       setDrawerResult({ ok: false, msg: `Erreur : ${e instanceof Error ? e.message : String(e)}` });
@@ -312,6 +314,7 @@ export function PrinterDiagnosticsPage() {
                   [
                     ['auto', 'Automatique (selon le driver détecté) — recommandé'],
                     ['raw_escpos', 'Kick ESC/POS brut (imprimantes ESC/POS uniquement)'],
+                    ['driver', 'Géré par le pilote Star (futurePRNT ouvre le tiroir à l’impression)'],
                     ['drawer_queue', 'File Windows dédiée au tiroir (TSP100/TSP143 futurePRNT)'],
                   ] as Array<[DrawerStrategy, string]>
                 ).map(([value, label]) => (

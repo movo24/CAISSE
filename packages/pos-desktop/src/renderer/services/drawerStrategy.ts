@@ -29,11 +29,14 @@ export type PrinterCommandMode =
   | 'escpos' // imprimante ESC/POS classique (EPSON TM, génériques 58/80 mm…)
   | 'unknown';
 
-export type DrawerStrategy = 'auto' | 'raw_escpos' | 'drawer_queue';
+export type DrawerStrategy = 'auto' | 'raw_escpos' | 'drawer_queue' | 'driver';
 
 export type DrawerPathDecision =
   | { path: 'raw' }
   | { path: 'queue'; queueName: string }
+  /** Le pilote Star ouvre le tiroir lui-même (Peripheral Unit Control) : la
+   *  caisse n'envoie AUCUNE commande. Ni succès revendiqué, ni fausse alerte. */
+  | { path: 'delegated'; reason: string }
   | { path: 'refuse'; reason: string };
 
 /**
@@ -75,6 +78,18 @@ export function decideDrawerPath(
   queueName: string | null | undefined,
 ): DrawerPathDecision {
   const queue = (queueName || '').trim();
+  // Terrain : sur une TSP143 dont futurePRNT a « Peripheral Unit 1 » activé, le
+  // tiroir s'ouvre à chaque impression SANS que la caisse envoie quoi que ce
+  // soit. Prétendre l'avoir ouvert serait faux ; annoncer un échec l'est tout
+  // autant et affole l'opérateur. On nomme donc ce cas pour ce qu'il est.
+  if (strategy === 'driver') {
+    return {
+      path: 'delegated',
+      reason:
+        'Ouverture déléguée au pilote Star (Peripheral Unit Control) : le tiroir s’ouvre ' +
+        'à l’impression du ticket. La caisse n’envoie aucune commande.',
+    };
+  }
   if (strategy === 'drawer_queue') {
     return queue
       ? { path: 'queue', queueName: queue }
@@ -206,7 +221,7 @@ function safeSet(key: string, value: string | null): void {
 
 export function getDrawerStrategy(): DrawerStrategy {
   const v = safeGet(STRATEGY_KEY);
-  return v === 'raw_escpos' || v === 'drawer_queue' ? v : 'auto';
+  return v === 'raw_escpos' || v === 'drawer_queue' || v === 'driver' ? v : 'auto';
 }
 
 export function setDrawerStrategy(strategy: DrawerStrategy): void {

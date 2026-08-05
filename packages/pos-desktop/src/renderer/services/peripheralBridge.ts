@@ -986,6 +986,14 @@ class PeripheralBridge {
       this.lastDrawerError = null;
       const mode = this._printerInfo?.mode ?? 'unknown';
       const decision = decideDrawerPath(mode, getDrawerStrategy(), getDrawerQueueName());
+      // Tiroir géré par le pilote : aucune commande, et surtout AUCUNE fausse
+      // alerte « Tiroir NON ouvert » — le tiroir s'ouvre bien, via futurePRNT.
+      if (decision.path === 'delegated') {
+        this.lastDrawerError = null;
+        this.lastDrawerTimings = { path: 'delegated' };
+        console.info('[PERIPH] Tiroir délégué au pilote Star —', decision.reason);
+        return true;
+      }
       if (decision.path === 'refuse') {
         this.lastDrawerError = decision.reason;
         this.lastDrawerTimings = { path: 'refuse' };
