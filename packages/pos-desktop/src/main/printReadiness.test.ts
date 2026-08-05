@@ -37,11 +37,12 @@ describe('attente du rendu réel avant impression', () => {
   it('une sonde de rendu qui échoue n’empêche PAS d’imprimer', () => {
     // La sonde retourne 0 (mesure inconnue) au lieu de throw : on imprime
     // quand même, avec une hauteur de page bornée au minimum.
-    expect(mainSrc).toMatch(/return 0; \/\* rendu non sondable/);
+    expect(mainSrc).toMatch(/return empty; \/\* rendu non sondable/);
   });
 
   it('l’attente a lieu APRÈS loadURL et AVANT print()', () => {
-    const load = mainSrc.indexOf('await win.loadURL(');
+    // Le ticket est chargé depuis un FICHIER temporaire (plus d'URL `data:`).
+    const load = mainSrc.indexOf('await win.loadFile(tmpHtml)');
     const ready = mainSrc.indexOf('await waitForRenderReadyAndMeasure(win)');
     const print = mainSrc.indexOf('win!.webContents.print(');
     expect(load).toBeGreaterThan(-1);

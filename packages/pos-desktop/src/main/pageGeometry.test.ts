@@ -107,7 +107,7 @@ describe('options réellement transmises à webContents.print', () => {
 
   it('la mesure est prise APRÈS l’attente de rendu', () => {
     const ready = src.indexOf('await waitForRenderReadyAndMeasure(win)');
-    const geom = src.indexOf('computePageGeometry(scrollHeightPx, paperWidthMm)');
+    const geom = src.indexOf('computePageGeometry(probe.h, paperWidthMm)');
     const print = src.indexOf('win!.webContents.print(');
     expect(ready).toBeGreaterThan(-1);
     expect(geom).toBeGreaterThan(ready);

@@ -452,6 +452,10 @@ class PeripheralBridge {
           // Mesure RÉELLE du document dans la fenêtre qui part à l'impression,
           // et format explicitement imposé au moteur (fin du « défaut pilote »).
           scrollHeightPx: result?.geometry?.scrollHeightPx ?? null,
+          textLen: result?.probe?.textLen ?? null,
+          imgs: result?.probe?.imgs ?? null,
+          readyState: result?.probe?.readyState ?? null,
+          loader: 'loadFile',
           pageWidthMicrons: result?.geometry?.pageWidthMicrons ?? null,
           pageHeightMicrons: result?.geometry?.pageHeightMicrons ?? null,
           heightClamped: result?.geometry?.clamped ?? null,
@@ -1039,6 +1043,35 @@ class PeripheralBridge {
 
     console.warn('[PERIPH] No cash drawer connected — kick refused (honest)');
     return false;
+  }
+
+  /**
+   * Imprime un HTML BRUT via le chemin d'impression EXACT du ticket, sans
+   * passer par le constructeur de reçu. Sert à distinguer « le pipeline
+   * d'impression est cassé » de « ce sont les ressources du ticket (logo, QR,
+   * polices) qui empêchent le rendu ». Diagnostic uniquement.
+   */
+  async printRawHtml(html: string): Promise<boolean> {
+    const api = (window as any).electronAPI;
+    if (!this.isElectron() || !api?.printTicketHtml) return false;
+    const device = this._status.printer.name ?? undefined;
+    const widthMm = getPaperWidthMm();
+    const res = await api.printTicketHtml(html, device, widthMm, getForcePageSize());
+    this.lastPrintPreview = res?.previewDataUrl ?? null;
+    this.lastPrintTimings = {
+      htmlBytes: html.length,
+      printerName: device ?? '(défaut OS)',
+      scrollHeightPx: res?.geometry?.scrollHeightPx ?? null,
+      textLen: res?.probe?.textLen ?? null,
+      imgs: res?.probe?.imgs ?? null,
+      readyState: res?.probe?.readyState ?? null,
+      loader: 'loadFile',
+      pageSize: res?.optionsUsed?.pageSize ?? null,
+      status: res?.ok ? 'submitted_to_spooler' : 'failed',
+      ...(res?.ok ? {} : { error: res?.error ?? 'inconnu' }),
+    } as unknown as Record<string, number>;
+    console.log('[PERIPH] Raw HTML print', JSON.stringify(this.lastPrintTimings));
+    return !!res?.ok;
   }
 
   /** Imprimante OS choisie par l'opérateur (persistée), ou null. */

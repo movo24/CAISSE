@@ -141,6 +141,39 @@ export function PrinterDiagnosticsPage() {
     }
   };
 
+  /**
+   * HTML MINIMAL par le chemin d'impression EXACT du ticket. Sépare deux causes
+   * qu'on ne pouvait pas distinguer : pipeline d'impression cassé, ou ressources
+   * du ticket (logo, QR, polices) qui empêchent le rendu.
+   */
+  const runMinimalPrint = async () => {
+    if (printBusyRef.current) return;
+    printBusyRef.current = true;
+    setPrintBusy(true);
+    setPrintResult(null);
+    try {
+      const html =
+        '<!doctype html><html><head><meta charset="utf-8">' +
+        '<style>html{margin:0;padding:0}body{font-family:monospace;font-size:14px;width:72mm;margin:3mm;color:#000}</style>' +
+        '</head><body><h1>TEST</h1><p>Impression minimale — aucune image, aucune police externe.</p>' +
+        '<p>Si CECI sort et pas le ticket, ce sont les ressources du ticket.</p></body></html>';
+      const ok = await peripheralBridge.printRawHtml(html);
+      setPrintResult(
+        ok
+          ? { ok: true, msg: 'HTML minimal envoyé à la file Windows. Le papier doit porter « TEST » sur ~3 cm.' }
+          : { ok: false, msg: 'Échec : Windows a refusé le travail d’impression minimal.' },
+      );
+    } catch (e) {
+      console.error('[PERIPH] Test HTML minimal — exception', e);
+      setPrintResult({ ok: false, msg: `Erreur : ${e instanceof Error ? e.message : String(e)}` });
+    } finally {
+      setPrintDiag(peripheralBridge.lastPrintTimings as Record<string, unknown> | null);
+      setPrintPreview(peripheralBridge.lastPrintPreview);
+      printBusyRef.current = false;
+      setPrintBusy(false);
+    }
+  };
+
   const runTestDrawer = async () => {
     setDrawerBusy(true);
     setDrawerResult(null);
@@ -380,6 +413,9 @@ export function PrinterDiagnosticsPage() {
                 <button onClick={runTestPrint} disabled={printBusy} className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-pos-accent text-white font-semibold hover:opacity-90 disabled:opacity-60">
                   {printBusy ? <Loader2 size={16} className="animate-spin" /> : <Printer size={16} />} Impression test
                 </button>
+                <button onClick={runMinimalPrint} disabled={printBusy} className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 text-white font-semibold hover:opacity-90 disabled:opacity-60">
+                  {printBusy ? <Loader2 size={16} className="animate-spin" /> : <Printer size={16} />} Test HTML minimal
+                </button>
                 <button onClick={runTestDrawer} disabled={drawerBusy} className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-700 text-white font-semibold hover:opacity-90 disabled:opacity-60">
                   {drawerBusy ? <Loader2 size={16} className="animate-spin" /> : <Inbox size={16} />} Ouvrir le tiroir
                 </button>
@@ -409,6 +445,15 @@ export function PrinterDiagnosticsPage() {
                     Diagnostic de la dernière impression
                   </p>
                   {(() => {
+                    const textLen = printDiag.textLen;
+                    if (textLen !== null && textLen !== undefined && Number(textLen) === 0) {
+                      return (
+                        <p className="text-xs mb-2 text-red-400">
+                          Le document rendu ne contient AUCUN texte (textLen = 0) : la fenêtre
+                          d’impression n’a rien peint. C’est la cause du papier coupé à 1 mm.
+                        </p>
+                      );
+                    }
                     const bytes = Number(printDiag.htmlBytes ?? 0);
                     const verdict =
                       bytes < 2000

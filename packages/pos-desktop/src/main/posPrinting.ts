@@ -9,6 +9,9 @@
  * un faux succès. Aucune dépendance native ; IPC borné à deux canaux.
  */
 import { BrowserWindow, ipcMain } from 'electron';
+import * as os from 'os';
+import * as fs from 'fs';
+import * as path from 'path';
 
 const PRINT_TIMEOUT_MS = 20_000;
 
@@ -83,7 +86,14 @@ export function paperWidthToPx(paperWidthMm: number): number {
  * `scrollHeight` reflète le ticket complet. Retourne 0 si non sondable —
  * l'appelant décide alors, il n'y a jamais de blocage.
  */
-async function waitForRenderReadyAndMeasure(win: BrowserWindow): Promise<number> {
+export interface RenderProbe {
+  h: number;
+  textLen: number;
+  imgs: number;
+  readyState: string;
+}
+
+async function waitForRenderReadyAndMeasure(win: BrowserWindow): Promise<RenderProbe> {
   const script = `(async () => {
     try { if (document.fonts && document.fonts.ready) await document.fonts.ready; } catch (e) {}
     const imgs = Array.from(document.images || []);
@@ -95,19 +105,27 @@ async function waitForRenderReadyAndMeasure(win: BrowserWindow): Promise<number>
     // garantit qu'elle est stabilisée avant toute mesure.
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
     const d = document.documentElement, b = document.body;
-    return Math.max(
-      d ? d.scrollHeight : 0, b ? b.scrollHeight : 0,
-      b ? Math.ceil(b.getBoundingClientRect().bottom) : 0,
-    );
+    return {
+      h: Math.max(
+        d ? d.scrollHeight : 0, b ? b.scrollHeight : 0,
+        b ? Math.ceil(b.getBoundingClientRect().bottom) : 0,
+      ),
+      // Preuve que le DOM porte réellement du contenu (et pas une page vide
+      // consécutive à une navigation ratée) : longueur du texte rendu.
+      textLen: b && b.innerText ? b.innerText.length : 0,
+      imgs: document.images ? document.images.length : 0,
+      readyState: document.readyState,
+    };
   })()`;
+  const empty: RenderProbe = { h: 0, textLen: 0, imgs: 0, readyState: 'unknown' };
   try {
-    const h = await Promise.race([
-      win.webContents.executeJavaScript(script, true),
-      new Promise<number>((resolve) => setTimeout(() => resolve(0), RENDER_READY_TIMEOUT_MS)),
+    const r = await Promise.race([
+      win.webContents.executeJavaScript(script, true) as Promise<RenderProbe>,
+      new Promise<RenderProbe>((resolve) => setTimeout(() => resolve(empty), RENDER_READY_TIMEOUT_MS)),
     ]);
-    return typeof h === 'number' && Number.isFinite(h) ? h : 0;
+    return r && typeof r.h === 'number' && Number.isFinite(r.h) ? r : empty;
   } catch {
-    return 0; /* rendu non sondable → on imprime quand même */
+    return empty; /* rendu non sondable → on imprime quand même */
   }
 }
 
@@ -204,8 +222,10 @@ async function printHtmlSilently(
   optionsUsed?: PrintOptionsUsed;
   geometry?: PageGeometry;
   previewDataUrl?: string | null;
+  probe?: RenderProbe;
 }> {
   let win: BrowserWindow | null = null;
+  let tmpHtml: string | null = null;
   const t0 = Date.now();
   try {
     win = new BrowserWindow({
@@ -241,10 +261,21 @@ async function printHtmlSilently(
     });
     win.setIgnoreMouseEvents(true);
     const t1 = Date.now();
-    await win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
+    // ── Fichier temporaire plutôt qu'URL `data:` ─────────────────────────
+    // Une URL `data:` porte tout le ticket (logo base64 compris) dans la barre
+    // d'adresse : elle est soumise aux limites de longueur et aux politiques de
+    // navigation de Chromium. Une navigation `data:` tronquée ou refusée donne
+    // un document VIDE — donc une page de hauteur nulle, donc 1 mm de papier
+    // puis coupe. `loadFile` supprime cette classe entière de défaillance.
+    tmpHtml = path.join(
+      os.tmpdir(),
+      `poscaisse-ticket-${Date.now()}-${Math.round(process.hrtime()[1] % 1e6)}.html`,
+    );
+    fs.writeFileSync(tmpHtml, html, 'utf-8');
+    await win.loadFile(tmpHtml);
     // Polices + images décodées + 2 cycles de rendu, PUIS mesure réelle.
-    const scrollHeightPx = await waitForRenderReadyAndMeasure(win);
-    const geometry = computePageGeometry(scrollHeightPx, paperWidthMm);
+    const probe = await waitForRenderReadyAndMeasure(win);
+    const geometry = computePageGeometry(probe.h, paperWidthMm);
     const previewDataUrl = await capturePreview(win);
     const t2 = Date.now();
     const printOptions = buildReceiptPrintOptions(deviceName, geometry, forcePageSize);
@@ -274,6 +305,10 @@ async function printHtmlSilently(
       JSON.stringify({
         ...optionsUsed,
         scrollHeightPx: geometry.scrollHeightPx,
+        textLen: probe.textLen,
+        imgs: probe.imgs,
+        readyState: probe.readyState,
+        loader: 'loadFile',
         pageWidthMicrons: geometry.pageWidthMicrons,
         pageHeightMicrons: geometry.pageHeightMicrons,
         heightClamped: geometry.clamped,
@@ -282,11 +317,14 @@ async function printHtmlSilently(
         ok: result.ok,
       }),
     );
-    return { ...result, timings, optionsUsed, geometry, previewDataUrl };
+    return { ...result, timings, optionsUsed, geometry, previewDataUrl, probe };
   } catch (e: any) {
     return { ok: false, error: e?.message || 'print error' };
   } finally {
     win?.destroy();
+    if (tmpHtml) {
+      try { fs.unlinkSync(tmpHtml); } catch { /* nettoyage best-effort */ }
+    }
   }
 }
 
