@@ -14,6 +14,7 @@ import {
   decideDrawerPath,
   getDrawerQueueName,
   getDrawerStrategy,
+  getForcePageSize,
   resolveDrawerQueue,
   type PrinterCommandMode,
 } from './drawerStrategy';
@@ -435,7 +436,9 @@ class PeripheralBridge {
         // Cible l'imprimante sélectionnée (sinon défaut OS).
         const device = this._status.printer.name ?? undefined;
         const widthMm = data.paperWidthMm ?? getPaperWidthMm();
-        const result = await (window as any).electronAPI.printTicketHtml(html, device, widthMm);
+        const result = await (window as any).electronAPI.printTicketHtml(
+          html, device, widthMm, getForcePageSize(),
+        );
         this.lastPrintPreview = result?.previewDataUrl ?? null;
         // Trace terrain STRUCTURÉE : tout ce qu'il faut pour diagnostiquer une
         // sortie blanche/tronquée sans accès à la machine — taille réelle du

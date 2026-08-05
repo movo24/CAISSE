@@ -8,10 +8,12 @@ import {
   describeQueueState,
   getDrawerQueueName,
   getDrawerStrategy,
+  getForcePageSize,
   printerModeLabel,
   resolveDrawerQueue,
   setDrawerQueueName,
   setDrawerStrategy,
+  setForcePageSize,
   type DrawerStrategy,
   type WindowsQueueState,
 } from '../services/drawerStrategy';
@@ -53,6 +55,7 @@ export function PrinterDiagnosticsPage() {
   const printBusyRef = useRef(false);
   /** Aperçu de la fenêtre réellement envoyée à l'impression. */
   const [printPreview, setPrintPreview] = useState<string | null>(null);
+  const [forcePageSize, setForcePageSizeState] = useState<boolean>(getForcePageSize());
 
   const isDesktop = typeof window !== 'undefined' && (window as any).electronAPI?.getPrinters;
 
@@ -279,6 +282,26 @@ export function PrinterDiagnosticsPage() {
               <p className="text-xs text-pos-muted mt-2">
                 Appliquée à tous les tickets de cette caisse (mise en page et colonnes ESC/POS).
               </p>
+
+              {/* Forçage du format de page — DÉSACTIVÉ par défaut : la page de
+                  test Windows sort entière, donc le formulaire rouleau du pilote
+                  est bon et sa longueur suit le contenu. À n'activer que sur un
+                  poste dont le formulaire serait mal réglé. */}
+              <label className="flex items-start gap-2 text-sm cursor-pointer mt-3">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={forcePageSize}
+                  onChange={(e) => { setForcePageSize(e.target.checked); setForcePageSizeState(e.target.checked); }}
+                />
+                <span>
+                  Imposer le format de page à l’impression
+                  <span className="block text-xs text-pos-muted">
+                    Par défaut le formulaire rouleau du pilote décide (recommandé). N’activer que si
+                    le ticket sort tronqué : un format absent des formulaires du pilote peut être refusé.
+                  </span>
+                </span>
+              </label>
             </div>
 
             {/* Stratégie tiroir-caisse */}

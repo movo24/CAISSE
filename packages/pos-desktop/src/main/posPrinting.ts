@@ -118,6 +118,7 @@ async function waitForRenderReadyAndMeasure(win: BrowserWindow): Promise<number>
 export function buildReceiptPrintOptions(
   deviceName?: string,
   geometry?: PageGeometry,
+  forcePageSize = false,
 ): Electron.WebContentsPrintOptions {
   return {
     silent: true,
@@ -125,7 +126,14 @@ export function buildReceiptPrintOptions(
     // séparateurs) reposent sur des fonds : sans cela ils disparaissent.
     printBackground: true,
     margins: { marginType: 'none' },
-    ...(geometry
+    // Par DÉFAUT on laisse le formulaire rouleau du pilote décider : la page de
+    // test Windows sort entière et coupe à la fin, ce qui prouve que ce
+    // formulaire est correct et que sa longueur suit le contenu. Imposer une
+    // hauteur fixe serait au mieux inutile, au pire refusé par le pilote (un
+    // format absent de ses formulaires n'est pas honoré).
+    // Le forçage reste disponible depuis l'écran diagnostic si un poste a un
+    // formulaire mal réglé.
+    ...(forcePageSize && geometry
       ? { pageSize: { width: geometry.pageWidthMicrons, height: geometry.pageHeightMicrons } }
       : {}),
     ...(deviceName ? { deviceName } : {}),
@@ -188,6 +196,7 @@ async function printHtmlSilently(
   html: string,
   deviceName?: string,
   paperWidthMm = 80,
+  forcePageSize = false,
 ): Promise<{
   ok: boolean;
   error?: string;
@@ -200,13 +209,37 @@ async function printHtmlSilently(
   const t0 = Date.now();
   try {
     win = new BrowserWindow({
-      show: false,
+      // ── CAUSE RACINE du « petit bout coupé aussitôt » ────────────────────
+      // Une fenêtre `show: false` n'est PAS composée par Chromium : aucune
+      // frame n'est produite, et `webContents.print()` sérialise alors un
+      // document sans contenu peint. Sur un formulaire rouleau — dont la
+      // longueur suit le contenu (prouvé par la page de test Windows, qui
+      // sort entière) — cela donne exactement quelques millimètres de papier
+      // suivis de la coupe de fin de document.
+      //
+      // La fenêtre est donc RÉELLEMENT affichée, mais hors de l'espace de
+      // travail : invisible pour le caissier, et pourtant composée.
+      show: true,
+      x: -32000,
+      y: -32000,
       // Fenêtre à la LARGEUR DU ROULEAU : le document se compose exactement
       // comme il sera imprimé, donc `scrollHeight` mesure la vraie hauteur.
       width: paperWidthToPx(paperWidthMm),
       height: 1200,
-      webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true },
+      frame: false,
+      skipTaskbar: true,
+      focusable: false,
+      // Ne vole jamais le focus de la caisse pendant une vente.
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        sandbox: true,
+        // Une fenêtre hors écran est considérée « en arrière-plan » : sans
+        // cela Chromium bride le rendu et on retombe sur le document vide.
+        backgroundThrottling: false,
+      },
     });
+    win.setIgnoreMouseEvents(true);
     const t1 = Date.now();
     await win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
     // Polices + images décodées + 2 cycles de rendu, PUIS mesure réelle.
@@ -214,7 +247,7 @@ async function printHtmlSilently(
     const geometry = computePageGeometry(scrollHeightPx, paperWidthMm);
     const previewDataUrl = await capturePreview(win);
     const t2 = Date.now();
-    const printOptions = buildReceiptPrintOptions(deviceName, geometry);
+    const printOptions = buildReceiptPrintOptions(deviceName, geometry, forcePageSize);
     const optionsUsed = describePrintOptions(printOptions);
     const result = await new Promise<{ ok: boolean; error?: string }>((resolve) => {
       const timer = setTimeout(() => resolve({ ok: false, error: 'print timeout' }), PRINT_TIMEOUT_MS);
@@ -268,13 +301,19 @@ export function registerPosPrintingIpc(): void {
 
   ipcMain.handle(
     'pos-print:printHtml',
-    async (_event, html: unknown, deviceName?: unknown, paperWidthMm?: unknown) => {
+    async (
+      _event,
+      html: unknown,
+      deviceName?: unknown,
+      paperWidthMm?: unknown,
+      forcePageSize?: unknown,
+    ) => {
       if (typeof html !== 'string' || html.length === 0 || html.length > 500_000) {
         return { ok: false, error: 'invalid html payload' };
       }
       const device = typeof deviceName === 'string' && deviceName ? deviceName : undefined;
       const width = paperWidthMm === 58 || paperWidthMm === 80 ? paperWidthMm : 80;
-      return printHtmlSilently(html, device, width);
+      return printHtmlSilently(html, device, width, forcePageSize === true);
     },
   );
 }

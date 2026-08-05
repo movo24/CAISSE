@@ -33,7 +33,10 @@ describe('posPrinting (main) — honest silent print', () => {
   });
 
   it('the hidden print window is sandboxed and always destroyed', () => {
-    expect(mainSrc).toMatch(/nodeIntegration: false, contextIsolation: true, sandbox: true/);
+    // webPreferences reformaté en multi-lignes : on vérifie chaque garantie.
+    expect(mainSrc).toMatch(/nodeIntegration: false/);
+    expect(mainSrc).toMatch(/contextIsolation: true/);
+    expect(mainSrc).toMatch(/sandbox: true/);
     expect(mainSrc).toMatch(/finally \{\s*\n\s*win\?\.destroy\(\)/);
   });
 
@@ -48,7 +51,9 @@ describe('preload — narrow electronAPI exposure', () => {
     expect(block).toMatch(/getPrinters: \(\) => ipcRenderer\.invoke\('pos-print:getPrinters'\)/);
     // Signature élargie à `paperWidthMm` (format de page explicite) — l'API
     // reste étroite : trois arguments de données, aucun accès système.
-    expect(block).toMatch(/printTicketHtml: \(html: string, deviceName\?: string, paperWidthMm\?: 58 \| 80\)/);
+    expect(block).toMatch(/printTicketHtml: \(/);
+    expect(block).toMatch(/paperWidthMm\?: 58 \| 80/);
+    expect(block).toMatch(/forcePageSize\?: boolean/);
     expect(block).not.toMatch(/require|shell|fs\.|exec/);
   });
 });

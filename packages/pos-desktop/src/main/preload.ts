@@ -77,8 +77,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getPrinters: () => ipcRenderer.invoke('pos-print:getPrinters'),
   // `paperWidthMm` sert à composer la fenêtre de rendu à la largeur du rouleau
   // ET à calculer le `pageSize` explicite transmis au moteur d'impression.
-  printTicketHtml: (html: string, deviceName?: string, paperWidthMm?: 58 | 80) =>
-    ipcRenderer.invoke('pos-print:printHtml', html, deviceName, paperWidthMm),
+  printTicketHtml: (
+    html: string,
+    deviceName?: string,
+    paperWidthMm?: 58 | 80,
+    forcePageSize?: boolean,
+  ) => ipcRenderer.invoke('pos-print:printHtml', html, deviceName, paperWidthMm, forcePageSize),
   // Tiroir-caisse : `opts.path` = 'raw' (kick ESC/POS) ou 'queue' (job driver
   // vers une file Windows dédiée — imprimantes raster TSP100/futurePRNT).
   // Décision prise côté renderer selon le driver réel (honest-fail).
