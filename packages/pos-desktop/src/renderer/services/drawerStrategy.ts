@@ -160,6 +160,36 @@ export function resolveDrawerQueue(
   return { ok: true, queueName: match };
 }
 
+/**
+ * Choisit la file d'impression GRAPHIQUE parmi les files Windows.
+ *
+ * Terrain : le poste expose au moins deux files Star — la file graphique
+ * (« Star TSP100 Cutter (TSP143) » : « Cutter » est le NOM DE MODÈLE, pas un
+ * endpoint de commande) et une file dédiée au tiroir créée à la main. Choisir
+ * la file tiroir pour imprimer un ticket produirait une impulsion et quelques
+ * millimètres de papier, jamais un ticket.
+ *
+ * Règle : ne JAMAIS auto-sélectionner la file tiroir configurée, ni une file
+ * dont le nom l'annonce explicitement. PUR et testé.
+ */
+export function pickGraphicPrinter(
+  available: readonly string[],
+  configuredDrawerQueue?: string | null,
+): string | null {
+  const list = available.filter(Boolean);
+  if (list.length === 0) return null;
+  const drawer = (configuredDrawerQueue || '').trim().toLowerCase();
+  const looksLikeDrawer = (n: string) => {
+    const s = n.trim().toLowerCase();
+    if (drawer && s === drawer) return true;
+    return /\b(tiroir|drawer|cash\s*drawer|caisse)\b/.test(s);
+  };
+  const graphic = list.filter((n) => !looksLikeDrawer(n));
+  // Toutes les files ressemblent au tiroir → on ne devine pas, on rend la 1ʳᵉ
+  // (l'opérateur tranchera dans l'écran diagnostic) plutôt que rien.
+  return (graphic.length > 0 ? graphic : list)[0];
+}
+
 /* ── Lecture de l'état réel d'une file Windows ──────────────────────────── */
 
 /** État d'une file Windows tel que remonté par le main (`pos-print:listQueues`). */

@@ -15,6 +15,7 @@ import {
   getDrawerQueueName,
   getDrawerStrategy,
   getForcePageSize,
+  pickGraphicPrinter,
   resolveDrawerQueue,
   type PrinterCommandMode,
 } from './drawerStrategy';
@@ -296,7 +297,11 @@ class PeripheralBridge {
           // est toujours présente ; sinon la 1ʳᵉ de l'OS.
           const saved = this.getSelectedOsPrinter();
           const savedStillThere = !!saved && electronPrinters.includes(saved);
-          const name = savedStillThere ? (saved as string) : electronPrinters[0];
+          // Jamais la file TIROIR pour imprimer un ticket : elle ne produit
+          // qu'une impulsion et quelques millimètres de papier.
+          const name = savedStillThere
+            ? (saved as string)
+            : pickGraphicPrinter(electronPrinters, getDrawerQueueName()) ?? electronPrinters[0];
           if (saved && !savedStillThere) {
             this.printerWarning =
               `L’imprimante mémorisée « ${saved} » n’existe plus sous Windows — ` +
