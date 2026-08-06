@@ -11,7 +11,16 @@ import { buildTicketData } from '../services/salePeripherals';
 import { buildTicketUrl, makeTicketQrDataUrl } from '../services/ticketQr';
 import { resolveReceiptLogo } from '../services/brandLogo';
 import { useOfflineStore } from '../stores/offlineStore';
-import { computePaymentState, PaymentMethod } from '../services/paymentMachine';
+import {
+  allocateTender,
+  assertPaymentsApplied,
+  computePaymentState,
+  evaluateChangeApproval,
+  DEFAULT_CHANGE_POLICY,
+  type ChangeApprovalPolicy,
+  type TenderAllocation,
+  PaymentMethod,
+} from '../services/paymentMachine';
 import { useStripeTerminal } from './useStripeTerminal';
 import { getCardPaymentMode, CARD_DISABLED_MESSAGE, CardPaymentMode } from '../services/cardPaymentMode';
 
@@ -22,7 +31,12 @@ export type { PaymentMethod } from '../services/paymentMachine';
 export interface PartialPayment {
   id: string;
   method: PaymentMethod;
+  /** Montant APPLIQUÉ au ticket — jamais > reste dû (P0 : ≠ espèces reçues). */
   amountMinorUnits: number;
+  /** Espèces physiquement reçues (cash ; = appliqué sinon). Mouvement de caisse distinct. */
+  cashReceivedMinorUnits?: number;
+  /** Monnaie à rendre pour ce tender (cash) — jamais un remboursement client. */
+  changeMinorUnits?: number;
   stripePaymentIntentId?: string;
   stripeReaderId?: string;
   terminalId?: string;
@@ -64,6 +78,24 @@ export function usePayment() {
   // reused across double-click / network retry / offline fallback, reset after a
   // sale is confirmed. Prevents a double sale / double cash-in on retry.
   const saleIdemKeyRef = useRef<string | null>(null);
+  /** Verrou SYNCHRONE de finalisation (un état React arriverait trop tard). */
+  const finalizingRef = useRef(false);
+  /** Refus d'allocation / garde comptable / monnaie — affiché, jamais avalé. */
+  const [tenderError, setTenderError] = useState('');
+
+  /** Seuils de monnaie du magasin, repli sur la politique par défaut.
+   *  Identique à POSPage : une seule règle pour les deux chemins. */
+  const changePolicy = useCallback((): ChangeApprovalPolicy => {
+    const si = store.storeInfo as any;
+    return {
+      managerThresholdMinorUnits: Number.isFinite(si?.changeManagerThresholdMinorUnits)
+        ? si.changeManagerThresholdMinorUnits
+        : DEFAULT_CHANGE_POLICY.managerThresholdMinorUnits,
+      hardBlockMinorUnits: Number.isFinite(si?.changeHardBlockMinorUnits)
+        ? si.changeHardBlockMinorUnits
+        : DEFAULT_CHANGE_POLICY.hardBlockMinorUnits,
+    };
+  }, [store]);
 
   // Transaction speed tracking
   const [transactionStart, setTransactionStart] = useState<number | null>(null);
@@ -178,6 +210,33 @@ export function usePayment() {
   }, []);
 
   const finalizePayment = useCallback(async (payments: PartialPayment[], changeMinor: number) => {
+    // Garde SYNCHRONE de ré-entrée : `processing` est un état React, appliqué au
+    // re-render suivant — deux taps rapprochés passaient au travers et
+    // produisaient 2 tickets, 2 CA locaux, 2 impressions, 2 ouvertures tiroir.
+    if (finalizingRef.current) return;
+    finalizingRef.current = true;
+
+    // GARDE COMPTABLE (P0) : la somme des montants APPLIQUÉS doit solder le
+    // ticket au centime. Elle existait sur POSPage et manquait ici — c'est ce
+    // trou qui laissait partir un sur-paiement au backend.
+    try {
+      assertPaymentsApplied(store.total(), payments);
+    } catch (e) {
+      finalizingRef.current = false;
+      setTenderError(e instanceof Error ? e.message : 'Répartition des paiements incohérente.');
+      throw e;
+    }
+
+    // Monnaie aberrante → validation manager ou blocage (jamais en silence).
+    const changeSum = payments.reduce((sum, p) => sum + (p.changeMinorUnits ?? 0), 0);
+    if (changeSum > 0) {
+      const approval = evaluateChangeApproval(changeSum, changePolicy());
+      if (approval.decision !== 'ok') {
+        finalizingRef.current = false;
+        setTenderError(approval.reason || 'Monnaie à rendre inhabituelle — validation requise.');
+        return;
+      }
+    }
     // Decision 5 mirror: refuse an impossible manual discount before the network.
     const discCheck = validateManualDiscount({
       subtotalMinor: store.subtotal(),
@@ -423,12 +482,26 @@ export function usePayment() {
     posEventBus.emit('SALE_ERROR', { message: 'Erreur inattendue. Réessayez.' });
   } finally {
     // ALWAYS release processing lock — no matter what happens
+    finalizingRef.current = false;
     setProcessing(false);
   }
-  }, [store, transactionStart]);
+  }, [store, transactionStart, changePolicy]);
 
-  const commitPartialPayment = useCallback((method: PaymentMethod, amountMinor: number, creditNoteCode?: string, cardFacts?: CardLegFacts) => {
-    const payment: PartialPayment = { id: `pay-${Date.now()}`, method, amountMinorUnits: amountMinor, creditNoteCode, ...(cardFacts || {}) };
+  /**
+   * Ajoute un tender DÉJÀ ALLOUÉ (appliqué / reçu / monnaie séparés).
+   * Signature alignée sur POSPage : c'est `allocateTender` qui décide, jamais
+   * l'appelant — sinon le montant SAISI repart au backend comme montant IMPUTÉ.
+   */
+  const commitPartialPayment = useCallback((alloc: TenderAllocation, creditNoteCode?: string, cardFacts?: CardLegFacts) => {
+    const payment: PartialPayment = {
+      id: `pay-${Date.now()}`,
+      method: alloc.method,
+      amountMinorUnits: alloc.appliedMinorUnits,
+      cashReceivedMinorUnits: alloc.cashReceivedMinorUnits,
+      changeMinorUnits: alloc.changeMinorUnits,
+      creditNoteCode,
+      ...(cardFacts || {}),
+    };
     const newPayments = [...partialPayments, payment];
     const ticketTotal = store.total();
     // Tender state machine: cash change only; voucher/gift-card overpay is forfeited.
@@ -440,6 +513,18 @@ export function usePayment() {
       setSplitAmountInput('');
     }
   }, [partialPayments, store, finalizePayment]);
+
+  /**
+   * Ajoute un tender à partir d'un MONTANT SAISI (espèces reçues pour cash,
+   * appliqué sinon). Point d'entrée UNIQUE pour l'interface : l'allocation est
+   * faite ici, jamais par l'appelant. Un refus est affiché, jamais avalé.
+   */
+  const commitByAmount = useCallback((method: PaymentMethod, requestedMinor: number, creditNoteCode?: string) => {
+    setTenderError('');
+    const alloc = allocateTender(remaining, method, requestedMinor);
+    if (!alloc.ok) { setTenderError(alloc.reason); return; }
+    commitPartialPayment(alloc.allocation, creditNoteCode);
+  }, [remaining, commitPartialPayment]);
 
   const handleTpeResponse = useCallback((result: 'success' | 'refused' | 'timeout') => {
     clearTpeTimers();
@@ -463,10 +548,19 @@ export function usePayment() {
         tpeWaitingRef.current = null;
         setTimeout(() => {
           if (context === 'quick') {
-            const totalAmount = store.total();
-            finalizePayment([{ id: `pay-${Date.now()}`, method: 'card', amountMinorUnits: totalAmount, ...facts }], 0);
+            // Le montant CAPTURÉ par le TPE fait foi — surtout pas une relecture
+            // de `store.total()` 2,1 s plus tard : le panier a pu changer entre
+            // la capture et ce callback, la vente ne correspondrait plus au débit.
+            finalizePayment(
+              [{ id: `pay-${Date.now()}`, method: 'card', amountMinorUnits, cashReceivedMinorUnits: amountMinorUnits, changeMinorUnits: 0, ...facts }],
+              0,
+            );
           } else {
-            commitPartialPayment('card', amountMinorUnits, undefined, facts);
+            commitPartialPayment(
+              { method: 'card', appliedMinorUnits: amountMinorUnits, cashReceivedMinorUnits: amountMinorUnits, changeMinorUnits: 0 },
+              undefined,
+              facts,
+            );
           }
         }, 100);
       }, 2000);
@@ -474,7 +568,7 @@ export function usePayment() {
     }
     cardLegRef.current = null;
     setTpeResult(result);
-  }, [clearTpeTimers, store, finalizePayment, commitPartialPayment]);
+  }, [clearTpeTimers, finalizePayment, commitPartialPayment]);
 
   /** Ensure the SDK is up and a reader connected (auto-connects a single reader). */
   const ensureReaderConnected = useCallback(async () => {
@@ -559,13 +653,25 @@ export function usePayment() {
   }, [clearTpeTimers, stripeTerminal]);
 
   const addPartialPayment = useCallback((method: PaymentMethod) => {
+    setTenderError('');
     const inputVal = splitAmountInput.trim().replace(',', '.');
     const parsed = parseFloat(inputVal);
+    // Vide/0 → non-espèces : tout le reste ; espèces : reçu exactement le reste.
     const amountEuros = (!inputVal || isNaN(parsed) || parsed <= 0) ? remaining / 100 : parsed;
-    const amountMinor = Math.round(amountEuros * 100);
-    if (amountMinor <= 0) return;
-    if (method === 'card') { startTpeWaiting(amountMinor, 'split'); return; }
-    commitPartialPayment(method, amountMinor);
+    const requestedMinor = Math.round(amountEuros * 100);
+
+    // Allocation SÉPARÉE : appliqué plafonné au reste dû, espèces reçues à part,
+    // dépassement REFUSÉ hors espèces. Sans cela, saisir 20 € sur un ticket de
+    // 17,50 € imputait 20 € au ticket → 400 backend, ou vente perdue hors ligne.
+    const alloc = allocateTender(remaining, method, requestedMinor);
+    if (!alloc.ok) { setTenderError(alloc.reason); return; }
+
+    if (method === 'card') {
+      // CB → attente TPE sur le montant APPLIQUÉ (carte = jamais de dépassement).
+      startTpeWaiting(alloc.allocation.appliedMinorUnits, 'split');
+      return;
+    }
+    commitPartialPayment(alloc.allocation);
   }, [splitAmountInput, remaining, startTpeWaiting, commitPartialPayment]);
 
   const removePartialPayment = useCallback((id: string) => {
@@ -573,9 +679,24 @@ export function usePayment() {
   }, []);
 
   const handleQuickPayment = useCallback((method: PaymentMethod) => {
+    setTenderError('');
     const totalAmount = store.total();
     if (method === 'card') { startTpeWaiting(totalAmount, 'quick'); return; }
-    finalizePayment([{ id: `pay-${Date.now()}`, method, amountMinorUnits: totalAmount }], 0);
+    // Même moteur que le paiement scindé : « tout en espèces » = reçu exactement
+    // le total, donc appliqué = total et monnaie = 0. Aucun chemin ne contourne
+    // plus l'allocation.
+    const alloc = allocateTender(totalAmount, method, totalAmount);
+    if (!alloc.ok) { setTenderError(alloc.reason); return; }
+    finalizePayment(
+      [{
+        id: `pay-${Date.now()}`,
+        method,
+        amountMinorUnits: alloc.allocation.appliedMinorUnits,
+        cashReceivedMinorUnits: alloc.allocation.cashReceivedMinorUnits,
+        changeMinorUnits: alloc.allocation.changeMinorUnits,
+      }],
+      alloc.allocation.changeMinorUnits,
+    );
   }, [store, startTpeWaiting, finalizePayment]);
 
   // Cleanup TPE timers on unmount
@@ -584,6 +705,9 @@ export function usePayment() {
   return {
     // State
     processing,
+    /** Refus d'allocation ou garde comptable — à afficher dans l'UI de paiement. */
+    tenderError,
+    setTenderError,
     partialPayments,
     splitAmountInput,
     setSplitAmountInput,
@@ -618,6 +742,6 @@ export function usePayment() {
     removePartialPayment,
     handleQuickPayment,
     finalizePayment,
-    commitPartialPayment,
+    commitByAmount,
   };
 }

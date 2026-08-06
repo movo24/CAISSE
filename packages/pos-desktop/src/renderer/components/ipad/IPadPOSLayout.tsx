@@ -880,7 +880,7 @@ export function IPadPOSLayout() {
                       if (saved.context === 'quick') {
                         payment.handleQuickPayment('cash');
                       } else {
-                        payment.commitPartialPayment('cash', saved.amountMinorUnits);
+                        payment.commitByAmount('cash', saved.amountMinorUnits);
                       }
                     }}
                   >
@@ -1040,7 +1040,7 @@ export function IPadPOSLayout() {
       {avoirOpen && (
         <AvoirTenderModal
           amountDueMinor={payment.remaining}
-          onApply={(code, amt) => { payment.commitPartialPayment('store_credit', amt, code); setAvoirOpen(false); }}
+          onApply={(code, amt) => { payment.commitByAmount('store_credit', amt, code); setAvoirOpen(false); }}
           onClose={() => setAvoirOpen(false)}
         />
       )}
