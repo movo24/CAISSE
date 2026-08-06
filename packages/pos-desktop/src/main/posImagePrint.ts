@@ -120,7 +120,12 @@ try {
     $e.Graphics.PageUnit = [System.Drawing.GraphicsUnit]::Pixel
     $e.Graphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::NearestNeighbor
     $e.Graphics.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::Half
-    $e.Graphics.DrawImage($mono, 0, 0, $mono.Width, $mono.Height)
+    # Si le bitmap excede la zone imprimable (formulaire pilote), on le reduit
+    # a sa largeur au lieu de laisser GDI ROGNER le bord droit du ticket.
+    $vw = [Math]::Floor($e.Graphics.VisibleClipBounds.Width)
+    $dw = if ($mono.Width -gt $vw -and $vw -gt 0) { $vw } else { $mono.Width }
+    $dh = [Math]::Round($mono.Height * ($dw / $mono.Width))
+    $e.Graphics.DrawImage($mono, 0, 0, $dw, $dh)
     $e.HasMorePages = $false
   })
   $doc.Print()

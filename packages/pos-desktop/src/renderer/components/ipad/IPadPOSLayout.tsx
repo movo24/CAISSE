@@ -208,6 +208,18 @@ export function IPadPOSLayout() {
         </div>
       )}
 
+      {/* VENTES EN ÉCHEC — bandeau PERMANENT (pas seulement hors ligne).
+          Une vente rejetée par le serveur ne repartira pas seule : la laisser
+          invisible, c'est la perdre en silence. Visible même reconnecté. */}
+      {offlineMode.failedCount > 0 && (
+        <div className="bg-red-600 px-4 py-2 flex items-center justify-between">
+          <span className="text-white text-xs font-bold">
+            {offlineMode.failedCount} vente(s) refusée(s) à la synchronisation — reprise manuelle nécessaire
+          </span>
+          <span className="text-white/80 text-[11px]">Ne pas fermer la caisse sans les traiter</span>
+        </div>
+      )}
+
       {!fullscreen && <ShiftWarning />}
 
       {/* ═══ HEADER — hidden in fullscreen mode ═══ */}
@@ -746,6 +758,14 @@ export function IPadPOSLayout() {
                   </button>
                 </div>
                 {/* Additional tenders — no PSP, work offline; no cash change on these */}
+                {/* Refus d'allocation / garde comptable / monnaie : TOUJOURS visible.
+                    Sans cela un tender refusé (titre-resto au-dessus du reste dû,
+                    par exemple) laissait le bouton paraître inerte. */}
+                {payment.tenderError && (
+                  <div className="mt-3 px-4 py-3 rounded-2xl bg-red-500/10 border-2 border-red-500/40 text-red-700 text-sm font-semibold">
+                    {payment.tenderError}
+                  </div>
+                )}
                 <div className="grid grid-cols-2 gap-2 mt-2">
                   <button
                     className="flex items-center justify-center gap-2 px-4 py-4 rounded-2xl border-2 border-pos-border/40 hover:border-amber-400 hover:bg-amber-50 transition-all font-semibold text-base product-card-touch"
@@ -880,7 +900,7 @@ export function IPadPOSLayout() {
                       if (saved.context === 'quick') {
                         payment.handleQuickPayment('cash');
                       } else {
-                        payment.commitPartialPayment('cash', saved.amountMinorUnits);
+                        payment.commitByAmount('cash', saved.amountMinorUnits);
                       }
                     }}
                   >
@@ -1040,7 +1060,7 @@ export function IPadPOSLayout() {
       {avoirOpen && (
         <AvoirTenderModal
           amountDueMinor={payment.remaining}
-          onApply={(code, amt) => { payment.commitPartialPayment('store_credit', amt, code); setAvoirOpen(false); }}
+          onApply={(code, amt) => { payment.commitByAmount('store_credit', amt, code); setAvoirOpen(false); }}
           onClose={() => setAvoirOpen(false)}
         />
       )}

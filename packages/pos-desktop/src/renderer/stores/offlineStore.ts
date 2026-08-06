@@ -92,6 +92,8 @@ interface OfflineState {
   // Queue
   queue: OfflineQueueEntry[];
   pendingCount: number;
+  /** Entrées rejetées définitivement — exigent une reprise humaine. */
+  failedCount: number;
   syncedCount: number;
   conflictCount: number;
 
@@ -155,6 +157,8 @@ interface OfflineState {
 
   // Computed
   getPendingEntries: () => OfflineQueueEntry[];
+  /** Incrémente le compteur de tentatives d'une entrée (borne `maxRetries`). */
+  bumpRetryCount: (id: string) => void;
   getEntriesByType: (type: OfflineEntryType) => OfflineQueueEntry[];
 
   // Persistence
@@ -207,6 +211,7 @@ export const useOfflineStore = create<OfflineState>((set, get) => ({
 
   queue: [],
   pendingCount: 0,
+  failedCount: 0,
   syncedCount: 0,
   conflictCount: 0,
 
@@ -287,33 +292,33 @@ export const useOfflineStore = create<OfflineState>((set, get) => ({
     };
     const queue = [...get().queue, newEntry];
     const pendingCount = queue.filter((e) => e.status === 'local_pending').length;
-    set({ queue, pendingCount });
+    const failedCount = queue.filter((e) => e.status === 'failed').length;
+    set({ queue, pendingCount, failedCount });
     get().persistQueue();
     return id;
   },
 
   updateEntryStatus: (id, status, details) => {
-    const queue = get().queue.map((e) => {
-      if (e.id !== id) return e;
-      // Une TENTATIVE consommée = un passage `syncing` → `local_pending`
-      // (le moteur remet l'entrée en attente après un échec réseau/5xx).
-      // Avant le 2026-08-06, seul le statut `failed` incrémentait le compteur :
-      // comme le rejeu écrit `local_pending`, `retryCount` restait bloqué à 0,
-      // `retryCount >= maxRetries` n'était JAMAIS vrai et une entrée
-      // définitivement cassée était rejouée à l'infini, sans échec franc pour
-      // l'opérateur. Couvert par `syncEngine.dom.test.ts`.
-      const consumesAttempt = status === 'failed' || (e.status === 'syncing' && status === 'local_pending');
-      return {
-        ...e,
-        status,
-        conflictDetails: details || e.conflictDetails,
-        syncedAt: status === 'synced' ? new Date().toISOString() : e.syncedAt,
-        retryCount: consumesAttempt ? e.retryCount + 1 : e.retryCount,
-      };
-    });
+    // La consommation d'une TENTATIVE de rejeu est comptée par le MOTEUR
+    // (`syncEngine` appelle `bumpRetryCount` sur le chemin de rejeu) — ne pas
+    // ré-incrémenter ici sur `syncing` → `local_pending` : ce serait un double
+    // comptage (plafond atteint deux fois trop tôt). Couvert par
+    // `syncEngine.dom.test.ts` (« un rejeu consomme UNE tentative »).
+    const queue = get().queue.map((e) =>
+      e.id === id
+        ? {
+            ...e,
+            status,
+            conflictDetails: details || e.conflictDetails,
+            syncedAt: status === 'synced' ? new Date().toISOString() : e.syncedAt,
+            retryCount: status === 'failed' ? e.retryCount + 1 : e.retryCount,
+          }
+        : e,
+    );
     set({
       queue,
       pendingCount: queue.filter((e) => e.status === 'local_pending').length,
+      failedCount: queue.filter((e) => e.status === 'failed').length,
       syncedCount: queue.filter((e) => e.status === 'synced').length,
       conflictCount: queue.filter((e) => e.status === 'conflict').length,
     });
@@ -528,6 +533,12 @@ export const useOfflineStore = create<OfflineState>((set, get) => ({
 
   getPendingEntries: () => get().queue.filter((e) => e.status === 'local_pending'),
 
+  bumpRetryCount: (id) => {
+    const queue = get().queue.map((e) => (e.id === id ? { ...e, retryCount: e.retryCount + 1 } : e));
+    set({ queue });
+    get().persistQueue();
+  },
+
   getEntriesByType: (type) => get().queue.filter((e) => e.type === type),
 
   // ── Persistence (localStorage for Electron, survives app restart) ──
@@ -570,7 +581,23 @@ export const useOfflineStore = create<OfflineState>((set, get) => ({
       const stockStr = localStorage.getItem(STOCK_CACHE_KEY);
       const conflictsStr = localStorage.getItem(CONFLICTS_STORAGE_KEY);
 
-      const queue: OfflineQueueEntry[] = queueStr ? JSON.parse(queueStr) : [];
+      const rawQueue: OfflineQueueEntry[] = queueStr ? JSON.parse(queueStr) : [];
+      // ── P0 : REQUALIFICATION AU DÉMARRAGE ────────────────────────────────
+      // Une entrée persistée en `syncing` ne peut PAS correspondre à un envoi
+      // en cours : le process vient de démarrer. C'est donc la trace d'un crash
+      // pendant l'envoi. Sans requalification, `getPendingEntries()` (qui ne
+      // regarde que `local_pending`) l'ignorait à jamais : la vente n'était plus
+      // rejouée, et le compteur retombait à 0 — donc « tout est synchronisé ».
+      // Le rejeu est sûr : la clé d'idempotence serveur empêche tout doublon.
+      const recovered = rawQueue.filter((e) => e.status === 'syncing').length;
+      const queue: OfflineQueueEntry[] = rawQueue.map((e) =>
+        e.status === 'syncing'
+          ? { ...e, status: 'local_pending' as const, conflictDetails: 'Reprise après interruption — renvoi programmé' }
+          : e,
+      );
+      if (recovered > 0) {
+        console.warn(`[OFFLINE] ${recovered} entrée(s) interrompue(s) en cours d'envoi → remises en attente de synchronisation`);
+      }
       const cashierTrackers = trackersStr ? JSON.parse(trackersStr) : {};
       const localStockCache = stockStr ? JSON.parse(stockStr) : {};
       const conflicts: ConflictEntry[] = conflictsStr ? JSON.parse(conflictsStr) : [];
@@ -582,6 +609,9 @@ export const useOfflineStore = create<OfflineState>((set, get) => ({
         conflicts,
         pendingCount: queue.filter((e) => e.status === 'local_pending').length,
         syncedCount: queue.filter((e) => e.status === 'synced').length,
+        // Entrées définitivement rejetées : elles ne partiront plus seules et
+        // exigent une décision humaine. Jamais silencieuses.
+        failedCount: queue.filter((e) => e.status === 'failed').length,
         conflictCount: conflicts.filter((c) => !c.resolvedAt).length,
       });
 

@@ -29,11 +29,14 @@ export type PrinterCommandMode =
   | 'escpos' // imprimante ESC/POS classique (EPSON TM, génériques 58/80 mm…)
   | 'unknown';
 
-export type DrawerStrategy = 'auto' | 'raw_escpos' | 'drawer_queue';
+export type DrawerStrategy = 'auto' | 'raw_escpos' | 'drawer_queue' | 'driver';
 
 export type DrawerPathDecision =
   | { path: 'raw' }
   | { path: 'queue'; queueName: string }
+  /** Le pilote Star ouvre le tiroir lui-même (Peripheral Unit Control) : la
+   *  caisse n'envoie AUCUNE commande. Ni succès revendiqué, ni fausse alerte. */
+  | { path: 'delegated'; reason: string }
   | { path: 'refuse'; reason: string };
 
 /**
@@ -75,6 +78,18 @@ export function decideDrawerPath(
   queueName: string | null | undefined,
 ): DrawerPathDecision {
   const queue = (queueName || '').trim();
+  // Terrain : sur une TSP143 dont futurePRNT a « Peripheral Unit 1 » activé, le
+  // tiroir s'ouvre à chaque impression SANS que la caisse envoie quoi que ce
+  // soit. Prétendre l'avoir ouvert serait faux ; annoncer un échec l'est tout
+  // autant et affole l'opérateur. On nomme donc ce cas pour ce qu'il est.
+  if (strategy === 'driver') {
+    return {
+      path: 'delegated',
+      reason:
+        'Ouverture déléguée au pilote Star (Peripheral Unit Control) : le tiroir s’ouvre ' +
+        'à l’impression du ticket. La caisse n’envoie aucune commande.',
+    };
+  }
   if (strategy === 'drawer_queue') {
     return queue
       ? { path: 'queue', queueName: queue }
@@ -145,6 +160,36 @@ export function resolveDrawerQueue(
   return { ok: true, queueName: match };
 }
 
+/**
+ * Choisit la file d'impression GRAPHIQUE parmi les files Windows.
+ *
+ * Terrain : le poste expose au moins deux files Star — la file graphique
+ * (« Star TSP100 Cutter (TSP143) » : « Cutter » est le NOM DE MODÈLE, pas un
+ * endpoint de commande) et une file dédiée au tiroir créée à la main. Choisir
+ * la file tiroir pour imprimer un ticket produirait une impulsion et quelques
+ * millimètres de papier, jamais un ticket.
+ *
+ * Règle : ne JAMAIS auto-sélectionner la file tiroir configurée, ni une file
+ * dont le nom l'annonce explicitement. PUR et testé.
+ */
+export function pickGraphicPrinter(
+  available: readonly string[],
+  configuredDrawerQueue?: string | null,
+): string | null {
+  const list = available.filter(Boolean);
+  if (list.length === 0) return null;
+  const drawer = (configuredDrawerQueue || '').trim().toLowerCase();
+  const looksLikeDrawer = (n: string) => {
+    const s = n.trim().toLowerCase();
+    if (drawer && s === drawer) return true;
+    return /\b(tiroir|drawer|cash\s*drawer|caisse)\b/.test(s);
+  };
+  const graphic = list.filter((n) => !looksLikeDrawer(n));
+  // Toutes les files ressemblent au tiroir → on ne devine pas, on rend la 1ʳᵉ
+  // (l'opérateur tranchera dans l'écran diagnostic) plutôt que rien.
+  return (graphic.length > 0 ? graphic : list)[0];
+}
+
 /* ── Lecture de l'état réel d'une file Windows ──────────────────────────── */
 
 /** État d'une file Windows tel que remonté par le main (`pos-print:listQueues`). */
@@ -206,7 +251,7 @@ function safeSet(key: string, value: string | null): void {
 
 export function getDrawerStrategy(): DrawerStrategy {
   const v = safeGet(STRATEGY_KEY);
-  return v === 'raw_escpos' || v === 'drawer_queue' ? v : 'auto';
+  return v === 'raw_escpos' || v === 'drawer_queue' || v === 'driver' ? v : 'auto';
 }
 
 export function setDrawerStrategy(strategy: DrawerStrategy): void {
@@ -219,4 +264,22 @@ export function getDrawerQueueName(): string | null {
 
 export function setDrawerQueueName(name: string | null): void {
   safeSet(QUEUE_KEY, name && name.trim() ? name.trim() : null);
+}
+
+/* ── Forçage du format de page (diagnostic) ─────────────────────────────────
+ *
+ * Par défaut DÉSACTIVÉ : la page de test Windows sort entière et coupe à la
+ * fin, ce qui prouve que le formulaire rouleau du pilote est correct et que sa
+ * longueur suit le contenu. Le forçage n'est utile que sur un poste dont le
+ * formulaire serait mal réglé — et il peut être refusé par le pilote si le
+ * format demandé n'existe pas dans ses formulaires.
+ */
+const FORCE_PAGE_SIZE_KEY = 'caisse_force_page_size';
+
+export function getForcePageSize(): boolean {
+  return safeGet(FORCE_PAGE_SIZE_KEY) === '1';
+}
+
+export function setForcePageSize(on: boolean): void {
+  safeSet(FORCE_PAGE_SIZE_KEY, on ? '1' : null);
 }

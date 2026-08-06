@@ -37,13 +37,15 @@ describe('attente du rendu réel avant impression', () => {
   it('une sonde de rendu qui échoue n’empêche PAS d’imprimer', () => {
     // La sonde retourne 0 (mesure inconnue) au lieu de throw : on imprime
     // quand même, avec une hauteur de page bornée au minimum.
-    expect(mainSrc).toMatch(/return 0; \/\* rendu non sondable/);
+    expect(mainSrc).toMatch(/return empty; \/\* rendu non sondable/);
   });
 
-  it('l’attente a lieu APRÈS loadURL et AVANT la capture du bitmap', () => {
-    const load = mainSrc.indexOf('await win.loadURL(');
-    const ready = mainSrc.indexOf('await waitForRenderReadyAndMeasure(win)');
-    const capture = mainSrc.indexOf('await win.webContents.capturePage()');
+  it('l’attente a lieu APRÈS le chargement et AVANT la capture du bitmap', () => {
+    // Le ticket est chargé depuis un FICHIER temporaire (plus d'URL `data:`).
+    // Le chargement + la PREUVE de contenu sont encapsulés dans loadAndProve.
+    const load = mainSrc.indexOf('await win.loadFile(filePath)');
+    const ready = mainSrc.indexOf('await loadAndProve(win, tmpHtml');
+    const capture = mainSrc.indexOf('const image = await win.webContents.capturePage()');
     expect(load).toBeGreaterThan(-1);
     expect(ready).toBeGreaterThan(load);
     expect(capture).toBeGreaterThan(ready);
@@ -56,7 +58,7 @@ describe('stabilisation du rendu avant capture', () => {
     expect(mainSrc).toMatch(/RENDER_SETTLE_MS\s*=\s*400/);
     const resize = mainSrc.indexOf('win.setContentSize(');
     const settle = mainSrc.indexOf('RENDER_SETTLE_MS));');
-    const capture = mainSrc.indexOf('await win.webContents.capturePage()');
+    const capture = mainSrc.indexOf('const image = await win.webContents.capturePage()');
     expect(resize).toBeGreaterThan(-1);
     expect(settle).toBeGreaterThan(resize);
     expect(capture).toBeGreaterThan(settle);

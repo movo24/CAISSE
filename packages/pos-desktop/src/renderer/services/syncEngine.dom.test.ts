@@ -276,19 +276,37 @@ describe('syncEngine — plafond de tentatives (DÉFAUT)', () => {
    ═══════════════════════════════════════════════════════════════════ */
 
 describe('syncEngine — anti-doublon', () => {
-  it('une entrée déjà remontée n’est pas renvoyée une seconde fois', async () => {
+  /**
+   * SÉMANTIQUE P0 (v1.9.0) : le marqueur d'envoi persistant n'est PLUS une
+   * preuve — une vente interrompue pendant l'envoi était marquée `synced`
+   * SANS appel réseau et disparaissait. L'autorité anti-doublon est la CLÉ
+   * D'IDEMPOTENCE serveur : une entrée repassée en attente est bien renvoyée,
+   * mais avec la MÊME clé, et le backend renvoie la réponse mise en cache au
+   * lieu de créer une seconde vente.
+   */
+  it('un rejeu réutilise la MÊME clé d’idempotence (dédup côté serveur)', async () => {
     enqueueTicket('T-050');
     await runSync();
     expect(salesCreate).toHaveBeenCalledTimes(1);
+    const firstIdemKey = salesCreate.mock.calls[0][1];
+    expect(firstIdemKey).toBeTruthy();
 
-    // On la repasse en attente : le marqueur d'envoi doit bloquer le rejeu.
+    // Repassée en attente (crash simulé) : elle est RENVOYÉE, même clé.
     const id = useOfflineStore.getState().queue[0].id;
     useOfflineStore.getState().updateEntryStatus(id, 'local_pending');
     salesCreate.mockClear();
 
     await runSync();
-    expect(salesCreate).not.toHaveBeenCalled();
+    expect(salesCreate).toHaveBeenCalledTimes(1);
+    expect(salesCreate.mock.calls[0][1]).toBe(firstIdemKey);
     expect(entryById(id)?.status).toBe('synced');
+  });
+
+  it('dans un MÊME run, une entrée n’est jamais envoyée deux fois', async () => {
+    const id = enqueueTicket('T-051');
+    await runSync();
+    const calls = salesCreate.mock.calls.filter((c) => c[1] === `ticket:${id}`);
+    expect(calls.length).toBeLessThanOrEqual(1);
   });
 });
 

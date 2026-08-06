@@ -73,7 +73,8 @@ describe('non-régression : le centrage INTERNE reste intact', () => {
     expect(bridgeSrc).toMatch(/\.center \{ text-align: center; \}/);
   });
 
-  it('@page conserve la largeur du rouleau et une hauteur libre', () => {
-    expect(bridgeSrc).toMatch(/@page \{ size: \$\{width\}mm auto; margin: 0; \}/);
+  it('@page ne porte plus que des marges nulles (plus de `size` invalide)', () => {
+    expect(bridgeSrc).toMatch(/@page \{ margin: 0; \}/);
+    expect(bridgeSrc).not.toMatch(/@page \{ size:/);
   });
 });

@@ -105,8 +105,10 @@ describe('ce qui est réellement remis au pilote (voie image + GDI)', () => {
 
   it('la mesure est prise APRÈS l’attente de rendu, la capture APRÈS la mesure', () => {
     const ready = src.indexOf('await waitForRenderReadyAndMeasure(win)');
-    const geom = src.indexOf('computePageGeometry(scrollHeightPx, paperWidthMm)');
-    const capture = src.indexOf('await win.webContents.capturePage()');
+    const geom = src.indexOf('computePageGeometry(probe.h, paperWidthMm)');
+    // La capture du FLUX D'IMPRESSION (celle des artefacts, plus haut dans le
+    // fichier, est un instantané de diagnostic, pas le bitmap imprimé).
+    const capture = src.indexOf('const image = await win.webContents.capturePage()');
     expect(ready).toBeGreaterThan(-1);
     expect(geom).toBeGreaterThan(ready);
     expect(capture).toBeGreaterThan(geom);

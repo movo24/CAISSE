@@ -223,12 +223,38 @@ export const salePeripheralGuard = new SalePeripheralGuard();
  */
 export function computeTicketVat(
   items: Array<{ quantity: number; unitPriceMinorUnits: number; discountMinorUnits?: number; taxRate?: number }>,
+  globalDiscountMinorUnits = 0,
 ): TicketVatRow[] {
+  // ── Remise GLOBALE (remise manuelle + code promo) ────────────────────────
+  // Elle n'est portée par aucune ligne côté caisse (`discountMinorUnits` y est
+  // toujours 0) : l'ignorer faisait imprimer la TVA du TTC AVANT remise. Sur un
+  // ticket 100 € remisé à 80 €, la TVA imprimée valait 16,67 € au lieu de
+  // 13,33 € — sur le document fiscal remis au client — et la ventilation ne
+  // soldait pas le TOTAL du même ticket.
+  // On réplique la répartition proportionnelle du backend (sales.service.ts) :
+  // part au prorata du TTC de ligne, dernière ligne absorbant le reliquat, et
+  // aucune ligne ne peut devenir négative.
+  const lineTtc = items.map((i) => i.unitPriceMinorUnits * i.quantity - (i.discountMinorUnits || 0));
+  const subtotal = lineTtc.reduce((a, b) => a + b, 0);
+  const globalDiscount = Math.max(0, Math.min(Math.round(globalDiscountMinorUnits) || 0, subtotal));
+  if (globalDiscount > 0 && subtotal > 0) {
+    let remaining = globalDiscount;
+    for (let idx = 0; idx < lineTtc.length; idx++) {
+      const share = idx === lineTtc.length - 1
+        ? remaining
+        : Math.min(remaining, Math.round((globalDiscount * lineTtc[idx]) / subtotal));
+      const applied = Math.min(share, lineTtc[idx]);
+      lineTtc[idx] -= applied;
+      remaining -= applied;
+    }
+  }
+
   const byRate = new Map<number, { ttc: number; tva: number }>();
-  for (const i of items) {
+  for (let idx = 0; idx < items.length; idx++) {
+    const i = items[idx];
     const rate = typeof i.taxRate === 'number' && Number.isFinite(i.taxRate) ? i.taxRate : undefined;
     if (rate === undefined) continue;
-    const ttc = i.unitPriceMinorUnits * i.quantity - (i.discountMinorUnits || 0);
+    const ttc = lineTtc[idx];
     const tva = rate > 0 ? Math.round(ttc * (rate / (100 + rate))) : 0;
     const acc = byRate.get(rate) ?? { ttc: 0, tva: 0 };
     acc.ttc += ttc;
@@ -314,7 +340,7 @@ export function buildTicketData(input: {
     footer: input.footer || 'Merci de votre visite !',
     nifCaisse: input.nifCaisse || '',
     softwareVersion: input.softwareVersion || '1.0',
-    vat: computeTicketVat(input.items),
+    vat: computeTicketVat(input.items, input.discountMinorUnits ?? 0),
     addressLine2: input.addressLine2,
     operatingCompanyName: input.operatingCompanyName,
     rcs: input.rcs,

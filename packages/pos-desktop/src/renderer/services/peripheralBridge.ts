@@ -14,6 +14,8 @@ import {
   decideDrawerPath,
   getDrawerQueueName,
   getDrawerStrategy,
+  getForcePageSize,
+  pickGraphicPrinter,
   resolveDrawerQueue,
   type PrinterCommandMode,
 } from './drawerStrategy';
@@ -295,7 +297,11 @@ class PeripheralBridge {
           // est toujours présente ; sinon la 1ʳᵉ de l'OS.
           const saved = this.getSelectedOsPrinter();
           const savedStillThere = !!saved && electronPrinters.includes(saved);
-          const name = savedStillThere ? (saved as string) : electronPrinters[0];
+          // Jamais la file TIROIR pour imprimer un ticket : elle ne produit
+          // qu'une impulsion et quelques millimètres de papier.
+          const name = savedStillThere
+            ? (saved as string)
+            : pickGraphicPrinter(electronPrinters, getDrawerQueueName()) ?? electronPrinters[0];
           if (saved && !savedStillThere) {
             this.printerWarning =
               `L’imprimante mémorisée « ${saved} » n’existe plus sous Windows — ` +
@@ -435,7 +441,9 @@ class PeripheralBridge {
         // Cible l'imprimante sélectionnée (sinon défaut OS).
         const device = this._status.printer.name ?? undefined;
         const widthMm = data.paperWidthMm ?? getPaperWidthMm();
-        const result = await (window as any).electronAPI.printTicketHtml(html, device, widthMm);
+        const result = await (window as any).electronAPI.printTicketHtml(
+          html, device, widthMm, getForcePageSize(),
+        );
         this.lastPrintPreview = result?.previewDataUrl ?? null;
         // Trace terrain STRUCTURÉE : tout ce qu'il faut pour diagnostiquer une
         // sortie blanche/tronquée sans accès à la machine — taille réelle du
@@ -449,6 +457,19 @@ class PeripheralBridge {
           // Mesure RÉELLE du document dans la fenêtre qui part à l'impression,
           // et format explicitement imposé au moteur (fin du « défaut pilote »).
           scrollHeightPx: result?.geometry?.scrollHeightPx ?? null,
+          docScrollWidth: result?.probe?.docScrollWidth ?? null,
+          docScrollHeight: result?.probe?.docScrollHeight ?? null,
+          bodyScrollWidth: result?.probe?.bodyScrollWidth ?? null,
+          bodyScrollHeight: result?.probe?.bodyScrollHeight ?? null,
+          textLen: result?.probe?.textLen ?? null,
+          imgs: result?.probe?.imgs ?? null,
+          imgsDecoded: result?.probe?.imgsDecoded ?? null,
+          readyState: result?.probe?.readyState ?? null,
+          loader: 'loadFile',
+          htmlPath: result?.artifacts?.htmlPath ?? null,
+          pngPath: result?.artifacts?.pngPath ?? null,
+          pdfPath: result?.artifacts?.pdfPath ?? null,
+          pdfBytes: result?.artifacts?.pdfBytes ?? null,
           pageWidthMicrons: result?.geometry?.pageWidthMicrons ?? null,
           pageHeightMicrons: result?.geometry?.pageHeightMicrons ?? null,
           heightClamped: result?.geometry?.clamped ?? null,
@@ -556,11 +577,16 @@ class PeripheralBridge {
 
     const style = doc.createElement('style');
     style.textContent = `
-      @page { size: ${width}mm auto; margin: 0; }
+      /* Pas de "size" ici : "size: <longueur> auto" est une déclaration CSS
+         INVALIDE (Paged Media accepte une ou deux longueurs, OU le mot-clé
+         auto, jamais un mélange). Chromium la rejette, et une regle @page
+         invalide peut perturber sa pagination jusqu'a produire un document
+         vide. Le format de page est fixe par les options d'impression. */
+      @page { margin: 0; }
       :root { color-scheme: light; }
       /* ALIGNÉ À GAUCHE, jamais centré (pas de "margin: auto").
          L'impression compose sur la page du PILOTE Windows, pas sur le
-         "@page size" ci-dessus : si le pilote est resté en Letter/A4, un corps
+         format de page : si le pilote est resté en Letter/A4, un corps
          centré démarre à ~69-72 mm alors que la zone imprimable d'un rouleau
          80 mm s'arrête vers 72 mm, et le ticket sort BLANC (mesuré sous
          Chromium : page 210 mm = 3 mm de contenu visible sur 72 ; page 216 mm
@@ -983,6 +1009,14 @@ class PeripheralBridge {
       this.lastDrawerError = null;
       const mode = this._printerInfo?.mode ?? 'unknown';
       const decision = decideDrawerPath(mode, getDrawerStrategy(), getDrawerQueueName());
+      // Tiroir géré par le pilote : aucune commande, et surtout AUCUNE fausse
+      // alerte « Tiroir NON ouvert » — le tiroir s'ouvre bien, via futurePRNT.
+      if (decision.path === 'delegated') {
+        this.lastDrawerError = null;
+        this.lastDrawerTimings = { path: 'delegated' };
+        console.info('[PERIPH] Tiroir délégué au pilote Star —', decision.reason);
+        return true;
+      }
       if (decision.path === 'refuse') {
         this.lastDrawerError = decision.reason;
         this.lastDrawerTimings = { path: 'refuse' };
@@ -1028,6 +1062,49 @@ class PeripheralBridge {
 
     console.warn('[PERIPH] No cash drawer connected — kick refused (honest)');
     return false;
+  }
+
+  /**
+   * Imprime un HTML BRUT via le chemin d'impression EXACT du ticket, sans
+   * passer par le constructeur de reçu. Sert à distinguer « le pipeline
+   * d'impression est cassé » de « ce sont les ressources du ticket (logo, QR,
+   * polices) qui empêchent le rendu ». Diagnostic uniquement.
+   */
+  async printRawHtml(html: string): Promise<boolean> {
+    const api = (window as any).electronAPI;
+    if (!this.isElectron() || !api?.printTicketHtml) return false;
+    const device = this._status.printer.name ?? undefined;
+    const widthMm = getPaperWidthMm();
+    const res = await api.printTicketHtml(html, device, widthMm, getForcePageSize());
+    this.lastPrintPreview = res?.previewDataUrl ?? null;
+    this.lastPrintTimings = {
+      htmlBytes: html.length,
+      printerName: device ?? '(défaut OS)',
+      scrollHeightPx: res?.geometry?.scrollHeightPx ?? null,
+      textLen: res?.probe?.textLen ?? null,
+      imgs: res?.probe?.imgs ?? null,
+      readyState: res?.probe?.readyState ?? null,
+      loader: 'loadFile',
+      pageSize: res?.optionsUsed?.pageSize ?? null,
+      status: res?.ok ? 'submitted_to_spooler' : 'failed',
+      ...(res?.ok ? {} : { error: res?.error ?? 'inconnu' }),
+    } as unknown as Record<string, number>;
+    console.log('[PERIPH] Raw HTML print', JSON.stringify(this.lastPrintTimings));
+    return !!res?.ok;
+  }
+
+  /**
+   * Rend le ticket en PDF (même pipeline de mise en page) et ouvre le fichier.
+   * Partitionne le problème : PDF correct → Chromium compose bien, la panne est
+   * dans la remise au pilote ; PDF vide → la panne est dans le rendu.
+   */
+  async renderDiagnosticPdf(data: TicketData): Promise<{ ok: boolean; filePath?: string; bytes?: number; error?: string }> {
+    const api = (window as any).electronAPI;
+    if (!this.isElectron() || !api?.diagnosticPdf) return { ok: false, error: 'desktop uniquement' };
+    const html = this.buildReceiptHtml(data);
+    const res = await api.diagnosticPdf(html, data.paperWidthMm ?? getPaperWidthMm());
+    console.log('[PERIPH] PDF diagnostic', JSON.stringify({ htmlBytes: html.length, ...res }));
+    return res;
   }
 
   /** Imprimante OS choisie par l'opérateur (persistée), ou null. */

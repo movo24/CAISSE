@@ -1,5 +1,5 @@
 import { useOfflineStore, OfflineQueueEntry } from '../stores/offlineStore';
-import { signSyncRequest, markAsSent, unmarkSent, isAlreadySent, idempotencyKeyFor, logSecurityEvent } from './hmacSecurity';
+import { signSyncRequest, markAsSent, unmarkSent, idempotencyKeyFor, logSecurityEvent } from './hmacSecurity';
 import { salesApi, timewinApi, returnsApi, employeeScoreApi } from './api';
 import { toSyncCreateBody } from './salePayload';
 import { API_URL } from '../utils/apiConfig';
@@ -47,6 +47,14 @@ async function checkNetworkStatus(): Promise<boolean> {
   }
 }
 
+/**
+ * Garde anti-doublon VALABLE UNIQUEMENT PENDANT UN RUN (mémoire, jamais
+ * persistée). Vidée au début de chaque `runSync` : après un crash ou un
+ * redémarrage, rien n'est présumé envoyé — c'est la clé d'idempotence serveur
+ * qui tranche.
+ */
+const sentThisRun = new Set<string>();
+
 // ── Conflict Resolution ──
 
 interface ConflictCheckResult {
@@ -90,12 +98,20 @@ async function syncEntry(entry: OfflineQueueEntry): Promise<{ success: boolean; 
   try {
     store.updateEntryStatus(entry.id, 'syncing');
 
-    // Anti-double sync check
-    if (isAlreadySent(entry.type, entry.id)) {
-      console.log(`[SYNC] Duplicate blocked: ${entry.type} #${entry.id.slice(0, 8)}`);
+    // Anti-double sync — garde INTRA-RUN uniquement.
+    //
+    // Ce marqueur est persistant, donc il survit à un crash. Le considérer comme
+    // une preuve d'envoi réussi était un P0 : une vente interrompue pendant
+    // l'envoi était marquée `synced` SANS aucun appel réseau, et disparaissait.
+    // La seule autorité sur « déjà enregistré » est la clé d'idempotence côté
+    // serveur, qui renvoie la réponse mise en cache au lieu de dupliquer.
+    // On ne court-circuite donc que dans le MÊME run.
+    if (sentThisRun.has(`${entry.type}:${entry.id}`)) {
+      console.log(`[SYNC] Duplicate blocked (same run): ${entry.type} #${entry.id.slice(0, 8)}`);
       store.updateEntryStatus(entry.id, 'synced');
       return { success: true };
     }
+    sentThisRun.add(`${entry.type}:${entry.id}`);
 
     // HMAC device-signing layer — ⚠️ NON CÂBLÉ (TECHNICAL_DEBT D19, M607).
     // signSyncRequest renvoie toujours null aujourd'hui (token jamais provisionné) et,
@@ -265,14 +281,26 @@ async function syncEntry(entry: OfflineQueueEntry): Promise<{ success: boolean; 
       return { success: false, error: serverMsg };
     }
 
+    // Erreurs d'AUTHENTIFICATION / d'enrôlement : transitoires par nature
+    // (secret JWT tourné, employé réactivé, machine ré-enrôlée). Les classer
+    // « rejet métier définitif » condamnait toute une nuit de ventes hors ligne.
+    if (httpStatus === 401 || httpStatus === 403) {
+      store.updateEntryStatus(entry.id, 'local_pending', `Authentification à rétablir : ${errorMsg}`);
+      store.addSyncError(`Ré-authentification requise : ${entry.type} #${entry.id.slice(0, 8)}`);
+      return { success: false, error: errorMsg };
+    }
+
     if (entry.retryCount >= entry.maxRetries) {
       store.updateEntryStatus(entry.id, 'failed', `Max retries atteint: ${errorMsg}`);
       store.addSyncError(`Echec definitif: ${entry.type} #${entry.id.slice(0, 8)} — ${errorMsg}`);
       return { success: false, error: errorMsg };
     }
 
-    // Revert to pending for retry
-    store.updateEntryStatus(entry.id, 'local_pending', `Retry ${entry.retryCount + 1}: ${errorMsg}`);
+    // Revert to pending for retry — en INCRÉMENTANT le compteur. Il ne l'était
+    // que sur le chemin `failed`, donc `retryCount` restait 0 à vie et la borne
+    // `maxRetries` était inatteignable : rejeu infini toutes les 15 s.
+    store.bumpRetryCount(entry.id);
+    store.updateEntryStatus(entry.id, 'local_pending', `Tentative ${entry.retryCount + 1}/${entry.maxRetries} : ${errorMsg}`);
     return { success: false, error: errorMsg };
   }
 }
@@ -300,6 +328,8 @@ export async function runSync(): Promise<{ synced: number; failed: number; confl
     return { synced: 0, failed: 0, conflicts: 0 };
   }
 
+  // Nouveau run → aucune présomption d'envoi héritée du run précédent.
+  sentThisRun.clear();
   store.setSyncing(true);
   store.clearSyncErrors();
 

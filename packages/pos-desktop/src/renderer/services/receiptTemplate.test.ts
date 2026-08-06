@@ -71,7 +71,15 @@ function render(data: TicketData): string {
 describe('Template ticket papier — refonte The Wesley', () => {
   it.each([58, 80] as const)('largeur %imm : @page et corps adaptés', (w) => {
     const html = render(fullTicket(w));
-    expect(html).toContain(`size: ${w}mm auto`);
+    // `size: <largeur> auto` a été RETIRÉ : c'est une déclaration CSS invalide
+    // (Paged Media accepte une ou deux longueurs, OU `auto` — jamais un
+    // mélange), donc rejetée par Chromium. L'intention « largeur du rouleau,
+    // hauteur libre » n'est pas exprimable en CSS ; elle est portée par les
+    // options d'impression (`pageSize` calculé sur la hauteur mesurée).
+    // Ce qui reste vérifiable ici : marges nulles + largeur du corps.
+    expect(html).toContain('@page { margin: 0; }');
+    // Ciblé sur la règle @page uniquement (`font-size:` contient « size: »).
+    expect(html).not.toMatch(/@page \{[^}]*size:/);
     expect(html).toContain(`width: ${w === 58 ? 48 : 72}mm`);
     if (PROOF_DIR) {
       fs.mkdirSync(PROOF_DIR, { recursive: true });

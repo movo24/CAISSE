@@ -8,10 +8,12 @@ import {
   describeQueueState,
   getDrawerQueueName,
   getDrawerStrategy,
+  getForcePageSize,
   printerModeLabel,
   resolveDrawerQueue,
   setDrawerQueueName,
   setDrawerStrategy,
+  setForcePageSize,
   type DrawerStrategy,
   type WindowsQueueState,
 } from '../services/drawerStrategy';
@@ -53,6 +55,7 @@ export function PrinterDiagnosticsPage() {
   const printBusyRef = useRef(false);
   /** Aperçu de la fenêtre réellement envoyée à l'impression. */
   const [printPreview, setPrintPreview] = useState<string | null>(null);
+  const [forcePageSize, setForcePageSizeState] = useState<boolean>(getForcePageSize());
 
   const isDesktop = typeof window !== 'undefined' && (window as any).electronAPI?.getPrinters;
 
@@ -122,7 +125,8 @@ export function PrinterDiagnosticsPage() {
             msg: blocked
               ? `Travail envoyé à la file Windows « ${peripheralBridge.status.printer.name} », mais elle ne peut pas imprimer : ${blocked}`
               : `Travail envoyé à la file Windows « ${peripheralBridge.status.printer.name} ». `
-                + 'Vérifiez la sortie papier : Windows ne confirme pas l’impression physique.',
+                + 'Windows ne confirme pas l’impression physique — comparez le papier aux '
+                + 'artefacts enregistrés dans le dossier « CaisseDiagnostic » du Bureau.',
           }
         : { ok: false, msg: 'Échec : Windows a refusé le travail d’impression (aucun job créé).' });
     } catch (e) {
@@ -138,13 +142,78 @@ export function PrinterDiagnosticsPage() {
     }
   };
 
+  /**
+   * HTML MINIMAL par le chemin d'impression EXACT du ticket. Sépare deux causes
+   * qu'on ne pouvait pas distinguer : pipeline d'impression cassé, ou ressources
+   * du ticket (logo, QR, polices) qui empêchent le rendu.
+   */
+  const runMinimalPrint = async () => {
+    if (printBusyRef.current) return;
+    printBusyRef.current = true;
+    setPrintBusy(true);
+    setPrintResult(null);
+    try {
+      const html =
+        '<!doctype html><html><head><meta charset="utf-8">' +
+        '<style>html{margin:0;padding:0}body{font-family:monospace;font-size:14px;width:72mm;margin:3mm;color:#000}</style>' +
+        '</head><body><h1>TEST</h1><p>Impression minimale — aucune image, aucune police externe.</p>' +
+        '<p>Si CECI sort et pas le ticket, ce sont les ressources du ticket.</p></body></html>';
+      const ok = await peripheralBridge.printRawHtml(html);
+      setPrintResult(
+        ok
+          ? { ok: true, msg: 'HTML minimal envoyé à la file Windows. Le papier doit porter « TEST » sur ~3 cm.' }
+          : { ok: false, msg: 'Échec : Windows a refusé le travail d’impression minimal.' },
+      );
+    } catch (e) {
+      console.error('[PERIPH] Test HTML minimal — exception', e);
+      setPrintResult({ ok: false, msg: `Erreur : ${e instanceof Error ? e.message : String(e)}` });
+    } finally {
+      setPrintDiag(peripheralBridge.lastPrintTimings as Record<string, unknown> | null);
+      setPrintPreview(peripheralBridge.lastPrintPreview);
+      printBusyRef.current = false;
+      setPrintBusy(false);
+    }
+  };
+
+  /** Rend le ticket en PDF et l'ouvre : on VOIT ce que Chromium a composé. */
+  const runPdfDiagnostic = async () => {
+    if (printBusyRef.current) return;
+    printBusyRef.current = true;
+    setPrintBusy(true);
+    setPrintResult(null);
+    try {
+      const logo = resolveReceiptLogo(null);
+      const qr = await makeTicketQrDataUrl('https://thewesleys.fr/ticket/TEST');
+      const res = await peripheralBridge.renderDiagnosticPdf(buildTestTicket(logo, qr, getPaperWidthMm()));
+      setPrintResult(
+        res.ok
+          ? {
+              ok: true,
+              msg:
+                `PDF généré (${res.bytes?.toLocaleString('fr-FR')} octets) et ouvert : ${res.filePath}. ` +
+                'S’il montre le ticket entier, Chromium compose correctement et la panne est ' +
+                'dans la remise du job au pilote Star.',
+            }
+          : { ok: false, msg: `Échec génération PDF : ${res.error ?? 'inconnu'}` },
+      );
+    } catch (e) {
+      console.error('[PERIPH] PDF diagnostic — exception', e);
+      setPrintResult({ ok: false, msg: `Erreur : ${e instanceof Error ? e.message : String(e)}` });
+    } finally {
+      printBusyRef.current = false;
+      setPrintBusy(false);
+    }
+  };
+
   const runTestDrawer = async () => {
     setDrawerBusy(true);
     setDrawerResult(null);
     try {
       const ok = await peripheralBridge.openCashDrawer();
       setDrawerResult(ok
-        ? { ok: true, msg: `Commande d’ouverture envoyée au tiroir (voie : ${peripheralBridge.lastDrawerTimings?.path ?? '?'}, ${peripheralBridge.lastDrawerTimings?.ms ?? '?'} ms).` }
+        ? peripheralBridge.lastDrawerTimings?.path === 'delegated'
+          ? { ok: true, msg: 'Ouverture déléguée au pilote Star : le tiroir s’ouvre à l’impression du ticket. Aucune commande envoyée par la caisse.' }
+          : { ok: true, msg: `Commande d’ouverture envoyée au tiroir (voie : ${peripheralBridge.lastDrawerTimings?.path ?? '?'}, ${peripheralBridge.lastDrawerTimings?.ms ?? '?'} ms).` }
         : { ok: false, msg: peripheralBridge.lastDrawerError || 'Échec : aucun tiroir n’a pu être ouvert (imprimante/tiroir ?).' });
     } catch (e) {
       setDrawerResult({ ok: false, msg: `Erreur : ${e instanceof Error ? e.message : String(e)}` });
@@ -279,6 +348,26 @@ export function PrinterDiagnosticsPage() {
               <p className="text-xs text-pos-muted mt-2">
                 Appliquée à tous les tickets de cette caisse (mise en page et colonnes ESC/POS).
               </p>
+
+              {/* Forçage du format de page — DÉSACTIVÉ par défaut : la page de
+                  test Windows sort entière, donc le formulaire rouleau du pilote
+                  est bon et sa longueur suit le contenu. À n'activer que sur un
+                  poste dont le formulaire serait mal réglé. */}
+              <label className="flex items-start gap-2 text-sm cursor-pointer mt-3">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={forcePageSize}
+                  onChange={(e) => { setForcePageSize(e.target.checked); setForcePageSizeState(e.target.checked); }}
+                />
+                <span>
+                  Imposer le format de page à l’impression
+                  <span className="block text-xs text-pos-muted">
+                    Par défaut le formulaire rouleau du pilote décide (recommandé). N’activer que si
+                    le ticket sort tronqué : un format absent des formulaires du pilote peut être refusé.
+                  </span>
+                </span>
+              </label>
             </div>
 
             {/* Stratégie tiroir-caisse */}
@@ -289,6 +378,7 @@ export function PrinterDiagnosticsPage() {
                   [
                     ['auto', 'Automatique (selon le driver détecté) — recommandé'],
                     ['raw_escpos', 'Kick ESC/POS brut (imprimantes ESC/POS uniquement)'],
+                    ['driver', 'Géré par le pilote Star (futurePRNT ouvre le tiroir à l’impression)'],
                     ['drawer_queue', 'File Windows dédiée au tiroir (TSP100/TSP143 futurePRNT)'],
                   ] as Array<[DrawerStrategy, string]>
                 ).map(([value, label]) => (
@@ -352,7 +442,13 @@ export function PrinterDiagnosticsPage() {
               <h2 className="text-sm font-bold uppercase tracking-wide text-pos-muted">Tests</h2>
               <div className="flex flex-wrap gap-3">
                 <button onClick={runTestPrint} disabled={printBusy} className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-pos-accent text-white font-semibold hover:opacity-90 disabled:opacity-60">
-                  {printBusy ? <Loader2 size={16} className="animate-spin" /> : <Printer size={16} />} Impression test
+                  {printBusy ? <Loader2 size={16} className="animate-spin" /> : <Printer size={16} />} Imprimer un ticket test complet
+                </button>
+                <button onClick={runMinimalPrint} disabled={printBusy} className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 text-white font-semibold hover:opacity-90 disabled:opacity-60">
+                  {printBusy ? <Loader2 size={16} className="animate-spin" /> : <Printer size={16} />} Test HTML minimal
+                </button>
+                <button onClick={runPdfDiagnostic} disabled={printBusy} className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-700 text-white font-semibold hover:opacity-90 disabled:opacity-60">
+                  {printBusy ? <Loader2 size={16} className="animate-spin" /> : <Printer size={16} />} Voir le PDF du ticket
                 </button>
                 <button onClick={runTestDrawer} disabled={drawerBusy} className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-700 text-white font-semibold hover:opacity-90 disabled:opacity-60">
                   {drawerBusy ? <Loader2 size={16} className="animate-spin" /> : <Inbox size={16} />} Ouvrir le tiroir
@@ -383,6 +479,15 @@ export function PrinterDiagnosticsPage() {
                     Diagnostic de la dernière impression
                   </p>
                   {(() => {
+                    const textLen = printDiag.textLen;
+                    if (textLen !== null && textLen !== undefined && Number(textLen) === 0) {
+                      return (
+                        <p className="text-xs mb-2 text-red-400">
+                          Le document rendu ne contient AUCUN texte (textLen = 0) : la fenêtre
+                          d’impression n’a rien peint. C’est la cause du papier coupé à 1 mm.
+                        </p>
+                      );
+                    }
                     const bytes = Number(printDiag.htmlBytes ?? 0);
                     const verdict =
                       bytes < 2000
