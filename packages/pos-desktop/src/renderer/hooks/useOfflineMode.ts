@@ -188,6 +188,8 @@ export function useOfflineMode() {
     isDegraded,
     networkStatus: offline.networkStatus,
     pendingCount: offline.pendingCount,
+    /** Ventes rejetées définitivement par le serveur — exigent une reprise humaine. */
+    failedCount: offline.failedCount,
     syncedCount: offline.syncedCount,
     conflictCount: offline.conflictCount,
     isSyncing: offline.isSyncing,
