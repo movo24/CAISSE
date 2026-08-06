@@ -180,3 +180,16 @@ bascule **F3** (0 divergence après cutover + couverture complète).
 d'ouverture) atteint `gap → 0`. **Cross-refs.** `PRODUCTS_FISCAL_STOCK_SYNTHESIS.md`,
 `GO_F2_PACKAGE.md`, `stock-journal-shadow.pg.spec.ts`, `stock-reconciliation-readonly.pg.spec.ts`.
 **Rappel :** F1b/F2/F3/F4, activation du flag hors test local, et tout merge = Tier-2 (GO explicite).
+
+---
+
+## D24 — Dashboard « Semaine en cours » : `weekAvg` (moyenne N-1 par jour) jamais alimentée
+**Status:** OPEN. **Since:** fix #109 (échelle sûre), 2026-07-24.
+
+**Le manque.** `useDashboardData.ts` initialise `weekAvg: [0,0,0,0,0,0,0]` et **aucun code ne l'alimente** : la barre grise « Moyenne N-1 » du graphique « Semaine en cours » est structurellement vide, et le % réalisé-vs-N-1 n'est jamais affiché (comportement voulu depuis #109 : pas de % mensonger sans référence). C'est cette absence qui, combinée à un domaine mal calculé, avait produit la barre à 100 000 % (fix #109 : le graphique dégrade proprement désormais).
+
+**Pourquoi différé.** La comparaison N-1 par JOUR DE SEMAINE exige une agrégation backend qui n'existe pas (`periodSummary` ne renvoie pas le même-jour-N-1 ; seule `trend.comparisons.nMinus1` existe au niveau jour courant). Décision produit à prendre : « N-1 » = même semaine calendaire l'an dernier, ou moyenne glissante des N dernières semaines ? (Le magasin a < 1 an d'historique — la moyenne glissante est la seule non vide à court terme.)
+
+**Ce qui la ferme.** Dossier détaillé : `packages/backoffice-web/docs/DETTE-D24-WEEKAVG-N1.md` (options A/B, endpoint proposé, contrat, tests). Choix owner de la sémantique → endpoint backend (lecture seule, aucune migration) → câblage `weekAvg` → le graphique existant affiche alors référence + % sans autre changement (WeekBars le gère déjà). Retirer cette entrée à la PR de fermeture.
+
+**Cross-refs.** PR #109 ; `packages/backoffice-web/src/components/dashboard/WeekBars.tsx` ; `useDashboardData.ts:328-346`.
