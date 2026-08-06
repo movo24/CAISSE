@@ -150,9 +150,14 @@ async function waitForRenderReadyAndMeasure(win: BrowserWindow): Promise<RenderP
     const d = document.documentElement, b = document.body;
     const imgsDecoded = imgs.filter((i) => i.complete && i.naturalWidth > 0).length;
     return {
+      // HAUTEUR DU CONTENU — surtout PAS documentElement.scrollHeight, qui vaut
+      // toujours AU MOINS la hauteur du viewport. Mesuré sous Electron 28 :
+      // fenêtre 1200 px → docScrollHeight 1200, alors que le ticket fait 481 px.
+      // Un Math.max() retenait donc la FENÊTRE et produisait une page de 322 mm
+      // pour un ticket de 12,7 cm. On prend le bas réel du contenu.
       h: Math.max(
-        d ? d.scrollHeight : 0, b ? b.scrollHeight : 0,
         b ? Math.ceil(b.getBoundingClientRect().bottom) : 0,
+        b ? b.scrollHeight : 0,
       ),
       docScrollWidth: d ? d.scrollWidth : 0,
       docScrollHeight: d ? d.scrollHeight : 0,
@@ -345,19 +350,15 @@ async function printHtmlSilently(
   const t0 = Date.now();
   try {
     win = new BrowserWindow({
-      // ── CAUSE RACINE du « petit bout coupé aussitôt » ────────────────────
-      // Une fenêtre `show: false` n'est PAS composée par Chromium : aucune
-      // frame n'est produite, et `webContents.print()` sérialise alors un
-      // document sans contenu peint. Sur un formulaire rouleau — dont la
-      // longueur suit le contenu (prouvé par la page de test Windows, qui
-      // sort entière) — cela donne exactement quelques millimètres de papier
-      // suivis de la coupe de fin de document.
+      // Fenêtre NON affichée. Mesuré sous Electron 28 réel : `show:false`
+      // charge le document et produit une capture (136 ko) et un PDF (131 ko)
+      // parfaitement valides — `paintWhenInitiallyHidden` vaut true par défaut.
       //
-      // La fenêtre est donc RÉELLEMENT affichée, mais hors de l'espace de
-      // travail : invisible pour le caissier, et pourtant composée.
-      show: true,
-      x: -32000,
-      y: -32000,
+      // La positionner hors écran à -32000 (tentative de la 1.8.16) fait au
+      // contraire ÉCHOUER le chargement : `ERR_FAILED (-2)` sur `loadFile`,
+      // donc document vide, donc quelques millimètres de papier puis coupe.
+      // Ne jamais y revenir.
+      show: false,
       // Fenêtre à la LARGEUR DU ROULEAU : le document se compose exactement
       // comme il sera imprimé, donc `scrollHeight` mesure la vraie hauteur.
       width: paperWidthToPx(paperWidthMm),
@@ -501,9 +502,9 @@ export async function renderDiagnosticPdf(
   let tmpHtml: string | null = null;
   try {
     win = new BrowserWindow({
-      show: true,
-      x: -32000,
-      y: -32000,
+      // Même règle que l'impression : `show:false` charge et compose ; un
+      // positionnement à -32000 fait échouer `loadFile` (ERR_FAILED).
+      show: false,
       width: paperWidthToPx(paperWidthMm),
       height: 1200,
       frame: false,

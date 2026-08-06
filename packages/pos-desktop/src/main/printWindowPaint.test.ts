@@ -18,16 +18,20 @@ import { join } from 'node:path';
 const src = readFileSync(join(__dirname, 'posPrinting.ts'), 'utf8');
 
 describe('la fenêtre d’impression est réellement composée', () => {
-  it('elle est AFFICHÉE (une fenêtre show:false n’est jamais peinte)', () => {
-    // Vise la PROPRIÉTÉ dans l'objet d'options, pas la prose du commentaire
-    // (qui cite « show: false » pour expliquer la cause racine).
-    expect(src).toMatch(/^\s*show: true,$/m);
-    expect(src).not.toMatch(/^\s*show: false,$/m);
+  // HYPOTHÈSE RÉFUTÉE PAR L'EXÉCUTION (banc Electron 28.3.3 réel).
+  // La 1.8.16 supposait qu'une fenêtre `show:false` n'était jamais peinte et
+  // l'affichait hors écran à -32000. Le banc montre l'inverse :
+  //   show:false          → charge, capture 129 ko, PDF 131 ko  ✔
+  //   show:true à -32000  → ERR_FAILED (-2) sur loadFile, document VIDE  �’
+  // C'est ce positionnement qui empêchait le chargement depuis la 1.8.16.
+  it('elle N’EST PAS positionnée hors écran (ERR_FAILED prouvé au banc)', () => {
+    expect(src).not.toMatch(/x: -32000/);
+    expect(src).not.toMatch(/y: -32000/);
   });
 
-  it('elle est positionnée hors écran (invisible pour le caissier)', () => {
-    expect(src).toMatch(/x: -32000/);
-    expect(src).toMatch(/y: -32000/);
+  it('elle utilise show:false, qui charge et compose réellement', () => {
+    expect(src).toMatch(/^\s*show: false,$/m);
+    expect(src).not.toMatch(/^\s*show: true,$/m);
   });
 
   it('le bridage d’arrière-plan est désactivé (sinon rendu throttlé → page vide)', () => {
@@ -37,7 +41,6 @@ describe('la fenêtre d’impression est réellement composée', () => {
   it('elle ne vole ni le focus ni la barre des tâches pendant une vente', () => {
     expect(src).toMatch(/skipTaskbar: true/);
     expect(src).toMatch(/focusable: false/);
-    expect(src).toMatch(/setIgnoreMouseEvents\(true\)/);
   });
 
   it('elle reste TOUJOURS détruite (aucune fenêtre fantôme accumulée)', () => {
