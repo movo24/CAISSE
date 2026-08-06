@@ -83,20 +83,18 @@ describe('hauteur : marge de sécurité et bornes', () => {
   });
 });
 
-describe('options réellement transmises à webContents.print', () => {
+describe('ce qui est réellement remis au pilote (voie image + GDI)', () => {
   const src = readFileSync(join(__dirname, 'posPrinting.ts'), 'utf8');
 
-  it('pageSize EXPLICITE : plus de dépendance au format par défaut du pilote', () => {
-    expect(src).toMatch(/pageSize: \{ width: geometry\.pageWidthMicrons, height: geometry\.pageHeightMicrons \}/);
+  it('la fenêtre de rendu fait la largeur IMPRIMABLE en points 203 dpi', () => {
+    // C'est `computeRenderGeometry` qui pilote la largeur, pas le 96 dpi CSS :
+    // le bitmap sort à la résolution native de la tête thermique.
+    expect(src).toMatch(/width: render\.deviceWidthPx/);
+    expect(src).toMatch(/setZoomFactor\(render\.zoomFactor\)/);
   });
 
-  it('marges à zéro et fond imprimé', () => {
-    expect(src).toMatch(/marginType: 'none'/);
-    expect(src).toMatch(/printBackground: true/);
-  });
-
-  it('nom exact de l’imprimante transmis quand il est connu', () => {
-    expect(src).toMatch(/\.\.\.\(deviceName \? \{ deviceName \} : \{\}\)/);
+  it('nom exact de l’imprimante transmis au moteur GDI', () => {
+    expect(src).toMatch(/printPngViaGdi\(pngPath, target\)/);
   });
 
   it('attente : polices, décodage des images, puis DEUX cycles de rendu', () => {
@@ -105,26 +103,22 @@ describe('options réellement transmises à webContents.print', () => {
     expect(src).toMatch(/requestAnimationFrame\(\(\) => requestAnimationFrame\(r\)\)/);
   });
 
-  it('la mesure est prise APRÈS l’attente de rendu', () => {
+  it('la mesure est prise APRÈS l’attente de rendu, la capture APRÈS la mesure', () => {
     const ready = src.indexOf('await waitForRenderReadyAndMeasure(win)');
     const geom = src.indexOf('computePageGeometry(scrollHeightPx, paperWidthMm)');
-    const print = src.indexOf('win!.webContents.print(');
+    const capture = src.indexOf('await win.webContents.capturePage()');
     expect(ready).toBeGreaterThan(-1);
     expect(geom).toBeGreaterThan(ready);
-    expect(print).toBeGreaterThan(geom);
+    expect(capture).toBeGreaterThan(geom);
   });
 
-  it('la fenêtre de rendu est dimensionnée à la largeur du rouleau', () => {
-    expect(src).toMatch(/width: paperWidthToPx\(paperWidthMm\)/);
-  });
-
-  it('journalise scrollHeightPx, pageWidthMicrons, pageHeightMicrons', () => {
-    for (const f of ['scrollHeightPx', 'pageWidthMicrons', 'pageHeightMicrons']) {
+  it('journalise la géométrie réelle et la taille du bitmap remis au pilote', () => {
+    for (const f of ['scrollHeightPx', 'bitmapHeightPx', 'pngBytes', 'offscreen-bitmap-gdi']) {
       expect(src).toContain(f);
     }
   });
 
-  it('un aperçu de la fenêtre imprimée est capturé', () => {
+  it('un aperçu du bitmap REELLEMENT imprimé est capturé', () => {
     expect(src).toMatch(/capturePage\(\)/);
     expect(src).toMatch(/previewDataUrl/);
   });

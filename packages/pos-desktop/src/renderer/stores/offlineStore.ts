@@ -293,17 +293,24 @@ export const useOfflineStore = create<OfflineState>((set, get) => ({
   },
 
   updateEntryStatus: (id, status, details) => {
-    const queue = get().queue.map((e) =>
-      e.id === id
-        ? {
-            ...e,
-            status,
-            conflictDetails: details || e.conflictDetails,
-            syncedAt: status === 'synced' ? new Date().toISOString() : e.syncedAt,
-            retryCount: status === 'failed' ? e.retryCount + 1 : e.retryCount,
-          }
-        : e,
-    );
+    const queue = get().queue.map((e) => {
+      if (e.id !== id) return e;
+      // Une TENTATIVE consommée = un passage `syncing` → `local_pending`
+      // (le moteur remet l'entrée en attente après un échec réseau/5xx).
+      // Avant le 2026-08-06, seul le statut `failed` incrémentait le compteur :
+      // comme le rejeu écrit `local_pending`, `retryCount` restait bloqué à 0,
+      // `retryCount >= maxRetries` n'était JAMAIS vrai et une entrée
+      // définitivement cassée était rejouée à l'infini, sans échec franc pour
+      // l'opérateur. Couvert par `syncEngine.dom.test.ts`.
+      const consumesAttempt = status === 'failed' || (e.status === 'syncing' && status === 'local_pending');
+      return {
+        ...e,
+        status,
+        conflictDetails: details || e.conflictDetails,
+        syncedAt: status === 'synced' ? new Date().toISOString() : e.syncedAt,
+        retryCount: consumesAttempt ? e.retryCount + 1 : e.retryCount,
+      };
+    });
     set({
       queue,
       pendingCount: queue.filter((e) => e.status === 'local_pending').length,

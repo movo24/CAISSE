@@ -8,9 +8,23 @@
  * HONNÊTETÉ (règle PR #27) : toute défaillance résout `{ ok: false }` — jamais
  * un faux succès. Aucune dépendance native ; IPC borné à deux canaux.
  */
-import { BrowserWindow, ipcMain } from 'electron';
+import { BrowserWindow, ipcMain, type NativeImage } from 'electron';
+import * as os from 'os';
+import * as fs from 'fs';
+import * as path from 'path';
+import {
+  STAR_DPI,
+  computeBitmapHeightPx,
+  computeRenderGeometry,
+  printPngViaGdi,
+} from './posImagePrint';
 
-const PRINT_TIMEOUT_MS = 20_000;
+/**
+ * Après redimensionnement de la fenêtre hors écran à la hauteur du ticket, on
+ * laisse Chromium repeindre avant de capturer : capturer trop tôt donne une
+ * image tronquée (haut du ticket seulement).
+ */
+const RENDER_SETTLE_MS = 400;
 
 /**
  * `loadURL` résout sur `did-finish-load` : cela ne garantit PAS que le logo et
@@ -19,14 +33,6 @@ const PRINT_TIMEOUT_MS = 20_000;
  * Windows a bien accepté le job. Borné : on n'attend jamais indéfiniment.
  */
 const RENDER_READY_TIMEOUT_MS = 5_000;
-
-/**
- * Le callback de `webContents.print()` signale la REMISE au spouleur, pas la
- * fin de l'aspiration du document. Détruire la fenêtre dans la foulée peut
- * tronquer le job — cause classique de « print success » sans papier. On laisse
- * donc le spouleur finir avant `destroy()`.
- */
-const SPOOL_SETTLE_MS = 1_500;
 
 /** 1 px CSS à 96 dpi = 25,4/96 mm. Conversion exacte px → microns. */
 export const MICRONS_PER_CSS_PX = (25.4 / 96) * 1000;
@@ -111,27 +117,6 @@ async function waitForRenderReadyAndMeasure(win: BrowserWindow): Promise<number>
   }
 }
 
-/**
- * Options d'impression. `pageSize` EXPLICITE : on ne dépend plus du format par
- * défaut du pilote. Marges à zéro, fond imprimé, imprimante nommée exactement.
- */
-export function buildReceiptPrintOptions(
-  deviceName?: string,
-  geometry?: PageGeometry,
-): Electron.WebContentsPrintOptions {
-  return {
-    silent: true,
-    // Le ticket est noir sur blanc, mais certains éléments (bandeau de test,
-    // séparateurs) reposent sur des fonds : sans cela ils disparaissent.
-    printBackground: true,
-    margins: { marginType: 'none' },
-    ...(geometry
-      ? { pageSize: { width: geometry.pageWidthMicrons, height: geometry.pageHeightMicrons } }
-      : {}),
-    ...(deviceName ? { deviceName } : {}),
-  };
-}
-
 /** Chronométrage réel des étapes (diagnostic latence terrain — TSP143). */
 export interface PrintTimings {
   /** Création de la fenêtre cachée (ms). */
@@ -156,34 +141,35 @@ export interface PrintOptionsUsed {
   printBackground: boolean;
 }
 
-function describePrintOptions(o: Electron.WebContentsPrintOptions): PrintOptionsUsed {
-  const ps = (o as { pageSize?: unknown }).pageSize;
-  return {
-    deviceName: o.deviceName ?? null,
-    pageSize: ps == null ? null : typeof ps === 'string' ? ps : JSON.stringify(ps),
-    margins: o.margins?.marginType ?? 'default',
-    printBackground: o.printBackground === true,
-  };
-}
-
 /**
- * Capture la fenêtre EXACTE qui part à l'impression, au moment précis du
- * lancement. C'est la seule preuve directe que le document imprimé contenait
- * bien le ticket — un « print success » ne dit rien du contenu.
+ * Aperçu du bitmap EXACT remis au pilote. C'est la seule preuve directe que le
+ * document imprimé contenait bien le ticket — un « success » ne dit rien du
+ * contenu. On réduit pour l'IPC : l'aperçu sert à VOIR, pas à archiver.
  */
-async function capturePreview(win: BrowserWindow): Promise<string | null> {
+async function capturePreview(image: NativeImage): Promise<string | null> {
   try {
-    const img = await win.webContents.capturePage();
-    if (img.isEmpty()) return null;
-    // Réduit pour l'IPC : l'aperçu sert à VOIR le ticket, pas à l'archiver.
-    const scaled = img.resize({ width: 300, quality: 'good' });
-    const url = scaled.toDataURL();
+    if (image.isEmpty()) return null;
+    const url = image.resize({ width: 300, quality: 'good' }).toDataURL();
     return url && url.length > 128 ? url : null;
   } catch {
     return null;
   }
 }
 
+/**
+ * Imprime le ticket. Chemin : rendu HORS ÉCRAN (OSR) → bitmap → GDI natif.
+ *
+ * `webContents.print()` n'est PLUS utilisé : mesuré sur la caisse, il ne remet
+ * aucune opération de dessin au pilote Star (61 octets, 0 % d'encre, coupe
+ * immédiate) tout en répondant `success`. Détail complet dans `posImagePrint.ts`.
+ *
+ * Deux pièges du rendu hors écran, tous deux mesurés — ne pas les réintroduire :
+ *  - une fenêtre `show:false` SANS `offscreen:true` ne se compose pas :
+ *    `capturePage()` ne résout jamais (blocage) ;
+ *  - une fenêtre déplacée hors des écrans (`x:-20000`) rend une image VIDE
+ *    (0 octet), sans erreur.
+ * Seul l'OSR Chromium (`webPreferences.offscreen`) rasterise de façon fiable.
+ */
 async function printHtmlSilently(
   html: string,
   deviceName?: string,
@@ -197,38 +183,67 @@ async function printHtmlSilently(
   previewDataUrl?: string | null;
 }> {
   let win: BrowserWindow | null = null;
+  let pngPath: string | null = null;
   const t0 = Date.now();
+  const render = computeRenderGeometry(paperWidthMm);
   try {
     win = new BrowserWindow({
       show: false,
-      // Fenêtre à la LARGEUR DU ROULEAU : le document se compose exactement
-      // comme il sera imprimé, donc `scrollHeight` mesure la vraie hauteur.
-      width: paperWidthToPx(paperWidthMm),
+      // Largeur en POINTS IMPRIMANTE (203 dpi) ; le zoom ci-dessous ramène le
+      // viewport CSS à la largeur 96 dpi attendue par le gabarit du ticket.
+      // Le texte est donc rasterisé nativement à 203 dpi (net), pas agrandi.
+      width: render.deviceWidthPx,
       height: 1200,
-      webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true },
+      useContentSize: true,
+      frame: false,
+      skipTaskbar: true,
+      paintWhenInitiallyHidden: true,
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        sandbox: true,
+        offscreen: true,
+      },
     });
+    win.webContents.setZoomFactor(render.zoomFactor);
     const t1 = Date.now();
     await win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
     // Polices + images décodées + 2 cycles de rendu, PUIS mesure réelle.
     const scrollHeightPx = await waitForRenderReadyAndMeasure(win);
     const geometry = computePageGeometry(scrollHeightPx, paperWidthMm);
-    const previewDataUrl = await capturePreview(win);
-    const t2 = Date.now();
-    const printOptions = buildReceiptPrintOptions(deviceName, geometry);
-    const optionsUsed = describePrintOptions(printOptions);
-    const result = await new Promise<{ ok: boolean; error?: string }>((resolve) => {
-      const timer = setTimeout(() => resolve({ ok: false, error: 'print timeout' }), PRINT_TIMEOUT_MS);
-      win!.webContents.print(printOptions, (success, failureReason) => {
-        clearTimeout(timer);
-        resolve(success ? { ok: true } : { ok: false, error: failureReason || 'print failed' });
-      });
-    });
-    const t3 = Date.now();
-    // Laisse le spouleur aspirer le document avant `destroy()` (finally) :
-    // détruire trop tôt tronque le job et ne produit aucun papier.
-    if (result.ok) {
-      await new Promise((resolve) => setTimeout(resolve, SPOOL_SETTLE_MS));
+    // Hauteur du bitmap en points imprimante, puis capture pleine hauteur.
+    const bitmapHeightPx = computeBitmapHeightPx(scrollHeightPx);
+    win.setContentSize(render.deviceWidthPx, bitmapHeightPx);
+    await new Promise((resolve) => setTimeout(resolve, RENDER_SETTLE_MS));
+
+    const image = await win.webContents.capturePage();
+    if (image.isEmpty()) {
+      return { ok: false, error: 'rendu du ticket vide (capture hors écran)', geometry };
     }
+    const png = image.toPNG();
+    if (!png || png.length === 0) {
+      return { ok: false, error: 'rendu du ticket illisible (PNG vide)', geometry };
+    }
+    pngPath = path.join(os.tmpdir(), `poscaisse-ticket-${Date.now()}.png`);
+    fs.writeFileSync(pngPath, png);
+
+    // Aperçu : preuve directe de CE QUI a été rasterisé (un « success » ne dit
+    // rien du contenu). Réduit pour l'IPC.
+    const previewDataUrl = await capturePreview(image);
+    const t2 = Date.now();
+
+    const target = deviceName || '';
+    const optionsUsed: PrintOptionsUsed = {
+      deviceName: deviceName ?? null,
+      pageSize: `${render.printableMm}mm @ ${STAR_DPI}dpi → ${render.deviceWidthPx}x${bitmapHeightPx}px`,
+      margins: 'none',
+      printBackground: true,
+    };
+    const result = target
+      ? await printPngViaGdi(pngPath, target)
+      : { ok: false, error: 'aucune imprimante sélectionnée pour le ticket' };
+    const t3 = Date.now();
+
     const timings: PrintTimings = {
       windowMs: t1 - t0,
       loadMs: t2 - t1,
@@ -239,14 +254,15 @@ async function printHtmlSilently(
     console.info(
       '[PRINT-TIMING]',
       JSON.stringify({
+        path: 'offscreen-bitmap-gdi',
         ...optionsUsed,
         scrollHeightPx: geometry.scrollHeightPx,
-        pageWidthMicrons: geometry.pageWidthMicrons,
-        pageHeightMicrons: geometry.pageHeightMicrons,
-        heightClamped: geometry.clamped,
+        bitmapHeightPx,
+        pngBytes: png.length,
         previewCaptured: !!previewDataUrl,
         ...timings,
         ok: result.ok,
+        error: result.error,
       }),
     );
     return { ...result, timings, optionsUsed, geometry, previewDataUrl };
@@ -254,6 +270,13 @@ async function printHtmlSilently(
     return { ok: false, error: e?.message || 'print error' };
   } finally {
     win?.destroy();
+    if (pngPath) {
+      try {
+        fs.unlinkSync(pngPath);
+      } catch {
+        /* nettoyage best-effort */
+      }
+    }
   }
 }
 

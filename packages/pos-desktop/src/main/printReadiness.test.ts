@@ -40,41 +40,43 @@ describe('attente du rendu réel avant impression', () => {
     expect(mainSrc).toMatch(/return 0; \/\* rendu non sondable/);
   });
 
-  it('l’attente a lieu APRÈS loadURL et AVANT print()', () => {
+  it('l’attente a lieu APRÈS loadURL et AVANT la capture du bitmap', () => {
     const load = mainSrc.indexOf('await win.loadURL(');
     const ready = mainSrc.indexOf('await waitForRenderReadyAndMeasure(win)');
-    const print = mainSrc.indexOf('win!.webContents.print(');
+    const capture = mainSrc.indexOf('await win.webContents.capturePage()');
     expect(load).toBeGreaterThan(-1);
     expect(ready).toBeGreaterThan(load);
-    expect(print).toBeGreaterThan(ready);
+    expect(capture).toBeGreaterThan(ready);
   });
 });
 
-describe('fin d’aspiration du spouleur avant destruction de la fenêtre', () => {
-  it('laisse un délai au spouleur quand le job a été accepté', () => {
-    expect(mainSrc).toMatch(/SPOOL_SETTLE_MS\s*=\s*1_500/);
-    expect(mainSrc).toMatch(/if \(result\.ok\) \{[\s\S]*?SPOOL_SETTLE_MS/);
+describe('stabilisation du rendu avant capture', () => {
+  it('laisse Chromium repeindre après le redimensionnement à la hauteur du ticket', () => {
+    // Capturer juste après `setContentSize` donne un ticket TRONQUÉ (haut seul).
+    expect(mainSrc).toMatch(/RENDER_SETTLE_MS\s*=\s*400/);
+    const resize = mainSrc.indexOf('win.setContentSize(');
+    const settle = mainSrc.indexOf('RENDER_SETTLE_MS));');
+    const capture = mainSrc.indexOf('await win.webContents.capturePage()');
+    expect(resize).toBeGreaterThan(-1);
+    expect(settle).toBeGreaterThan(resize);
+    expect(capture).toBeGreaterThan(settle);
   });
 
   it('la fenêtre reste TOUJOURS détruite (aucune fuite de BrowserWindow)', () => {
     expect(mainSrc).toMatch(/finally \{\s*\n\s*win\?\.destroy\(\)/);
   });
 
-  it('le délai n’est pas appliqué en cas d’échec (aucune latence inutile)', () => {
-    const settle = mainSrc.indexOf('SPOOL_SETTLE_MS));');
-    const guard = mainSrc.lastIndexOf('if (result.ok) {', settle);
-    expect(guard).toBeGreaterThan(-1);
-  });
-
-  it('totalMs mesure APRÈS le délai (chronométrage honnête)', () => {
+  it('totalMs mesure APRÈS la remise au pilote (chronométrage honnête)', () => {
     expect(mainSrc).toMatch(/totalMs: Date\.now\(\) - t0/);
   });
 });
 
 describe('non-régression : honnêteté conservée', () => {
   it('aucun faux succès introduit — les échecs restent ok:false', () => {
-    expect(mainSrc).toMatch(/\{ ok: false, error: 'print timeout' \}/);
-    expect(mainSrc).toMatch(/failureReason \|\| 'print failed'/);
+    // La capture vide et le PNG vide sont les deux échecs propres au nouveau
+    // chemin : ils doivent rester des `ok:false` explicites.
+    expect(mainSrc).toMatch(/rendu du ticket vide \(capture hors écran\)/);
+    expect(mainSrc).toMatch(/rendu du ticket illisible \(PNG vide\)/);
   });
 
   it('le renderer n’annonce jamais « imprimé », seulement la remise à la file', () => {

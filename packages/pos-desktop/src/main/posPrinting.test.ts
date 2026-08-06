@@ -17,15 +17,37 @@ const preloadSrc = readFileSync(join(__dirname, 'preload.ts'), 'utf8');
 const bridgeSrc = readFileSync(join(__dirname, '..', 'renderer', 'services', 'peripheralBridge.ts'), 'utf8');
 
 describe('posPrinting (main) — honest silent print', () => {
-  it('print options are silent, no margins, optional device', () => {
-    expect(mainSrc).toMatch(/silent: true/);
-    expect(mainSrc).toMatch(/marginType: 'none'/);
+  /**
+   * MESURÉ SUR LA CAISSE (2026-08-04) : `webContents.print()` ne remet AUCUNE
+   * opération de dessin au pilote Star TSP143 (61 octets, 0 % d'encre, coupe
+   * immédiate) tout en répondant `success` — c'est le « petit bout de papier ».
+   * Ce chemin est donc INTERDIT pour le ticket ; il ne doit jamais revenir.
+   */
+  it('le ticket ne passe PLUS par webContents.print (61 octets, zéro encre sur la Star)', () => {
+    // On retire commentaires de bloc et de ligne : la cause racine est
+    // DOCUMENTÉE dans le code, seul un APPEL réel doit faire échouer ce test.
+    const code = mainSrc
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/^[ \t]*\/\/.*$/gm, '');
+    expect(code).not.toMatch(/webContents\.print\(/);
+    expect(code).toMatch(/printPngViaGdi/);
   });
 
-  it('failure paths resolve ok:false (timeout, failureReason, exception) — never a fake success', () => {
-    expect(mainSrc).toMatch(/\{ ok: false, error: 'print timeout' \}/);
-    expect(mainSrc).toMatch(/failureReason \|\| 'print failed'/);
+  it('rendu HORS ÉCRAN : offscreen obligatoire (show:false seul bloque, hors écran rend vide)', () => {
+    expect(mainSrc).toMatch(/offscreen: true/);
+    // Les deux pièges mesurés doivent rester documentés dans le code.
+    expect(mainSrc).toMatch(/capturePage\(\)/);
+    expect(mainSrc).not.toMatch(/x: -20000/);
+  });
+
+  it('une capture vide est un ÉCHEC honnête, jamais un ticket fantôme', () => {
+    expect(mainSrc).toMatch(/image\.isEmpty\(\)[\s\S]{0,120}ok: false/);
+    expect(mainSrc).toMatch(/png\.length === 0[\s\S]{0,120}ok: false/);
     expect(mainSrc).toMatch(/catch \(e: any\) \{\s*\n\s*return \{ ok: false/);
+  });
+
+  it('sans imprimante nommée : échec explicite, aucun envoi à l’aveugle', () => {
+    expect(mainSrc).toMatch(/aucune imprimante sélectionnée pour le ticket/);
   });
 
   it('the html payload is validated (type, non-empty, bounded)', () => {
@@ -33,8 +55,12 @@ describe('posPrinting (main) — honest silent print', () => {
   });
 
   it('the hidden print window is sandboxed and always destroyed', () => {
-    expect(mainSrc).toMatch(/nodeIntegration: false, contextIsolation: true, sandbox: true/);
+    expect(mainSrc).toMatch(/sandbox: true/);
     expect(mainSrc).toMatch(/finally \{\s*\n\s*win\?\.destroy\(\)/);
+  });
+
+  it('le PNG temporaire est toujours nettoyé', () => {
+    expect(mainSrc).toMatch(/fs\.unlinkSync\(pngPath\)/);
   });
 
   it('IPC is registered at app start', () => {
