@@ -45,14 +45,16 @@ describe('la fenêtre d’impression est réellement composée', () => {
   });
 });
 
-describe('format de page : le formulaire rouleau du pilote fait foi', () => {
-  it('aucun pageSize imposé par défaut', () => {
-    expect(src).toMatch(/forcePageSize = false/);
+describe('format de page : dimensionné depuis la MESURE, plus depuis le pilote', () => {
+  it('le pageSize explicite est imposé PAR DÉFAUT', () => {
+    // Décision revue : le formulaire du pilote ne produisait qu'un moignon de
+    // papier. La page est désormais dimensionnée sur la hauteur mesurée.
+    expect(src).toMatch(/forcePageSize = true/);
     expect(src).toMatch(/\.\.\.\(forcePageSize && geometry/);
   });
 
-  it('le forçage reste possible, mais explicitement demandé', () => {
-    expect(src).toMatch(/forcePageSize === true/);
+  it('il reste désactivable explicitement depuis l’écran diagnostic', () => {
+    expect(src).toMatch(/forcePageSize !== false/);
   });
 
   it('la géométrie mesurée reste journalisée même sans forçage', () => {

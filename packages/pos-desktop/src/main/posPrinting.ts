@@ -122,9 +122,17 @@ export function paperWidthToPx(paperWidthMm: number): number {
  * l'appelant décide alors, il n'y a jamais de blocage.
  */
 export interface RenderProbe {
+  /** Hauteur retenue pour dimensionner la page (max des mesures). */
   h: number;
+  docScrollWidth: number;
+  docScrollHeight: number;
+  bodyScrollWidth: number;
+  bodyScrollHeight: number;
+  /** Longueur du texte réellement rendu — 0 = document vide. */
   textLen: number;
   imgs: number;
+  /** Images réellement décodées (naturalWidth > 0) : distingue « logo absent ». */
+  imgsDecoded: number;
   readyState: string;
 }
 
@@ -140,11 +148,17 @@ async function waitForRenderReadyAndMeasure(win: BrowserWindow): Promise<RenderP
     // garantit qu'elle est stabilisée avant toute mesure.
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
     const d = document.documentElement, b = document.body;
+    const imgsDecoded = imgs.filter((i) => i.complete && i.naturalWidth > 0).length;
     return {
       h: Math.max(
         d ? d.scrollHeight : 0, b ? b.scrollHeight : 0,
         b ? Math.ceil(b.getBoundingClientRect().bottom) : 0,
       ),
+      docScrollWidth: d ? d.scrollWidth : 0,
+      docScrollHeight: d ? d.scrollHeight : 0,
+      bodyScrollWidth: b ? b.scrollWidth : 0,
+      bodyScrollHeight: b ? b.scrollHeight : 0,
+      imgsDecoded,
       // Preuve que le DOM porte réellement du contenu (et pas une page vide
       // consécutive à une navigation ratée) : longueur du texte rendu.
       textLen: b && b.innerText ? b.innerText.length : 0,
@@ -152,7 +166,10 @@ async function waitForRenderReadyAndMeasure(win: BrowserWindow): Promise<RenderP
       readyState: document.readyState,
     };
   })()`;
-  const empty: RenderProbe = { h: 0, textLen: 0, imgs: 0, readyState: 'unknown' };
+  const empty: RenderProbe = {
+    h: 0, docScrollWidth: 0, docScrollHeight: 0, bodyScrollWidth: 0, bodyScrollHeight: 0,
+    textLen: 0, imgs: 0, imgsDecoded: 0, readyState: 'unknown',
+  };
   try {
     const r = await Promise.race([
       win.webContents.executeJavaScript(script, true) as Promise<RenderProbe>,
@@ -171,7 +188,7 @@ async function waitForRenderReadyAndMeasure(win: BrowserWindow): Promise<RenderP
 export function buildReceiptPrintOptions(
   deviceName?: string,
   geometry?: PageGeometry,
-  forcePageSize = false,
+  forcePageSize = true,
 ): Electron.WebContentsPrintOptions {
   return {
     silent: true,
@@ -228,6 +245,69 @@ function describePrintOptions(o: Electron.WebContentsPrintOptions): PrintOptions
 }
 
 /**
+ * Dossier de diagnostic d'impression, sur le Bureau : l'opérateur doit pouvoir
+ * m'envoyer les fichiers sans aller les chercher dans un dossier temporaire.
+ */
+function diagnosticDir(): string {
+  const base = path.join(os.homedir(), 'Desktop', 'CaisseDiagnostic');
+  try { fs.mkdirSync(base, { recursive: true }); return base; } catch { return os.tmpdir(); }
+}
+
+/** Horodatage de fichier, stable et triable. */
+function stamp(): string {
+  return new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+}
+
+/**
+ * Écrit les TROIS artefacts qui partitionnent la panne, AVANT l'impression :
+ *   ticket-<t>.html  le document exact soumis au moteur
+ *   ticket-<t>.png   la fenêtre réellement peinte (ce que Chromium voit)
+ *   ticket-<t>.pdf   la composition Chromium (ce qui part au pilote)
+ * HTML correct + PNG vide  → le rendu ne se fait pas.
+ * PNG correct + PDF vide   → la composition d'impression échoue.
+ * PDF correct + papier nul → le pilote Windows est en cause.
+ */
+async function writeDiagnosticArtifacts(
+  win: BrowserWindow,
+  html: string,
+  geometry: PageGeometry,
+): Promise<{ htmlPath: string | null; pngPath: string | null; pdfPath: string | null; pdfBytes: number }> {
+  const dir = diagnosticDir();
+  const t = stamp();
+  let htmlPath: string | null = null;
+  let pngPath: string | null = null;
+  let pdfPath: string | null = null;
+  let pdfBytes = 0;
+  try {
+    htmlPath = path.join(dir, `ticket-${t}.html`);
+    fs.writeFileSync(htmlPath, html, 'utf-8');
+  } catch { htmlPath = null; }
+  try {
+    const img = await win.webContents.capturePage();
+    if (!img.isEmpty()) {
+      pngPath = path.join(dir, `ticket-${t}.png`);
+      fs.writeFileSync(pngPath, img.toPNG());
+    }
+  } catch { pngPath = null; }
+  try {
+    const pdf = await win.webContents.printToPDF({
+      printBackground: true,
+      margins: { top: 0, bottom: 0, left: 0, right: 0 },
+      pageSize: {
+        width: geometry.pageWidthMicrons / 25400,
+        height: geometry.pageHeightMicrons / 25400,
+      },
+    });
+    pdfBytes = pdf ? pdf.length : 0;
+    if (pdfBytes > 0) {
+      pdfPath = path.join(dir, `ticket-${t}.pdf`);
+      fs.writeFileSync(pdfPath, pdf);
+    }
+  } catch { pdfPath = null; }
+  return { htmlPath, pngPath, pdfPath, pdfBytes };
+}
+
+/**
  * Capture la fenêtre EXACTE qui part à l'impression, au moment précis du
  * lancement. C'est la seule preuve directe que le document imprimé contenait
  * bien le ticket — un « print success » ne dit rien du contenu.
@@ -249,7 +329,7 @@ async function printHtmlSilently(
   html: string,
   deviceName?: string,
   paperWidthMm = 80,
-  forcePageSize = false,
+  forcePageSize = true,
 ): Promise<{
   ok: boolean;
   error?: string;
@@ -258,6 +338,7 @@ async function printHtmlSilently(
   geometry?: PageGeometry;
   previewDataUrl?: string | null;
   probe?: RenderProbe;
+  artifacts?: { htmlPath: string | null; pngPath: string | null; pdfPath: string | null; pdfBytes: number };
 }> {
   let win: BrowserWindow | null = null;
   let tmpHtml: string | null = null;
@@ -311,6 +392,16 @@ async function printHtmlSilently(
     const probe = await loadAndProve(win, tmpHtml);
     const geometry = computePageGeometry(probe.h, paperWidthMm);
 
+    // Fenêtre redimensionnée à la hauteur RÉELLE du ticket : la capture PNG et
+    // la composition d'impression portent alors sur le document entier, pas sur
+    // la portion visible d'une fenêtre de hauteur arbitraire.
+    try {
+      win.setContentSize(paperWidthToPx(paperWidthMm), Math.max(200, Math.ceil(probe.h) + 20));
+    } catch { /* redimensionnement best-effort */ }
+
+    // TROIS artefacts sur le Bureau AVANT toute impression.
+    const artifacts = await writeDiagnosticArtifacts(win, html, geometry);
+
     // ── REFUS D'IMPRIMER UN DOCUMENT VIDE ────────────────────────────────
     // C'est ce job nul qui provoquait 1 mm de papier puis la coupe. Mieux vaut
     // un échec explicite et traçable qu'un ticket fantôme.
@@ -324,6 +415,7 @@ async function printHtmlSilently(
           'Job NON envoyé — c’est ce job nul qui produisait 1 mm de papier puis la coupe.',
         probe,
         geometry,
+        artifacts,
       };
     }
     const previewDataUrl = await capturePreview(win);
@@ -354,11 +446,23 @@ async function printHtmlSilently(
       '[PRINT-TIMING]',
       JSON.stringify({
         ...optionsUsed,
+        htmlBytes: html.length,
         scrollHeightPx: geometry.scrollHeightPx,
+        docScrollWidth: probe.docScrollWidth,
+        docScrollHeight: probe.docScrollHeight,
+        bodyScrollWidth: probe.bodyScrollWidth,
+        bodyScrollHeight: probe.bodyScrollHeight,
+        windowWidthPx: paperWidthToPx(paperWidthMm),
+        windowHeightPx: Math.max(200, Math.ceil(probe.h) + 20),
         textLen: probe.textLen,
         imgs: probe.imgs,
+        imgsDecoded: probe.imgsDecoded,
         readyState: probe.readyState,
         loader: 'loadFile',
+        htmlPath: artifacts.htmlPath,
+        pngPath: artifacts.pngPath,
+        pdfPath: artifacts.pdfPath,
+        pdfBytes: artifacts.pdfBytes,
         pageWidthMicrons: geometry.pageWidthMicrons,
         pageHeightMicrons: geometry.pageHeightMicrons,
         heightClamped: geometry.clamped,
@@ -367,7 +471,7 @@ async function printHtmlSilently(
         ok: result.ok,
       }),
     );
-    return { ...result, timings, optionsUsed, geometry, previewDataUrl, probe };
+    return { ...result, timings, optionsUsed, geometry, previewDataUrl, probe, artifacts };
   } catch (e: any) {
     return { ok: false, error: e?.message || 'print error' };
   } finally {
@@ -495,7 +599,7 @@ export function registerPosPrintingIpc(): void {
       }
       const device = typeof deviceName === 'string' && deviceName ? deviceName : undefined;
       const width = paperWidthMm === 58 || paperWidthMm === 80 ? paperWidthMm : 80;
-      return printHtmlSilently(html, device, width, forcePageSize === true);
+      return printHtmlSilently(html, device, width, forcePageSize !== false);
     },
   );
 }

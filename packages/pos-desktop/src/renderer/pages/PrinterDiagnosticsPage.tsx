@@ -125,7 +125,8 @@ export function PrinterDiagnosticsPage() {
             msg: blocked
               ? `Travail envoyé à la file Windows « ${peripheralBridge.status.printer.name} », mais elle ne peut pas imprimer : ${blocked}`
               : `Travail envoyé à la file Windows « ${peripheralBridge.status.printer.name} ». `
-                + 'Vérifiez la sortie papier : Windows ne confirme pas l’impression physique.',
+                + 'Windows ne confirme pas l’impression physique — comparez le papier aux '
+                + 'artefacts enregistrés dans le dossier « CaisseDiagnostic » du Bureau.',
           }
         : { ok: false, msg: 'Échec : Windows a refusé le travail d’impression (aucun job créé).' });
     } catch (e) {
@@ -441,7 +442,7 @@ export function PrinterDiagnosticsPage() {
               <h2 className="text-sm font-bold uppercase tracking-wide text-pos-muted">Tests</h2>
               <div className="flex flex-wrap gap-3">
                 <button onClick={runTestPrint} disabled={printBusy} className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-pos-accent text-white font-semibold hover:opacity-90 disabled:opacity-60">
-                  {printBusy ? <Loader2 size={16} className="animate-spin" /> : <Printer size={16} />} Impression test
+                  {printBusy ? <Loader2 size={16} className="animate-spin" /> : <Printer size={16} />} Imprimer un ticket test complet
                 </button>
                 <button onClick={runMinimalPrint} disabled={printBusy} className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 text-white font-semibold hover:opacity-90 disabled:opacity-60">
                   {printBusy ? <Loader2 size={16} className="animate-spin" /> : <Printer size={16} />} Test HTML minimal
