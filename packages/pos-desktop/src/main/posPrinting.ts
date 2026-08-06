@@ -73,6 +73,41 @@ export function computePageGeometry(scrollHeightPx: number, paperWidthMm: number
   };
 }
 
+/**
+ * Charge le document ET garantit qu'il porte réellement du contenu peint.
+ *
+ * Le PDF de diagnostic est sorti à 0 OCTET sur le terrain : Chromium composait
+ * donc un document vide bien avant toute imprimante. `loadFile()` résout sur
+ * `did-finish-load`, ce qui ne garantit ni la peinture ni même un DOM peuplé.
+ * On attend donc la fin de chargement RÉELLE (`isLoading()` faux), puis la
+ * sonde de rendu ; si le document est vide, on RECHARGE une fois avant de
+ * renoncer. Aucun job n'est envoyé sur un document vide.
+ */
+async function loadAndProve(
+  win: BrowserWindow,
+  filePath: string,
+): Promise<RenderProbe> {
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    await win.loadFile(filePath);
+    // `loadFile` peut résoudre alors qu'un sous-chargement est encore en vol.
+    if (win.webContents.isLoading()) {
+      await new Promise<void>((resolve) => {
+        const done = () => resolve();
+        win.webContents.once('did-stop-loading', done);
+        setTimeout(done, RENDER_READY_TIMEOUT_MS);
+      });
+    }
+    const probe = await waitForRenderReadyAndMeasure(win);
+    if (probe.textLen > 0 && probe.h > 0) return probe;
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[PERIPH] Document VIDE après chargement (tentative ${attempt}/2)`,
+      JSON.stringify(probe),
+    );
+  }
+  return waitForRenderReadyAndMeasure(win);
+}
+
 /** Largeur de la fenêtre de rendu, en px CSS, pour composer à la largeur du rouleau. */
 export function paperWidthToPx(paperWidthMm: number): number {
   return Math.max(120, Math.round((paperWidthMm / 25.4) * 96));
@@ -272,10 +307,25 @@ async function printHtmlSilently(
       `poscaisse-ticket-${Date.now()}-${Math.round(process.hrtime()[1] % 1e6)}.html`,
     );
     fs.writeFileSync(tmpHtml, html, 'utf-8');
-    await win.loadFile(tmpHtml);
-    // Polices + images décodées + 2 cycles de rendu, PUIS mesure réelle.
-    const probe = await waitForRenderReadyAndMeasure(win);
+    // Chargement + PREUVE que le document porte du contenu (réessai inclus).
+    const probe = await loadAndProve(win, tmpHtml);
     const geometry = computePageGeometry(probe.h, paperWidthMm);
+
+    // ── REFUS D'IMPRIMER UN DOCUMENT VIDE ────────────────────────────────
+    // C'est ce job nul qui provoquait 1 mm de papier puis la coupe. Mieux vaut
+    // un échec explicite et traçable qu'un ticket fantôme.
+    if (probe.textLen === 0 || probe.h === 0) {
+      // eslint-disable-next-line no-console
+      console.error('[PERIPH] IMPRESSION ANNULÉE — document vide', JSON.stringify(probe));
+      return {
+        ok: false,
+        error:
+          'Document vide au moment de l’impression (aucun texte peint). ' +
+          'Job NON envoyé — c’est ce job nul qui produisait 1 mm de papier puis la coupe.',
+        probe,
+        geometry,
+      };
+    }
     const previewDataUrl = await capturePreview(win);
     const t2 = Date.now();
     const printOptions = buildReceiptPrintOptions(deviceName, geometry, forcePageSize);
@@ -365,9 +415,15 @@ export async function renderDiagnosticPdf(
     win.setIgnoreMouseEvents(true);
     tmpHtml = path.join(os.tmpdir(), `poscaisse-pdf-${Date.now()}.html`);
     fs.writeFileSync(tmpHtml, html, 'utf-8');
-    await win.loadFile(tmpHtml);
-    const probe = await waitForRenderReadyAndMeasure(win);
+    const probe = await loadAndProve(win, tmpHtml);
     const geometry = computePageGeometry(probe.h, paperWidthMm);
+    if (probe.textLen === 0 || probe.h === 0) {
+      return {
+        ok: false,
+        probe,
+        error: `Document vide avant génération PDF (textLen=${probe.textLen}, h=${probe.h}).`,
+      };
+    }
     const pdf = await win.webContents.printToPDF({
       printBackground: true,
       margins: { top: 0, bottom: 0, left: 0, right: 0 },
@@ -377,6 +433,15 @@ export async function renderDiagnosticPdf(
         height: geometry.pageHeightMicrons / 25400,
       },
     });
+    // Un PDF de 0 octet n'est PAS un succès : on le dit au lieu d'écrire un
+    // fichier vide que l'opérateur croira exploitable.
+    if (!pdf || pdf.length < 1000) {
+      return {
+        ok: false,
+        probe,
+        error: `printToPDF a renvoyé ${pdf ? pdf.length : 0} octet(s) — Chromium n’a rien composé.`,
+      };
+    }
     const filePath = path.join(os.tmpdir(), `ticket-diagnostic-${Date.now()}.pdf`);
     fs.writeFileSync(filePath, pdf);
     // eslint-disable-next-line no-console

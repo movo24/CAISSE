@@ -568,11 +568,16 @@ class PeripheralBridge {
 
     const style = doc.createElement('style');
     style.textContent = `
-      @page { size: ${width}mm auto; margin: 0; }
+      /* Pas de "size" ici : "size: <longueur> auto" est une déclaration CSS
+         INVALIDE (Paged Media accepte une ou deux longueurs, OU le mot-clé
+         auto, jamais un mélange). Chromium la rejette, et une regle @page
+         invalide peut perturber sa pagination jusqu'a produire un document
+         vide. Le format de page est fixe par les options d'impression. */
+      @page { margin: 0; }
       :root { color-scheme: light; }
       /* ALIGNÉ À GAUCHE, jamais centré (pas de "margin: auto").
          L'impression compose sur la page du PILOTE Windows, pas sur le
-         "@page size" ci-dessus : si le pilote est resté en Letter/A4, un corps
+         format de page : si le pilote est resté en Letter/A4, un corps
          centré démarre à ~69-72 mm alors que la zone imprimable d'un rouleau
          80 mm s'arrête vers 72 mm, et le ticket sort BLANC (mesuré sous
          Chromium : page 210 mm = 3 mm de contenu visible sur 72 ; page 216 mm

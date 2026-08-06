@@ -42,8 +42,9 @@ describe('attente du rendu réel avant impression', () => {
 
   it('l’attente a lieu APRÈS loadURL et AVANT print()', () => {
     // Le ticket est chargé depuis un FICHIER temporaire (plus d'URL `data:`).
-    const load = mainSrc.indexOf('await win.loadFile(tmpHtml)');
-    const ready = mainSrc.indexOf('await waitForRenderReadyAndMeasure(win)');
+    // Le chargement + la PREUVE de contenu sont encapsulés dans loadAndProve.
+    const load = mainSrc.indexOf('await win.loadFile(filePath)');
+    const ready = mainSrc.indexOf('await loadAndProve(win, tmpHtml)');
     const print = mainSrc.indexOf('win!.webContents.print(');
     expect(load).toBeGreaterThan(-1);
     expect(ready).toBeGreaterThan(load);
