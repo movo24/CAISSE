@@ -75,14 +75,12 @@ contextBridge.exposeInMainWorld('posUpdater', {
  */
 contextBridge.exposeInMainWorld('electronAPI', {
   getPrinters: () => ipcRenderer.invoke('pos-print:getPrinters'),
-  // `paperWidthMm` sert à composer la fenêtre de rendu à la largeur du rouleau
-  // ET à calculer le `pageSize` explicite transmis au moteur d'impression.
-  printTicketHtml: (
-    html: string,
-    deviceName?: string,
-    paperWidthMm?: 58 | 80,
-    forcePageSize?: boolean,
-  ) => ipcRenderer.invoke('pos-print:printHtml', html, deviceName, paperWidthMm, forcePageSize),
+  // `paperWidthMm` sert à composer la fenêtre de rendu à la largeur imprimable
+  // du rouleau, à 203 dpi : c'est la largeur du BITMAP remis au pilote.
+  // (L'ancien 4ᵉ argument `forcePageSize` a été retiré en v1.10.3 : la voie GDI
+  // n'utilise aucun format de page — le bitmap EST la page.)
+  printTicketHtml: (html: string, deviceName?: string, paperWidthMm?: 58 | 80) =>
+    ipcRenderer.invoke('pos-print:printHtml', html, deviceName, paperWidthMm),
   // Tiroir-caisse : `opts.path` = 'raw' (kick ESC/POS) ou 'queue' (job driver
   // vers une file Windows dédiée — imprimantes raster TSP100/futurePRNT).
   // Décision prise côté renderer selon le driver réel (honest-fail).

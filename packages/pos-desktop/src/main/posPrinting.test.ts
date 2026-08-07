@@ -75,12 +75,13 @@ describe('preload — narrow electronAPI exposure', () => {
   it('exposes ONLY getPrinters + printTicketHtml (no fs/shell/raw ipc)', () => {
     const block = preloadSrc.slice(preloadSrc.indexOf("exposeInMainWorld('electronAPI'"));
     expect(block).toMatch(/getPrinters: \(\) => ipcRenderer\.invoke\('pos-print:getPrinters'\)/);
-    // Signature élargie à `paperWidthMm` (format de page explicite) — l'API
-    // reste étroite : trois arguments de données, aucun accès système.
-    expect(block).toMatch(/printTicketHtml: \(/);
-    expect(block).toMatch(/paperWidthMm\?: 58 \| 80/);
-    expect(block).toMatch(/forcePageSize\?: boolean/);
-    expect(block).not.toMatch(/require|shell|fs\.|exec/);
+    // L'API reste étroite : TROIS arguments de données, aucun accès système et
+    // AUCUN réglage de page (le bitmap GDI est la page — `forcePageSize` retiré).
+    // Commentaires retirés : le retrait est documenté dans le preload.
+    const code = block.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');
+    expect(code).toMatch(/printTicketHtml: \(html: string, deviceName\?: string, paperWidthMm\?: 58 \| 80\)/);
+    expect(code).not.toMatch(/forcePageSize/);
+    expect(code).not.toMatch(/require|shell|fs\.|exec/);
   });
 });
 

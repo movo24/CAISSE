@@ -266,20 +266,13 @@ export function setDrawerQueueName(name: string | null): void {
   safeSet(QUEUE_KEY, name && name.trim() ? name.trim() : null);
 }
 
-/* ── Forçage du format de page (diagnostic) ─────────────────────────────────
+/* ── Forçage du format de page : SUPPRIMÉ (v1.10.3) ─────────────────────────
  *
- * Par défaut DÉSACTIVÉ : la page de test Windows sort entière et coupe à la
- * fin, ce qui prouve que le formulaire rouleau du pilote est correct et que sa
- * longueur suit le contenu. Le forçage n'est utile que sur un poste dont le
- * formulaire serait mal réglé — et il peut être refusé par le pilote si le
- * format demandé n'existe pas dans ses formulaires.
+ * Ce réglage n'a plus d'objet depuis la voie GDI : le ticket est rasterisé à la
+ * hauteur mesurée puis remis au pilote EN BITMAP — le bitmap EST la page, aucun
+ * formulaire pilote n'intervient. Le `main` ignorait déjà le paramètre, mais la
+ * case restait cochable à l'écran diagnostic : un réglage qui ne fait rien est
+ * un piège de diagnostic (on croit avoir agi). Retiré de bout en bout.
+ * La clé `caisse_force_page_size` éventuellement présente est simplement
+ * ignorée — aucune migration nécessaire.
  */
-const FORCE_PAGE_SIZE_KEY = 'caisse_force_page_size';
-
-export function getForcePageSize(): boolean {
-  return safeGet(FORCE_PAGE_SIZE_KEY) === '1';
-}
-
-export function setForcePageSize(on: boolean): void {
-  safeSet(FORCE_PAGE_SIZE_KEY, on ? '1' : null);
-}

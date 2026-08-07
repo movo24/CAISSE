@@ -24,6 +24,33 @@ describe('peripheralBridge — no silent browser-dialog fallback on auto-print',
   it('BT-hook print failure without fallback returns an honest false', () => {
     expect(bridge).toMatch(/if \(!allowBrowserFallback\) return false; \/\/ honest failure, no dialog/);
   });
+
+  /**
+   * NON-RÉGRESSION (audit 2026-08-07). Le repli navigateur était autorisé PAR
+   * DÉFAUT (`opts?.allowBrowserFallback !== false`). Sur la caisse, ce chemin
+   * Chromium n'émet AUCUNE encre vers la Star TSP143 (61 octets, mesuré) et
+   * `printBrowserFallback` retournait `true` : c'était donc la porte de retour
+   * du bug historique — un ticket annoncé imprimé sans papier. Les 4 appelants
+   * passaient déjà `false`, mais le défaut permissif suffisait à faire revenir
+   * la panne au premier appelant distrait.
+   */
+  it('le repli navigateur est OPT-IN (défaut false) — aucun oubli ne peut le réactiver', () => {
+    expect(bridge).toMatch(/const allowBrowserFallback = opts\?\.allowBrowserFallback === true;/);
+    expect(bridge).not.toMatch(/allowBrowserFallback = opts\?\.allowBrowserFallback !== false/);
+  });
+
+  it('sur la caisse (Electron) le repli navigateur est REFUSÉ et le dit — jamais un faux succès', () => {
+    expect(bridge).toMatch(/private printBrowserFallback\(data: TicketData\): boolean \{\s*\n\s*if \(this\.isElectron\(\)\) \{/);
+    expect(bridge).toMatch(/Repli navigateur REFUSÉ sur la caisse/);
+    // Le refus est tracé pour l'écran diagnostic, et renvoie false.
+    expect(bridge).toMatch(/this\.lastPrintError =/);
+  });
+
+  it('les appelants réels n’activent JAMAIS le repli (aucun allowBrowserFallback: true)', () => {
+    for (const src of [bridge, payment, posPage, history, ipad]) {
+      expect(src).not.toMatch(/allowBrowserFallback: true/);
+    }
+  });
 });
 
 describe('usePayment — the print outcome is tracked and truthful', () => {

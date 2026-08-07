@@ -98,6 +98,17 @@ jobs:
           if ($leaked) { $leaked | ForEach-Object { Write-Host "LEAKED: $($_.FullName)" }; exit 1 }
           Write-Host "dist/main clean"
 
+      # ── VERROU DE LIVRAISON nº1 : AVANT tout packaging/publication ──────────
+      # La Release v1.10.1 est partie avec un `app.asar` où `printPngViaGdi` était
+      # ABSENT et `webContents.print()` encore APPELÉ : la caisse ne sortait plus
+      # aucun ticket, et rien dans la chaîne ne l'a signalé (douze versions).
+      # Ce contrôle porte sur le main COMPILÉ, donc il bloque AVANT que
+      # `electron-builder --publish always` ne publie quoi que ce soit — un
+      # contrôle placé après la publication serait un constat, pas un garde-fou.
+      - name: Verify print path (dist/main) — bloquant AVANT publication
+        working-directory: packages/pos-desktop
+        run: node scripts/verify-print-path.mjs dist/main
+
       # Package the Windows NSIS installer + portable, x64.
       # - Dispatch (no tag): --publish never → artifacts seulement (test/QA).
       # - Tag desktop-v*    : --publish always → electron-builder crée/complète la
@@ -151,6 +162,14 @@ jobs:
             -R "$GITHUB_REPOSITORY" -t "The Wesley's POS v$VER" \
             -n "Installateur Windows + feed auto-update (R2). Voir AUTO_UPDATE_DISTRIBUTION.md." \
             || gh release upload "v$VER" release/*.exe release/latest.yml -R "$GITHUB_REPOSITORY" --clobber
+
+      # ── VERROU DE LIVRAISON nº2 : l'ARTEFACT packagé ────────────────────────
+      # Prouve que ce qui a été empaqueté est bien ce qui a été compilé (aucune
+      # substitution, aucun cache périmé). Complète le verrou nº1 : celui-ci
+      # constate l'artefact, c'est le nº1 qui empêche la publication.
+      - name: Verify packaged print path (app.asar)
+        working-directory: packages/pos-desktop
+        run: node scripts/verify-print-path.mjs
 
       # Print the exact artifact names + sizes into the log for verification.
       - name: List artifacts

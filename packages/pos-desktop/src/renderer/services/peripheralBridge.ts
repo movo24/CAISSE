@@ -14,7 +14,6 @@ import {
   decideDrawerPath,
   getDrawerQueueName,
   getDrawerStrategy,
-  getForcePageSize,
   pickGraphicPrinter,
   resolveDrawerQueue,
   type PrinterCommandMode,
@@ -221,6 +220,12 @@ class PeripheralBridge {
   /** Dernière raison d'échec/refus tiroir (affichée à l'écran diagnostic). */
   lastDrawerError: string | null = null;
   /**
+   * Dernière raison de REFUS d'impression côté renderer (distincte de l'erreur
+   * remontée par le main) : aujourd'hui le repli navigateur bloqué sur la
+   * caisse. Affichée à l'écran diagnostic — un refus muet est un faux succès.
+   */
+  lastPrintError: string | null = null;
+  /**
    * Aperçu (data-URL PNG) de la fenêtre EXACTE partie à l'impression, capturé
    * au moment du lancement. Seule preuve directe que le document imprimé
    * contenait le ticket — un « print success » ne dit rien du contenu.
@@ -393,13 +398,18 @@ class PeripheralBridge {
   }
 
   /**
-   * Print a ticket. `allowBrowserFallback: false` (sale auto-print) makes a failed
-   * thermal print return FALSE instead of silently opening the browser print dialog
-   * — the caller must tell the cashier the ticket was NOT printed (no fake print).
-   * Explicit reprints keep the default fallback (user-initiated dialog is fine).
+   * Imprime un ticket.
+   *
+   * `allowBrowserFallback` est **OPT-IN (défaut : false)**. Historiquement le
+   * défaut était `true` : un échec de l'impression thermique ouvrait alors la
+   * boîte d'impression du navigateur, laquelle sur la Star TSP143 n'émet AUCUNE
+   * encre (61 octets, cf. `posImagePrint.ts`) tout en retournant `true` — soit
+   * un FAUX SUCCÈS. Les quatre appelants réels passaient déjà `false`, mais le
+   * défaut permissif rendait la régression accessible au premier oubli. Le
+   * défaut est donc inversé : le repli doit être demandé EXPLICITEMENT.
    */
   async printTicket(data: TicketData, opts?: { allowBrowserFallback?: boolean }): Promise<boolean> {
-    const allowBrowserFallback = opts?.allowBrowserFallback !== false;
+    const allowBrowserFallback = opts?.allowBrowserFallback === true;
     const { type, connected } = this._status.printer;
 
     // Use registered BT printer function if available and connected
@@ -441,9 +451,7 @@ class PeripheralBridge {
         // Cible l'imprimante sélectionnée (sinon défaut OS).
         const device = this._status.printer.name ?? undefined;
         const widthMm = data.paperWidthMm ?? getPaperWidthMm();
-        const result = await (window as any).electronAPI.printTicketHtml(
-          html, device, widthMm, getForcePageSize(),
-        );
+        const result = await (window as any).electronAPI.printTicketHtml(html, device, widthMm);
         this.lastPrintPreview = result?.previewDataUrl ?? null;
         // Trace terrain STRUCTURÉE : tout ce qu'il faut pour diagnostiquer une
         // sortie blanche/tronquée sans accès à la machine — taille réelle du
@@ -543,7 +551,24 @@ class PeripheralBridge {
     }
   }
 
+  /**
+   * Repli « boîte d'impression du navigateur » — chemin LÉGITIME sur iPad et en
+   * navigateur (le caissier voit la boîte et imprime lui-même).
+   *
+   * INTERDIT SUR LA CAISSE (Electron). Mesuré le 2026-08-04 : ce chemin Chromium
+   * ne remet aucune opération de dessin au pilote Star TSP100/TSP143 — 61 octets,
+   * 0 % d'encre — et cette méthode retourne `true`. C'était donc un FAUX SUCCÈS
+   * capable de masquer une panne d'impression pendant des jours. Sur desktop on
+   * refuse et on le DIT : `false` + raison lisible à l'écran diagnostic.
+   */
   private printBrowserFallback(data: TicketData): boolean {
+    if (this.isElectron()) {
+      this.lastPrintError =
+        'Repli navigateur REFUSÉ sur la caisse : ce chemin n’imprime rien sur une Star ' +
+        'TSP100/TSP143 (pilote raster) et annoncerait un faux succès. Le ticket n’est PAS imprimé.';
+      console.error('[PERIPH]', this.lastPrintError);
+      return false;
+    }
     // Use a hidden iframe for safe printing without XSS risk
     const iframe = document.createElement('iframe');
     iframe.style.cssText = 'position:fixed;left:-9999px;top:-9999px;width:300px;height:600px;';
@@ -1075,7 +1100,7 @@ class PeripheralBridge {
     if (!this.isElectron() || !api?.printTicketHtml) return false;
     const device = this._status.printer.name ?? undefined;
     const widthMm = getPaperWidthMm();
-    const res = await api.printTicketHtml(html, device, widthMm, getForcePageSize());
+    const res = await api.printTicketHtml(html, device, widthMm);
     this.lastPrintPreview = res?.previewDataUrl ?? null;
     this.lastPrintTimings = {
       htmlBytes: html.length,

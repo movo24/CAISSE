@@ -4,11 +4,24 @@
 > Symptôme terrain : le logo sort parfois (diagnostic / « une fois »), puis les
 > vrais tickets de fin de vente ressortent SANS logo.
 
+> ⚠️ **MISE À JOUR 2026-08-07 (v1.10.2/1.10.3) — le chemin décrit ci-dessous a changé.**
+> Le ticket n'est PLUS chargé par URL `data:` et n'est PLUS soumis par
+> `webContents.print()` : il est écrit en **fichier temporaire** puis chargé par
+> `loadFile`, rasterisé **hors écran à 203 dpi**, et remis au pilote en **bitmap
+> 1 bpp par GDI** (`main/posImagePrint.ts`). Raison : `webContents.print()`
+> n'émet AUCUNE encre vers la Star TSP100/TSP143 (61 octets mesurés, 0 %).
+> Conséquence pour le logo : la contrainte « data-URL obligatoire » **reste
+> vraie** (le document est autonome, aucune URL `app://`/`https://` n'y résout de
+> façon fiable au moment du rendu), mais la cause n'est plus l'isolation `data:` —
+> c'est le fait que le document est rendu hors écran puis capturé. Ne PAS
+> « rétablir » `webContents.print()` en lisant ce document : voir
+> `posImagePrint.ts` et `posPrinting.test.ts`.
+
 ## Les deux chemins d'impression (comparaison demandée)
 
 | Élément | Chemin | Peut porter le logo ? |
 |---|---|---|
-| **Corps du ticket** (texte + logo), diagnostic **ET** vente réelle | `peripheralBridge.printTicket` → `printThermalUSB` → IPC `pos-print:printHtml` → `main/posPrinting.ts` : HTML chargé dans une fenêtre **`data:text/html`** puis `webContents.print()` → **driver Windows / futurePRNT** (rasterisation) | **Oui**, mais UNIQUEMENT si le logo est une **data-URL** dans le HTML |
+| **Corps du ticket** (texte + logo), diagnostic **ET** vente réelle | `peripheralBridge.printTicket` → `printThermalUSB` → IPC `pos-print:printHtml` → `main/posPrinting.ts` : HTML écrit en fichier temporaire, `loadFile`, rendu **hors écran (OSR)** à 203 dpi, `capturePage()` → PNG → **bitmap 1 bpp → GDI** (`posImagePrint.ts`) → **driver Windows / futurePRNT** | **Oui**, mais UNIQUEMENT si le logo est une **data-URL** dans le HTML |
 | **Tiroir-caisse + coupe papier** | IPC `pos-print:openDrawer` / `:cut` / `:rawEscpos` → `main/posRawPrint.ts` (winspool RAW) + `main/escpos.ts` | **N/A** — `escpos.ts` ne contient QUE `drawerKick`/`cut`, **aucune** commande raster logo |
 
 **Conclusion : le RAW-vs-pilote n'est PAS la cause.** Le corps du ticket (diagnostic

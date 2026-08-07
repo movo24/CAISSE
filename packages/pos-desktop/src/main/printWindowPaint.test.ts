@@ -57,9 +57,14 @@ describe('format de page : le bitmap EST la page (voie GDI)', () => {
     expect(src).toMatch(/setContentSize\(render\.deviceWidthPx, bitmapHeightPx\)/);
   });
 
-  it('l’ancien forçage de pageSize est accepté mais SANS EFFET (compat diagnostic)', () => {
-    expect(src).toMatch(/_forcePageSize\?: unknown/);
-    expect(src).not.toMatch(/\.\.\.\(forcePageSize && geometry/);
+  it('l’ancien forçage de pageSize a DISPARU de bout en bout (aucun réglage mort)', () => {
+    // Un réglage qui ne fait rien mais reste réglable est un piège de
+    // diagnostic : il a été retiré du main, du preload, du renderer et de l'UI.
+    // On retire les commentaires : le retrait est DOCUMENTÉ dans le code (pour
+    // qu'il ne soit pas réintroduit), seul un usage réel doit faire échouer.
+    const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');
+    expect(code).not.toMatch(/forcePageSize/i);
+    expect(code).not.toMatch(/\.\.\.\(forcePageSize && geometry/);
   });
 
   it('la géométrie mesurée reste journalisée', () => {

@@ -600,15 +600,10 @@ export function registerPosPrintingIpc(): void {
 
   ipcMain.handle(
     'pos-print:printHtml',
-    async (
-      _event,
-      html: unknown,
-      deviceName?: unknown,
-      paperWidthMm?: unknown,
-      // Accepté pour compatibilité avec l'écran diagnostic : le format de page
-      // n'existe plus dans la voie GDI (le bitmap EST la page), il est ignoré.
-      _forcePageSize?: unknown,
-    ) => {
+    // Trois arguments de DONNÉES, aucun réglage de page : dans la voie GDI le
+    // bitmap EST la page. L'ancien 4ᵉ argument `forcePageSize` a été retiré du
+    // preload et du renderer en v1.10.3 (il n'avait plus d'effet).
+    async (_event, html: unknown, deviceName?: unknown, paperWidthMm?: unknown) => {
       if (typeof html !== 'string' || html.length === 0 || html.length > 500_000) {
         return { ok: false, error: 'invalid html payload' };
       }
